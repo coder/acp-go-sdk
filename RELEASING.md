@@ -1,7 +1,7 @@
 # Releasing
 
 This project follows the ACP schema version published by
-[`zed-industries/agent-client-protocol`](https://github.com/zed-industries/agent-client-protocol).
+[`agentclientprotocol/agent-client-protocol`](https://github.com/agentclientprotocol/agent-client-protocol).
 Each Go release should align with a specific schema tag so that the generated
 code, helper APIs, and library version remain in sync.
 

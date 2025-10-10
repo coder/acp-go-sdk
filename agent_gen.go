@@ -35,23 +35,6 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return resp, nil
-	case AgentMethodModelSelect:
-		var p SetSessionModelRequest
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		exp, ok := a.agent.(AgentExperimental)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.SetSessionModel(ctx, p)
-		if err != nil {
-			return nil, toReqErr(err)
-		}
-		return resp, nil
 	case AgentMethodSessionCancel:
 		var p CancelNotification
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -134,6 +117,23 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		resp, err := a.agent.SetSessionMode(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case AgentMethodSessionSetModel:
+		var p SetSessionModelRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := a.agent.(AgentExperimental)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.SetSessionModel(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}

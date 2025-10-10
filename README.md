@@ -14,7 +14,7 @@ Learn more about the protocol itself at <https://agentclientprotocol.com>.
 <!-- `$ printf 'go get github.com/coder/acp-go-sdk@v%s\n' "$(cat schema/version)"` as bash -->
 
 ```bash
-go get github.com/coder/acp-go-sdk@v0.4.4
+go get github.com/coder/acp-go-sdk@v0.4.5
 ```
 
 ## Get Started
@@ -76,7 +76,7 @@ to it via stdio.
 - [Go package docs](https://pkg.go.dev/github.com/coder/acp-go-sdk)
 - [Examples (Go)](https://github.com/coder/acp-go-sdk/tree/main/example)
 - [Protocol Documentation](https://agentclientprotocol.com)
-- [Agent Client Protocol GitHub Repository](https://github.com/zed-industries/agent-client-protocol)
+- [Agent Client Protocol GitHub Repository](https://github.com/agentclientprotocol/agent-client-protocol)
 
 ## License
 

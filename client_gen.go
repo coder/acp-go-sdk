@@ -137,10 +137,6 @@ func (c *ClientSideConnection) Initialize(ctx context.Context, params Initialize
 	resp, err := SendRequest[InitializeResponse](c.conn, ctx, AgentMethodInitialize, params)
 	return resp, err
 }
-func (c *ClientSideConnection) SetSessionModel(ctx context.Context, params SetSessionModelRequest) (SetSessionModelResponse, error) {
-	resp, err := SendRequest[SetSessionModelResponse](c.conn, ctx, AgentMethodModelSelect, params)
-	return resp, err
-}
 func (c *ClientSideConnection) Cancel(ctx context.Context, params CancelNotification) error {
 	return c.conn.SendNotification(ctx, AgentMethodSessionCancel, params)
 }
@@ -163,5 +159,9 @@ func (c *ClientSideConnection) Prompt(ctx context.Context, params PromptRequest)
 }
 func (c *ClientSideConnection) SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error) {
 	resp, err := SendRequest[SetSessionModeResponse](c.conn, ctx, AgentMethodSessionSetMode, params)
+	return resp, err
+}
+func (c *ClientSideConnection) SetSessionModel(ctx context.Context, params SetSessionModelRequest) (SetSessionModelResponse, error) {
+	resp, err := SendRequest[SetSessionModelResponse](c.conn, ctx, AgentMethodSessionSetModel, params)
 	return resp, err
 }

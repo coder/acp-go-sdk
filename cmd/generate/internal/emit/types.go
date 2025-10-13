@@ -237,6 +237,9 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 		case ir.BindAgentExperimental:
 			target = &agentExperimentalMethods
 		}
+		if desc := methodDescription(schema, mi); desc != "" {
+			*target = append(*target, Comment(util.SanitizeComment(desc)))
+		}
 		if mi.Notif != "" {
 			name := ir.DispatchMethodNameForNotification(k, mi.Notif)
 			*target = append(*target, Id(name).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Notif)).Error())
@@ -275,6 +278,9 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 			target = &clientExperimental
 		case ir.BindClientTerminal:
 			target = &clientTerminal
+		}
+		if desc := methodDescription(schema, mi); desc != "" {
+			*target = append(*target, Comment(util.SanitizeComment(desc)))
 		}
 		if mi.Notif != "" {
 			name := ir.DispatchMethodNameForNotification(k, mi.Notif)
@@ -357,6 +363,23 @@ func emitValidateJen(f *File, name string, def *load.Definition) {
 			g.Return(Nil())
 		})
 	}
+}
+
+func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
+	if mi == nil || mi.DocsIgnored {
+		return ""
+	}
+	// Prefer notification descriptions when present, otherwise fall back to request/response types.
+	ordered := []string{mi.Notif, mi.Req, mi.Resp}
+	for _, name := range ordered {
+		if name == "" {
+			continue
+		}
+		if def := schema.Defs[name]; def != nil && def.Description != "" {
+			return def.Description
+		}
+	}
+	return ""
 }
 
 // Type mapping helpers (unchanged behavior vs original)
@@ -523,13 +546,14 @@ func jenTypeForOptional(d *load.Definition) Code {
 // (title: UnstructuredCommandInput) with a required 'hint' field.
 func emitUnion(f *File, name string, defs []*load.Definition, exactlyOne bool) {
 	type variantInfo struct {
-		fieldName  string
-		typeName   string
-		required   []string
-		isObject   bool
-		discValue  string
-		constPairs [][2]string
-		isNull     bool
+		fieldName   string
+		typeName    string
+		required    []string
+		isObject    bool
+		discValue   string
+		constPairs  [][2]string
+		isNull      bool
+		description string
 	}
 	variants := []variantInfo{}
 	discKey := ""
@@ -630,11 +654,23 @@ func emitUnion(f *File, name string, defs []*load.Definition, exactlyOne bool) {
 			f.Type().Id(tname).Struct(st...)
 			f.Line()
 		}
-		variants = append(variants, variantInfo{fieldName: fieldName, typeName: tname, required: v.Required, isObject: isObj, discValue: dv, constPairs: consts, isNull: isNull})
+		variants = append(variants, variantInfo{
+			fieldName:   fieldName,
+			typeName:    tname,
+			required:    v.Required,
+			isObject:    isObj,
+			discValue:   dv,
+			constPairs:  consts,
+			isNull:      isNull,
+			description: v.Description,
+		})
 	}
 	// wrapper
 	st := []Code{}
 	for _, vi := range variants {
+		if vi.description != "" {
+			st = append(st, Comment(util.SanitizeComment(vi.description)))
+		}
 		st = append(st, Id(vi.fieldName).Op("*").Id(vi.typeName).Tag(map[string]string{"json": "-"}))
 	}
 	f.Type().Id(name).Struct(st...)

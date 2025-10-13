@@ -11,10 +11,10 @@ version: README.md schema/meta.json schema/schema.json
 	echo $(ACP_VERSION) > $@
 
 schema/meta.json: schema/version
-	curl -o $@ --fail -L https://raw.githubusercontent.com/agentclientprotocol/agent-client-protocol/refs/tags/v$(ACP_VERSION)/schema/meta.json
+	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/meta.json
 
 schema/schema.json: schema/version
-	curl -o $@ --fail -L https://raw.githubusercontent.com/agentclientprotocol/agent-client-protocol/refs/tags/v$(ACP_VERSION)/schema/schema.json
+	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/schema.json
 
 README.md: schema/version
 	@command -v $(MDSH) >/dev/null || { echo "mdsh not found; run 'nix develop' or install it." 1>&2; exit 1; }

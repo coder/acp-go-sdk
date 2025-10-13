@@ -68,6 +68,7 @@ func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
 
 // All possible notifications that an agent can send to a client.  This enum is used internally for routing RPC notifications. You typically won't need to use this directly - use the notification methods on the ['Client'] trait instead.  Notifications do not expect a response.
 type AgentNotification struct {
+	// Handles session update notifications from the agent.  This is a notification endpoint (no response expected) that receives real-time updates about session progress, including message chunks, tool calls, and execution plans.  Note: Clients SHOULD continue accepting tool call updates even after sending a 'session/cancel' notification, as the agent may send final updates before responding with the cancelled stop reason.  See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
 	SessionNotification *SessionNotification `json:"-"`
 }
 
@@ -102,13 +103,21 @@ func (u AgentNotification) MarshalJSON() ([]byte, error) {
 
 // All possible requests that an agent can send to a client.  This enum is used internally for routing RPC requests. You typically won't need to use this directly - instead, use the methods on the ['Client'] trait.  This enum encompasses all method calls from agent to client.
 type AgentRequest struct {
-	WriteTextFileRequest       *WriteTextFileRequest       `json:"-"`
-	ReadTextFileRequest        *ReadTextFileRequest        `json:"-"`
-	RequestPermissionRequest   *RequestPermissionRequest   `json:"-"`
-	CreateTerminalRequest      *CreateTerminalRequest      `json:"-"`
-	TerminalOutputRequest      *TerminalOutputRequest      `json:"-"`
-	ReleaseTerminalRequest     *ReleaseTerminalRequest     `json:"-"`
+	// Writes content to a text file in the client's file system.  Only available if the client advertises the 'fs.writeTextFile' capability. Allows the agent to create or modify files within the client's environment.  See protocol docs: [Client](https://agentclientprotocol.com/protocol/overview#client)
+	WriteTextFileRequest *WriteTextFileRequest `json:"-"`
+	// Reads content from a text file in the client's file system.  Only available if the client advertises the 'fs.readTextFile' capability. Allows the agent to access file contents within the client's environment.  See protocol docs: [Client](https://agentclientprotocol.com/protocol/overview#client)
+	ReadTextFileRequest *ReadTextFileRequest `json:"-"`
+	// Requests permission from the user for a tool call operation.  Called by the agent when it needs user authorization before executing a potentially sensitive operation. The client should present the options to the user and return their decision.  If the client cancels the prompt turn via 'session/cancel', it MUST respond to this request with 'RequestPermissionOutcome::Cancelled'.  See protocol docs: [Requesting Permission](https://agentclientprotocol.com/protocol/tool-calls#requesting-permission)
+	RequestPermissionRequest *RequestPermissionRequest `json:"-"`
+	// Executes a command in a new terminal  Only available if the 'terminal' Client capability is set to 'true'.  Returns a 'TerminalId' that can be used with other terminal methods to get the current output, wait for exit, and kill the command.  The 'TerminalId' can also be used to embed the terminal in a tool call by using the 'ToolCallContent::Terminal' variant.  The Agent is responsible for releasing the terminal by using the 'terminal/release' method.  See protocol docs: [Terminals](https://agentclientprotocol.com/protocol/terminals)
+	CreateTerminalRequest *CreateTerminalRequest `json:"-"`
+	// Gets the terminal output and exit status  Returns the current content in the terminal without waiting for the command to exit. If the command has already exited, the exit status is included.  See protocol docs: [Terminals](https://agentclientprotocol.com/protocol/terminals)
+	TerminalOutputRequest *TerminalOutputRequest `json:"-"`
+	// Releases a terminal  The command is killed if it hasn't exited yet. Use 'terminal/wait_for_exit' to wait for the command to exit before releasing the terminal.  After release, the 'TerminalId' can no longer be used with other 'terminal/*' methods, but tool calls that already contain it, continue to display its output.  The 'terminal/kill' method can be used to terminate the command without releasing the terminal, allowing the Agent to call 'terminal/output' and other methods.  See protocol docs: [Terminals](https://agentclientprotocol.com/protocol/terminals)
+	ReleaseTerminalRequest *ReleaseTerminalRequest `json:"-"`
+	// Waits for the terminal command to exit and return its exit status  See protocol docs: [Terminals](https://agentclientprotocol.com/protocol/terminals)
 	WaitForTerminalExitRequest *WaitForTerminalExitRequest `json:"-"`
+	// Kills the terminal command without releasing the terminal  While 'terminal/release' will also kill the command, this method will keep the 'TerminalId' valid so it can be used with other methods.  This method can be helpful when implementing command timeouts which terminate the command as soon as elapsed, and then get the final output so it can be sent to the model.  Note: 'terminal/release' when 'TerminalId' is no longer needed.  See protocol docs: [Terminals](https://agentclientprotocol.com/protocol/terminals)
 	KillTerminalCommandRequest *KillTerminalCommandRequest `json:"-"`
 }
 
@@ -490,6 +499,7 @@ type UnstructuredCommandInput struct {
 }
 
 type AvailableCommandInput struct {
+	// All text that was typed after the command name is provided as input.
 	UnstructuredCommandInput *UnstructuredCommandInput `json:"-"`
 }
 
@@ -606,6 +616,7 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 
 // All possible notifications that a client can send to an agent.  This enum is used internally for routing RPC notifications. You typically won't need to use this directly - use the notification methods on the ['Agent'] trait instead.  Notifications do not expect a response.
 type ClientNotification struct {
+	// Cancels ongoing operations for a session.  This is a notification sent by the client to cancel an ongoing prompt turn.  Upon receiving this notification, the Agent SHOULD: - Stop all language model requests as soon as possible - Abort all tool call invocations in progress - Send any pending 'session/update' notifications - Respond to the original 'session/prompt' request with 'StopReason::Cancelled'  See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-turn#cancellation)
 	CancelNotification *CancelNotification `json:"-"`
 }
 
@@ -640,12 +651,19 @@ func (u ClientNotification) MarshalJSON() ([]byte, error) {
 
 // All possible requests that a client can send to an agent.  This enum is used internally for routing RPC requests. You typically won't need to use this directly - instead, use the methods on the ['Agent'] trait.  This enum encompasses all method calls from client to agent.
 type ClientRequest struct {
-	InitializeRequest      *InitializeRequest      `json:"-"`
-	AuthenticateRequest    *AuthenticateRequest    `json:"-"`
-	NewSessionRequest      *NewSessionRequest      `json:"-"`
-	LoadSessionRequest     *LoadSessionRequest     `json:"-"`
-	SetSessionModeRequest  *SetSessionModeRequest  `json:"-"`
-	PromptRequest          *PromptRequest          `json:"-"`
+	// Establishes the connection with a client and negotiates protocol capabilities.  This method is called once at the beginning of the connection to: - Negotiate the protocol version to use - Exchange capability information between client and agent - Determine available authentication methods  The agent should respond with its supported protocol version and capabilities.  See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
+	InitializeRequest *InitializeRequest `json:"-"`
+	// Authenticates the client using the specified authentication method.  Called when the agent requires authentication before allowing session creation. The client provides the authentication method ID that was advertised during initialization.  After successful authentication, the client can proceed to create sessions with 'new_session' without receiving an 'auth_required' error.  See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
+	AuthenticateRequest *AuthenticateRequest `json:"-"`
+	// Creates a new conversation session with the agent.  Sessions represent independent conversation contexts with their own history and state.  The agent should: - Create a new session context - Connect to any specified MCP servers - Return a unique session ID for future requests  May return an 'auth_required' error if the agent requires authentication.  See protocol docs: [Session Setup](https://agentclientprotocol.com/protocol/session-setup)
+	NewSessionRequest *NewSessionRequest `json:"-"`
+	// Loads an existing session to resume a previous conversation.  This method is only available if the agent advertises the 'loadSession' capability.  The agent should: - Restore the session context and conversation history - Connect to the specified MCP servers - Stream the entire conversation history back to the client via notifications  See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
+	LoadSessionRequest *LoadSessionRequest `json:"-"`
+	// Sets the current mode for a session.  Allows switching between different agent modes (e.g., "ask", "architect", "code") that affect system prompts, tool availability, and permission behaviors.  The mode must be one of the modes advertised in 'availableModes' during session creation or loading. Agents may also change modes autonomously and notify the client via 'current_mode_update' notifications.  This method can be called at any time during a session, whether the Agent is idle or actively generating a response.  See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+	SetSessionModeRequest *SetSessionModeRequest `json:"-"`
+	// Processes a user prompt within a session.  This method handles the whole lifecycle of a prompt: - Receives user messages with optional context (files, images, etc.) - Processes the prompt using language models - Reports language model content and tool calls to the Clients - Requests permission to run tools - Executes any requested tool calls - Returns when the turn is complete with a stop reason  See protocol docs: [Prompt Turn](https://agentclientprotocol.com/protocol/prompt-turn)
+	PromptRequest *PromptRequest `json:"-"`
+	// **UNSTABLE**  This capability is not part of the spec yet, and may be removed or changed at any point.  Select a model for a given session.
 	SetSessionModelRequest *SetSessionModelRequest `json:"-"`
 }
 
@@ -1008,11 +1026,16 @@ type ContentBlockResource struct {
 }
 
 type ContentBlock struct {
-	Text         *ContentBlockText         `json:"-"`
-	Image        *ContentBlockImage        `json:"-"`
-	Audio        *ContentBlockAudio        `json:"-"`
+	// Plain text content  All agents MUST support text content blocks in prompts.
+	Text *ContentBlockText `json:"-"`
+	// Images for visual context or analysis.  Requires the 'image' prompt capability when included in prompts.
+	Image *ContentBlockImage `json:"-"`
+	// Audio data for transcription or analysis.  Requires the 'audio' prompt capability when included in prompts.
+	Audio *ContentBlockAudio `json:"-"`
+	// References to resources that the agent can access.  All agents MUST support resource links in prompts.
 	ResourceLink *ContentBlockResourceLink `json:"-"`
-	Resource     *ContentBlockResource     `json:"-"`
+	// Complete resource contents embedded directly in the message.  Preferred for including context as it avoids extra round-trips.  Requires the 'embeddedContext' prompt capability when included in prompts.
+	Resource *ContentBlockResource `json:"-"`
 }
 
 func (u *ContentBlock) UnmarshalJSON(b []byte) error {
@@ -1768,9 +1791,12 @@ type Stdio struct {
 }
 
 type McpServer struct {
-	Http  *McpServerHttp `json:"-"`
-	Sse   *McpServerSse  `json:"-"`
-	Stdio *Stdio         `json:"-"`
+	// HTTP transport configuration  Only available when the Agent capabilities indicate 'mcp_capabilities.http' is 'true'.
+	Http *McpServerHttp `json:"-"`
+	// SSE transport configuration  Only available when the Agent capabilities indicate 'mcp_capabilities.sse' is 'true'.
+	Sse *McpServerSse `json:"-"`
+	// Stdio transport configuration  All Agents MUST support this transport.
+	Stdio *Stdio `json:"-"`
 }
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
@@ -2210,8 +2236,10 @@ type RequestPermissionOutcomeSelected struct {
 }
 
 type RequestPermissionOutcome struct {
+	// The prompt turn was cancelled before the user responded.  When a client sends a 'session/cancel' notification to cancel an ongoing prompt turn, it MUST respond to all pending 'session/request_permission' requests with this 'Cancelled' outcome.  See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-turn#cancellation)
 	Cancelled *RequestPermissionOutcomeCancelled `json:"-"`
-	Selected  *RequestPermissionOutcomeSelected  `json:"-"`
+	// The user selected one of the provided options.
+	Selected *RequestPermissionOutcomeSelected `json:"-"`
 }
 
 func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
@@ -2518,14 +2546,22 @@ type SessionUpdateCurrentModeUpdate struct {
 }
 
 type SessionUpdate struct {
-	UserMessageChunk        *SessionUpdateUserMessageChunk        `json:"-"`
-	AgentMessageChunk       *SessionUpdateAgentMessageChunk       `json:"-"`
-	AgentThoughtChunk       *SessionUpdateAgentThoughtChunk       `json:"-"`
-	ToolCall                *SessionUpdateToolCall                `json:"-"`
-	ToolCallUpdate          *SessionUpdateToolCallUpdate          `json:"-"`
-	Plan                    *SessionUpdatePlan                    `json:"-"`
+	// A chunk of the user's message being streamed.
+	UserMessageChunk *SessionUpdateUserMessageChunk `json:"-"`
+	// A chunk of the agent's response being streamed.
+	AgentMessageChunk *SessionUpdateAgentMessageChunk `json:"-"`
+	// A chunk of the agent's internal reasoning being streamed.
+	AgentThoughtChunk *SessionUpdateAgentThoughtChunk `json:"-"`
+	// Notification that a new tool call has been initiated.
+	ToolCall *SessionUpdateToolCall `json:"-"`
+	// Update on the status or results of a tool call.
+	ToolCallUpdate *SessionUpdateToolCallUpdate `json:"-"`
+	// The agent's execution plan for complex tasks. See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)
+	Plan *SessionUpdatePlan `json:"-"`
+	// Available commands are ready or have changed
 	AvailableCommandsUpdate *SessionUpdateAvailableCommandsUpdate `json:"-"`
-	CurrentModeUpdate       *SessionUpdateCurrentModeUpdate       `json:"-"`
+	// The current mode of the session has changed  See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+	CurrentModeUpdate *SessionUpdateCurrentModeUpdate `json:"-"`
 }
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
@@ -3097,8 +3133,11 @@ type ToolCallContentTerminal struct {
 }
 
 type ToolCallContent struct {
-	Content  *ToolCallContentContent  `json:"-"`
-	Diff     *ToolCallContentDiff     `json:"-"`
+	// Standard content block (text, images, resources).
+	Content *ToolCallContentContent `json:"-"`
+	// File modification shown as a diff.
+	Diff *ToolCallContentDiff `json:"-"`
+	// Embed a terminal created with 'terminal/create' by its id.  The terminal must be added before calling 'terminal/release'.  See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/terminal)
 	Terminal *ToolCallContentTerminal `json:"-"`
 }
 
@@ -3402,32 +3441,49 @@ func (v *WriteTextFileResponse) Validate() error {
 }
 
 type Agent interface {
+	// Request parameters for the authenticate method.  Specifies which authentication method to use.
 	Authenticate(ctx context.Context, params AuthenticateRequest) (AuthenticateResponse, error)
+	// Request parameters for the initialize method.  Sent by the client to establish connection and negotiate capabilities.  See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
 	Initialize(ctx context.Context, params InitializeRequest) (InitializeResponse, error)
+	// Notification to cancel ongoing operations for a session.  See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-turn#cancellation)
 	Cancel(ctx context.Context, params CancelNotification) error
+	// Request parameters for creating a new session.  See protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)
 	NewSession(ctx context.Context, params NewSessionRequest) (NewSessionResponse, error)
+	// Request parameters for sending a user prompt to the agent.  Contains the user's message and any additional context.  See protocol docs: [User Message](https://agentclientprotocol.com/protocol/prompt-turn#1-user-message)
 	Prompt(ctx context.Context, params PromptRequest) (PromptResponse, error)
+	// Request parameters for setting a session mode.
 	SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
 }
 
 // AgentLoader defines optional support for loading sessions. Implement and advertise the capability to enable 'session/load'.
 type AgentLoader interface {
+	// Request parameters for loading an existing session.  Only available if the Agent supports the 'loadSession' capability.  See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
 	LoadSession(ctx context.Context, params LoadSessionRequest) (LoadSessionResponse, error)
 }
 
 // AgentExperimental defines unstable methods that are not part of the official spec. These may change or be removed without notice.
 type AgentExperimental interface {
+	// **UNSTABLE**  This capability is not part of the spec yet, and may be removed or changed at any point.  Request parameters for setting a session model.
 	SetSessionModel(ctx context.Context, params SetSessionModelRequest) (SetSessionModelResponse, error)
 }
 type Client interface {
+	// Request to read content from a text file.  Only available if the client supports the 'fs.readTextFile' capability.
 	ReadTextFile(ctx context.Context, params ReadTextFileRequest) (ReadTextFileResponse, error)
+	// Request to write content to a text file.  Only available if the client supports the 'fs.writeTextFile' capability.
 	WriteTextFile(ctx context.Context, params WriteTextFileRequest) (WriteTextFileResponse, error)
+	// Request for user permission to execute a tool call.  Sent when the agent needs authorization before performing a sensitive operation.  See protocol docs: [Requesting Permission](https://agentclientprotocol.com/protocol/tool-calls#requesting-permission)
 	RequestPermission(ctx context.Context, params RequestPermissionRequest) (RequestPermissionResponse, error)
+	// Notification containing a session update from the agent.  Used to stream real-time progress and results during prompt processing.  See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
 	SessionUpdate(ctx context.Context, params SessionNotification) error
+	// Request to create a new terminal and execute a command.
 	CreateTerminal(ctx context.Context, params CreateTerminalRequest) (CreateTerminalResponse, error)
+	// Request to kill a terminal command without releasing the terminal.
 	KillTerminalCommand(ctx context.Context, params KillTerminalCommandRequest) (KillTerminalCommandResponse, error)
+	// Request to get the current output and status of a terminal.
 	TerminalOutput(ctx context.Context, params TerminalOutputRequest) (TerminalOutputResponse, error)
+	// Request to release a terminal and free its resources.
 	ReleaseTerminal(ctx context.Context, params ReleaseTerminalRequest) (ReleaseTerminalResponse, error)
+	// Request to wait for a terminal command to exit.
 	WaitForTerminalExit(ctx context.Context, params WaitForTerminalExitRequest) (WaitForTerminalExitResponse, error)
 }
 

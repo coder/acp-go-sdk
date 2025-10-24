@@ -67,9 +67,14 @@ func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
 }
 
 // All possible notifications that an agent can send to a client.  This enum is used internally for routing RPC notifications. You typically won't need to use this directly - use the notification methods on the ['Client'] trait instead.  Notifications do not expect a response.
+// Handles extension notifications from the agent.  Allows the Agent to send an arbitrary notification that is not part of the ACP spec. Extension notifications provide a way to send one-way messages for custom functionality while maintaining protocol compatibility.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+type AgentExtNotification struct{}
+
 type AgentNotification struct {
 	// Handles session update notifications from the agent.  This is a notification endpoint (no response expected) that receives real-time updates about session progress, including message chunks, tool calls, and execution plans.  Note: Clients SHOULD continue accepting tool call updates even after sending a 'session/cancel' notification, as the agent may send final updates before responding with the cancelled stop reason.  See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
 	SessionNotification *SessionNotification `json:"-"`
+	// Handles extension notifications from the agent.  Allows the Agent to send an arbitrary notification that is not part of the ACP spec. Extension notifications provide a way to send one-way messages for custom functionality while maintaining protocol compatibility.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	AgentExtNotification *AgentExtNotification `json:"-"`
 }
 
 func (u *AgentNotification) UnmarshalJSON(b []byte) error {
@@ -81,6 +86,13 @@ func (u *AgentNotification) UnmarshalJSON(b []byte) error {
 		var v SessionNotification
 		if json.Unmarshal(b, &v) == nil {
 			u.SessionNotification = &v
+			return nil
+		}
+	}
+	{
+		var v AgentExtNotification
+		if json.Unmarshal(b, &v) == nil {
+			u.AgentExtNotification = &v
 			return nil
 		}
 	}
@@ -98,10 +110,158 @@ func (u AgentNotification) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
+	if u.AgentExtNotification != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.AgentExtNotification)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+// A message (request, response, or notification) with '"jsonrpc": "2.0"' specified as [required by JSON-RPC 2.0 Specification][1].  [1]: https://www.jsonrpc.org/specification#compatibility
+type AgentOutgoingMessageRequest struct {
+	// JSON RPC Request Id  An identifier established by the Client that MUST contain a String, Number, or NULL value if included. If it is not included it is assumed to be a notification. The value SHOULD normally not be Null [1] and Numbers SHOULD NOT contain fractional parts [2]  The Server MUST reply with the same value in the Response object if included. This member is used to correlate the context between the two objects.  [1] The use of Null as a value for the id member in a Request object is discouraged, because this specification uses a value of Null for Responses with an unknown id. Also, because JSON-RPC 1.0 uses an id value of Null for Notifications this could cause confusion in handling.  [2] Fractional parts may be problematic, since many decimal fractions cannot be represented exactly as binary fractions.
+	Id     any           `json:"id"`
+	Method string        `json:"method"`
+	Params *AgentRequest `json:"params,omitempty"`
+}
+
+type AgentOutgoingMessageResponse struct {
+	// JSON RPC Request Id  An identifier established by the Client that MUST contain a String, Number, or NULL value if included. If it is not included it is assumed to be a notification. The value SHOULD normally not be Null [1] and Numbers SHOULD NOT contain fractional parts [2]  The Server MUST reply with the same value in the Response object if included. This member is used to correlate the context between the two objects.  [1] The use of Null as a value for the id member in a Request object is discouraged, because this specification uses a value of Null for Responses with an unknown id. Also, because JSON-RPC 1.0 uses an id value of Null for Notifications this could cause confusion in handling.  [2] Fractional parts may be problematic, since many decimal fractions cannot be represented exactly as binary fractions.
+	Id any `json:"id"`
+}
+
+type AgentOutgoingMessageNotification struct {
+	Method string             `json:"method"`
+	Params *AgentNotification `json:"params,omitempty"`
+}
+
+type AgentOutgoingMessage struct {
+	AgentOutgoingMessageRequest      *AgentOutgoingMessageRequest      `json:"-"`
+	AgentOutgoingMessageResponse     *AgentOutgoingMessageResponse     `json:"-"`
+	AgentOutgoingMessageNotification *AgentOutgoingMessageNotification `json:"-"`
+}
+
+func (u *AgentOutgoingMessage) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	{
+		var v AgentOutgoingMessageRequest
+		var match bool = true
+		if _, ok := m["id"]; !ok {
+			match = false
+		}
+		if _, ok := m["method"]; !ok {
+			match = false
+		}
+		if match {
+			if json.Unmarshal(b, &v) != nil {
+				return errors.New("invalid variant payload")
+			}
+			u.AgentOutgoingMessageRequest = &v
+			return nil
+		}
+	}
+	{
+		var v AgentOutgoingMessageResponse
+		var match bool = true
+		if _, ok := m["id"]; !ok {
+			match = false
+		}
+		if match {
+			if json.Unmarshal(b, &v) != nil {
+				return errors.New("invalid variant payload")
+			}
+			u.AgentOutgoingMessageResponse = &v
+			return nil
+		}
+	}
+	{
+		var v AgentOutgoingMessageNotification
+		var match bool = true
+		if _, ok := m["method"]; !ok {
+			match = false
+		}
+		if match {
+			if json.Unmarshal(b, &v) != nil {
+				return errors.New("invalid variant payload")
+			}
+			u.AgentOutgoingMessageNotification = &v
+			return nil
+		}
+	}
+	{
+		var v AgentOutgoingMessageRequest
+		if json.Unmarshal(b, &v) == nil {
+			u.AgentOutgoingMessageRequest = &v
+			return nil
+		}
+	}
+	{
+		var v AgentOutgoingMessageResponse
+		if json.Unmarshal(b, &v) == nil {
+			u.AgentOutgoingMessageResponse = &v
+			return nil
+		}
+	}
+	{
+		var v AgentOutgoingMessageNotification
+		if json.Unmarshal(b, &v) == nil {
+			u.AgentOutgoingMessageNotification = &v
+			return nil
+		}
+	}
+	return nil
+}
+func (u AgentOutgoingMessage) MarshalJSON() ([]byte, error) {
+	if u.AgentOutgoingMessageRequest != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.AgentOutgoingMessageRequest)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.AgentOutgoingMessageResponse != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.AgentOutgoingMessageResponse)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.AgentOutgoingMessageNotification != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.AgentOutgoingMessageNotification)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
 	return []byte{}, nil
 }
 
 // All possible requests that an agent can send to a client.  This enum is used internally for routing RPC requests. You typically won't need to use this directly - instead, use the methods on the ['Client'] trait.  This enum encompasses all method calls from agent to client.
+// Handles extension method requests from the agent.  Allows the Agent to send an arbitrary request that is not part of the ACP spec. Extension methods provide a way to add custom functionality while maintaining protocol compatibility.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+type AgentExtMethodRequest struct{}
+
 type AgentRequest struct {
 	// Writes content to a text file in the client's file system.  Only available if the client advertises the 'fs.writeTextFile' capability. Allows the agent to create or modify files within the client's environment.  See protocol docs: [Client](https://agentclientprotocol.com/protocol/overview#client)
 	WriteTextFileRequest *WriteTextFileRequest `json:"-"`
@@ -119,6 +279,8 @@ type AgentRequest struct {
 	WaitForTerminalExitRequest *WaitForTerminalExitRequest `json:"-"`
 	// Kills the terminal command without releasing the terminal  While 'terminal/release' will also kill the command, this method will keep the 'TerminalId' valid so it can be used with other methods.  This method can be helpful when implementing command timeouts which terminate the command as soon as elapsed, and then get the final output so it can be sent to the model.  Note: 'terminal/release' when 'TerminalId' is no longer needed.  See protocol docs: [Terminals](https://agentclientprotocol.com/protocol/terminals)
 	KillTerminalCommandRequest *KillTerminalCommandRequest `json:"-"`
+	// Handles extension method requests from the agent.  Allows the Agent to send an arbitrary request that is not part of the ACP spec. Extension methods provide a way to add custom functionality while maintaining protocol compatibility.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	AgentExtMethodRequest *AgentExtMethodRequest `json:"-"`
 }
 
 func (u *AgentRequest) UnmarshalJSON(b []byte) error {
@@ -179,6 +341,13 @@ func (u *AgentRequest) UnmarshalJSON(b []byte) error {
 		var v KillTerminalCommandRequest
 		if json.Unmarshal(b, &v) == nil {
 			u.KillTerminalCommandRequest = &v
+			return nil
+		}
+	}
+	{
+		var v AgentExtMethodRequest
+		if json.Unmarshal(b, &v) == nil {
+			u.AgentExtMethodRequest = &v
 			return nil
 		}
 	}
@@ -273,10 +442,23 @@ func (u AgentRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
+	if u.AgentExtMethodRequest != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.AgentExtMethodRequest)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
 	return []byte{}, nil
 }
 
 // All possible responses that an agent can send to a client.  This enum is used internally for routing RPC responses. You typically won't need to use this directly - the responses are handled automatically by the connection.  These are responses to the corresponding 'ClientRequest' variants.
+type AgentExtMethodResponse struct{}
+
 type AgentResponse struct {
 	InitializeResponse      *InitializeResponse      `json:"-"`
 	AuthenticateResponse    *AuthenticateResponse    `json:"-"`
@@ -285,6 +467,7 @@ type AgentResponse struct {
 	SetSessionModeResponse  *SetSessionModeResponse  `json:"-"`
 	PromptResponse          *PromptResponse          `json:"-"`
 	SetSessionModelResponse *SetSessionModelResponse `json:"-"`
+	AgentExtMethodResponse  *AgentExtMethodResponse  `json:"-"`
 }
 
 func (u *AgentResponse) UnmarshalJSON(b []byte) error {
@@ -338,6 +521,13 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 		var v SetSessionModelResponse
 		if json.Unmarshal(b, &v) == nil {
 			u.SetSessionModelResponse = &v
+			return nil
+		}
+	}
+	{
+		var v AgentExtMethodResponse
+		if json.Unmarshal(b, &v) == nil {
+			u.AgentExtMethodResponse = &v
 			return nil
 		}
 	}
@@ -421,6 +611,17 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
+	if u.AgentExtMethodResponse != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.AgentExtMethodResponse)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
 	return []byte{}, nil
 }
 
@@ -431,15 +632,6 @@ type Annotations struct {
 	Audience     []Role   `json:"audience,omitempty"`
 	LastModified *string  `json:"lastModified,omitempty"`
 	Priority     *float64 `json:"priority,omitempty"`
-}
-
-// Audio provided to or from an LLM.
-type AudioContent struct {
-	// Extension point for implementations
-	Meta        any          `json:"_meta,omitempty"`
-	Annotations *Annotations `json:"annotations,omitempty"`
-	Data        string       `json:"data"`
-	MimeType    string       `json:"mimeType"`
 }
 
 // Describes an available authentication method.
@@ -493,14 +685,14 @@ type AvailableCommand struct {
 
 // The input specification for a command.
 // All text that was typed after the command name is provided as input.
-type UnstructuredCommandInput struct {
+type AvailableCommandUnstructuredCommandInput struct {
 	// A hint to display when the input hasn't been provided yet
 	Hint string `json:"hint"`
 }
 
 type AvailableCommandInput struct {
 	// All text that was typed after the command name is provided as input.
-	UnstructuredCommandInput *UnstructuredCommandInput `json:"-"`
+	AvailableCommandUnstructuredCommandInput *AvailableCommandUnstructuredCommandInput `json:"-"`
 }
 
 func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
@@ -509,7 +701,7 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	{
-		var v UnstructuredCommandInput
+		var v AvailableCommandUnstructuredCommandInput
 		var match bool = true
 		if _, ok := m["hint"]; !ok {
 			match = false
@@ -518,23 +710,23 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.UnstructuredCommandInput = &v
+			u.AvailableCommandUnstructuredCommandInput = &v
 			return nil
 		}
 	}
 	{
-		var v UnstructuredCommandInput
+		var v AvailableCommandUnstructuredCommandInput
 		if json.Unmarshal(b, &v) == nil {
-			u.UnstructuredCommandInput = &v
+			u.AvailableCommandUnstructuredCommandInput = &v
 			return nil
 		}
 	}
 	return nil
 }
 func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
-	if u.UnstructuredCommandInput != nil {
+	if u.AvailableCommandUnstructuredCommandInput != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.UnstructuredCommandInput)
+		_b, _e := json.Marshal(*u.AvailableCommandUnstructuredCommandInput)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -615,9 +807,14 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 }
 
 // All possible notifications that a client can send to an agent.  This enum is used internally for routing RPC notifications. You typically won't need to use this directly - use the notification methods on the ['Agent'] trait instead.  Notifications do not expect a response.
+// Handles extension notifications from the client.  Extension notifications provide a way to send one-way messages for custom functionality while maintaining protocol compatibility.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+type ClientExtNotification struct{}
+
 type ClientNotification struct {
 	// Cancels ongoing operations for a session.  This is a notification sent by the client to cancel an ongoing prompt turn.  Upon receiving this notification, the Agent SHOULD: - Stop all language model requests as soon as possible - Abort all tool call invocations in progress - Send any pending 'session/update' notifications - Respond to the original 'session/prompt' request with 'StopReason::Cancelled'  See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-turn#cancellation)
 	CancelNotification *CancelNotification `json:"-"`
+	// Handles extension notifications from the client.  Extension notifications provide a way to send one-way messages for custom functionality while maintaining protocol compatibility.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	ClientExtNotification *ClientExtNotification `json:"-"`
 }
 
 func (u *ClientNotification) UnmarshalJSON(b []byte) error {
@@ -629,6 +826,13 @@ func (u *ClientNotification) UnmarshalJSON(b []byte) error {
 		var v CancelNotification
 		if json.Unmarshal(b, &v) == nil {
 			u.CancelNotification = &v
+			return nil
+		}
+	}
+	{
+		var v ClientExtNotification
+		if json.Unmarshal(b, &v) == nil {
+			u.ClientExtNotification = &v
 			return nil
 		}
 	}
@@ -646,10 +850,158 @@ func (u ClientNotification) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
+	if u.ClientExtNotification != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.ClientExtNotification)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+// A message (request, response, or notification) with '"jsonrpc": "2.0"' specified as [required by JSON-RPC 2.0 Specification][1].  [1]: https://www.jsonrpc.org/specification#compatibility
+type ClientOutgoingMessageRequest struct {
+	// JSON RPC Request Id  An identifier established by the Client that MUST contain a String, Number, or NULL value if included. If it is not included it is assumed to be a notification. The value SHOULD normally not be Null [1] and Numbers SHOULD NOT contain fractional parts [2]  The Server MUST reply with the same value in the Response object if included. This member is used to correlate the context between the two objects.  [1] The use of Null as a value for the id member in a Request object is discouraged, because this specification uses a value of Null for Responses with an unknown id. Also, because JSON-RPC 1.0 uses an id value of Null for Notifications this could cause confusion in handling.  [2] Fractional parts may be problematic, since many decimal fractions cannot be represented exactly as binary fractions.
+	Id     any            `json:"id"`
+	Method string         `json:"method"`
+	Params *ClientRequest `json:"params,omitempty"`
+}
+
+type ClientOutgoingMessageResponse struct {
+	// JSON RPC Request Id  An identifier established by the Client that MUST contain a String, Number, or NULL value if included. If it is not included it is assumed to be a notification. The value SHOULD normally not be Null [1] and Numbers SHOULD NOT contain fractional parts [2]  The Server MUST reply with the same value in the Response object if included. This member is used to correlate the context between the two objects.  [1] The use of Null as a value for the id member in a Request object is discouraged, because this specification uses a value of Null for Responses with an unknown id. Also, because JSON-RPC 1.0 uses an id value of Null for Notifications this could cause confusion in handling.  [2] Fractional parts may be problematic, since many decimal fractions cannot be represented exactly as binary fractions.
+	Id any `json:"id"`
+}
+
+type ClientOutgoingMessageNotification struct {
+	Method string              `json:"method"`
+	Params *ClientNotification `json:"params,omitempty"`
+}
+
+type ClientOutgoingMessage struct {
+	ClientOutgoingMessageRequest      *ClientOutgoingMessageRequest      `json:"-"`
+	ClientOutgoingMessageResponse     *ClientOutgoingMessageResponse     `json:"-"`
+	ClientOutgoingMessageNotification *ClientOutgoingMessageNotification `json:"-"`
+}
+
+func (u *ClientOutgoingMessage) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	{
+		var v ClientOutgoingMessageRequest
+		var match bool = true
+		if _, ok := m["id"]; !ok {
+			match = false
+		}
+		if _, ok := m["method"]; !ok {
+			match = false
+		}
+		if match {
+			if json.Unmarshal(b, &v) != nil {
+				return errors.New("invalid variant payload")
+			}
+			u.ClientOutgoingMessageRequest = &v
+			return nil
+		}
+	}
+	{
+		var v ClientOutgoingMessageResponse
+		var match bool = true
+		if _, ok := m["id"]; !ok {
+			match = false
+		}
+		if match {
+			if json.Unmarshal(b, &v) != nil {
+				return errors.New("invalid variant payload")
+			}
+			u.ClientOutgoingMessageResponse = &v
+			return nil
+		}
+	}
+	{
+		var v ClientOutgoingMessageNotification
+		var match bool = true
+		if _, ok := m["method"]; !ok {
+			match = false
+		}
+		if match {
+			if json.Unmarshal(b, &v) != nil {
+				return errors.New("invalid variant payload")
+			}
+			u.ClientOutgoingMessageNotification = &v
+			return nil
+		}
+	}
+	{
+		var v ClientOutgoingMessageRequest
+		if json.Unmarshal(b, &v) == nil {
+			u.ClientOutgoingMessageRequest = &v
+			return nil
+		}
+	}
+	{
+		var v ClientOutgoingMessageResponse
+		if json.Unmarshal(b, &v) == nil {
+			u.ClientOutgoingMessageResponse = &v
+			return nil
+		}
+	}
+	{
+		var v ClientOutgoingMessageNotification
+		if json.Unmarshal(b, &v) == nil {
+			u.ClientOutgoingMessageNotification = &v
+			return nil
+		}
+	}
+	return nil
+}
+func (u ClientOutgoingMessage) MarshalJSON() ([]byte, error) {
+	if u.ClientOutgoingMessageRequest != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.ClientOutgoingMessageRequest)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.ClientOutgoingMessageResponse != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.ClientOutgoingMessageResponse)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.ClientOutgoingMessageNotification != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.ClientOutgoingMessageNotification)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
 	return []byte{}, nil
 }
 
 // All possible requests that a client can send to an agent.  This enum is used internally for routing RPC requests. You typically won't need to use this directly - instead, use the methods on the ['Agent'] trait.  This enum encompasses all method calls from client to agent.
+// Handles extension method requests from the client.  Extension methods provide a way to add custom functionality while maintaining protocol compatibility.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+type ClientExtMethodRequest struct{}
+
 type ClientRequest struct {
 	// Establishes the connection with a client and negotiates protocol capabilities.  This method is called once at the beginning of the connection to: - Negotiate the protocol version to use - Exchange capability information between client and agent - Determine available authentication methods  The agent should respond with its supported protocol version and capabilities.  See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
 	InitializeRequest *InitializeRequest `json:"-"`
@@ -665,6 +1017,8 @@ type ClientRequest struct {
 	PromptRequest *PromptRequest `json:"-"`
 	// **UNSTABLE**  This capability is not part of the spec yet, and may be removed or changed at any point.  Select a model for a given session.
 	SetSessionModelRequest *SetSessionModelRequest `json:"-"`
+	// Handles extension method requests from the client.  Extension methods provide a way to add custom functionality while maintaining protocol compatibility.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	ClientExtMethodRequest *ClientExtMethodRequest `json:"-"`
 }
 
 func (u *ClientRequest) UnmarshalJSON(b []byte) error {
@@ -718,6 +1072,13 @@ func (u *ClientRequest) UnmarshalJSON(b []byte) error {
 		var v SetSessionModelRequest
 		if json.Unmarshal(b, &v) == nil {
 			u.SetSessionModelRequest = &v
+			return nil
+		}
+	}
+	{
+		var v ClientExtMethodRequest
+		if json.Unmarshal(b, &v) == nil {
+			u.ClientExtMethodRequest = &v
 			return nil
 		}
 	}
@@ -801,10 +1162,23 @@ func (u ClientRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
+	if u.ClientExtMethodRequest != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.ClientExtMethodRequest)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
 	return []byte{}, nil
 }
 
 // All possible responses that a client can send to an agent.  This enum is used internally for routing RPC responses. You typically won't need to use this directly - the responses are handled automatically by the connection.  These are responses to the corresponding 'AgentRequest' variants.
+type ClientExtMethodResponse struct{}
+
 type ClientResponse struct {
 	WriteTextFileResponse       *WriteTextFileResponse       `json:"-"`
 	ReadTextFileResponse        *ReadTextFileResponse        `json:"-"`
@@ -814,6 +1188,7 @@ type ClientResponse struct {
 	ReleaseTerminalResponse     *ReleaseTerminalResponse     `json:"-"`
 	WaitForTerminalExitResponse *WaitForTerminalExitResponse `json:"-"`
 	KillTerminalCommandResponse *KillTerminalCommandResponse `json:"-"`
+	ClientExtMethodResponse     *ClientExtMethodResponse     `json:"-"`
 }
 
 func (u *ClientResponse) UnmarshalJSON(b []byte) error {
@@ -874,6 +1249,13 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 		var v KillTerminalCommandResponse
 		if json.Unmarshal(b, &v) == nil {
 			u.KillTerminalCommandResponse = &v
+			return nil
+		}
+	}
+	{
+		var v ClientExtMethodResponse
+		if json.Unmarshal(b, &v) == nil {
+			u.ClientExtMethodResponse = &v
 			return nil
 		}
 	}
@@ -960,6 +1342,17 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 	if u.KillTerminalCommandResponse != nil {
 		var m map[string]any
 		_b, _e := json.Marshal(*u.KillTerminalCommandResponse)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.ClientExtMethodResponse != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.ClientExtMethodResponse)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -1392,14 +1785,6 @@ func (v *CreateTerminalResponse) Validate() error {
 	return nil
 }
 
-// The contents of a resource, embedded into a prompt or tool call result.
-type EmbeddedResource struct {
-	// Extension point for implementations
-	Meta        any                      `json:"_meta,omitempty"`
-	Annotations *Annotations             `json:"annotations,omitempty"`
-	Resource    EmbeddedResourceResource `json:"resource"`
-}
-
 // Resource content that can be embedded in a message.
 type EmbeddedResourceResource struct {
 	TextResourceContents *TextResourceContents `json:"-"`
@@ -1479,6 +1864,16 @@ type EnvVariable struct {
 	Value string `json:"value"`
 }
 
+// JSON-RPC error object.  Represents an error that occurred during method execution, following the JSON-RPC 2.0 error object specification with optional additional data.  See protocol docs: [JSON-RPC Error Object](https://www.jsonrpc.org/specification#error_object)
+type Error struct {
+	// A number indicating the error type that occurred. This must be an integer as defined in the JSON-RPC specification.
+	Code int `json:"code"`
+	// Optional primitive or structured value that contains additional information about the error. This may include debugging information or context-specific details.
+	Data any `json:"data,omitempty"`
+	// A string providing a short description of the error. The message should be limited to a concise single sentence.
+	Message string `json:"message"`
+}
+
 // File system capabilities that a client may support.  See protocol docs: [FileSystem](https://agentclientprotocol.com/protocol/initialization#filesystem)
 type FileSystemCapability struct {
 	// Extension point for implementations
@@ -1536,14 +1931,14 @@ type HttpHeader struct {
 	Value string `json:"value"`
 }
 
-// An image provided to or from an LLM.
-type ImageContent struct {
-	// Extension point for implementations
-	Meta        any          `json:"_meta,omitempty"`
-	Annotations *Annotations `json:"annotations,omitempty"`
-	Data        string       `json:"data"`
-	MimeType    string       `json:"mimeType"`
-	Uri         *string      `json:"uri,omitempty"`
+// Describes the name and version of an MCP implementation, with an optional title for UI representation.
+type Implementation struct {
+	// Intended for programmatic or logical use, but can be used as a display name fallback if title isn’t present.
+	Name string `json:"name"`
+	// Intended for UI and end-user contexts — optimized to be human-readable and easily understood.  If not provided, the name should be used for display.
+	Title *string `json:"title,omitempty"`
+	// Version of the implementation. Can be displayed to the user or used for debugging or metrics purposes.
+	Version string `json:"version"`
 }
 
 // Request parameters for the initialize method.  Sent by the client to establish connection and negotiate capabilities.  See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
@@ -1554,6 +1949,8 @@ type InitializeRequest struct {
 	//
 	// Defaults to {"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false} if unset.
 	ClientCapabilities ClientCapabilities `json:"clientCapabilities,omitempty"`
+	// Information about the Client name and version sent to the Agent.  Note: in future versions of the protocol, this will be required.
+	ClientInfo *Implementation `json:"clientInfo,omitempty"`
 	// The latest protocol version supported by the client.
 	ProtocolVersion ProtocolVersion `json:"protocolVersion"`
 }
@@ -1597,6 +1994,8 @@ type InitializeResponse struct {
 	//
 	// Defaults to {"loadSession":false,"mcpCapabilities":{"http":false,"sse":false},"promptCapabilities":{"audio":false,"embeddedContext":false,"image":false}} if unset.
 	AgentCapabilities AgentCapabilities `json:"agentCapabilities,omitempty"`
+	// Information about the Agent name and version sent to the Client.  Note: in future versions of the protocol, this will be required.
+	AgentInfo *Implementation `json:"agentInfo,omitempty"`
 	// Authentication methods supported by the agent.
 	//
 	// Defaults to [] if unset.
@@ -1779,7 +2178,7 @@ type McpServerSse struct {
 }
 
 // Stdio transport configuration  All Agents MUST support this transport.
-type Stdio struct {
+type McpServerStdio struct {
 	// Command-line arguments to pass to the MCP server.
 	Args []string `json:"args"`
 	// Path to the MCP server executable.
@@ -1796,7 +2195,7 @@ type McpServer struct {
 	// SSE transport configuration  Only available when the Agent capabilities indicate 'mcp_capabilities.sse' is 'true'.
 	Sse *McpServerSse `json:"-"`
 	// Stdio transport configuration  All Agents MUST support this transport.
-	Stdio *Stdio `json:"-"`
+	McpServerStdio *McpServerStdio `json:"-"`
 }
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
@@ -1873,7 +2272,7 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 		}
 	}
 	{
-		var v Stdio
+		var v McpServerStdio
 		var match bool = true
 		if _, ok := m["name"]; !ok {
 			match = false
@@ -1891,7 +2290,7 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.Stdio = &v
+			u.McpServerStdio = &v
 			return nil
 		}
 	}
@@ -1910,9 +2309,9 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 		}
 	}
 	{
-		var v Stdio
+		var v McpServerStdio
 		if json.Unmarshal(b, &v) == nil {
-			u.Stdio = &v
+			u.McpServerStdio = &v
 			return nil
 		}
 	}
@@ -1943,9 +2342,9 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		m["type"] = "sse"
 		return json.Marshal(m)
 	}
-	if u.Stdio != nil {
+	if u.McpServerStdio != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.Stdio)
+		_b, _e := json.Marshal(*u.McpServerStdio)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -2032,14 +2431,6 @@ const (
 	PermissionOptionKindRejectOnce   PermissionOptionKind = "reject_once"
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
-
-// An execution plan for accomplishing complex tasks.  Plans consist of multiple entries representing individual tasks or goals. Agents report plans to clients to provide visibility into their execution strategy. Plans can evolve during execution as the agent discovers new requirements or completes tasks.  See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)
-type Plan struct {
-	// Extension point for implementations
-	Meta any `json:"_meta,omitempty"`
-	// The list of tasks to be accomplished.  When updating a plan, the agent must send a complete list of all entries with their current status. The client replaces the entire plan with each update.
-	Entries []PlanEntry `json:"entries"`
-}
 
 // A single entry in the execution plan.  Represents a task or goal that the assistant intends to accomplish as part of fulfilling the user's request. See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
 type PlanEntry struct {
@@ -2359,6 +2750,28 @@ func (u *RequestPermissionOutcome) Validate() error {
 }
 
 // Request for user permission to execute a tool call.  Sent when the agent needs authorization before performing a sensitive operation.  See protocol docs: [Requesting Permission](https://agentclientprotocol.com/protocol/tool-calls#requesting-permission)
+// Details about the tool call requiring permission.
+type RequestPermissionToolCall struct {
+	// Extension point for implementations
+	Meta any `json:"_meta,omitempty"`
+	// Replace the content collection.
+	Content []ToolCallContent `json:"content,omitempty"`
+	// Update the tool kind.
+	Kind *ToolKind `json:"kind,omitempty"`
+	// Replace the locations collection.
+	Locations []ToolCallLocation `json:"locations,omitempty"`
+	// Update the raw input.
+	RawInput any `json:"rawInput,omitempty"`
+	// Update the raw output.
+	RawOutput any `json:"rawOutput,omitempty"`
+	// Update the execution status.
+	Status *ToolCallStatus `json:"status,omitempty"`
+	// Update the human-readable title.
+	Title *string `json:"title,omitempty"`
+	// The ID of the tool call being updated.
+	ToolCallId ToolCallId `json:"toolCallId"`
+}
+
 type RequestPermissionRequest struct {
 	// Extension point for implementations
 	Meta any `json:"_meta,omitempty"`
@@ -2367,7 +2780,7 @@ type RequestPermissionRequest struct {
 	// The session ID for this request.
 	SessionId SessionId `json:"sessionId"`
 	// Details about the tool call requiring permission.
-	ToolCall ToolCallUpdate `json:"toolCall"`
+	ToolCall RequestPermissionToolCall `json:"toolCall"`
 }
 
 func (v *RequestPermissionRequest) Validate() error {
@@ -2387,19 +2800,6 @@ type RequestPermissionResponse struct {
 
 func (v *RequestPermissionResponse) Validate() error {
 	return nil
-}
-
-// A resource that the server is capable of reading, included in a prompt or tool call result.
-type ResourceLink struct {
-	// Extension point for implementations
-	Meta        any          `json:"_meta,omitempty"`
-	Annotations *Annotations `json:"annotations,omitempty"`
-	Description *string      `json:"description,omitempty"`
-	MimeType    *string      `json:"mimeType,omitempty"`
-	Name        string       `json:"name"`
-	Size        *int         `json:"size,omitempty"`
-	Title       *string      `json:"title,omitempty"`
-	Uri         string       `json:"uri"`
 }
 
 // The sender or recipient of messages and data in a conversation.
@@ -2462,18 +2862,27 @@ func (v *SessionNotification) Validate() error {
 // Different types of updates that can be sent during session processing.  These updates provide real-time feedback about the agent's progress.  See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
 // A chunk of the user's message being streamed.
 type SessionUpdateUserMessageChunk struct {
+	// Extension point for implementations
+	Meta any `json:"_meta,omitempty"`
+	// A single item of content
 	Content       ContentBlock `json:"content"`
 	SessionUpdate string       `json:"sessionUpdate"`
 }
 
 // A chunk of the agent's response being streamed.
 type SessionUpdateAgentMessageChunk struct {
+	// Extension point for implementations
+	Meta any `json:"_meta,omitempty"`
+	// A single item of content
 	Content       ContentBlock `json:"content"`
 	SessionUpdate string       `json:"sessionUpdate"`
 }
 
 // A chunk of the agent's internal reasoning being streamed.
 type SessionUpdateAgentThoughtChunk struct {
+	// Extension point for implementations
+	Meta any `json:"_meta,omitempty"`
+	// A single item of content
 	Content       ContentBlock `json:"content"`
 	SessionUpdate string       `json:"sessionUpdate"`
 }
@@ -2502,7 +2911,7 @@ type SessionUpdateToolCall struct {
 }
 
 // Update on the status or results of a tool call.
-type SessionUpdateToolCallUpdate struct {
+type SessionToolCallUpdate struct {
 	// Extension point for implementations
 	Meta any `json:"_meta,omitempty"`
 	// Replace the content collection.
@@ -2534,13 +2943,19 @@ type SessionUpdatePlan struct {
 }
 
 // Available commands are ready or have changed
-type SessionUpdateAvailableCommandsUpdate struct {
+type SessionAvailableCommandsUpdate struct {
+	// Extension point for implementations
+	Meta any `json:"_meta,omitempty"`
+	// Commands the agent can execute
 	AvailableCommands []AvailableCommand `json:"availableCommands"`
 	SessionUpdate     string             `json:"sessionUpdate"`
 }
 
 // The current mode of the session has changed  See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
-type SessionUpdateCurrentModeUpdate struct {
+type SessionCurrentModeUpdate struct {
+	// Extension point for implementations
+	Meta any `json:"_meta,omitempty"`
+	// The ID of the current mode
 	CurrentModeId SessionModeId `json:"currentModeId"`
 	SessionUpdate string        `json:"sessionUpdate"`
 }
@@ -2555,13 +2970,13 @@ type SessionUpdate struct {
 	// Notification that a new tool call has been initiated.
 	ToolCall *SessionUpdateToolCall `json:"-"`
 	// Update on the status or results of a tool call.
-	ToolCallUpdate *SessionUpdateToolCallUpdate `json:"-"`
+	ToolCallUpdate *SessionToolCallUpdate `json:"-"`
 	// The agent's execution plan for complex tasks. See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)
 	Plan *SessionUpdatePlan `json:"-"`
 	// Available commands are ready or have changed
-	AvailableCommandsUpdate *SessionUpdateAvailableCommandsUpdate `json:"-"`
+	AvailableCommandsUpdate *SessionAvailableCommandsUpdate `json:"-"`
 	// The current mode of the session has changed  See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
-	CurrentModeUpdate *SessionUpdateCurrentModeUpdate `json:"-"`
+	CurrentModeUpdate *SessionCurrentModeUpdate `json:"-"`
 }
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
@@ -2604,7 +3019,7 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 			u.ToolCall = &v
 			return nil
 		case "tool_call_update":
-			var v SessionUpdateToolCallUpdate
+			var v SessionToolCallUpdate
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
@@ -2618,14 +3033,14 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 			u.Plan = &v
 			return nil
 		case "available_commands_update":
-			var v SessionUpdateAvailableCommandsUpdate
+			var v SessionAvailableCommandsUpdate
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
 			u.AvailableCommandsUpdate = &v
 			return nil
 		case "current_mode_update":
-			var v SessionUpdateCurrentModeUpdate
+			var v SessionCurrentModeUpdate
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
@@ -2705,7 +3120,7 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 		}
 	}
 	{
-		var v SessionUpdateToolCallUpdate
+		var v SessionToolCallUpdate
 		var match bool = true
 		if _, ok := m["sessionUpdate"]; !ok {
 			match = false
@@ -2739,7 +3154,7 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 		}
 	}
 	{
-		var v SessionUpdateAvailableCommandsUpdate
+		var v SessionAvailableCommandsUpdate
 		var match bool = true
 		if _, ok := m["sessionUpdate"]; !ok {
 			match = false
@@ -2756,7 +3171,7 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 		}
 	}
 	{
-		var v SessionUpdateCurrentModeUpdate
+		var v SessionCurrentModeUpdate
 		var match bool = true
 		if _, ok := m["sessionUpdate"]; !ok {
 			match = false
@@ -2801,7 +3216,7 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 		}
 	}
 	{
-		var v SessionUpdateToolCallUpdate
+		var v SessionToolCallUpdate
 		if json.Unmarshal(b, &v) == nil {
 			u.ToolCallUpdate = &v
 			return nil
@@ -2815,14 +3230,14 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 		}
 	}
 	{
-		var v SessionUpdateAvailableCommandsUpdate
+		var v SessionAvailableCommandsUpdate
 		if json.Unmarshal(b, &v) == nil {
 			u.AvailableCommandsUpdate = &v
 			return nil
 		}
 	}
 	{
-		var v SessionUpdateCurrentModeUpdate
+		var v SessionCurrentModeUpdate
 		if json.Unmarshal(b, &v) == nil {
 			u.CurrentModeUpdate = &v
 			return nil
@@ -2978,7 +3393,7 @@ func (v *SetSessionModeRequest) Validate() error {
 
 // Response to 'session/set_mode' method.
 type SetSessionModeResponse struct {
-	Meta any `json:"meta,omitempty"`
+	Meta any `json:"_meta,omitempty"`
 }
 
 func (v *SetSessionModeResponse) Validate() error {
@@ -3066,14 +3481,6 @@ func (v *TerminalOutputResponse) Validate() error {
 	return nil
 }
 
-// Text provided to or from an LLM.
-type TextContent struct {
-	// Extension point for implementations
-	Meta        any          `json:"_meta,omitempty"`
-	Annotations *Annotations `json:"annotations,omitempty"`
-	Text        string       `json:"text"`
-}
-
 // Text-based resource contents.
 type TextResourceContents struct {
 	// Extension point for implementations
@@ -3081,28 +3488,6 @@ type TextResourceContents struct {
 	MimeType *string `json:"mimeType,omitempty"`
 	Text     string  `json:"text"`
 	Uri      string  `json:"uri"`
-}
-
-// Represents a tool call that the language model has requested.  Tool calls are actions that the agent executes on behalf of the language model, such as reading files, executing code, or fetching data from external sources.  See protocol docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls)
-type ToolCall struct {
-	// Extension point for implementations
-	Meta any `json:"_meta,omitempty"`
-	// Content produced by the tool call.
-	Content []ToolCallContent `json:"content,omitempty"`
-	// The category of tool being invoked. Helps clients choose appropriate icons and UI treatment.
-	Kind ToolKind `json:"kind,omitempty"`
-	// File locations affected by this tool call. Enables "follow-along" features in clients.
-	Locations []ToolCallLocation `json:"locations,omitempty"`
-	// Raw input parameters sent to the tool.
-	RawInput any `json:"rawInput,omitempty"`
-	// Raw output returned by the tool.
-	RawOutput any `json:"rawOutput,omitempty"`
-	// Current execution status of the tool call.
-	Status ToolCallStatus `json:"status,omitempty"`
-	// Human-readable title describing what the tool is doing.
-	Title string `json:"title"`
-	// Unique identifier for this tool call within the session.
-	ToolCallId ToolCallId `json:"toolCallId"`
 }
 
 // Content produced by a tool call.  Tool calls can produce different types of content including standard content blocks (text, images) or file diffs.  See protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)
@@ -3331,35 +3716,6 @@ const (
 	ToolCallStatusCompleted  ToolCallStatus = "completed"
 	ToolCallStatusFailed     ToolCallStatus = "failed"
 )
-
-// An update to an existing tool call.  Used to report progress and results as tools execute. All fields except the tool call ID are optional - only changed fields need to be included.  See protocol docs: [Updating](https://agentclientprotocol.com/protocol/tool-calls#updating)
-type ToolCallUpdate struct {
-	// Extension point for implementations
-	Meta any `json:"_meta,omitempty"`
-	// Replace the content collection.
-	Content []ToolCallContent `json:"content,omitempty"`
-	// Update the tool kind.
-	Kind *ToolKind `json:"kind,omitempty"`
-	// Replace the locations collection.
-	Locations []ToolCallLocation `json:"locations,omitempty"`
-	// Update the raw input.
-	RawInput any `json:"rawInput,omitempty"`
-	// Update the raw output.
-	RawOutput any `json:"rawOutput,omitempty"`
-	// Update the execution status.
-	Status *ToolCallStatus `json:"status,omitempty"`
-	// Update the human-readable title.
-	Title *string `json:"title,omitempty"`
-	// The ID of the tool call being updated.
-	ToolCallId ToolCallId `json:"toolCallId"`
-}
-
-func (t *ToolCallUpdate) Validate() error {
-	if t.ToolCallId == "" {
-		return fmt.Errorf("toolCallId is required")
-	}
-	return nil
-}
 
 // Categories of tools that can be invoked.  Tool kinds help clients choose appropriate icons and optimize how they display tool execution progress.  See protocol docs: [Creating](https://agentclientprotocol.com/protocol/tool-calls#creating)
 type ToolKind string

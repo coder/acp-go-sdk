@@ -205,7 +205,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	// request permission for sensitive operation
 	permResp, err := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
 		SessionId: acp.SessionId(sid),
-		ToolCall: acp.ToolCallUpdate{
+		ToolCall: acp.RequestPermissionToolCall{
 			ToolCallId: acp.ToolCallId("call_2"),
 			Title:      acp.Ptr("Modifying critical configuration file"),
 			Kind:       acp.Ptr(acp.ToolKindEdit),

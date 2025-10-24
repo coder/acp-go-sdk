@@ -36,9 +36,9 @@ func ResourceLinkBlock(name string, uri string) ContentBlock {
 }
 
 // ResourceBlock wraps an embedded resource as a content block.
-func ResourceBlock(res EmbeddedResource) ContentBlock {
+func ResourceBlock(res EmbeddedResourceResource) ContentBlock {
 	return ContentBlock{Resource: &ContentBlockResource{
-		Resource: res.Resource,
+		Resource: res,
 		Type:     "resource",
 	}}
 }
@@ -181,11 +181,11 @@ func WithStartRawOutput(v any) ToolCallStartOpt {
 	}
 }
 
-type ToolCallUpdateOpt func(tu *SessionUpdateToolCallUpdate)
+type ToolCallUpdateOpt func(tu *SessionToolCallUpdate)
 
 // UpdateToolCall constructs a tool_call_update with the given ID and applies optional modifiers.
 func UpdateToolCall(id ToolCallId, opts ...ToolCallUpdateOpt) SessionUpdate {
-	tu := SessionUpdateToolCallUpdate{ToolCallId: id}
+	tu := SessionToolCallUpdate{ToolCallId: id}
 	for _, opt := range opts {
 		opt(&tu)
 	}
@@ -194,49 +194,49 @@ func UpdateToolCall(id ToolCallId, opts ...ToolCallUpdateOpt) SessionUpdate {
 
 // WithUpdateTitle sets the title for a tool_call_update.
 func WithUpdateTitle(t string) ToolCallUpdateOpt {
-	return func(tu *SessionUpdateToolCallUpdate) {
+	return func(tu *SessionToolCallUpdate) {
 		tu.Title = Ptr(t)
 	}
 }
 
 // WithUpdateKind sets the kind for a tool_call_update.
 func WithUpdateKind(k ToolKind) ToolCallUpdateOpt {
-	return func(tu *SessionUpdateToolCallUpdate) {
+	return func(tu *SessionToolCallUpdate) {
 		tu.Kind = Ptr(k)
 	}
 }
 
 // WithUpdateStatus sets the status for a tool_call_update.
 func WithUpdateStatus(s ToolCallStatus) ToolCallUpdateOpt {
-	return func(tu *SessionUpdateToolCallUpdate) {
+	return func(tu *SessionToolCallUpdate) {
 		tu.Status = Ptr(s)
 	}
 }
 
 // WithUpdateContent replaces the content collection for a tool_call_update.
 func WithUpdateContent(c []ToolCallContent) ToolCallUpdateOpt {
-	return func(tu *SessionUpdateToolCallUpdate) {
+	return func(tu *SessionToolCallUpdate) {
 		tu.Content = c
 	}
 }
 
 // WithUpdateLocations replaces the locations collection for a tool_call_update.
 func WithUpdateLocations(l []ToolCallLocation) ToolCallUpdateOpt {
-	return func(tu *SessionUpdateToolCallUpdate) {
+	return func(tu *SessionToolCallUpdate) {
 		tu.Locations = l
 	}
 }
 
 // WithUpdateRawInput sets rawInput for a tool_call_update.
 func WithUpdateRawInput(v any) ToolCallUpdateOpt {
-	return func(tu *SessionUpdateToolCallUpdate) {
+	return func(tu *SessionToolCallUpdate) {
 		tu.RawInput = v
 	}
 }
 
 // WithUpdateRawOutput sets rawOutput for a tool_call_update.
 func WithUpdateRawOutput(v any) ToolCallUpdateOpt {
-	return func(tu *SessionUpdateToolCallUpdate) {
+	return func(tu *SessionToolCallUpdate) {
 		tu.RawOutput = v
 	}
 }

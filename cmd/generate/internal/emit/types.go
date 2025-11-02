@@ -96,6 +96,25 @@ func generateNestedTypeName(parentName, rawFieldName string, usedNames map[strin
 	return fullName
 }
 
+// emitDocComment emits a multi-line doc comment for the given description.
+// Properly handles newlines and paragraph breaks from JSON schema descriptions.
+func emitDocComment(f *File, desc string) {
+	lines := util.FormatDocComment(desc)
+	for _, line := range lines {
+		f.Comment(line)
+	}
+}
+
+// appendDocComments appends doc comment Code elements to a slice for struct field comments.
+// Used when building struct field definitions with proper multi-line comment support.
+func appendDocComments(codeSlice []Code, desc string) []Code {
+	lines := util.FormatDocComment(desc)
+	for _, line := range lines {
+		codeSlice = append(codeSlice, Comment(line))
+	}
+	return codeSlice
+}
+
 // WriteTypesJen emits go/types_gen.go with all types and the Agent/Client interfaces.
 func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 	f := NewFile("acp")
@@ -131,7 +150,7 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 		}
 
 		if def.Description != "" {
-			f.Comment(util.SanitizeComment(def.Description))
+			emitDocComment(f, def.Description)
 		}
 
 		switch {
@@ -194,7 +213,7 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 
 					// Generate the nested struct type
 					if prop.Description != "" {
-						f.Comment(util.SanitizeComment(prop.Description))
+						emitDocComment(f, prop.Description)
 					}
 					nestedFields := []Code{}
 					nestedReq := map[string]struct{}{}
@@ -211,7 +230,7 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 						nprop := prop.Properties[npk]
 						nfield := util.ToExportedField(npk)
 						if nprop.Description != "" {
-							nestedFields = append(nestedFields, Comment(util.SanitizeComment(nprop.Description)))
+							nestedFields = appendDocComments(nestedFields, nprop.Description)
 						}
 						ntag := npk
 						if _, ok := nestedReq[npk]; !ok {
@@ -246,7 +265,7 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 				prop := def.Properties[pk]
 				field := util.ToExportedField(pk)
 				if prop.Description != "" {
-					st = append(st, Comment(util.SanitizeComment(prop.Description)))
+					st = appendDocComments(st, prop.Description)
 				}
 				tag := pk
 				// Detect defaults generically
@@ -285,7 +304,7 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 					if prop.Description != "" {
 						st = append(st, Comment(""))
 					}
-					st = append(st, Comment(util.SanitizeComment(fmt.Sprintf("Defaults to %s if unset.", dp.defaultJSON))))
+					st = append(st, Comment(fmt.Sprintf("Defaults to %s if unset.", dp.defaultJSON)))
 				}
 				// Use generated nested type if available, otherwise use jenTypeForOptional
 				var fieldType Code
@@ -390,7 +409,8 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 			target = &agentExperimentalMethods
 		}
 		if desc := methodDescription(schema, mi); desc != "" {
-			*target = append(*target, Comment(util.SanitizeComment(desc)))
+			// Method descriptions can be multi-line, format them properly
+			*target = appendDocComments(*target, desc)
 		}
 		if mi.Notif != "" {
 			name := ir.DispatchMethodNameForNotification(k, mi.Notif)
@@ -432,7 +452,8 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 			target = &clientTerminal
 		}
 		if desc := methodDescription(schema, mi); desc != "" {
-			*target = append(*target, Comment(util.SanitizeComment(desc)))
+			// Method descriptions can be multi-line, format them properly
+			*target = appendDocComments(*target, desc)
 		}
 		if mi.Notif != "" {
 			name := ir.DispatchMethodNameForNotification(k, mi.Notif)
@@ -814,13 +835,13 @@ func emitUnion(f *File, name string, defs []*load.Definition, exactlyOne bool, u
 				}
 				sort.Strings(pkeys)
 				if v.Description != "" {
-					f.Comment(util.SanitizeComment(v.Description))
+					emitDocComment(f, v.Description)
 				}
 				for _, pk := range pkeys {
 					pDef := v.Properties[pk]
 					field := util.ToExportedField(pk)
 					if pDef.Description != "" {
-						st = append(st, Comment(util.SanitizeComment(pDef.Description)))
+						st = appendDocComments(st, pDef.Description)
 					}
 					tag := pk
 					if _, ok := req[pk]; !ok {
@@ -829,13 +850,29 @@ func emitUnion(f *File, name string, defs []*load.Definition, exactlyOne bool, u
 					st = append(st, Id(field).Add(jenTypeForOptional(pDef)).Tag(map[string]string{"json": tag}))
 				}
 			} else if !isNull && !isObj && v.Title != "" {
-				// Title-only extension types: emit description as comment
+				// Title-only variants: check if they're extension types
+				// Extension types should preserve the raw payload, not drop it
+				isExtension := strings.Contains(strings.ToLower(v.Description), "extension") ||
+					strings.Contains(v.Title, "Ext")
+
 				if v.Description != "" {
-					f.Comment(util.SanitizeComment(v.Description))
+					emitDocComment(f, v.Description)
 				}
+
+				if isExtension {
+					// Emit as json.RawMessage to preserve extension payload
+					f.Type().Id(tname).Qual("encoding/json", "RawMessage")
+				} else {
+					// Emit as empty struct (rare case for truly empty variants)
+					f.Type().Id(tname).Struct(st...)
+				}
+				f.Line()
+				// Skip the struct emission below for title-only variants
+				goto skipStructEmit
 			}
 			f.Type().Id(tname).Struct(st...)
 			f.Line()
+		skipStructEmit:
 		}
 		variants = append(variants, variantInfo{
 			fieldName:   fieldName,
@@ -852,7 +889,7 @@ func emitUnion(f *File, name string, defs []*load.Definition, exactlyOne bool, u
 	st := []Code{}
 	for _, vi := range variants {
 		if vi.description != "" {
-			st = append(st, Comment(util.SanitizeComment(vi.description)))
+			st = appendDocComments(st, vi.description)
 		}
 		st = append(st, Id(vi.fieldName).Op("*").Id(vi.typeName).Tag(map[string]string{"json": "-"}))
 	}

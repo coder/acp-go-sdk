@@ -352,7 +352,7 @@ func TestConnectionHandlesMessageOrdering(t *testing.T) {
 	}
 	if _, err := as.RequestPermission(context.Background(), RequestPermissionRequest{
 		SessionId: "test-session",
-		ToolCall: ToolCallUpdate{
+		ToolCall: RequestPermissionToolCall{
 			Title:      Ptr("Execute command"),
 			Kind:       ptr(ToolKindExecute),
 			Status:     ptr(ToolCallStatusPending),

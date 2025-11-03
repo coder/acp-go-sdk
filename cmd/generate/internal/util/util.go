@@ -8,6 +8,7 @@ import (
 )
 
 // SanitizeComment removes backticks and normalizes whitespace for Go comments.
+// Deprecated: Use FormatDocComment for proper multi-line comment formatting.
 func SanitizeComment(s string) string {
 	s = strings.ReplaceAll(s, "`", "'")
 	lines := strings.Split(s, "\n")
@@ -15,6 +16,35 @@ func SanitizeComment(s string) string {
 		lines[i] = strings.TrimSpace(lines[i])
 	}
 	return strings.Join(lines, " ")
+}
+
+// FormatDocComment formats a description as properly structured Go doc comment lines.
+// Preserves paragraph breaks (double newlines) and handles line breaks within paragraphs.
+// Returns slice of comment text without "//" prefix (caller should emit each as a comment line).
+//
+// Go doc comment conventions:
+//   - Each line of comment text becomes a separate "// line"
+//   - Blank lines (from \n\n) become "//" with no text
+//   - First line should be a complete sentence ending with period
+func FormatDocComment(desc string) []string {
+	if desc == "" {
+		return nil
+	}
+
+	// Replace backticks with single quotes (Go doc comments don't support backticks well)
+	desc = strings.ReplaceAll(desc, "`", "'")
+
+	// Split into lines based on newlines from the JSON schema
+	lines := strings.Split(desc, "\n")
+
+	var result []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Preserve blank lines as empty strings - jen will render them as "//"
+		result = append(result, trimmed)
+	}
+
+	return result
 }
 
 // TitleWord uppercases the first rune and lowercases the rest.

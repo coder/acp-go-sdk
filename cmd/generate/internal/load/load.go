@@ -22,6 +22,12 @@ type Schema struct {
 	Defs map[string]*Definition `json:"$defs"`
 }
 
+// Discriminator specifies which property distinguishes union variants.
+// Part of JSON Schema discriminator object support.
+type Discriminator struct {
+	PropertyName string `json:"propertyName"`
+}
+
 // Definition is a partial JSON Schema node the generator cares about.
 type Definition struct {
 	Description string                 `json:"description"`
@@ -41,6 +47,9 @@ type Definition struct {
 	// Default holds the JSON Schema default value, when present.
 	// Used by generators to synthesize defaulting behavior.
 	Default any `json:"default"`
+	// Discriminator specifies which property name distinguishes union variants.
+	// Part of JSON Schema's discriminator object support.
+	Discriminator *Discriminator `json:"discriminator,omitempty"`
 
 	// boolSchema records whether this definition was a boolean schema (true/false).
 	// JSON Schema allows boolean schemas, where true matches anything and false matches nothing.

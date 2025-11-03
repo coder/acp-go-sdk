@@ -84,7 +84,7 @@ func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
 // while maintaining protocol compatibility.
 //
 // See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-type AgentExtNotification json.RawMessage
+type AgentExtNotification = json.RawMessage
 
 type AgentNotification struct {
 	// Handles session update notifications from the agent.
@@ -322,7 +322,7 @@ func (u AgentOutgoingMessage) MarshalJSON() ([]byte, error) {
 // protocol compatibility.
 //
 // See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-type AgentExtMethodRequest json.RawMessage
+type AgentExtMethodRequest = json.RawMessage
 
 type AgentRequest struct {
 	// Writes content to a text file in the client's file system.
@@ -591,7 +591,7 @@ func (u AgentRequest) MarshalJSON() ([]byte, error) {
 // to use this directly - the responses are handled automatically by the connection.
 //
 // These are responses to the corresponding 'ClientRequest' variants.
-type AgentExtMethodResponse json.RawMessage
+type AgentExtMethodResponse = json.RawMessage
 
 type AgentResponse struct {
 	InitializeResponse      *InitializeResponse      `json:"-"`
@@ -963,7 +963,7 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 // while maintaining protocol compatibility.
 //
 // See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-type ClientExtNotification json.RawMessage
+type ClientExtNotification = json.RawMessage
 
 type ClientNotification struct {
 	// Cancels ongoing operations for a session.
@@ -1199,7 +1199,7 @@ func (u ClientOutgoingMessage) MarshalJSON() ([]byte, error) {
 // protocol compatibility.
 //
 // See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-type ClientExtMethodRequest json.RawMessage
+type ClientExtMethodRequest = json.RawMessage
 
 type ClientRequest struct {
 	// Establishes the connection with a client and negotiates protocol capabilities.
@@ -1449,7 +1449,7 @@ func (u ClientRequest) MarshalJSON() ([]byte, error) {
 // to use this directly - the responses are handled automatically by the connection.
 //
 // These are responses to the corresponding 'AgentRequest' variants.
-type ClientExtMethodResponse json.RawMessage
+type ClientExtMethodResponse = json.RawMessage
 
 type ClientResponse struct {
 	WriteTextFileResponse       *WriteTextFileResponse       `json:"-"`

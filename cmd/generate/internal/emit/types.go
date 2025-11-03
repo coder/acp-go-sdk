@@ -881,8 +881,9 @@ func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.De
 				}
 
 				if isExtension {
-					// Emit as json.RawMessage to preserve extension payload
-					f.Type().Id(tname).Qual("encoding/json", "RawMessage")
+					// Emit as type alias (=) to json.RawMessage to preserve marshal/unmarshal methods
+					// Using type alias ensures the RawMessage methods are inherited, unlike a defined type.
+					f.Type().Id(tname).Op("=").Qual("encoding/json", "RawMessage")
 				} else {
 					// Emit as empty struct (rare case for truly empty variants)
 					f.Type().Id(tname).Struct(st...)

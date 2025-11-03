@@ -179,11 +179,11 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 			}
 			f.Line()
 		case len(def.AnyOf) > 0:
-			emitUnion(f, name, def.AnyOf, false, usedTypeNames)
+			emitUnion(f, name, def, def.AnyOf, false, usedTypeNames)
 		case len(def.OneOf) > 0 && !isStringConstUnion(def):
 			// Generic union generation for non-enum oneOf
 			// Use the same implementation, but require exactly one variant
-			emitUnion(f, name, def.OneOf, true, usedTypeNames)
+			emitUnion(f, name, def, def.OneOf, true, usedTypeNames)
 		case ir.PrimaryType(def) == "object" && len(def.Properties) > 0:
 			st := []Code{}
 			req := map[string]struct{}{}
@@ -717,7 +717,7 @@ func jenTypeForOptional(d *load.Definition) Code {
 // emitAvailableCommandInputJen generates a concrete variant type for anyOf and a thin union wrapper
 // that supports JSON unmarshal by probing object shape. Currently the schema defines one variant
 // (title: UnstructuredCommandInput) with a required 'hint' field.
-func emitUnion(f *File, name string, defs []*load.Definition, exactlyOne bool, usedTypeNames map[string]bool) {
+func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.Definition, exactlyOne bool, usedTypeNames map[string]bool) {
 	type variantInfo struct {
 		fieldName   string
 		typeName    string
@@ -730,19 +730,26 @@ func emitUnion(f *File, name string, defs []*load.Definition, exactlyOne bool, u
 	}
 	variants := []variantInfo{}
 	discKey := ""
-	// discover discriminator key if present (any const property)
-	for _, v := range defs {
-		if v == nil {
-			continue
-		}
-		for k, pd := range v.Properties {
-			if pd != nil && pd.Const != nil {
-				discKey = k
+	// Use schema's explicit discriminator if available
+	if parentDef != nil && parentDef.Discriminator != nil {
+		discKey = parentDef.Discriminator.PropertyName
+	}
+	// Fallback: discover discriminator key by scanning for const properties
+	// (for backward compatibility with older schemas without discriminator metadata)
+	if discKey == "" {
+		for _, v := range defs {
+			if v == nil {
+				continue
+			}
+			for k, pd := range v.Properties {
+				if pd != nil && pd.Const != nil {
+					discKey = k
+					break
+				}
+			}
+			if discKey != "" {
 				break
 			}
-		}
-		if discKey != "" {
-			break
 		}
 	}
 	for idx, v := range defs {
@@ -792,14 +799,28 @@ func emitUnion(f *File, name string, defs []*load.Definition, exactlyOne bool, u
 		}
 		// Ensure Title-derived names are exported (e.g., "stdio" -> "Stdio").
 		tname = util.ToExportedField(tname)
-		fieldName := util.ToExportedField(tname)
+
+		// Derive field name with priority: discriminator value > title > type name
+		fieldName := ""
 		dv := ""
+
+		// Priority 1: Use discriminator const value (most ergonomic)
 		if discKey != "" {
 			if pd := v.Properties[discKey]; pd != nil && pd.Const != nil {
 				s := fmt.Sprint(pd.Const)
 				fieldName = util.ToExportedField(s)
 				dv = s
 			}
+		}
+
+		// Priority 2: Use original title if no discriminator (e.g., "stdio")
+		if fieldName == "" && v.Title != "" {
+			fieldName = util.ToExportedField(v.Title)
+		}
+
+		// Priority 3: Fall back to type name
+		if fieldName == "" {
+			fieldName = util.ToExportedField(tname)
 		}
 		isObj := len(v.Properties) > 0
 		// Skip phantom variants that have neither $ref nor object shape nor null nor title

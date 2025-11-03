@@ -238,7 +238,7 @@ func TestJSONGolden_MethodPayloads(t *testing.T) {
 		return NewSessionRequest{
 			Cwd: "/home/user/project", McpServers: []McpServer{
 				{
-					McpServerStdio: &McpServerStdio{
+					Stdio: &McpServerStdio{
 						Name:    "filesystem",
 						Command: "/path/to/mcp-server",
 						Args:    []string{"--stdio"},

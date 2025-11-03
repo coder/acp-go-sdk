@@ -106,7 +106,7 @@ type AgentNotification struct {
 	// while maintaining protocol compatibility.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	AgentExtNotification *AgentExtNotification `json:"-"`
+	ExtNotification *AgentExtNotification `json:"-"`
 }
 
 func (u *AgentNotification) UnmarshalJSON(b []byte) error {
@@ -124,7 +124,7 @@ func (u *AgentNotification) UnmarshalJSON(b []byte) error {
 	{
 		var v AgentExtNotification
 		if json.Unmarshal(b, &v) == nil {
-			u.AgentExtNotification = &v
+			u.ExtNotification = &v
 			return nil
 		}
 	}
@@ -142,9 +142,9 @@ func (u AgentNotification) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.AgentExtNotification != nil {
+	if u.ExtNotification != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.AgentExtNotification)
+		_b, _e := json.Marshal(*u.ExtNotification)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -194,9 +194,9 @@ type AgentOutgoingMessageNotification struct {
 }
 
 type AgentOutgoingMessage struct {
-	AgentOutgoingMessageRequest      *AgentOutgoingMessageRequest      `json:"-"`
-	AgentOutgoingMessageResponse     *AgentOutgoingMessageResponse     `json:"-"`
-	AgentOutgoingMessageNotification *AgentOutgoingMessageNotification `json:"-"`
+	Request      *AgentOutgoingMessageRequest      `json:"-"`
+	Response     *AgentOutgoingMessageResponse     `json:"-"`
+	Notification *AgentOutgoingMessageNotification `json:"-"`
 }
 
 func (u *AgentOutgoingMessage) UnmarshalJSON(b []byte) error {
@@ -217,7 +217,7 @@ func (u *AgentOutgoingMessage) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.AgentOutgoingMessageRequest = &v
+			u.Request = &v
 			return nil
 		}
 	}
@@ -231,7 +231,7 @@ func (u *AgentOutgoingMessage) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.AgentOutgoingMessageResponse = &v
+			u.Response = &v
 			return nil
 		}
 	}
@@ -245,37 +245,37 @@ func (u *AgentOutgoingMessage) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.AgentOutgoingMessageNotification = &v
+			u.Notification = &v
 			return nil
 		}
 	}
 	{
 		var v AgentOutgoingMessageRequest
 		if json.Unmarshal(b, &v) == nil {
-			u.AgentOutgoingMessageRequest = &v
+			u.Request = &v
 			return nil
 		}
 	}
 	{
 		var v AgentOutgoingMessageResponse
 		if json.Unmarshal(b, &v) == nil {
-			u.AgentOutgoingMessageResponse = &v
+			u.Response = &v
 			return nil
 		}
 	}
 	{
 		var v AgentOutgoingMessageNotification
 		if json.Unmarshal(b, &v) == nil {
-			u.AgentOutgoingMessageNotification = &v
+			u.Notification = &v
 			return nil
 		}
 	}
 	return nil
 }
 func (u AgentOutgoingMessage) MarshalJSON() ([]byte, error) {
-	if u.AgentOutgoingMessageRequest != nil {
+	if u.Request != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.AgentOutgoingMessageRequest)
+		_b, _e := json.Marshal(*u.Request)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -284,9 +284,9 @@ func (u AgentOutgoingMessage) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.AgentOutgoingMessageResponse != nil {
+	if u.Response != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.AgentOutgoingMessageResponse)
+		_b, _e := json.Marshal(*u.Response)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -295,9 +295,9 @@ func (u AgentOutgoingMessage) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.AgentOutgoingMessageNotification != nil {
+	if u.Notification != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.AgentOutgoingMessageNotification)
+		_b, _e := json.Marshal(*u.Notification)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -409,7 +409,7 @@ type AgentRequest struct {
 	// protocol compatibility.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	AgentExtMethodRequest *AgentExtMethodRequest `json:"-"`
+	ExtMethodRequest *AgentExtMethodRequest `json:"-"`
 }
 
 func (u *AgentRequest) UnmarshalJSON(b []byte) error {
@@ -476,7 +476,7 @@ func (u *AgentRequest) UnmarshalJSON(b []byte) error {
 	{
 		var v AgentExtMethodRequest
 		if json.Unmarshal(b, &v) == nil {
-			u.AgentExtMethodRequest = &v
+			u.ExtMethodRequest = &v
 			return nil
 		}
 	}
@@ -571,9 +571,9 @@ func (u AgentRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.AgentExtMethodRequest != nil {
+	if u.ExtMethodRequest != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.AgentExtMethodRequest)
+		_b, _e := json.Marshal(*u.ExtMethodRequest)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -601,7 +601,7 @@ type AgentResponse struct {
 	SetSessionModeResponse  *SetSessionModeResponse  `json:"-"`
 	PromptResponse          *PromptResponse          `json:"-"`
 	SetSessionModelResponse *SetSessionModelResponse `json:"-"`
-	AgentExtMethodResponse  *AgentExtMethodResponse  `json:"-"`
+	ExtMethodResponse       *AgentExtMethodResponse  `json:"-"`
 }
 
 func (u *AgentResponse) UnmarshalJSON(b []byte) error {
@@ -661,7 +661,7 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	{
 		var v AgentExtMethodResponse
 		if json.Unmarshal(b, &v) == nil {
-			u.AgentExtMethodResponse = &v
+			u.ExtMethodResponse = &v
 			return nil
 		}
 	}
@@ -745,9 +745,9 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.AgentExtMethodResponse != nil {
+	if u.ExtMethodResponse != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.AgentExtMethodResponse)
+		_b, _e := json.Marshal(*u.ExtMethodResponse)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -829,7 +829,7 @@ type AvailableCommandUnstructuredCommandInput struct {
 
 type AvailableCommandInput struct {
 	// All text that was typed after the command name is provided as input.
-	AvailableCommandUnstructuredCommandInput *AvailableCommandUnstructuredCommandInput `json:"-"`
+	UnstructuredCommandInput *AvailableCommandUnstructuredCommandInput `json:"-"`
 }
 
 func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
@@ -847,23 +847,23 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.AvailableCommandUnstructuredCommandInput = &v
+			u.UnstructuredCommandInput = &v
 			return nil
 		}
 	}
 	{
 		var v AvailableCommandUnstructuredCommandInput
 		if json.Unmarshal(b, &v) == nil {
-			u.AvailableCommandUnstructuredCommandInput = &v
+			u.UnstructuredCommandInput = &v
 			return nil
 		}
 	}
 	return nil
 }
 func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
-	if u.AvailableCommandUnstructuredCommandInput != nil {
+	if u.UnstructuredCommandInput != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.AvailableCommandUnstructuredCommandInput)
+		_b, _e := json.Marshal(*u.UnstructuredCommandInput)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -984,7 +984,7 @@ type ClientNotification struct {
 	// while maintaining protocol compatibility.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	ClientExtNotification *ClientExtNotification `json:"-"`
+	ExtNotification *ClientExtNotification `json:"-"`
 }
 
 func (u *ClientNotification) UnmarshalJSON(b []byte) error {
@@ -1002,7 +1002,7 @@ func (u *ClientNotification) UnmarshalJSON(b []byte) error {
 	{
 		var v ClientExtNotification
 		if json.Unmarshal(b, &v) == nil {
-			u.ClientExtNotification = &v
+			u.ExtNotification = &v
 			return nil
 		}
 	}
@@ -1020,9 +1020,9 @@ func (u ClientNotification) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.ClientExtNotification != nil {
+	if u.ExtNotification != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.ClientExtNotification)
+		_b, _e := json.Marshal(*u.ExtNotification)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -1072,9 +1072,9 @@ type ClientOutgoingMessageNotification struct {
 }
 
 type ClientOutgoingMessage struct {
-	ClientOutgoingMessageRequest      *ClientOutgoingMessageRequest      `json:"-"`
-	ClientOutgoingMessageResponse     *ClientOutgoingMessageResponse     `json:"-"`
-	ClientOutgoingMessageNotification *ClientOutgoingMessageNotification `json:"-"`
+	Request      *ClientOutgoingMessageRequest      `json:"-"`
+	Response     *ClientOutgoingMessageResponse     `json:"-"`
+	Notification *ClientOutgoingMessageNotification `json:"-"`
 }
 
 func (u *ClientOutgoingMessage) UnmarshalJSON(b []byte) error {
@@ -1095,7 +1095,7 @@ func (u *ClientOutgoingMessage) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.ClientOutgoingMessageRequest = &v
+			u.Request = &v
 			return nil
 		}
 	}
@@ -1109,7 +1109,7 @@ func (u *ClientOutgoingMessage) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.ClientOutgoingMessageResponse = &v
+			u.Response = &v
 			return nil
 		}
 	}
@@ -1123,37 +1123,37 @@ func (u *ClientOutgoingMessage) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.ClientOutgoingMessageNotification = &v
+			u.Notification = &v
 			return nil
 		}
 	}
 	{
 		var v ClientOutgoingMessageRequest
 		if json.Unmarshal(b, &v) == nil {
-			u.ClientOutgoingMessageRequest = &v
+			u.Request = &v
 			return nil
 		}
 	}
 	{
 		var v ClientOutgoingMessageResponse
 		if json.Unmarshal(b, &v) == nil {
-			u.ClientOutgoingMessageResponse = &v
+			u.Response = &v
 			return nil
 		}
 	}
 	{
 		var v ClientOutgoingMessageNotification
 		if json.Unmarshal(b, &v) == nil {
-			u.ClientOutgoingMessageNotification = &v
+			u.Notification = &v
 			return nil
 		}
 	}
 	return nil
 }
 func (u ClientOutgoingMessage) MarshalJSON() ([]byte, error) {
-	if u.ClientOutgoingMessageRequest != nil {
+	if u.Request != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.ClientOutgoingMessageRequest)
+		_b, _e := json.Marshal(*u.Request)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -1162,9 +1162,9 @@ func (u ClientOutgoingMessage) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.ClientOutgoingMessageResponse != nil {
+	if u.Response != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.ClientOutgoingMessageResponse)
+		_b, _e := json.Marshal(*u.Response)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -1173,9 +1173,9 @@ func (u ClientOutgoingMessage) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.ClientOutgoingMessageNotification != nil {
+	if u.Notification != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.ClientOutgoingMessageNotification)
+		_b, _e := json.Marshal(*u.Notification)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -1285,7 +1285,7 @@ type ClientRequest struct {
 	// protocol compatibility.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	ClientExtMethodRequest *ClientExtMethodRequest `json:"-"`
+	ExtMethodRequest *ClientExtMethodRequest `json:"-"`
 }
 
 func (u *ClientRequest) UnmarshalJSON(b []byte) error {
@@ -1345,7 +1345,7 @@ func (u *ClientRequest) UnmarshalJSON(b []byte) error {
 	{
 		var v ClientExtMethodRequest
 		if json.Unmarshal(b, &v) == nil {
-			u.ClientExtMethodRequest = &v
+			u.ExtMethodRequest = &v
 			return nil
 		}
 	}
@@ -1429,9 +1429,9 @@ func (u ClientRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.ClientExtMethodRequest != nil {
+	if u.ExtMethodRequest != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.ClientExtMethodRequest)
+		_b, _e := json.Marshal(*u.ExtMethodRequest)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -1459,8 +1459,8 @@ type ClientResponse struct {
 	TerminalOutputResponse      *TerminalOutputResponse      `json:"-"`
 	ReleaseTerminalResponse     *ReleaseTerminalResponse     `json:"-"`
 	WaitForTerminalExitResponse *WaitForTerminalExitResponse `json:"-"`
-	KillTerminalCommandResponse *KillTerminalCommandResponse `json:"-"`
-	ClientExtMethodResponse     *ClientExtMethodResponse     `json:"-"`
+	KillTerminalResponse        *KillTerminalCommandResponse `json:"-"`
+	ExtMethodResponse           *ClientExtMethodResponse     `json:"-"`
 }
 
 func (u *ClientResponse) UnmarshalJSON(b []byte) error {
@@ -1520,14 +1520,14 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	{
 		var v KillTerminalCommandResponse
 		if json.Unmarshal(b, &v) == nil {
-			u.KillTerminalCommandResponse = &v
+			u.KillTerminalResponse = &v
 			return nil
 		}
 	}
 	{
 		var v ClientExtMethodResponse
 		if json.Unmarshal(b, &v) == nil {
-			u.ClientExtMethodResponse = &v
+			u.ExtMethodResponse = &v
 			return nil
 		}
 	}
@@ -1611,9 +1611,9 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.KillTerminalCommandResponse != nil {
+	if u.KillTerminalResponse != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.KillTerminalCommandResponse)
+		_b, _e := json.Marshal(*u.KillTerminalResponse)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -1622,9 +1622,9 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	if u.ClientExtMethodResponse != nil {
+	if u.ExtMethodResponse != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.ClientExtMethodResponse)
+		_b, _e := json.Marshal(*u.ExtMethodResponse)
 		if _e != nil {
 			return []byte{}, _e
 		}
@@ -2571,7 +2571,7 @@ type McpServer struct {
 	// Stdio transport configuration
 	//
 	// All Agents MUST support this transport.
-	McpServerStdio *McpServerStdio `json:"-"`
+	Stdio *McpServerStdio `json:"-"`
 }
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
@@ -2666,7 +2666,7 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 			if json.Unmarshal(b, &v) != nil {
 				return errors.New("invalid variant payload")
 			}
-			u.McpServerStdio = &v
+			u.Stdio = &v
 			return nil
 		}
 	}
@@ -2687,7 +2687,7 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 	{
 		var v McpServerStdio
 		if json.Unmarshal(b, &v) == nil {
-			u.McpServerStdio = &v
+			u.Stdio = &v
 			return nil
 		}
 	}
@@ -2718,9 +2718,9 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		m["type"] = "sse"
 		return json.Marshal(m)
 	}
-	if u.McpServerStdio != nil {
+	if u.Stdio != nil {
 		var m map[string]any
-		_b, _e := json.Marshal(*u.McpServerStdio)
+		_b, _e := json.Marshal(*u.Stdio)
 		if _e != nil {
 			return []byte{}, _e
 		}

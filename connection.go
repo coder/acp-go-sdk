@@ -41,6 +41,10 @@ type Connection struct {
 	cancel context.CancelCauseFunc
 
 	logger *slog.Logger
+
+	// notificationWg tracks in-flight notification handlers.  This ensures SendRequest waits
+	// for all notifications received before the response to complete processing.
+	notificationWg sync.WaitGroup
 }
 
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
@@ -94,7 +98,11 @@ func (c *Connection) receive() {
 		case msg.ID != nil && msg.Method == "":
 			c.handleResponse(&msg)
 		case msg.Method != "":
-			go c.handleInbound(&msg)
+			c.notificationWg.Add(1)
+			go func(m *anyMessage) {
+				defer c.notificationWg.Done()
+				c.handleInbound(m)
+			}(&msg)
 		default:
 			c.loggerOrDefault().Error("received message with neither id nor method", "raw", string(line))
 		}
@@ -193,6 +201,11 @@ func SendRequest[T any](c *Connection, ctx context.Context, method string, param
 		return result, err
 	}
 
+	// Wait for all notification handlers that were spawned before this response to complete
+	// processing.  This ensures that when a request returns, all notifications sent by the
+	// server before the response have been fully processed.
+	c.notificationWg.Wait()
+
 	if resp.Error != nil {
 		return result, resp.Error
 	}
@@ -265,6 +278,11 @@ func (c *Connection) SendRequestNoResult(ctx context.Context, method string, par
 	if err != nil {
 		return err
 	}
+
+	// Wait for all notification handlers that were spawned before this response to complete
+	// processing.  This ensures that when a request returns, all notifications sent by the
+	// server before the response have been fully processed.
+	c.notificationWg.Wait()
 
 	if resp.Error != nil {
 		return resp.Error

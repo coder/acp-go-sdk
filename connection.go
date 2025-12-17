@@ -98,11 +98,18 @@ func (c *Connection) receive() {
 		case msg.ID != nil && msg.Method == "":
 			c.handleResponse(&msg)
 		case msg.Method != "":
-			c.notificationWg.Add(1)
-			go func(m *anyMessage) {
-				defer c.notificationWg.Done()
+			// Only track notifications (no ID) in the WaitGroup, not requests (with ID).
+			// This prevents deadlock when a request handler makes another request.
+			isNotification := msg.ID == nil
+			if isNotification {
+				c.notificationWg.Add(1)
+			}
+			go func(m *anyMessage, isNotif bool) {
+				if isNotif {
+					defer c.notificationWg.Done()
+				}
 				c.handleInbound(m)
-			}(&msg)
+			}(&msg, isNotification)
 		default:
 			c.loggerOrDefault().Error("received message with neither id nor method", "raw", string(line))
 		}

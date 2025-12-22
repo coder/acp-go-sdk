@@ -10,6 +10,11 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
+)
+
+const (
+	notificationQueueDrainTimeout = 5 * time.Second
 )
 
 type anyMessage struct {
@@ -37,27 +42,45 @@ type Connection struct {
 	nextID  atomic.Uint64
 	pending map[string]*pendingResponse
 
+	// ctx/cancel govern connection lifetime and are used for Done() and for canceling
+	// callers waiting on responses when the peer disconnects.
 	ctx    context.Context
 	cancel context.CancelCauseFunc
+
+	// inboundCtx/inboundCancel are used when invoking the inbound MethodHandler.
+	// This ctx is intentionally kept alive long enough to process notifications
+	// that were successfully received and queued just before a peer disconnect.
+	// Otherwise, handlers that respect context cancellation may drop end-of-connection
+	// messages that we already read off the wire.
+	inboundCtx    context.Context
+	inboundCancel context.CancelCauseFunc
 
 	logger *slog.Logger
 
 	// notificationWg tracks in-flight notification handlers.  This ensures SendRequest waits
 	// for all notifications received before the response to complete processing.
 	notificationWg sync.WaitGroup
+
+	// notificationQueue serializes notification processing to maintain order
+	notificationQueue *unboundedQueue[*anyMessage]
 }
 
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
 	ctx, cancel := context.WithCancelCause(context.Background())
+	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
-		w:       peerInput,
-		r:       peerOutput,
-		handler: handler,
-		pending: make(map[string]*pendingResponse),
-		ctx:     ctx,
-		cancel:  cancel,
+		w:                 peerInput,
+		r:                 peerOutput,
+		handler:           handler,
+		pending:           make(map[string]*pendingResponse),
+		ctx:               ctx,
+		cancel:            cancel,
+		inboundCtx:        inboundCtx,
+		inboundCancel:     inboundCancel,
+		notificationQueue: newUnboundedQueue[*anyMessage](),
 	}
 	go c.receive()
+	go c.processNotifications()
 	return c
 }
 
@@ -98,25 +121,66 @@ func (c *Connection) receive() {
 		case msg.ID != nil && msg.Method == "":
 			c.handleResponse(&msg)
 		case msg.Method != "":
-			// Only track notifications (no ID) in the WaitGroup, not requests (with ID).
-			// This prevents deadlock when a request handler makes another request.
-			isNotification := msg.ID == nil
-			if isNotification {
-				c.notificationWg.Add(1)
+			// Requests (method+id) must not be serialized behind notifications, otherwise
+			// a long-running request (e.g. session/prompt) can deadlock cancellation
+			// notifications (session/cancel) that are required to stop it.
+			if msg.ID != nil {
+				m := msg
+				go c.handleInbound(&m)
+				continue
 			}
-			go func(m *anyMessage, isNotif bool) {
-				if isNotif {
-					defer c.notificationWg.Done()
-				}
-				c.handleInbound(m)
-			}(&msg, isNotification)
+
+			c.notificationWg.Add(1)
+
+			// Queue the notification for sequential processing.
+			// The unbounded queue never blocks, preserving ordering while
+			// ensuring the receive loop can always read responses promptly.
+			m := msg
+			c.notificationQueue.push(&m)
 		default:
 			c.loggerOrDefault().Error("received message with neither id nor method", "raw", string(line))
 		}
 	}
 
-	c.cancel(errors.New("peer connection closed"))
+	cause := errors.New("peer connection closed")
+
+	// First, signal disconnect to callers waiting on responses.
+	c.cancel(cause)
+
+	// Then close the notification queue so already-received messages can drain.
+	// IMPORTANT: Do not block this receive goroutine waiting for the drain to complete;
+	// notification handlers may legitimately block until their context is canceled.
+	c.notificationQueue.close()
+
+	// Cancel inboundCtx after notifications finish, but ensure we don't leak forever if a
+	// handler blocks waiting for cancellation.
+	go func() {
+		done := make(chan struct{})
+		go func() {
+			c.notificationWg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(notificationQueueDrainTimeout):
+		}
+		c.inboundCancel(cause)
+	}()
+
 	c.loggerOrDefault().Info("peer connection closed")
+}
+
+// processNotifications processes notifications sequentially to maintain order.
+// It terminates when notificationQueue is closed (e.g. on disconnect in receive()).
+func (c *Connection) processNotifications() {
+	for {
+		msg, ok := c.notificationQueue.pop()
+		if !ok {
+			return
+		}
+		c.handleInbound(msg)
+		c.notificationWg.Done()
+	}
 }
 
 func (c *Connection) handleResponse(msg *anyMessage) {
@@ -136,6 +200,15 @@ func (c *Connection) handleResponse(msg *anyMessage) {
 
 func (c *Connection) handleInbound(req *anyMessage) {
 	res := anyMessage{JSONRPC: "2.0"}
+
+	// Notifications are allowed a slightly longer-lived context during disconnect so we can
+	// process already-received end-of-connection messages. Requests, however, should be
+	// canceled promptly when the peer disconnects to avoid doing unnecessary work after
+	// the caller is gone.
+	ctx := c.ctx
+	if req.ID == nil {
+		ctx = c.inboundCtx
+	}
 	// copy ID if present
 	if req.ID != nil {
 		res.ID = req.ID
@@ -148,7 +221,7 @@ func (c *Connection) handleInbound(req *anyMessage) {
 		return
 	}
 
-	result, err := c.handler(c.ctx, req.Method, req.Params)
+	result, err := c.handler(ctx, req.Method, req.Params)
 	if req.ID == nil {
 		// Notification: no response is sent; log handler errors to surface decode failures.
 		if err != nil {

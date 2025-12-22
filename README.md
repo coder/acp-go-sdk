@@ -64,6 +64,69 @@ Helper constructors are provided to reduce boilerplate when working with union t
 - Tool content: `acp.ToolContent`, `acp.ToolDiffContent`, `acp.ToolTerminalRef`.
 - Utility: `acp.Ptr[T]` for pointer fields in request/update structs.
 
+
+### Extension methods
+
+ACP supports **extension methods** for custom JSON-RPC methods whose names start with `_`.
+Use them to add functionality without conflicting with future ACP versions.
+
+#### Handling inbound extension methods
+Implement `acp.ExtensionMethodHandler` on your Agent or Client. Your handler will be
+invoked for any incoming method starting with `_`.
+
+```go
+// HandleExtensionMethod handles ACP extension methods (names starting with "_").
+func (a MyAgent) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
+	switch method {
+	case "_example.com/hello":
+		var p struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		return map[string]any{"greeting": "hello " + p.Name}, nil
+	default:
+		return nil, acp.NewMethodNotFound(method)
+	}
+}
+```
+
+> Note: Per the ACP spec, unknown extension notifications should be ignored.
+> This SDK suppresses noisy logs for unhandled extension notifications that return
+> “Method not found”.
+
+#### Calling extension methods
+From either side, use `CallExtension` / `NotifyExtension` on the connection.
+
+```go
+raw, err := conn.CallExtension(ctx, "_example.com/hello", map[string]any{"name": "world"})
+if err != nil {
+	return err
+}
+
+var resp struct {
+	Greeting string `json:"greeting"`
+}
+if err := json.Unmarshal(raw, &resp); err != nil {
+	return err
+}
+
+if err := conn.NotifyExtension(ctx, "_example.com/progress", map[string]any{"pct": 50}); err != nil {
+	return err
+}
+```
+
+#### Advertising extension support via `_meta`
+ACP uses the `_meta` field inside capability objects as the negotiation/advertising
+surface for extensions.
+
+- Client -> Agent: `InitializeRequest.ClientCapabilities.Meta`
+- Agent -> Client: `InitializeResponse.AgentCapabilities.Meta`
+
+Keys `traceparent`, `tracestate`, and `baggage` are reserved in `_meta` for W3C trace
+context/OpenTelemetry compatibility.
+
 ### Study a Production Implementation
 
 For a complete, production‑ready integration, see the

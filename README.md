@@ -64,13 +64,13 @@ Helper constructors are provided to reduce boilerplate when working with union t
 - Tool content: `acp.ToolContent`, `acp.ToolDiffContent`, `acp.ToolTerminalRef`.
 - Utility: `acp.Ptr[T]` for pointer fields in request/update structs.
 
-
 ### Extension methods
 
 ACP supports **extension methods** for custom JSON-RPC methods whose names start with `_`.
 Use them to add functionality without conflicting with future ACP versions.
 
 #### Handling inbound extension methods
+
 Implement `acp.ExtensionMethodHandler` on your Agent or Client. Your handler will be
 invoked for any incoming method starting with `_`.
 
@@ -97,6 +97,7 @@ func (a MyAgent) HandleExtensionMethod(ctx context.Context, method string, param
 > “Method not found”.
 
 #### Calling extension methods
+
 From either side, use `CallExtension` / `NotifyExtension` on the connection.
 
 ```go
@@ -118,6 +119,7 @@ if err := conn.NotifyExtension(ctx, "_example.com/progress", map[string]any{"pct
 ```
 
 #### Advertising extension support via `_meta`
+
 ACP uses the `_meta` field inside capability objects as the negotiation/advertising
 surface for extensions.
 

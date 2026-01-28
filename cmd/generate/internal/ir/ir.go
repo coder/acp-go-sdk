@@ -45,7 +45,20 @@ func key(side, method string) string { return side + "|" + method }
 
 // PrimaryType mirrors logic from generator: find primary type string from a Definition.
 func PrimaryType(d *load.Definition) string {
-	if d == nil || d.Type == nil {
+	if d == nil {
+		return ""
+	}
+	if d.Type == nil {
+		// In newer schemas, properties are sometimes wrapped in allOf (commonly around a
+		// single $ref). We can't fully resolve $ref here, but we can still detect inline types.
+		for _, e := range d.AllOf {
+			if e == nil {
+				continue
+			}
+			if t := PrimaryType(e); t != "" {
+				return t
+			}
+		}
 		return ""
 	}
 	switch v := d.Type.(type) {

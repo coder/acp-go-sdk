@@ -110,14 +110,13 @@ func (c clientFuncs) HandleExtensionMethod(ctx context.Context, method string, p
 }
 
 type agentFuncs struct {
-	InitializeFunc      func(context.Context, InitializeRequest) (InitializeResponse, error)
-	NewSessionFunc      func(context.Context, NewSessionRequest) (NewSessionResponse, error)
-	LoadSessionFunc     func(context.Context, LoadSessionRequest) (LoadSessionResponse, error)
-	AuthenticateFunc    func(context.Context, AuthenticateRequest) (AuthenticateResponse, error)
-	PromptFunc          func(context.Context, PromptRequest) (PromptResponse, error)
-	CancelFunc          func(context.Context, CancelNotification) error
-	SetSessionModeFunc  func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
-	SetSessionModelFunc func(ctx context.Context, params SetSessionModelRequest) (SetSessionModelResponse, error)
+	InitializeFunc     func(context.Context, InitializeRequest) (InitializeResponse, error)
+	NewSessionFunc     func(context.Context, NewSessionRequest) (NewSessionResponse, error)
+	LoadSessionFunc    func(context.Context, LoadSessionRequest) (LoadSessionResponse, error)
+	AuthenticateFunc   func(context.Context, AuthenticateRequest) (AuthenticateResponse, error)
+	PromptFunc         func(context.Context, PromptRequest) (PromptResponse, error)
+	CancelFunc         func(context.Context, CancelNotification) error
+	SetSessionModeFunc func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
@@ -177,14 +176,6 @@ func (a agentFuncs) SetSessionMode(ctx context.Context, params SetSessionModeReq
 		return a.SetSessionModeFunc(ctx, params)
 	}
 	return SetSessionModeResponse{}, nil
-}
-
-// SetSessionModel implements AgentExperimental.
-func (a agentFuncs) SetSessionModel(ctx context.Context, params SetSessionModelRequest) (SetSessionModelResponse, error) {
-	if a.SetSessionModelFunc != nil {
-		return a.SetSessionModelFunc(ctx, params)
-	}
-	return SetSessionModelResponse{}, nil
 }
 
 func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
@@ -379,7 +370,7 @@ func TestConnectionHandlesMessageOrdering(t *testing.T) {
 	}
 	if _, err := as.RequestPermission(context.Background(), RequestPermissionRequest{
 		SessionId: "test-session",
-		ToolCall: RequestPermissionToolCall{
+		ToolCall: ToolCallUpdate{
 			Title:      Ptr("Execute command"),
 			Kind:       ptr(ToolKindExecute),
 			Status:     ptr(ToolCallStatusPending),
@@ -811,7 +802,7 @@ func TestRequestHandlerCanMakeNestedRequest(t *testing.T) {
 		PromptFunc: func(ctx context.Context, p PromptRequest) (PromptResponse, error) {
 			_, err := ag.RequestPermission(ctx, RequestPermissionRequest{
 				SessionId: p.SessionId,
-				ToolCall: RequestPermissionToolCall{
+				ToolCall: ToolCallUpdate{
 					ToolCallId: "call_1",
 					Title:      Ptr("Test permission"),
 				},

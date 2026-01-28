@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -152,6 +153,10 @@ func (c *Connection) handleInbound(req *anyMessage) {
 	if req.ID == nil {
 		// Notification: no response is sent; log handler errors to surface decode failures.
 		if err != nil {
+			// Per ACP, unknown extension notifications should be ignored.
+			if err.Code == -32601 && strings.HasPrefix(req.Method, "_") {
+				return
+			}
 			c.loggerOrDefault().Error("failed to handle notification", "method", req.Method, "err", err)
 		}
 		return

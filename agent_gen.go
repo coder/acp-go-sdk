@@ -53,6 +53,40 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return nil, nil
+	case AgentMethodSessionFork:
+		var p UnstableForkSessionRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := a.agent.(AgentExperimental)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableForkSession(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case AgentMethodSessionList:
+		var p UnstableListSessionsRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := a.agent.(AgentExperimental)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableListSessions(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
 	case AgentMethodSessionLoad:
 		var p LoadSessionRequest
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -108,6 +142,40 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return resp, nil
+	case AgentMethodSessionResume:
+		var p UnstableResumeSessionRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := a.agent.(AgentExperimental)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableResumeSession(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case AgentMethodSessionSetConfigOption:
+		var p UnstableSetSessionConfigOptionRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := a.agent.(AgentExperimental)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableSetSessionConfigOption(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
 	case AgentMethodSessionSetMode:
 		var p SetSessionModeRequest
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -117,6 +185,23 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		resp, err := a.agent.SetSessionMode(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case AgentMethodSessionSetModel:
+		var p UnstableSetSessionModelRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := a.agent.(AgentExperimental)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableSetSessionModel(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}

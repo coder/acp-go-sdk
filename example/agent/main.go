@@ -41,6 +41,31 @@ func (a *exampleAgent) SetSessionMode(ctx context.Context, params acp.SetSession
 	return acp.SetSessionModeResponse{}, nil
 }
 
+// UnstableForkSession implements acp.AgentExperimental.
+func (a *exampleAgent) UnstableForkSession(ctx context.Context, params acp.UnstableForkSessionRequest) (acp.UnstableForkSessionResponse, error) {
+	return acp.UnstableForkSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionFork)
+}
+
+// UnstableListSessions implements acp.AgentExperimental.
+func (a *exampleAgent) UnstableListSessions(ctx context.Context, params acp.UnstableListSessionsRequest) (acp.UnstableListSessionsResponse, error) {
+	return acp.UnstableListSessionsResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionList)
+}
+
+// UnstableResumeSession implements acp.AgentExperimental.
+func (a *exampleAgent) UnstableResumeSession(ctx context.Context, params acp.UnstableResumeSessionRequest) (acp.UnstableResumeSessionResponse, error) {
+	return acp.UnstableResumeSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionResume)
+}
+
+// UnstableSetSessionConfigOption implements acp.AgentExperimental.
+func (a *exampleAgent) UnstableSetSessionConfigOption(ctx context.Context, params acp.UnstableSetSessionConfigOptionRequest) (acp.UnstableSetSessionConfigOptionResponse, error) {
+	return acp.UnstableSetSessionConfigOptionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionSetConfigOption)
+}
+
+// UnstableSetSessionModel implements acp.AgentExperimental.
+func (a *exampleAgent) UnstableSetSessionModel(ctx context.Context, params acp.UnstableSetSessionModelRequest) (acp.UnstableSetSessionModelResponse, error) {
+	return acp.UnstableSetSessionModelResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionSetModel)
+}
+
 // Implement acp.AgentConnAware to receive the connection after construction.
 func (a *exampleAgent) SetAgentConnection(conn *acp.AgentSideConnection) { a.conn = conn }
 

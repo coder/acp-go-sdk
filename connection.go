@@ -34,6 +34,10 @@ type pendingResponse struct {
 	ch chan anyMessage
 }
 
+type cancelRequestParams struct {
+	RequestID json.RawMessage `json:"requestId"`
+}
+
 type MethodHandler func(ctx context.Context, method string, params json.RawMessage) (any, *RequestError)
 
 // Connection is a simple JSON-RPC 2.0 connection over line-delimited JSON.
@@ -42,9 +46,10 @@ type Connection struct {
 	r       io.Reader
 	handler MethodHandler
 
-	mu      sync.Mutex
-	nextID  atomic.Uint64
-	pending map[string]*pendingResponse
+	mu       sync.Mutex
+	nextID   atomic.Uint64
+	pending  map[string]*pendingResponse
+	inflight map[string]context.CancelCauseFunc
 
 	// ctx/cancel govern connection lifetime and are used for Done() and for canceling
 	// callers waiting on responses when the peer disconnects.
@@ -74,15 +79,16 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
-		w:                 peerInput,
-		r:                 peerOutput,
-		handler:           handler,
-		pending:           make(map[string]*pendingResponse),
-		ctx:               ctx,
-		cancel:            cancel,
-		inboundCtx:        inboundCtx,
-		inboundCancel:     inboundCancel,
-		notificationQueue: make(chan *anyMessage, defaultMaxQueuedNotifications),
+			w:                 peerInput,
+			r:                 peerOutput,
+			handler:           handler,
+			pending:           make(map[string]*pendingResponse),
+			inflight:          make(map[string]context.CancelCauseFunc),
+			ctx:               ctx,
+			cancel:            cancel,
+			inboundCtx:        inboundCtx,
+			inboundCancel:     inboundCancel,
+			notificationQueue: make(chan *anyMessage, defaultMaxQueuedNotifications),
 	}
 	go c.receive()
 	go c.processNotifications()
@@ -119,6 +125,13 @@ func (c *Connection) receive() {
 		var msg anyMessage
 		if err := json.Unmarshal(line, &msg); err != nil {
 			c.loggerOrDefault().Error("failed to parse incoming message", "err", err, "raw", string(line))
+			continue
+		}
+
+		// Handle $/cancel_request notifications synchronously so cancellations take effect
+		// immediately and do not participate in notification ordering.
+		if msg.ID == nil && msg.Method == "$/cancel_request" {
+			c.handleCancelRequest(&msg)
 			continue
 		}
 
@@ -215,6 +228,29 @@ func (c *Connection) handleResponse(msg *anyMessage) {
 	}
 }
 
+func (c *Connection) handleCancelRequest(msg *anyMessage) {
+	var p cancelRequestParams
+	if err := json.Unmarshal(msg.Params, &p); err != nil {
+		c.loggerOrDefault().Error("failed to parse $/cancel_request params", "err", err)
+		return
+	}
+	if len(bytes.TrimSpace(p.RequestID)) == 0 {
+		c.loggerOrDefault().Error("received $/cancel_request without requestId")
+		return
+	}
+
+	idKey := string(p.RequestID)
+
+	c.mu.Lock()
+	cancel := c.inflight[idKey]
+	c.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+
+	cancel(context.Canceled)
+}
+
 func (c *Connection) handleInbound(req *anyMessage) {
 	res := anyMessage{JSONRPC: "2.0"}
 
@@ -238,7 +274,25 @@ func (c *Connection) handleInbound(req *anyMessage) {
 		return
 	}
 
-	result, err := c.handler(ctx, req.Method, req.Params)
+		var cancel context.CancelCauseFunc
+		var idKey string
+		if req.ID != nil && req.Method != "" {
+			idKey = string(*req.ID)
+			ctx, cancel = context.WithCancelCause(c.ctx)
+
+			c.mu.Lock()
+			c.inflight[idKey] = cancel
+			c.mu.Unlock()
+			defer func() {
+				c.mu.Lock()
+				delete(c.inflight, idKey)
+				c.mu.Unlock()
+
+				cancel(nil)
+			}()
+		}
+
+		result, err := c.handler(ctx, req.Method, req.Params)
 	if req.ID == nil {
 		// Notification: no response is sent; log handler errors to surface decode failures.
 		if err != nil {
@@ -340,13 +394,36 @@ func (c *Connection) prepareRequest(method string, params any) (anyMessage, stri
 	return msg, string(idRaw), nil
 }
 
+func (c *Connection) sendCancelRequest(idKey string) {
+	if strings.TrimSpace(idKey) == "" {
+		return
+	}
+
+	select {
+	case <-c.Done():
+		return
+	default:
+	}
+
+	_ = c.SendNotification(context.Background(), "$/cancel_request", cancelRequestParams{RequestID: json.RawMessage([]byte(idKey))})
+}
+
 func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, idKey string) (anyMessage, error) {
 	select {
 	case resp := <-pr.ch:
 		return resp, nil
 	case <-ctx.Done():
+		c.sendCancelRequest(idKey)
 		c.cleanupPending(idKey)
-		return anyMessage{}, NewInternalError(map[string]any{"error": context.Cause(ctx).Error()})
+
+		cause := context.Cause(ctx)
+		if cause == nil {
+			cause = ctx.Err()
+		}
+		if cause != nil {
+			return anyMessage{}, NewRequestCancelled(map[string]any{"error": cause.Error()})
+		}
+		return anyMessage{}, NewRequestCancelled(nil)
 	case <-c.Done():
 		return anyMessage{}, NewInternalError(map[string]any{"error": "peer disconnected before response"})
 	}

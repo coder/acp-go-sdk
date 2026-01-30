@@ -131,41 +131,44 @@ type AgentResponse struct {
 
 func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var v AgentResult
-		var match bool = true
-		if _, ok := m["id"]; !ok {
-			match = false
-		}
-		if _, ok := m["result"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v AgentResult
+			var match bool = true
+			if _, ok := m["id"]; !ok {
+				match = false
 			}
-			u.Result = &v
-			return nil
-		}
-	}
-	{
-		var v AgentError
-		var match bool = true
-		if _, ok := m["id"]; !ok {
-			match = false
-		}
-		if _, ok := m["error"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["result"]; !ok {
+				match = false
 			}
-			u.Error = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Result = &v
+				return nil
+			}
+		}
+		{
+			var v AgentError
+			var match bool = true
+			if _, ok := m["id"]; !ok {
+				match = false
+			}
+			if _, ok := m["error"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Error = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -312,21 +315,24 @@ type AvailableCommandInput struct {
 
 func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var v UnstructuredCommandInput
-		var match bool = true
-		if _, ok := m["hint"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v UnstructuredCommandInput
+			var match bool = true
+			if _, ok := m["hint"]; !ok {
+				match = false
 			}
-			u.Unstructured = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Unstructured = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -501,41 +507,44 @@ type ClientResponse struct {
 
 func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var v ClientResult
-		var match bool = true
-		if _, ok := m["id"]; !ok {
-			match = false
-		}
-		if _, ok := m["result"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v ClientResult
+			var match bool = true
+			if _, ok := m["id"]; !ok {
+				match = false
 			}
-			u.Result = &v
-			return nil
-		}
-	}
-	{
-		var v ClientError
-		var match bool = true
-		if _, ok := m["id"]; !ok {
-			match = false
-		}
-		if _, ok := m["error"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["result"]; !ok {
+				match = false
 			}
-			u.Error = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Result = &v
+				return nil
+			}
+		}
+		{
+			var v ClientError
+			var match bool = true
+			if _, ok := m["id"]; !ok {
+				match = false
+			}
+			if _, ok := m["error"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Error = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -720,144 +729,147 @@ type ContentBlock struct {
 
 func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["type"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["type"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "text":
+				var v ContentBlockText
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Text = &v
+				return nil
+			case "image":
+				var v ContentBlockImage
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Image = &v
+				return nil
+			case "audio":
+				var v ContentBlockAudio
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Audio = &v
+				return nil
+			case "resource_link":
+				var v ContentBlockResourceLink
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ResourceLink = &v
+				return nil
+			case "resource":
+				var v ContentBlockResource
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Resource = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "text":
+		{
 			var v ContentBlockText
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Text = &v
-			return nil
-		case "image":
+			if _, ok := m["text"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Text = &v
+				return nil
+			}
+		}
+		{
 			var v ContentBlockImage
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Image = &v
-			return nil
-		case "audio":
+			if _, ok := m["data"]; !ok {
+				match = false
+			}
+			if _, ok := m["mimeType"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Image = &v
+				return nil
+			}
+		}
+		{
 			var v ContentBlockAudio
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Audio = &v
-			return nil
-		case "resource_link":
+			if _, ok := m["data"]; !ok {
+				match = false
+			}
+			if _, ok := m["mimeType"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Audio = &v
+				return nil
+			}
+		}
+		{
 			var v ContentBlockResourceLink
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.ResourceLink = &v
-			return nil
-		case "resource":
+			if _, ok := m["name"]; !ok {
+				match = false
+			}
+			if _, ok := m["uri"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ResourceLink = &v
+				return nil
+			}
+		}
+		{
 			var v ContentBlockResource
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Resource = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockText
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["text"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["resource"]; !ok {
+				match = false
 			}
-			u.Text = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockImage
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["data"]; !ok {
-			match = false
-		}
-		if _, ok := m["mimeType"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Resource = &v
+				return nil
 			}
-			u.Image = &v
-			return nil
 		}
-	}
-	{
-		var v ContentBlockAudio
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["data"]; !ok {
-			match = false
-		}
-		if _, ok := m["mimeType"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.Audio = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockResourceLink
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["name"]; !ok {
-			match = false
-		}
-		if _, ok := m["uri"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.ResourceLink = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockResource
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["resource"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.Resource = &v
-			return nil
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -1153,41 +1165,44 @@ type EmbeddedResourceResource struct {
 
 func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var v TextResourceContents
-		var match bool = true
-		if _, ok := m["text"]; !ok {
-			match = false
-		}
-		if _, ok := m["uri"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v TextResourceContents
+			var match bool = true
+			if _, ok := m["text"]; !ok {
+				match = false
 			}
-			u.TextResourceContents = &v
-			return nil
-		}
-	}
-	{
-		var v BlobResourceContents
-		var match bool = true
-		if _, ok := m["blob"]; !ok {
-			match = false
-		}
-		if _, ok := m["uri"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["uri"]; !ok {
+				match = false
 			}
-			u.BlobResourceContents = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.TextResourceContents = &v
+				return nil
+			}
+		}
+		{
+			var v BlobResourceContents
+			var match bool = true
+			if _, ok := m["blob"]; !ok {
+				match = false
+			}
+			if _, ok := m["uri"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.BlobResourceContents = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -1317,8 +1332,11 @@ type ErrorCode struct {
 
 func (u *ErrorCode) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	if err := json.Unmarshal(b, &m); err == nil {
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
 	}
 	{
 		var v ErrorCodeParseError
@@ -1920,98 +1938,101 @@ type McpServer struct {
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["type"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["type"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "http":
+				var v McpServerHttpInline
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Http = &v
+				return nil
+			case "sse":
+				var v McpServerSseInline
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Sse = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "http":
+		{
 			var v McpServerHttpInline
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Http = &v
-			return nil
-		case "sse":
+			if _, ok := m["name"]; !ok {
+				match = false
+			}
+			if _, ok := m["url"]; !ok {
+				match = false
+			}
+			if _, ok := m["headers"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Http = &v
+				return nil
+			}
+		}
+		{
 			var v McpServerSseInline
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Sse = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerHttpInline
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["name"]; !ok {
-			match = false
-		}
-		if _, ok := m["url"]; !ok {
-			match = false
-		}
-		if _, ok := m["headers"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["name"]; !ok {
+				match = false
 			}
-			u.Http = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerSseInline
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["name"]; !ok {
-			match = false
-		}
-		if _, ok := m["url"]; !ok {
-			match = false
-		}
-		if _, ok := m["headers"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["url"]; !ok {
+				match = false
 			}
-			u.Sse = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerStdio
-		var match bool = true
-		if _, ok := m["name"]; !ok {
-			match = false
-		}
-		if _, ok := m["command"]; !ok {
-			match = false
-		}
-		if _, ok := m["args"]; !ok {
-			match = false
-		}
-		if _, ok := m["env"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["headers"]; !ok {
+				match = false
 			}
-			u.Stdio = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Sse = &v
+				return nil
+			}
+		}
+		{
+			var v McpServerStdio
+			var match bool = true
+			if _, ok := m["name"]; !ok {
+				match = false
+			}
+			if _, ok := m["command"]; !ok {
+				match = false
+			}
+			if _, ok := m["args"]; !ok {
+				match = false
+			}
+			if _, ok := m["env"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Stdio = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -2518,8 +2539,11 @@ func (u *RequestId) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	if err := json.Unmarshal(b, &m); err == nil {
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
 	}
 	{
 		var v RequestIdNull
@@ -2613,60 +2637,63 @@ type RequestPermissionOutcome struct {
 
 func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["outcome"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["outcome"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "cancelled":
+				var v RequestPermissionOutcomeCancelled
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Cancelled = &v
+				return nil
+			case "selected":
+				var v RequestPermissionOutcomeSelected
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Selected = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "cancelled":
+		{
 			var v RequestPermissionOutcomeCancelled
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["outcome"]; !ok {
+				match = false
 			}
-			u.Cancelled = &v
-			return nil
-		case "selected":
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Cancelled = &v
+				return nil
+			}
+		}
+		{
 			var v RequestPermissionOutcomeSelected
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["outcome"]; !ok {
+				match = false
 			}
-			u.Selected = &v
-			return nil
-		}
-	}
-	{
-		var v RequestPermissionOutcomeCancelled
-		var match bool = true
-		if _, ok := m["outcome"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["optionId"]; !ok {
+				match = false
 			}
-			u.Cancelled = &v
-			return nil
-		}
-	}
-	{
-		var v RequestPermissionOutcomeSelected
-		var match bool = true
-		if _, ok := m["outcome"]; !ok {
-			match = false
-		}
-		if _, ok := m["optionId"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Selected = &v
+				return nil
 			}
-			u.Selected = &v
-			return nil
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -3056,210 +3083,213 @@ type SessionUpdate struct {
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["sessionUpdate"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["sessionUpdate"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "user_message_chunk":
+				var v SessionUpdateUserMessageChunk
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.UserMessageChunk = &v
+				return nil
+			case "agent_message_chunk":
+				var v SessionUpdateAgentMessageChunk
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AgentMessageChunk = &v
+				return nil
+			case "agent_thought_chunk":
+				var v SessionUpdateAgentThoughtChunk
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AgentThoughtChunk = &v
+				return nil
+			case "tool_call":
+				var v SessionUpdateToolCall
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ToolCall = &v
+				return nil
+			case "tool_call_update":
+				var v SessionToolCallUpdate
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ToolCallUpdate = &v
+				return nil
+			case "plan":
+				var v SessionUpdatePlan
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Plan = &v
+				return nil
+			case "available_commands_update":
+				var v SessionAvailableCommandsUpdate
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AvailableCommandsUpdate = &v
+				return nil
+			case "current_mode_update":
+				var v SessionCurrentModeUpdate
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.CurrentModeUpdate = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "user_message_chunk":
+		{
 			var v SessionUpdateUserMessageChunk
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.UserMessageChunk = &v
-			return nil
-		case "agent_message_chunk":
+			if _, ok := m["content"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.UserMessageChunk = &v
+				return nil
+			}
+		}
+		{
 			var v SessionUpdateAgentMessageChunk
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.AgentMessageChunk = &v
-			return nil
-		case "agent_thought_chunk":
+			if _, ok := m["content"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AgentMessageChunk = &v
+				return nil
+			}
+		}
+		{
 			var v SessionUpdateAgentThoughtChunk
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.AgentThoughtChunk = &v
-			return nil
-		case "tool_call":
+			if _, ok := m["content"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AgentThoughtChunk = &v
+				return nil
+			}
+		}
+		{
 			var v SessionUpdateToolCall
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.ToolCall = &v
-			return nil
-		case "tool_call_update":
+			if _, ok := m["toolCallId"]; !ok {
+				match = false
+			}
+			if _, ok := m["title"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ToolCall = &v
+				return nil
+			}
+		}
+		{
 			var v SessionToolCallUpdate
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.ToolCallUpdate = &v
-			return nil
-		case "plan":
+			if _, ok := m["toolCallId"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ToolCallUpdate = &v
+				return nil
+			}
+		}
+		{
 			var v SessionUpdatePlan
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.Plan = &v
-			return nil
-		case "available_commands_update":
+			if _, ok := m["entries"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Plan = &v
+				return nil
+			}
+		}
+		{
 			var v SessionAvailableCommandsUpdate
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.AvailableCommandsUpdate = &v
-			return nil
-		case "current_mode_update":
+			if _, ok := m["availableCommands"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AvailableCommandsUpdate = &v
+				return nil
+			}
+		}
+		{
 			var v SessionCurrentModeUpdate
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.CurrentModeUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateUserMessageChunk
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["content"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["currentModeId"]; !ok {
+				match = false
 			}
-			u.UserMessageChunk = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateAgentMessageChunk
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["content"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.CurrentModeUpdate = &v
+				return nil
 			}
-			u.AgentMessageChunk = &v
-			return nil
 		}
-	}
-	{
-		var v SessionUpdateAgentThoughtChunk
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["content"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.AgentThoughtChunk = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateToolCall
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["toolCallId"]; !ok {
-			match = false
-		}
-		if _, ok := m["title"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.ToolCall = &v
-			return nil
-		}
-	}
-	{
-		var v SessionToolCallUpdate
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["toolCallId"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.ToolCallUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdatePlan
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["entries"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.Plan = &v
-			return nil
-		}
-	}
-	{
-		var v SessionAvailableCommandsUpdate
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["availableCommands"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.AvailableCommandsUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionCurrentModeUpdate
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["currentModeId"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.CurrentModeUpdate = &v
-			return nil
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -3690,90 +3720,93 @@ type ToolCallContent struct {
 
 func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["type"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["type"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "content":
+				var v ToolCallContentContent
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Content = &v
+				return nil
+			case "diff":
+				var v ToolCallContentDiff
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Diff = &v
+				return nil
+			case "terminal":
+				var v ToolCallContentTerminal
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Terminal = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "content":
+		{
 			var v ToolCallContentContent
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Content = &v
-			return nil
-		case "diff":
+			if _, ok := m["content"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Content = &v
+				return nil
+			}
+		}
+		{
 			var v ToolCallContentDiff
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Diff = &v
-			return nil
-		case "terminal":
+			if _, ok := m["path"]; !ok {
+				match = false
+			}
+			if _, ok := m["newText"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Diff = &v
+				return nil
+			}
+		}
+		{
 			var v ToolCallContentTerminal
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Terminal = &v
-			return nil
-		}
-	}
-	{
-		var v ToolCallContentContent
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["content"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["terminalId"]; !ok {
+				match = false
 			}
-			u.Content = &v
-			return nil
-		}
-	}
-	{
-		var v ToolCallContentDiff
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["path"]; !ok {
-			match = false
-		}
-		if _, ok := m["newText"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Terminal = &v
+				return nil
 			}
-			u.Diff = &v
-			return nil
 		}
-	}
-	{
-		var v ToolCallContentTerminal
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["terminalId"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.Terminal = &v
-			return nil
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{

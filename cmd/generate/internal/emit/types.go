@@ -1074,45 +1074,49 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			}
 		}
 		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
-		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("!=").Nil()).Block(Return(Id("err")))
-		// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
-		if discKey != "" {
-			g.BlockFunc(func(h *Group) {
-				h.Var().Id("disc").String()
-				h.If(List(Id("v"), Id("ok")).Op(":=").Id("m").Index(Lit(discKey)), Id("ok")).Block(
-					Qual("encoding/json", "Unmarshal").Call(Id("v"), Op("&").Id("disc")),
-				)
-				h.Switch(Id("disc")).BlockFunc(func(sw *Group) {
-					for _, vi := range variants {
-						if vi.discValue != "" {
-							sw.Case(Lit(vi.discValue)).Block(
-								Var().Id("v").Id(vi.typeName),
-								If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
-								Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
-								Return(Nil()),
-							)
-						}
-					}
-				})
-			})
-		}
-		// required-key match
-		for _, vi := range variants {
-			if vi.isObject && len(vi.required) > 0 {
-				g.BlockFunc(func(h *Group) {
-					h.Var().Id("v").Id(vi.typeName)
-					h.Var().Id("match").Bool().Op("=").Lit(true)
-					for _, rk := range vi.required {
-						h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
-					}
-					h.If(Id("match")).Block(
-						If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
-						Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
-						Return(Nil()),
+		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
+			// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
+			if discKey != "" {
+				obj.BlockFunc(func(h *Group) {
+					h.Var().Id("disc").String()
+					h.If(List(Id("v"), Id("ok")).Op(":=").Id("m").Index(Lit(discKey)), Id("ok")).Block(
+						Qual("encoding/json", "Unmarshal").Call(Id("v"), Op("&").Id("disc")),
 					)
+					h.Switch(Id("disc")).BlockFunc(func(sw *Group) {
+						for _, vi := range variants {
+							if vi.discValue != "" {
+								sw.Case(Lit(vi.discValue)).Block(
+									Var().Id("v").Id(vi.typeName),
+									If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
+									Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
+									Return(Nil()),
+								)
+							}
+						}
+					})
 				})
 			}
-		}
+			// required-key match
+			for _, vi := range variants {
+				if vi.isObject && len(vi.required) > 0 {
+					obj.BlockFunc(func(h *Group) {
+						h.Var().Id("v").Id(vi.typeName)
+						h.Var().Id("match").Bool().Op("=").Lit(true)
+						for _, rk := range vi.required {
+							h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+						}
+						h.If(Id("match")).Block(
+							If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
+							Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
+							Return(Nil()),
+						)
+					})
+				}
+			}
+		}).Else().Block(
+			// Not an object (e.g., primitive union variant) or invalid JSON.
+			If(List(Id("_"), Id("ok")).Op(":=").Id("err").Assert(Op("*").Qual("encoding/json", "UnmarshalTypeError")), Op("!").Id("ok")).Block(Return(Id("err"))),
+		)
 		// fallback: try decode sequentially
 		for _, vi := range variants {
 			g.Block(

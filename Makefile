@@ -4,7 +4,7 @@ ACP_VERSION := $(file < ./schema/version)
 GOCACHE ?= $(CURDIR)/.gocache
 MDSH ?= mdsh
 
-version: README.md schema/meta.json schema/schema.json
+version: README.md schema/meta.json schema/schema.json schema/meta.unstable.json schema/schema.unstable.json
 	cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .
 	env -u GOPATH -u GOMODCACHE go run mvdan.cc/gofumpt@latest -w .
 	touch $@
@@ -15,6 +15,28 @@ schema/meta.json: schema/version
 
 schema/schema.json: schema/version
 	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/schema.json
+
+schema/meta.unstable.json: schema/version
+	@set -e; \
+		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/meta.unstable.json; \
+		tmp=$@.tmp; \
+		if curl -o "$$tmp" --fail -L "$$url"; then \
+			mv "$$tmp" $@; \
+		else \
+			rm -f "$$tmp"; \
+			printf '%s\n' '{"agentMethods":{},"clientMethods":{},"version":1}' > $@; \
+		fi
+
+schema/schema.unstable.json: schema/version
+	@set -e; \
+		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/schema.unstable.json; \
+		tmp=$@.tmp; \
+		if curl -o "$$tmp" --fail -L "$$url"; then \
+			mv "$$tmp" $@; \
+		else \
+			rm -f "$$tmp"; \
+			printf '%s\n' '{"$$defs":{}}' > $@; \
+		fi
 
 README.md: schema/version
 	@command -v $(MDSH) >/dev/null || { echo "mdsh not found; run 'nix develop' or install it." 1>&2; exit 1; }
@@ -40,7 +62,7 @@ test: $(GO_FILES)
 
 .PHONY: clean
 clean:
-	rm schema/meta.json schema/schema.json version
+	rm -f schema/meta.json schema/schema.json schema/meta.unstable.json schema/schema.unstable.json version
 	mdsh --clean --input README.md
 	touch schema/version # Touching the schema version file ensures that the README.md is regenerated on next make.
 

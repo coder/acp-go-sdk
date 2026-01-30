@@ -131,41 +131,44 @@ type AgentResponse struct {
 
 func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var v AgentResult
-		var match bool = true
-		if _, ok := m["id"]; !ok {
-			match = false
-		}
-		if _, ok := m["result"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v AgentResult
+			var match bool = true
+			if _, ok := m["id"]; !ok {
+				match = false
 			}
-			u.Result = &v
-			return nil
-		}
-	}
-	{
-		var v AgentError
-		var match bool = true
-		if _, ok := m["id"]; !ok {
-			match = false
-		}
-		if _, ok := m["error"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["result"]; !ok {
+				match = false
 			}
-			u.Error = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Result = &v
+				return nil
+			}
+		}
+		{
+			var v AgentError
+			var match bool = true
+			if _, ok := m["id"]; !ok {
+				match = false
+			}
+			if _, ok := m["error"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Error = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -312,21 +315,24 @@ type AvailableCommandInput struct {
 
 func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var v UnstructuredCommandInput
-		var match bool = true
-		if _, ok := m["hint"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v UnstructuredCommandInput
+			var match bool = true
+			if _, ok := m["hint"]; !ok {
+				match = false
 			}
-			u.Unstructured = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Unstructured = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -501,41 +507,44 @@ type ClientResponse struct {
 
 func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var v ClientResult
-		var match bool = true
-		if _, ok := m["id"]; !ok {
-			match = false
-		}
-		if _, ok := m["result"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v ClientResult
+			var match bool = true
+			if _, ok := m["id"]; !ok {
+				match = false
 			}
-			u.Result = &v
-			return nil
-		}
-	}
-	{
-		var v ClientError
-		var match bool = true
-		if _, ok := m["id"]; !ok {
-			match = false
-		}
-		if _, ok := m["error"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["result"]; !ok {
+				match = false
 			}
-			u.Error = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Result = &v
+				return nil
+			}
+		}
+		{
+			var v ClientError
+			var match bool = true
+			if _, ok := m["id"]; !ok {
+				match = false
+			}
+			if _, ok := m["error"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Error = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -720,144 +729,147 @@ type ContentBlock struct {
 
 func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["type"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["type"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "text":
+				var v ContentBlockText
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Text = &v
+				return nil
+			case "image":
+				var v ContentBlockImage
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Image = &v
+				return nil
+			case "audio":
+				var v ContentBlockAudio
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Audio = &v
+				return nil
+			case "resource_link":
+				var v ContentBlockResourceLink
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ResourceLink = &v
+				return nil
+			case "resource":
+				var v ContentBlockResource
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Resource = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "text":
+		{
 			var v ContentBlockText
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Text = &v
-			return nil
-		case "image":
+			if _, ok := m["text"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Text = &v
+				return nil
+			}
+		}
+		{
 			var v ContentBlockImage
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Image = &v
-			return nil
-		case "audio":
+			if _, ok := m["data"]; !ok {
+				match = false
+			}
+			if _, ok := m["mimeType"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Image = &v
+				return nil
+			}
+		}
+		{
 			var v ContentBlockAudio
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Audio = &v
-			return nil
-		case "resource_link":
+			if _, ok := m["data"]; !ok {
+				match = false
+			}
+			if _, ok := m["mimeType"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Audio = &v
+				return nil
+			}
+		}
+		{
 			var v ContentBlockResourceLink
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.ResourceLink = &v
-			return nil
-		case "resource":
+			if _, ok := m["name"]; !ok {
+				match = false
+			}
+			if _, ok := m["uri"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ResourceLink = &v
+				return nil
+			}
+		}
+		{
 			var v ContentBlockResource
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Resource = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockText
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["text"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["resource"]; !ok {
+				match = false
 			}
-			u.Text = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockImage
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["data"]; !ok {
-			match = false
-		}
-		if _, ok := m["mimeType"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Resource = &v
+				return nil
 			}
-			u.Image = &v
-			return nil
 		}
-	}
-	{
-		var v ContentBlockAudio
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["data"]; !ok {
-			match = false
-		}
-		if _, ok := m["mimeType"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.Audio = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockResourceLink
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["name"]; !ok {
-			match = false
-		}
-		if _, ok := m["uri"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.ResourceLink = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockResource
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["resource"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.Resource = &v
-			return nil
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -1153,41 +1165,44 @@ type EmbeddedResourceResource struct {
 
 func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var v TextResourceContents
-		var match bool = true
-		if _, ok := m["text"]; !ok {
-			match = false
-		}
-		if _, ok := m["uri"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v TextResourceContents
+			var match bool = true
+			if _, ok := m["text"]; !ok {
+				match = false
 			}
-			u.TextResourceContents = &v
-			return nil
-		}
-	}
-	{
-		var v BlobResourceContents
-		var match bool = true
-		if _, ok := m["blob"]; !ok {
-			match = false
-		}
-		if _, ok := m["uri"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["uri"]; !ok {
+				match = false
 			}
-			u.BlobResourceContents = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.TextResourceContents = &v
+				return nil
+			}
+		}
+		{
+			var v BlobResourceContents
+			var match bool = true
+			if _, ok := m["blob"]; !ok {
+				match = false
+			}
+			if _, ok := m["uri"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.BlobResourceContents = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -1317,8 +1332,11 @@ type ErrorCode struct {
 
 func (u *ErrorCode) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	if err := json.Unmarshal(b, &m); err == nil {
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
 	}
 	{
 		var v ErrorCodeParseError
@@ -1920,98 +1938,101 @@ type McpServer struct {
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["type"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["type"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "http":
+				var v McpServerHttpInline
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Http = &v
+				return nil
+			case "sse":
+				var v McpServerSseInline
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Sse = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "http":
+		{
 			var v McpServerHttpInline
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Http = &v
-			return nil
-		case "sse":
+			if _, ok := m["name"]; !ok {
+				match = false
+			}
+			if _, ok := m["url"]; !ok {
+				match = false
+			}
+			if _, ok := m["headers"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Http = &v
+				return nil
+			}
+		}
+		{
 			var v McpServerSseInline
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Sse = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerHttpInline
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["name"]; !ok {
-			match = false
-		}
-		if _, ok := m["url"]; !ok {
-			match = false
-		}
-		if _, ok := m["headers"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["name"]; !ok {
+				match = false
 			}
-			u.Http = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerSseInline
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["name"]; !ok {
-			match = false
-		}
-		if _, ok := m["url"]; !ok {
-			match = false
-		}
-		if _, ok := m["headers"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["url"]; !ok {
+				match = false
 			}
-			u.Sse = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerStdio
-		var match bool = true
-		if _, ok := m["name"]; !ok {
-			match = false
-		}
-		if _, ok := m["command"]; !ok {
-			match = false
-		}
-		if _, ok := m["args"]; !ok {
-			match = false
-		}
-		if _, ok := m["env"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["headers"]; !ok {
+				match = false
 			}
-			u.Stdio = &v
-			return nil
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Sse = &v
+				return nil
+			}
+		}
+		{
+			var v McpServerStdio
+			var match bool = true
+			if _, ok := m["name"]; !ok {
+				match = false
+			}
+			if _, ok := m["command"]; !ok {
+				match = false
+			}
+			if _, ok := m["args"]; !ok {
+				match = false
+			}
+			if _, ok := m["env"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Stdio = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -2518,8 +2539,11 @@ func (u *RequestId) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	if err := json.Unmarshal(b, &m); err == nil {
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
 	}
 	{
 		var v RequestIdNull
@@ -2613,60 +2637,63 @@ type RequestPermissionOutcome struct {
 
 func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["outcome"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["outcome"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "cancelled":
+				var v RequestPermissionOutcomeCancelled
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Cancelled = &v
+				return nil
+			case "selected":
+				var v RequestPermissionOutcomeSelected
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Selected = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "cancelled":
+		{
 			var v RequestPermissionOutcomeCancelled
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["outcome"]; !ok {
+				match = false
 			}
-			u.Cancelled = &v
-			return nil
-		case "selected":
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Cancelled = &v
+				return nil
+			}
+		}
+		{
 			var v RequestPermissionOutcomeSelected
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["outcome"]; !ok {
+				match = false
 			}
-			u.Selected = &v
-			return nil
-		}
-	}
-	{
-		var v RequestPermissionOutcomeCancelled
-		var match bool = true
-		if _, ok := m["outcome"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["optionId"]; !ok {
+				match = false
 			}
-			u.Cancelled = &v
-			return nil
-		}
-	}
-	{
-		var v RequestPermissionOutcomeSelected
-		var match bool = true
-		if _, ok := m["outcome"]; !ok {
-			match = false
-		}
-		if _, ok := m["optionId"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Selected = &v
+				return nil
 			}
-			u.Selected = &v
-			return nil
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -3056,210 +3083,213 @@ type SessionUpdate struct {
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["sessionUpdate"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["sessionUpdate"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "user_message_chunk":
+				var v SessionUpdateUserMessageChunk
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.UserMessageChunk = &v
+				return nil
+			case "agent_message_chunk":
+				var v SessionUpdateAgentMessageChunk
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AgentMessageChunk = &v
+				return nil
+			case "agent_thought_chunk":
+				var v SessionUpdateAgentThoughtChunk
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AgentThoughtChunk = &v
+				return nil
+			case "tool_call":
+				var v SessionUpdateToolCall
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ToolCall = &v
+				return nil
+			case "tool_call_update":
+				var v SessionToolCallUpdate
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ToolCallUpdate = &v
+				return nil
+			case "plan":
+				var v SessionUpdatePlan
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Plan = &v
+				return nil
+			case "available_commands_update":
+				var v SessionAvailableCommandsUpdate
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AvailableCommandsUpdate = &v
+				return nil
+			case "current_mode_update":
+				var v SessionCurrentModeUpdate
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.CurrentModeUpdate = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "user_message_chunk":
+		{
 			var v SessionUpdateUserMessageChunk
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.UserMessageChunk = &v
-			return nil
-		case "agent_message_chunk":
+			if _, ok := m["content"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.UserMessageChunk = &v
+				return nil
+			}
+		}
+		{
 			var v SessionUpdateAgentMessageChunk
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.AgentMessageChunk = &v
-			return nil
-		case "agent_thought_chunk":
+			if _, ok := m["content"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AgentMessageChunk = &v
+				return nil
+			}
+		}
+		{
 			var v SessionUpdateAgentThoughtChunk
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.AgentThoughtChunk = &v
-			return nil
-		case "tool_call":
+			if _, ok := m["content"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AgentThoughtChunk = &v
+				return nil
+			}
+		}
+		{
 			var v SessionUpdateToolCall
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.ToolCall = &v
-			return nil
-		case "tool_call_update":
+			if _, ok := m["toolCallId"]; !ok {
+				match = false
+			}
+			if _, ok := m["title"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ToolCall = &v
+				return nil
+			}
+		}
+		{
 			var v SessionToolCallUpdate
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.ToolCallUpdate = &v
-			return nil
-		case "plan":
+			if _, ok := m["toolCallId"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.ToolCallUpdate = &v
+				return nil
+			}
+		}
+		{
 			var v SessionUpdatePlan
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.Plan = &v
-			return nil
-		case "available_commands_update":
+			if _, ok := m["entries"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Plan = &v
+				return nil
+			}
+		}
+		{
 			var v SessionAvailableCommandsUpdate
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.AvailableCommandsUpdate = &v
-			return nil
-		case "current_mode_update":
+			if _, ok := m["availableCommands"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.AvailableCommandsUpdate = &v
+				return nil
+			}
+		}
+		{
 			var v SessionCurrentModeUpdate
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
 			}
-			u.CurrentModeUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateUserMessageChunk
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["content"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["currentModeId"]; !ok {
+				match = false
 			}
-			u.UserMessageChunk = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateAgentMessageChunk
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["content"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.CurrentModeUpdate = &v
+				return nil
 			}
-			u.AgentMessageChunk = &v
-			return nil
 		}
-	}
-	{
-		var v SessionUpdateAgentThoughtChunk
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["content"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.AgentThoughtChunk = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateToolCall
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["toolCallId"]; !ok {
-			match = false
-		}
-		if _, ok := m["title"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.ToolCall = &v
-			return nil
-		}
-	}
-	{
-		var v SessionToolCallUpdate
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["toolCallId"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.ToolCallUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdatePlan
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["entries"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.Plan = &v
-			return nil
-		}
-	}
-	{
-		var v SessionAvailableCommandsUpdate
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["availableCommands"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.AvailableCommandsUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionCurrentModeUpdate
-		var match bool = true
-		if _, ok := m["sessionUpdate"]; !ok {
-			match = false
-		}
-		if _, ok := m["currentModeId"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.CurrentModeUpdate = &v
-			return nil
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -3690,90 +3720,93 @@ type ToolCallContent struct {
 
 func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	{
-		var disc string
-		if v, ok := m["type"]; ok {
-			json.Unmarshal(v, &disc)
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["type"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "content":
+				var v ToolCallContentContent
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Content = &v
+				return nil
+			case "diff":
+				var v ToolCallContentDiff
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Diff = &v
+				return nil
+			case "terminal":
+				var v ToolCallContentTerminal
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Terminal = &v
+				return nil
+			}
 		}
-		switch disc {
-		case "content":
+		{
 			var v ToolCallContentContent
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Content = &v
-			return nil
-		case "diff":
+			if _, ok := m["content"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Content = &v
+				return nil
+			}
+		}
+		{
 			var v ToolCallContentDiff
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Diff = &v
-			return nil
-		case "terminal":
+			if _, ok := m["path"]; !ok {
+				match = false
+			}
+			if _, ok := m["newText"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Diff = &v
+				return nil
+			}
+		}
+		{
 			var v ToolCallContentTerminal
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
 			}
-			u.Terminal = &v
-			return nil
-		}
-	}
-	{
-		var v ToolCallContentContent
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["content"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if _, ok := m["terminalId"]; !ok {
+				match = false
 			}
-			u.Content = &v
-			return nil
-		}
-	}
-	{
-		var v ToolCallContentDiff
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["path"]; !ok {
-			match = false
-		}
-		if _, ok := m["newText"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Terminal = &v
+				return nil
 			}
-			u.Diff = &v
-			return nil
 		}
-	}
-	{
-		var v ToolCallContentTerminal
-		var match bool = true
-		if _, ok := m["type"]; !ok {
-			match = false
-		}
-		if _, ok := m["terminalId"]; !ok {
-			match = false
-		}
-		if match {
-			if json.Unmarshal(b, &v) != nil {
-				return errors.New("invalid variant payload")
-			}
-			u.Terminal = &v
-			return nil
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
 		}
 	}
 	{
@@ -3951,6 +3984,658 @@ const (
 	ToolKindOther      ToolKind = "other"
 )
 
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Notification to cancel an ongoing request.
+//
+// See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/cancellation)
+type UnstableCancelRequestNotification struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The ID of the request to cancel.
+	RequestId RequestId `json:"requestId"`
+}
+
+func (v *UnstableCancelRequestNotification) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for forking an existing session.
+//
+// Creates a new session based on the context of an existing one, allowing
+// operations like generating summaries without affecting the original session's history.
+//
+// Only available if the Agent supports the 'session.fork' capability.
+type UnstableForkSessionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The working directory for this session.
+	Cwd string `json:"cwd"`
+	// List of MCP servers to connect to for this session.
+	McpServers []McpServer `json:"mcpServers,omitempty"`
+	// The ID of the session to fork.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableForkSessionRequest) Validate() error {
+	if v.Cwd == "" {
+		return fmt.Errorf("cwd is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response from forking an existing session.
+type UnstableForkSessionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial session configuration options if supported by the Agent.
+	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial model state if supported by the Agent
+	Models *UnstableSessionModelState `json:"models,omitempty"`
+	// Initial mode state if supported by the Agent
+	//
+	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+	Modes *SessionModeState `json:"modes,omitempty"`
+	// Unique identifier for the newly created forked session.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableForkSessionResponse) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for listing existing sessions.
+//
+// Only available if the Agent supports the 'listSessions' capability.
+type UnstableListSessionsRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Opaque cursor token from a previous response's nextCursor field for cursor-based pagination
+	Cursor *string `json:"cursor,omitempty"`
+	// Filter sessions by working directory. Must be an absolute path.
+	Cwd *string `json:"cwd,omitempty"`
+}
+
+func (v *UnstableListSessionsRequest) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response from listing sessions.
+type UnstableListSessionsResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Opaque cursor token. If present, pass this in the next request's cursor parameter
+	// to fetch the next page. If absent, there are no more results.
+	NextCursor *string `json:"nextCursor,omitempty"`
+	// Array of session information objects
+	Sessions []UnstableSessionInfo `json:"sessions"`
+}
+
+func (v *UnstableListSessionsResponse) Validate() error {
+	if v.Sessions == nil {
+		return fmt.Errorf("sessions is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A unique identifier for a model.
+type UnstableModelId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Information about a selectable model.
+type UnstableModelInfo struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Optional description of the model.
+	Description *string `json:"description,omitempty"`
+	// Unique identifier for the model.
+	ModelId UnstableModelId `json:"modelId"`
+	// Human-readable name of the model.
+	Name string `json:"name"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for resuming an existing session.
+//
+// Resumes an existing session without returning previous messages (unlike 'session/load').
+// This is useful for agents that can resume sessions but don't implement full session loading.
+//
+// Only available if the Agent supports the 'session.resume' capability.
+type UnstableResumeSessionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The working directory for this session.
+	Cwd string `json:"cwd"`
+	// List of MCP servers to connect to for this session.
+	McpServers []McpServer `json:"mcpServers,omitempty"`
+	// The ID of the session to resume.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableResumeSessionRequest) Validate() error {
+	if v.Cwd == "" {
+		return fmt.Errorf("cwd is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response from resuming an existing session.
+type UnstableResumeSessionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial session configuration options if supported by the Agent.
+	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial model state if supported by the Agent
+	Models *UnstableSessionModelState `json:"models,omitempty"`
+	// Initial mode state if supported by the Agent
+	//
+	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+	Modes *SessionModeState `json:"modes,omitempty"`
+}
+
+func (v *UnstableResumeSessionResponse) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Unique identifier for a session configuration option value group.
+type UnstableSessionConfigGroupId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Unique identifier for a session configuration option.
+type UnstableSessionConfigId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A session configuration option selector and its current state.
+// Single-value selector (dropdown).
+type UnstableSessionConfigOptionSelect struct {
+	// The currently selected value.
+	CurrentValue UnstableSessionConfigValueId `json:"currentValue"`
+	// The set of selectable options.
+	Options UnstableSessionConfigSelectOptions `json:"options"`
+	Type    string                             `json:"type"`
+}
+
+type UnstableSessionConfigOption struct {
+	// Single-value selector (dropdown).
+	Select *UnstableSessionConfigOptionSelect `json:"-"`
+}
+
+func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["type"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "select":
+				var v UnstableSessionConfigOptionSelect
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Select = &v
+				return nil
+			}
+		}
+		{
+			var v UnstableSessionConfigOptionSelect
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
+			}
+			if _, ok := m["currentValue"]; !ok {
+				match = false
+			}
+			if _, ok := m["options"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Select = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	{
+		var v UnstableSessionConfigOptionSelect
+		if json.Unmarshal(b, &v) == nil {
+			u.Select = &v
+			return nil
+		}
+	}
+	return nil
+}
+func (u UnstableSessionConfigOption) MarshalJSON() ([]byte, error) {
+	if u.Select != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.Select)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["type"] = "select"
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+func (u *UnstableSessionConfigOption) Validate() error {
+	var count int
+	if u.Select != nil {
+		count++
+	}
+	if count != 1 {
+		return errors.New("UnstableSessionConfigOption must have exactly one variant set")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Semantic category for a session configuration option.
+//
+// This is intended to help Clients distinguish broadly common selectors (e.g. model selector vs
+// session mode selector vs thought/reasoning level) for UX purposes (keyboard shortcuts, icons,
+// placement). It MUST NOT be required for correctness. Clients MUST handle missing or unknown
+// categories gracefully.
+//
+// Category names beginning with '_' are free for custom use, like other ACP extension methods.
+// Category names that do not begin with '_' are reserved for the ACP spec.
+// Unknown / uncategorized selector.
+type UnstableSessionConfigOptionCategoryOther struct{}
+
+type UnstableSessionConfigOptionCategory struct {
+	// Unknown / uncategorized selector.
+	Other *UnstableSessionConfigOptionCategoryOther `json:"-"`
+}
+
+func (u *UnstableSessionConfigOptionCategory) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	{
+		var v UnstableSessionConfigOptionCategoryOther
+		if json.Unmarshal(b, &v) == nil {
+			u.Other = &v
+			return nil
+		}
+	}
+	return nil
+}
+func (u UnstableSessionConfigOptionCategory) MarshalJSON() ([]byte, error) {
+	if u.Other != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.Other)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A single-value selector (dropdown) session configuration option payload.
+type UnstableSessionConfigSelect struct {
+	// The currently selected value.
+	CurrentValue UnstableSessionConfigValueId `json:"currentValue"`
+	// The set of selectable options.
+	Options UnstableSessionConfigSelectOptions `json:"options"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A group of possible values for a session configuration option.
+type UnstableSessionConfigSelectGroup struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Unique identifier for this group.
+	Group UnstableSessionConfigGroupId `json:"group"`
+	// Human-readable label for this group.
+	Name string `json:"name"`
+	// The set of option values in this group.
+	Options []UnstableSessionConfigSelectOption `json:"options"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A possible value for a session configuration option.
+type UnstableSessionConfigSelectOption struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Optional description for this option value.
+	Description *string `json:"description,omitempty"`
+	// Human-readable label for this option value.
+	Name string `json:"name"`
+	// Unique identifier for this option value.
+	Value UnstableSessionConfigValueId `json:"value"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Possible values for a session configuration option.
+// A flat list of options with no grouping.
+type UnstableSessionConfigSelectOptionsUngrouped struct{}
+
+// A list of options grouped under headers.
+type UnstableSessionConfigSelectOptionsGrouped struct{}
+
+type UnstableSessionConfigSelectOptions struct {
+	// A flat list of options with no grouping.
+	Ungrouped *UnstableSessionConfigSelectOptionsUngrouped `json:"-"`
+	// A list of options grouped under headers.
+	Grouped *UnstableSessionConfigSelectOptionsGrouped `json:"-"`
+}
+
+func (u *UnstableSessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	{
+		var v UnstableSessionConfigSelectOptionsUngrouped
+		if json.Unmarshal(b, &v) == nil {
+			u.Ungrouped = &v
+			return nil
+		}
+	}
+	{
+		var v UnstableSessionConfigSelectOptionsGrouped
+		if json.Unmarshal(b, &v) == nil {
+			u.Grouped = &v
+			return nil
+		}
+	}
+	return nil
+}
+func (u UnstableSessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
+	if u.Ungrouped != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.Ungrouped)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.Grouped != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.Grouped)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Unique identifier for a session configuration option value.
+type UnstableSessionConfigValueId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Information about a session returned by session/list
+type UnstableSessionInfo struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The working directory for this session. Must be an absolute path.
+	Cwd string `json:"cwd"`
+	// Unique identifier for the session
+	SessionId SessionId `json:"sessionId"`
+	// Human-readable title for the session
+	Title *string `json:"title,omitempty"`
+	// ISO 8601 timestamp of last activity
+	UpdatedAt *string `json:"updatedAt,omitempty"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// The set of models and the one currently active.
+type UnstableSessionModelState struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The set of models that the Agent can use
+	AvailableModels []UnstableModelInfo `json:"availableModels"`
+	// The current model the Agent is in.
+	CurrentModelId UnstableModelId `json:"currentModelId"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for setting a session configuration option.
+type UnstableSetSessionConfigOptionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The ID of the configuration option to set.
+	ConfigId UnstableSessionConfigId `json:"configId"`
+	// The ID of the session to set the configuration option for.
+	SessionId SessionId `json:"sessionId"`
+	// The ID of the configuration option value to set.
+	Value UnstableSessionConfigValueId `json:"value"`
+}
+
+func (v *UnstableSetSessionConfigOptionRequest) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response to 'session/set_config_option' method.
+type UnstableSetSessionConfigOptionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The full set of configuration options and their current values.
+	ConfigOptions []UnstableSessionConfigOption `json:"configOptions"`
+}
+
+func (v *UnstableSetSessionConfigOptionResponse) Validate() error {
+	if v.ConfigOptions == nil {
+		return fmt.Errorf("configOptions is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for setting a session model.
+type UnstableSetSessionModelRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The ID of the model to set.
+	ModelId UnstableModelId `json:"modelId"`
+	// The ID of the session to set the model for.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableSetSessionModelRequest) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response to 'session/set_model' method.
+type UnstableSetSessionModelResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *UnstableSetSessionModelResponse) Validate() error {
+	return nil
+}
+
 // All text that was typed after the command name is provided as input.
 type UnstructuredCommandInput struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -4084,7 +4769,50 @@ type AgentLoader interface {
 }
 
 // AgentExperimental defines unstable methods that are not part of the official spec. These may change or be removed without notice.
-type AgentExperimental interface{}
+type AgentExperimental interface {
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for forking an existing session.
+	//
+	// Creates a new session based on the context of an existing one, allowing
+	// operations like generating summaries without affecting the original session's history.
+	//
+	// Only available if the Agent supports the 'session.fork' capability.
+	UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for listing existing sessions.
+	//
+	// Only available if the Agent supports the 'listSessions' capability.
+	UnstableListSessions(ctx context.Context, params UnstableListSessionsRequest) (UnstableListSessionsResponse, error)
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for resuming an existing session.
+	//
+	// Resumes an existing session without returning previous messages (unlike 'session/load').
+	// This is useful for agents that can resume sessions but don't implement full session loading.
+	//
+	// Only available if the Agent supports the 'session.resume' capability.
+	UnstableResumeSession(ctx context.Context, params UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for setting a session configuration option.
+	UnstableSetSessionConfigOption(ctx context.Context, params UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error)
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for setting a session model.
+	UnstableSetSessionModel(ctx context.Context, params UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
+}
 type Client interface {
 	// Request to read content from a text file.
 	//

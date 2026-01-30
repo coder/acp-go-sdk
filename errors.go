@@ -1,7 +1,9 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -57,6 +59,10 @@ func NewInternalError(data any) *RequestError {
 	return &RequestError{Code: -32603, Message: "Internal error", Data: data}
 }
 
+func NewRequestCancelled(data any) *RequestError {
+	return &RequestError{Code: -32800, Message: "Request cancelled", Data: data}
+}
+
 func NewAuthRequired(data any) *RequestError {
 	return &RequestError{Code: -32000, Message: "Authentication required", Data: data}
 }
@@ -68,6 +74,9 @@ func toReqErr(err error) *RequestError {
 	}
 	if re, ok := err.(*RequestError); ok {
 		return re
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return NewRequestCancelled(map[string]any{"error": err.Error()})
 	}
 	return NewInternalError(map[string]any{"error": err.Error()})
 }

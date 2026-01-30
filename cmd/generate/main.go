@@ -36,12 +36,32 @@ func main() {
 		panic(err)
 	}
 
-	if err := emit.WriteConstantsJen(outDir, meta); err != nil {
+	schema, err := load.ReadSchema(schemaDir)
+	if err != nil {
 		panic(err)
 	}
 
-	schema, err := load.ReadSchema(schemaDir)
+	unstableMeta, unstableMetaFound, err := load.ReadMetaUnstable(schemaDir)
 	if err != nil {
+		panic(err)
+	}
+	unstableSchema, unstableSchemaFound, err := load.ReadSchemaUnstable(schemaDir)
+	if err != nil {
+		panic(err)
+	}
+	if unstableMetaFound != unstableSchemaFound {
+		panic(fmt.Sprintf("unstable schema/meta mismatch: meta found=%v schema found=%v", unstableMetaFound, unstableSchemaFound))
+	}
+	if unstableMetaFound {
+		mergedMeta, mergedSchema, err := load.MergeStableAndUnstable(meta, schema, unstableMeta, unstableSchema)
+		if err != nil {
+			panic(err)
+		}
+		meta = mergedMeta
+		schema = mergedSchema
+	}
+
+	if err := emit.WriteConstantsJen(outDir, meta); err != nil {
 		panic(err)
 	}
 

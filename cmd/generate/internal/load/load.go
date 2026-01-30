@@ -12,9 +12,11 @@ import (
 
 // Meta mirrors schema/meta.json for method maps and version.
 type Meta struct {
-	Version       int               `json:"version"`
-	AgentMethods  map[string]string `json:"agentMethods"`
-	ClientMethods map[string]string `json:"clientMethods"`
+	Version int `json:"version"`
+
+	AgentMethods    map[string]string `json:"agentMethods"`
+	ClientMethods   map[string]string `json:"clientMethods"`
+	ProtocolMethods map[string]string `json:"protocolMethods,omitempty"`
 }
 
 // Schema is a minimal view over schema/schema.json definitions used by the generator.
@@ -103,4 +105,38 @@ func ReadSchema(schemaDir string) (*Schema, error) {
 		return nil, fmt.Errorf("parse schema.json: %w", err)
 	}
 	return &schema, nil
+}
+
+// ReadMetaUnstable loads schema/meta.unstable.json when present.
+// The returned boolean indicates whether the file was found.
+func ReadMetaUnstable(schemaDir string) (*Meta, bool, error) {
+	metaBytes, err := os.ReadFile(filepath.Join(schemaDir, "meta.unstable.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("read meta.unstable.json: %w", err)
+	}
+	var meta Meta
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		return nil, true, fmt.Errorf("parse meta.unstable.json: %w", err)
+	}
+	return &meta, true, nil
+}
+
+// ReadSchemaUnstable loads schema/schema.unstable.json when present.
+// The returned boolean indicates whether the file was found.
+func ReadSchemaUnstable(schemaDir string) (*Schema, bool, error) {
+	schemaBytes, err := os.ReadFile(filepath.Join(schemaDir, "schema.unstable.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("read schema.unstable.json: %w", err)
+	}
+	var schema Schema
+	if err := json.Unmarshal(schemaBytes, &schema); err != nil {
+		return nil, true, fmt.Errorf("parse schema.unstable.json: %w", err)
+	}
+	return &schema, true, nil
 }

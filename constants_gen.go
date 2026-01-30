@@ -7,13 +7,18 @@ const ProtocolVersionNumber = 1
 
 // Agent method names
 const (
-	AgentMethodAuthenticate   = "authenticate"
-	AgentMethodInitialize     = "initialize"
-	AgentMethodSessionCancel  = "session/cancel"
-	AgentMethodSessionLoad    = "session/load"
-	AgentMethodSessionNew     = "session/new"
-	AgentMethodSessionPrompt  = "session/prompt"
-	AgentMethodSessionSetMode = "session/set_mode"
+	AgentMethodAuthenticate           = "authenticate"
+	AgentMethodInitialize             = "initialize"
+	AgentMethodSessionCancel          = "session/cancel"
+	AgentMethodSessionFork            = "session/fork"
+	AgentMethodSessionList            = "session/list"
+	AgentMethodSessionLoad            = "session/load"
+	AgentMethodSessionNew             = "session/new"
+	AgentMethodSessionPrompt          = "session/prompt"
+	AgentMethodSessionResume          = "session/resume"
+	AgentMethodSessionSetConfigOption = "session/set_config_option"
+	AgentMethodSessionSetMode         = "session/set_mode"
+	AgentMethodSessionSetModel        = "session/set_model"
 )
 
 // Client method names

@@ -3984,6 +3984,658 @@ const (
 	ToolKindOther      ToolKind = "other"
 )
 
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Notification to cancel an ongoing request.
+//
+// See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/cancellation)
+type UnstableCancelRequestNotification struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The ID of the request to cancel.
+	RequestId RequestId `json:"requestId"`
+}
+
+func (v *UnstableCancelRequestNotification) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for forking an existing session.
+//
+// Creates a new session based on the context of an existing one, allowing
+// operations like generating summaries without affecting the original session's history.
+//
+// Only available if the Agent supports the 'session.fork' capability.
+type UnstableForkSessionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The working directory for this session.
+	Cwd string `json:"cwd"`
+	// List of MCP servers to connect to for this session.
+	McpServers []McpServer `json:"mcpServers,omitempty"`
+	// The ID of the session to fork.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableForkSessionRequest) Validate() error {
+	if v.Cwd == "" {
+		return fmt.Errorf("cwd is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response from forking an existing session.
+type UnstableForkSessionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial session configuration options if supported by the Agent.
+	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial model state if supported by the Agent
+	Models *UnstableSessionModelState `json:"models,omitempty"`
+	// Initial mode state if supported by the Agent
+	//
+	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+	Modes *SessionModeState `json:"modes,omitempty"`
+	// Unique identifier for the newly created forked session.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableForkSessionResponse) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for listing existing sessions.
+//
+// Only available if the Agent supports the 'listSessions' capability.
+type UnstableListSessionsRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Opaque cursor token from a previous response's nextCursor field for cursor-based pagination
+	Cursor *string `json:"cursor,omitempty"`
+	// Filter sessions by working directory. Must be an absolute path.
+	Cwd *string `json:"cwd,omitempty"`
+}
+
+func (v *UnstableListSessionsRequest) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response from listing sessions.
+type UnstableListSessionsResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Opaque cursor token. If present, pass this in the next request's cursor parameter
+	// to fetch the next page. If absent, there are no more results.
+	NextCursor *string `json:"nextCursor,omitempty"`
+	// Array of session information objects
+	Sessions []UnstableSessionInfo `json:"sessions"`
+}
+
+func (v *UnstableListSessionsResponse) Validate() error {
+	if v.Sessions == nil {
+		return fmt.Errorf("sessions is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A unique identifier for a model.
+type UnstableModelId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Information about a selectable model.
+type UnstableModelInfo struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Optional description of the model.
+	Description *string `json:"description,omitempty"`
+	// Unique identifier for the model.
+	ModelId UnstableModelId `json:"modelId"`
+	// Human-readable name of the model.
+	Name string `json:"name"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for resuming an existing session.
+//
+// Resumes an existing session without returning previous messages (unlike 'session/load').
+// This is useful for agents that can resume sessions but don't implement full session loading.
+//
+// Only available if the Agent supports the 'session.resume' capability.
+type UnstableResumeSessionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The working directory for this session.
+	Cwd string `json:"cwd"`
+	// List of MCP servers to connect to for this session.
+	McpServers []McpServer `json:"mcpServers,omitempty"`
+	// The ID of the session to resume.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableResumeSessionRequest) Validate() error {
+	if v.Cwd == "" {
+		return fmt.Errorf("cwd is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response from resuming an existing session.
+type UnstableResumeSessionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial session configuration options if supported by the Agent.
+	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial model state if supported by the Agent
+	Models *UnstableSessionModelState `json:"models,omitempty"`
+	// Initial mode state if supported by the Agent
+	//
+	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+	Modes *SessionModeState `json:"modes,omitempty"`
+}
+
+func (v *UnstableResumeSessionResponse) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Unique identifier for a session configuration option value group.
+type UnstableSessionConfigGroupId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Unique identifier for a session configuration option.
+type UnstableSessionConfigId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A session configuration option selector and its current state.
+// Single-value selector (dropdown).
+type UnstableSessionConfigOptionSelect struct {
+	// The currently selected value.
+	CurrentValue UnstableSessionConfigValueId `json:"currentValue"`
+	// The set of selectable options.
+	Options UnstableSessionConfigSelectOptions `json:"options"`
+	Type    string                             `json:"type"`
+}
+
+type UnstableSessionConfigOption struct {
+	// Single-value selector (dropdown).
+	Select *UnstableSessionConfigOptionSelect `json:"-"`
+}
+
+func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["type"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "select":
+				var v UnstableSessionConfigOptionSelect
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Select = &v
+				return nil
+			}
+		}
+		{
+			var v UnstableSessionConfigOptionSelect
+			var match bool = true
+			if _, ok := m["type"]; !ok {
+				match = false
+			}
+			if _, ok := m["currentValue"]; !ok {
+				match = false
+			}
+			if _, ok := m["options"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Select = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	{
+		var v UnstableSessionConfigOptionSelect
+		if json.Unmarshal(b, &v) == nil {
+			u.Select = &v
+			return nil
+		}
+	}
+	return nil
+}
+func (u UnstableSessionConfigOption) MarshalJSON() ([]byte, error) {
+	if u.Select != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.Select)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["type"] = "select"
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+func (u *UnstableSessionConfigOption) Validate() error {
+	var count int
+	if u.Select != nil {
+		count++
+	}
+	if count != 1 {
+		return errors.New("UnstableSessionConfigOption must have exactly one variant set")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Semantic category for a session configuration option.
+//
+// This is intended to help Clients distinguish broadly common selectors (e.g. model selector vs
+// session mode selector vs thought/reasoning level) for UX purposes (keyboard shortcuts, icons,
+// placement). It MUST NOT be required for correctness. Clients MUST handle missing or unknown
+// categories gracefully.
+//
+// Category names beginning with '_' are free for custom use, like other ACP extension methods.
+// Category names that do not begin with '_' are reserved for the ACP spec.
+// Unknown / uncategorized selector.
+type UnstableSessionConfigOptionCategoryOther struct{}
+
+type UnstableSessionConfigOptionCategory struct {
+	// Unknown / uncategorized selector.
+	Other *UnstableSessionConfigOptionCategoryOther `json:"-"`
+}
+
+func (u *UnstableSessionConfigOptionCategory) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	{
+		var v UnstableSessionConfigOptionCategoryOther
+		if json.Unmarshal(b, &v) == nil {
+			u.Other = &v
+			return nil
+		}
+	}
+	return nil
+}
+func (u UnstableSessionConfigOptionCategory) MarshalJSON() ([]byte, error) {
+	if u.Other != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.Other)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A single-value selector (dropdown) session configuration option payload.
+type UnstableSessionConfigSelect struct {
+	// The currently selected value.
+	CurrentValue UnstableSessionConfigValueId `json:"currentValue"`
+	// The set of selectable options.
+	Options UnstableSessionConfigSelectOptions `json:"options"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A group of possible values for a session configuration option.
+type UnstableSessionConfigSelectGroup struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Unique identifier for this group.
+	Group UnstableSessionConfigGroupId `json:"group"`
+	// Human-readable label for this group.
+	Name string `json:"name"`
+	// The set of option values in this group.
+	Options []UnstableSessionConfigSelectOption `json:"options"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A possible value for a session configuration option.
+type UnstableSessionConfigSelectOption struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Optional description for this option value.
+	Description *string `json:"description,omitempty"`
+	// Human-readable label for this option value.
+	Name string `json:"name"`
+	// Unique identifier for this option value.
+	Value UnstableSessionConfigValueId `json:"value"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Possible values for a session configuration option.
+// A flat list of options with no grouping.
+type UnstableSessionConfigSelectOptionsUngrouped struct{}
+
+// A list of options grouped under headers.
+type UnstableSessionConfigSelectOptionsGrouped struct{}
+
+type UnstableSessionConfigSelectOptions struct {
+	// A flat list of options with no grouping.
+	Ungrouped *UnstableSessionConfigSelectOptionsUngrouped `json:"-"`
+	// A list of options grouped under headers.
+	Grouped *UnstableSessionConfigSelectOptionsGrouped `json:"-"`
+}
+
+func (u *UnstableSessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	{
+		var v UnstableSessionConfigSelectOptionsUngrouped
+		if json.Unmarshal(b, &v) == nil {
+			u.Ungrouped = &v
+			return nil
+		}
+	}
+	{
+		var v UnstableSessionConfigSelectOptionsGrouped
+		if json.Unmarshal(b, &v) == nil {
+			u.Grouped = &v
+			return nil
+		}
+	}
+	return nil
+}
+func (u UnstableSessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
+	if u.Ungrouped != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.Ungrouped)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.Grouped != nil {
+		var m map[string]any
+		_b, _e := json.Marshal(*u.Grouped)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Unique identifier for a session configuration option value.
+type UnstableSessionConfigValueId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Information about a session returned by session/list
+type UnstableSessionInfo struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The working directory for this session. Must be an absolute path.
+	Cwd string `json:"cwd"`
+	// Unique identifier for the session
+	SessionId SessionId `json:"sessionId"`
+	// Human-readable title for the session
+	Title *string `json:"title,omitempty"`
+	// ISO 8601 timestamp of last activity
+	UpdatedAt *string `json:"updatedAt,omitempty"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// The set of models and the one currently active.
+type UnstableSessionModelState struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The set of models that the Agent can use
+	AvailableModels []UnstableModelInfo `json:"availableModels"`
+	// The current model the Agent is in.
+	CurrentModelId UnstableModelId `json:"currentModelId"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for setting a session configuration option.
+type UnstableSetSessionConfigOptionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The ID of the configuration option to set.
+	ConfigId UnstableSessionConfigId `json:"configId"`
+	// The ID of the session to set the configuration option for.
+	SessionId SessionId `json:"sessionId"`
+	// The ID of the configuration option value to set.
+	Value UnstableSessionConfigValueId `json:"value"`
+}
+
+func (v *UnstableSetSessionConfigOptionRequest) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response to 'session/set_config_option' method.
+type UnstableSetSessionConfigOptionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The full set of configuration options and their current values.
+	ConfigOptions []UnstableSessionConfigOption `json:"configOptions"`
+}
+
+func (v *UnstableSetSessionConfigOptionResponse) Validate() error {
+	if v.ConfigOptions == nil {
+		return fmt.Errorf("configOptions is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Request parameters for setting a session model.
+type UnstableSetSessionModelRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The ID of the model to set.
+	ModelId UnstableModelId `json:"modelId"`
+	// The ID of the session to set the model for.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableSetSessionModelRequest) Validate() error {
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response to 'session/set_model' method.
+type UnstableSetSessionModelResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *UnstableSetSessionModelResponse) Validate() error {
+	return nil
+}
+
 // All text that was typed after the command name is provided as input.
 type UnstructuredCommandInput struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -4117,7 +4769,50 @@ type AgentLoader interface {
 }
 
 // AgentExperimental defines unstable methods that are not part of the official spec. These may change or be removed without notice.
-type AgentExperimental interface{}
+type AgentExperimental interface {
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for forking an existing session.
+	//
+	// Creates a new session based on the context of an existing one, allowing
+	// operations like generating summaries without affecting the original session's history.
+	//
+	// Only available if the Agent supports the 'session.fork' capability.
+	UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for listing existing sessions.
+	//
+	// Only available if the Agent supports the 'listSessions' capability.
+	UnstableListSessions(ctx context.Context, params UnstableListSessionsRequest) (UnstableListSessionsResponse, error)
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for resuming an existing session.
+	//
+	// Resumes an existing session without returning previous messages (unlike 'session/load').
+	// This is useful for agents that can resume sessions but don't implement full session loading.
+	//
+	// Only available if the Agent supports the 'session.resume' capability.
+	UnstableResumeSession(ctx context.Context, params UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for setting a session configuration option.
+	UnstableSetSessionConfigOption(ctx context.Context, params UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error)
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Request parameters for setting a session model.
+	UnstableSetSessionModel(ctx context.Context, params UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
+}
 type Client interface {
 	// Request to read content from a text file.
 	//

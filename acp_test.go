@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"slices"
@@ -965,6 +966,96 @@ func TestExtensionMethods_UnknownNotification_DoesNotLog(t *testing.T) {
 
 	if strings.Contains(logBuf.String(), "failed to handle notification") {
 		t.Fatalf("unexpected notification error log: %s", logBuf.String())
+	}
+}
+
+// TestIntegrationMessageOrdering verifies that when an agent sends 100 numbered
+// SessionUpdate notifications during a Prompt, the client receives them in order.
+func TestIntegrationMessageOrdering(t *testing.T) {
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+
+	var mu sync.Mutex
+	var received []string
+
+	// Client side: collect text from each SessionUpdate notification.
+	cs := NewClientSideConnection(&clientFuncs{
+		SessionUpdateFunc: func(_ context.Context, n SessionNotification) error {
+			time.Sleep(5 * time.Millisecond)
+			u := n.Update
+			if u.AgentMessageChunk != nil && u.AgentMessageChunk.Content.Text != nil {
+				mu.Lock()
+				received = append(received, u.AgentMessageChunk.Content.Text.Text)
+				mu.Unlock()
+			}
+			return nil
+		},
+	}, c2aW, a2cR)
+
+	// Agent side: on Prompt, send 100 numbered SessionUpdate notifications.
+	var ag *AgentSideConnection
+	ag = NewAgentSideConnection(agentFuncs{
+		InitializeFunc: func(context.Context, InitializeRequest) (InitializeResponse, error) {
+			return InitializeResponse{
+				ProtocolVersion:   ProtocolVersionNumber,
+				AgentCapabilities: AgentCapabilities{},
+			}, nil
+		},
+		NewSessionFunc: func(context.Context, NewSessionRequest) (NewSessionResponse, error) {
+			return NewSessionResponse{SessionId: "s1"}, nil
+		},
+		PromptFunc: func(ctx context.Context, p PromptRequest) (PromptResponse, error) {
+			for i := 1; i <= 100; i++ {
+				err := ag.SessionUpdate(ctx, SessionNotification{
+					SessionId: p.SessionId,
+					Update:    UpdateAgentMessageText(fmt.Sprintf("%d", i)),
+				})
+				if err != nil {
+					return PromptResponse{}, err
+				}
+			}
+			return PromptResponse{StopReason: StopReasonEndTurn}, nil
+		},
+	}, a2cW, c2aR)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Initialize
+	if _, err := cs.Initialize(ctx, InitializeRequest{
+		ProtocolVersion:    ProtocolVersionNumber,
+		ClientCapabilities: ClientCapabilities{},
+	}); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	// Create session
+	sess, err := cs.NewSession(ctx, NewSessionRequest{Cwd: "/tmp", McpServers: []McpServer{}})
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+
+	// Send prompt (blocks until agent responds and all notifications are processed)
+	if _, err := cs.Prompt(ctx, PromptRequest{
+		SessionId: sess.SessionId,
+		Prompt:    []ContentBlock{TextBlock("go")},
+	}); err != nil {
+		t.Fatalf("prompt: %v", err)
+	}
+
+	// Verify we received all 100 messages in order.
+	mu.Lock()
+	got := append([]string(nil), received...)
+	mu.Unlock()
+
+	if len(got) != 100 {
+		t.Fatalf("expected 100 messages, got %d", len(got))
+	}
+	for i, msg := range got {
+		expected := fmt.Sprintf("%d", i+1)
+		if msg != expected {
+			t.Fatalf("message[%d] = %q, want %q", i, msg, expected)
+		}
 	}
 }
 

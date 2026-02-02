@@ -161,7 +161,3 @@ func (c *ClientSideConnection) SetSessionMode(ctx context.Context, params SetSes
 	resp, err := SendRequest[SetSessionModeResponse](c.conn, ctx, AgentMethodSessionSetMode, params)
 	return resp, err
 }
-func (c *ClientSideConnection) SetSessionModel(ctx context.Context, params SetSessionModelRequest) (SetSessionModelResponse, error) {
-	resp, err := SendRequest[SetSessionModelResponse](c.conn, ctx, AgentMethodSessionSetModel, params)
-	return resp, err
-}

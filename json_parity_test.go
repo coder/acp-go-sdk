@@ -137,7 +137,9 @@ func TestJSONGolden_RequestPermissionOutcome(t *testing.T) {
 			return RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{Outcome: "selected", OptionId: "allow-once"}}
 		},
 		func() RequestPermissionOutcome {
-			return NewRequestPermissionOutcomeSelected("allow-once")
+			o := NewRequestPermissionOutcomeSelected()
+			o.Selected.OptionId = "allow-once"
+			return o
 		},
 	))
 	t.Run("permission_outcome_cancelled", runGolden(
@@ -263,7 +265,7 @@ func TestJSONGolden_MethodPayloads(t *testing.T) {
 		return WriteTextFileRequest{SessionId: "sess_abc123def456", Path: "/home/user/project/config.json", Content: "{\n  \"debug\": true,\n  \"version\": \"1.0.0\"\n}"}
 	}))
 	t.Run("request_permission_request", runGolden(func() RequestPermissionRequest {
-		return RequestPermissionRequest{SessionId: "sess_abc123def456", ToolCall: RequestPermissionToolCall{ToolCallId: "call_001"}, Options: []PermissionOption{{OptionId: "allow-once", Name: "Allow once", Kind: PermissionOptionKindAllowOnce}, {OptionId: "reject-once", Name: "Reject", Kind: PermissionOptionKindRejectOnce}}}
+		return RequestPermissionRequest{SessionId: "sess_abc123def456", ToolCall: ToolCallUpdate{ToolCallId: "call_001"}, Options: []PermissionOption{{OptionId: "allow-once", Name: "Allow once", Kind: PermissionOptionKindAllowOnce}, {OptionId: "reject-once", Name: "Reject", Kind: PermissionOptionKindRejectOnce}}}
 	}))
 	t.Run("request_permission_response_selected", runGolden(func() RequestPermissionResponse {
 		return RequestPermissionResponse{Outcome: RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{Outcome: "selected", OptionId: "allow-once"}}}

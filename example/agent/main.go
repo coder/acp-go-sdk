@@ -41,11 +41,6 @@ func (a *exampleAgent) SetSessionMode(ctx context.Context, params acp.SetSession
 	return acp.SetSessionModeResponse{}, nil
 }
 
-// SetSessionModel implements acp.AgentExperimental.
-func (a *exampleAgent) SetSessionModel(ctx context.Context, params acp.SetSessionModelRequest) (acp.SetSessionModelResponse, error) {
-	return acp.SetSessionModelResponse{}, nil
-}
-
 // Implement acp.AgentConnAware to receive the connection after construction.
 func (a *exampleAgent) SetAgentConnection(conn *acp.AgentSideConnection) { a.conn = conn }
 
@@ -205,7 +200,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	// request permission for sensitive operation
 	permResp, err := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
 		SessionId: acp.SessionId(sid),
-		ToolCall: acp.RequestPermissionToolCall{
+		ToolCall: acp.ToolCallUpdate{
 			ToolCallId: acp.ToolCallId("call_2"),
 			Title:      acp.Ptr("Modifying critical configuration file"),
 			Kind:       acp.Ptr(acp.ToolKindEdit),

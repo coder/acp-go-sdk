@@ -1,10 +1,14 @@
 package acp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,7 +26,11 @@ type clientFuncs struct {
 	ReleaseTerminalFunc     func(context.Context, ReleaseTerminalRequest) (ReleaseTerminalResponse, error)
 	TerminalOutputFunc      func(context.Context, TerminalOutputRequest) (TerminalOutputResponse, error)
 	WaitForTerminalExitFunc func(context.Context, WaitForTerminalExitRequest) (WaitForTerminalExitResponse, error)
+
+	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
+
+var _ ExtensionMethodHandler = (*clientFuncs)(nil)
 
 var _ Client = (*clientFuncs)(nil)
 
@@ -94,21 +102,30 @@ func (c *clientFuncs) WaitForTerminalExit(ctx context.Context, params WaitForTer
 	return WaitForTerminalExitResponse{}, nil
 }
 
+func (c clientFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
+	if c.HandleExtensionMethodFunc != nil {
+		return c.HandleExtensionMethodFunc(ctx, method, params)
+	}
+	return nil, NewMethodNotFound(method)
+}
+
 type agentFuncs struct {
-	InitializeFunc      func(context.Context, InitializeRequest) (InitializeResponse, error)
-	NewSessionFunc      func(context.Context, NewSessionRequest) (NewSessionResponse, error)
-	LoadSessionFunc     func(context.Context, LoadSessionRequest) (LoadSessionResponse, error)
-	AuthenticateFunc    func(context.Context, AuthenticateRequest) (AuthenticateResponse, error)
-	PromptFunc          func(context.Context, PromptRequest) (PromptResponse, error)
-	CancelFunc          func(context.Context, CancelNotification) error
-	SetSessionModeFunc  func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
-	SetSessionModelFunc func(ctx context.Context, params SetSessionModelRequest) (SetSessionModelResponse, error)
+	InitializeFunc     func(context.Context, InitializeRequest) (InitializeResponse, error)
+	NewSessionFunc     func(context.Context, NewSessionRequest) (NewSessionResponse, error)
+	LoadSessionFunc    func(context.Context, LoadSessionRequest) (LoadSessionResponse, error)
+	AuthenticateFunc   func(context.Context, AuthenticateRequest) (AuthenticateResponse, error)
+	PromptFunc         func(context.Context, PromptRequest) (PromptResponse, error)
+	CancelFunc         func(context.Context, CancelNotification) error
+	SetSessionModeFunc func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
+
+	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
 
 var (
-	_ Agent             = (*agentFuncs)(nil)
-	_ AgentLoader       = (*agentFuncs)(nil)
-	_ AgentExperimental = (*agentFuncs)(nil)
+	_ Agent                  = (*agentFuncs)(nil)
+	_ AgentLoader            = (*agentFuncs)(nil)
+	_ AgentExperimental      = (*agentFuncs)(nil)
+	_ ExtensionMethodHandler = (*agentFuncs)(nil)
 )
 
 func (a agentFuncs) Initialize(ctx context.Context, p InitializeRequest) (InitializeResponse, error) {
@@ -161,12 +178,11 @@ func (a agentFuncs) SetSessionMode(ctx context.Context, params SetSessionModeReq
 	return SetSessionModeResponse{}, nil
 }
 
-// SetSessionModel implements AgentExperimental.
-func (a agentFuncs) SetSessionModel(ctx context.Context, params SetSessionModelRequest) (SetSessionModelResponse, error) {
-	if a.SetSessionModelFunc != nil {
-		return a.SetSessionModelFunc(ctx, params)
+func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
+	if a.HandleExtensionMethodFunc != nil {
+		return a.HandleExtensionMethodFunc(ctx, method, params)
 	}
-	return SetSessionModelResponse{}, nil
+	return nil, NewMethodNotFound(method)
 }
 
 // Test bidirectional error handling similar to typescript/acp.test.ts
@@ -354,7 +370,7 @@ func TestConnectionHandlesMessageOrdering(t *testing.T) {
 	}
 	if _, err := as.RequestPermission(context.Background(), RequestPermissionRequest{
 		SessionId: "test-session",
-		ToolCall: RequestPermissionToolCall{
+		ToolCall: ToolCallUpdate{
 			Title:      Ptr("Execute command"),
 			Kind:       ptr(ToolKindExecute),
 			Status:     ptr(ToolCallStatusPending),
@@ -468,7 +484,7 @@ func TestConnectionHandlesNotifications(t *testing.T) {
 	}
 }
 
-func TestConnection_DoesNotCancelInboundContextBeforeDrainingNotificationsOnDisconnect(t *testing.T) {
+func TestConnectionDoesNotCancelInboundContextBeforeDrainingNotificationsOnDisconnect(t *testing.T) {
 	const n = 25
 
 	incomingR, incomingW := io.Pipe()
@@ -521,7 +537,7 @@ func TestConnection_DoesNotCancelInboundContextBeforeDrainingNotificationsOnDisc
 	}
 }
 
-func TestConnection_CancelsRequestHandlersOnDisconnectEvenWithNotificationBacklog(t *testing.T) {
+func TestConnectionCancelsRequestHandlersOnDisconnectEvenWithNotificationBacklog(t *testing.T) {
 	const numNotifications = 200
 
 	incomingR, incomingW := io.Pipe()
@@ -566,6 +582,65 @@ func TestConnection_CancelsRequestHandlersOnDisconnectEvenWithNotificationBacklo
 	case <-reqDone:
 	case <-time.After(1 * time.Second):
 		t.Fatalf("timeout waiting for request handler cancellation")
+	}
+}
+
+func TestConnectionFailsFastOnNotificationQueueOverflow(t *testing.T) {
+	incomingR, incomingW := io.Pipe()
+
+	// Block the first notification handler so the queue can fill deterministically.
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var handled atomic.Int64
+
+	c := NewConnection(func(context.Context, string, json.RawMessage) (any, *RequestError) {
+		if handled.Add(1) == 1 {
+			close(firstStarted)
+			<-releaseFirst
+		}
+		return nil, nil
+	}, io.Discard, incomingR)
+
+	if _, err := io.WriteString(incomingW, `{"jsonrpc":"2.0","method":"test/notify","params":{}}`+"\n"); err != nil {
+		t.Fatalf("write first notification: %v", err)
+	}
+	select {
+	case <-firstStarted:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timeout waiting for first notification handler to start")
+	}
+
+	// Fill the buffered queue, then send one extra notification to force overflow.
+	for i := 0; i < defaultMaxQueuedNotifications+1; i++ {
+		if _, err := io.WriteString(incomingW, `{"jsonrpc":"2.0","method":"test/notify","params":{}}`+"\n"); err != nil {
+			t.Fatalf("write overflow notification %d: %v", i, err)
+		}
+	}
+
+	select {
+	case <-c.Done():
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timeout waiting for connection cancellation on queue overflow")
+	}
+
+	cause := context.Cause(c.ctx)
+	if !errors.Is(cause, errNotificationQueueOverflow) {
+		t.Fatalf("expected overflow cancellation cause, got %v", cause)
+	}
+
+	// Let queued work drain and ensure waitgroup accounting remains balanced.
+	close(releaseFirst)
+
+	drained := make(chan struct{})
+	go func() {
+		c.notificationWg.Wait()
+		close(drained)
+	}()
+
+	select {
+	case <-drained:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("notification waitgroup did not drain after overflow")
 	}
 }
 
@@ -887,7 +962,7 @@ func TestRequestHandlerCanMakeNestedRequest(t *testing.T) {
 		PromptFunc: func(ctx context.Context, p PromptRequest) (PromptResponse, error) {
 			_, err := ag.RequestPermission(ctx, RequestPermissionRequest{
 				SessionId: p.SessionId,
-				ToolCall: RequestPermissionToolCall{
+				ToolCall: ToolCallUpdate{
 					ToolCallId: "call_1",
 					Title:      Ptr("Test permission"),
 				},
@@ -919,5 +994,173 @@ func TestRequestHandlerCanMakeNestedRequest(t *testing.T) {
 		Prompt:    []ContentBlock{TextBlock("test")},
 	}); err != nil {
 		t.Fatalf("prompt failed: %v", err)
+	}
+}
+
+type extEchoParams struct {
+	Msg string `json:"msg"`
+}
+
+type extEchoResult struct {
+	Msg string `json:"msg"`
+}
+
+type agentNoExtensions struct{}
+
+func (agentNoExtensions) Authenticate(ctx context.Context, params AuthenticateRequest) (AuthenticateResponse, error) {
+	return AuthenticateResponse{}, nil
+}
+
+func (agentNoExtensions) Initialize(ctx context.Context, params InitializeRequest) (InitializeResponse, error) {
+	return InitializeResponse{}, nil
+}
+
+func (agentNoExtensions) Cancel(ctx context.Context, params CancelNotification) error { return nil }
+
+func (agentNoExtensions) NewSession(ctx context.Context, params NewSessionRequest) (NewSessionResponse, error) {
+	return NewSessionResponse{}, nil
+}
+
+func (agentNoExtensions) Prompt(ctx context.Context, params PromptRequest) (PromptResponse, error) {
+	return PromptResponse{}, nil
+}
+
+func (agentNoExtensions) SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error) {
+	return SetSessionModeResponse{}, nil
+}
+
+func TestExtensionMethods_ClientToAgentRequest(t *testing.T) {
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+
+	method := "_vendor.test/echo"
+
+	ag := NewAgentSideConnection(agentFuncs{
+		HandleExtensionMethodFunc: func(ctx context.Context, gotMethod string, params json.RawMessage) (any, error) {
+			if gotMethod != method {
+				return nil, NewInternalError(map[string]any{"expected": method, "got": gotMethod})
+			}
+			var p extEchoParams
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, err
+			}
+			return extEchoResult{Msg: p.Msg}, nil
+		},
+	}, a2cW, c2aR)
+
+	_ = ag
+
+	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	raw, err := c.CallExtension(ctx, method, extEchoParams{Msg: "hi"})
+	if err != nil {
+		t.Fatalf("CallExtension: %v", err)
+	}
+	var resp extEchoResult
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Msg != "hi" {
+		t.Fatalf("unexpected response: %#v", resp)
+	}
+}
+
+func TestExtensionMethods_UnknownRequest_ReturnsMethodNotFound(t *testing.T) {
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+
+	NewAgentSideConnection(agentNoExtensions{}, a2cW, c2aR)
+	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	_, err := c.CallExtension(ctx, "_vendor.test/missing", extEchoParams{Msg: "hi"})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	var re *RequestError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RequestError, got %T: %v", err, err)
+	}
+	if re.Code != -32601 {
+		t.Fatalf("expected -32601 method not found, got %d", re.Code)
+	}
+}
+
+func TestExtensionMethods_UnknownNotification_DoesNotLog(t *testing.T) {
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+
+	done := make(chan struct{})
+
+	ag := NewAgentSideConnection(agentFuncs{
+		HandleExtensionMethodFunc: func(ctx context.Context, method string, params json.RawMessage) (any, error) {
+			close(done)
+			return nil, NewMethodNotFound(method)
+		},
+	}, a2cW, c2aR)
+
+	var logBuf bytes.Buffer
+	ag.SetLogger(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	if err := c.NotifyExtension(ctx, "_vendor.test/notify", map[string]any{"hello": "world"}); err != nil {
+		t.Fatalf("NotifyExtension: %v", err)
+	}
+
+	select {
+	case <-done:
+		// ok
+	case <-ctx.Done():
+		t.Fatalf("timeout waiting for notification handler")
+	}
+
+	if strings.Contains(logBuf.String(), "failed to handle notification") {
+		t.Fatalf("unexpected notification error log: %s", logBuf.String())
+	}
+}
+
+func TestExtensionMethods_AgentToClientRequest(t *testing.T) {
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+
+	method := "_vendor.test/echo"
+
+	_ = NewClientSideConnection(&clientFuncs{
+		HandleExtensionMethodFunc: func(ctx context.Context, gotMethod string, params json.RawMessage) (any, error) {
+			if gotMethod != method {
+				return nil, NewInternalError(map[string]any{"expected": method, "got": gotMethod})
+			}
+			var p extEchoParams
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, err
+			}
+			return extEchoResult{Msg: p.Msg}, nil
+		},
+	}, c2aW, a2cR)
+
+	ag := NewAgentSideConnection(agentFuncs{}, a2cW, c2aR)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	raw, err := ag.CallExtension(ctx, method, extEchoParams{Msg: "hi"})
+	if err != nil {
+		t.Fatalf("CallExtension: %v", err)
+	}
+	var resp extEchoResult
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Msg != "hi" {
+		t.Fatalf("unexpected response: %#v", resp)
 	}
 }

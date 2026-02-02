@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,7 +16,10 @@ import (
 
 const (
 	notificationQueueDrainTimeout = 5 * time.Second
+	defaultMaxQueuedNotifications = 1024
 )
+
+var errNotificationQueueOverflow = errors.New("notification queue overflow")
 
 type anyMessage struct {
 	JSONRPC string           `json:"jsonrpc"`
@@ -61,8 +65,9 @@ type Connection struct {
 	// for all notifications received before the response to complete processing.
 	notificationWg sync.WaitGroup
 
-	// notificationQueue serializes notification processing to maintain order
-	notificationQueue *unboundedQueue[*anyMessage]
+	// notificationQueue serializes notification processing to maintain order.
+	// It is bounded to keep memory usage predictable.
+	notificationQueue chan *anyMessage
 }
 
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
@@ -77,7 +82,7 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		cancel:            cancel,
 		inboundCtx:        inboundCtx,
 		inboundCancel:     inboundCancel,
-		notificationQueue: newUnboundedQueue[*anyMessage](),
+		notificationQueue: make(chan *anyMessage, defaultMaxQueuedNotifications),
 	}
 	go c.receive()
 	go c.processNotifications()
@@ -133,16 +138,32 @@ func (c *Connection) receive() {
 			c.notificationWg.Add(1)
 
 			// Queue the notification for sequential processing.
-			// The unbounded queue never blocks, preserving ordering while
-			// ensuring the receive loop can always read responses promptly.
 			m := msg
-			c.notificationQueue.push(&m)
+			select {
+			case c.notificationQueue <- &m:
+			default:
+				// Balance Add above when the message was not accepted.
+				c.notificationWg.Done()
+				c.loggerOrDefault().Error("failed to queue notification; closing connection", "err", errNotificationQueueOverflow, "capacity", cap(c.notificationQueue), "queued", len(c.notificationQueue))
+				c.shutdownReceive(errNotificationQueueOverflow)
+				return
+			}
 		default:
 			c.loggerOrDefault().Error("received message with neither id nor method", "raw", string(line))
 		}
 	}
 
 	cause := errors.New("peer connection closed")
+	if err := scanner.Err(); err != nil {
+		cause = err
+	}
+	c.shutdownReceive(cause)
+}
+
+func (c *Connection) shutdownReceive(cause error) {
+	if cause == nil {
+		cause = errors.New("connection closed")
+	}
 
 	// First, signal disconnect to callers waiting on responses.
 	c.cancel(cause)
@@ -150,7 +171,7 @@ func (c *Connection) receive() {
 	// Then close the notification queue so already-received messages can drain.
 	// IMPORTANT: Do not block this receive goroutine waiting for the drain to complete;
 	// notification handlers may legitimately block until their context is canceled.
-	c.notificationQueue.close()
+	close(c.notificationQueue)
 
 	// Cancel inboundCtx after notifications finish, but ensure we don't leak forever if a
 	// handler blocks waiting for cancellation.
@@ -167,17 +188,13 @@ func (c *Connection) receive() {
 		c.inboundCancel(cause)
 	}()
 
-	c.loggerOrDefault().Info("peer connection closed")
+	c.loggerOrDefault().Info("connection closed", "cause", cause.Error())
 }
 
 // processNotifications processes notifications sequentially to maintain order.
 // It terminates when notificationQueue is closed (e.g. on disconnect in receive()).
 func (c *Connection) processNotifications() {
-	for {
-		msg, ok := c.notificationQueue.pop()
-		if !ok {
-			return
-		}
+	for msg := range c.notificationQueue {
 		c.handleInbound(msg)
 		c.notificationWg.Done()
 	}
@@ -225,6 +242,10 @@ func (c *Connection) handleInbound(req *anyMessage) {
 	if req.ID == nil {
 		// Notification: no response is sent; log handler errors to surface decode failures.
 		if err != nil {
+			// Per ACP, unknown extension notifications should be ignored.
+			if err.Code == -32601 && strings.HasPrefix(req.Method, "_") {
+				return
+			}
 			c.loggerOrDefault().Error("failed to handle notification", "method", req.Method, "err", err)
 		}
 		return

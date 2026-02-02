@@ -43,7 +43,10 @@ func splitCamelCase(s string) []string {
 
 // generateNestedTypeName applies multiple heuristics to create idiomatic nested type names
 // while guaranteeing stability (name depends only on parent, field, and collision check).
-// Panics if a collision is detected to catch codegen bugs early.
+//
+// If a collision is detected (e.g. the schema already defines a type with the same name we
+// would otherwise generate), fall back to a deterministic suffixed name. Panics only if it
+// cannot find a unique name (which would indicate a codegen bug).
 func generateNestedTypeName(parentName, rawFieldName string, usedNames map[string]bool) string {
 	// Heuristic 1: Ensure field name is properly capitalized first
 	fieldName := util.ToExportedField(rawFieldName)
@@ -87,13 +90,25 @@ func generateNestedTypeName(parentName, rawFieldName string, usedNames map[strin
 
 	// Heuristic 4: Fall back to full concatenation
 	fullName := parentName + fieldName
-	if usedNames[fullName] {
-		// DEFENSIVE PROGRAMMING: This should never happen if we're tracking names correctly.
-		// If it does, it indicates a bug in the codegen logic.
-		panic(fmt.Sprintf("type name collision detected: %q already exists (parent: %q, field: %q)",
-			fullName, parentName, rawFieldName))
+	if !usedNames[fullName] {
+		return fullName
 	}
-	return fullName
+
+	// Collision: this can happen when the schema already defines a top-level type with the
+	// same name as an inline property we'd otherwise generate.
+	base := fullName + "Inline"
+	if !usedNames[base] {
+		return base
+	}
+	for i := 2; i < 1000; i++ {
+		candidate := fmt.Sprintf("%s%d", base, i)
+		if !usedNames[candidate] {
+			return candidate
+		}
+	}
+
+	// DEFENSIVE PROGRAMMING: If we get here, something is deeply wrong with name tracking.
+	panic(fmt.Sprintf("unable to generate unique nested type name (parent: %q, field: %q)", parentName, rawFieldName))
 }
 
 // emitDocComment emits a multi-line doc comment for the given description.
@@ -179,11 +194,11 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 			}
 			f.Line()
 		case len(def.AnyOf) > 0:
-			emitUnion(f, name, def, def.AnyOf, false, usedTypeNames)
+			emitUnion(f, name, schema, def, def.AnyOf, false, usedTypeNames)
 		case len(def.OneOf) > 0 && !isStringConstUnion(def):
 			// Generic union generation for non-enum oneOf
 			// Use the same implementation, but require exactly one variant
-			emitUnion(f, name, def, def.OneOf, true, usedTypeNames)
+			emitUnion(f, name, schema, def, def.OneOf, true, usedTypeNames)
 		case ir.PrimaryType(def) == "object" && len(def.Properties) > 0:
 			st := []Code{}
 			req := map[string]struct{}{}
@@ -610,10 +625,114 @@ func includesNull(d *load.Definition) bool {
 	return false
 }
 
+// expandAllOf merges JSON Schema allOf nodes into a shallow composite definition.
+//
+// ACP's schema frequently uses `allOf: [{"$ref": "#/$defs/Type"}]` so a property or union
+// variant can attach local metadata (description/default/const constraints) while reusing
+// a referenced shape.
+//
+// For codegen purposes we approximate allOf by merging object properties + required lists.
+// We intentionally do not attempt to resolve semantic constraints beyond that.
+func expandAllOf(schema *load.Schema, d *load.Definition) *load.Definition {
+	if d == nil || len(d.AllOf) == 0 {
+		return d
+	}
+
+	merged := *d
+	// Avoid re-processing in recursive calls.
+	merged.AllOf = nil
+
+	if d.Properties != nil {
+		merged.Properties = make(map[string]*load.Definition, len(d.Properties))
+		for k, v := range d.Properties {
+			merged.Properties[k] = v
+		}
+	}
+	if d.Required != nil {
+		merged.Required = append([]string(nil), d.Required...)
+	}
+
+	reqSet := map[string]struct{}{}
+	for _, r := range merged.Required {
+		reqSet[r] = struct{}{}
+	}
+
+	for _, part := range d.AllOf {
+		if part == nil {
+			continue
+		}
+		resolved := part
+		if part.Ref != "" && schema != nil && strings.HasPrefix(part.Ref, "#/$defs/") {
+			if def := schema.Defs[part.Ref[len("#/$defs/"):]]; def != nil {
+				resolved = def
+			}
+		}
+		resolved = expandAllOf(schema, resolved)
+
+		if merged.Type == nil && resolved.Type != nil {
+			merged.Type = resolved.Type
+		}
+		if merged.Items == nil && resolved.Items != nil {
+			merged.Items = resolved.Items
+		}
+		if merged.Ref == "" && resolved.Ref != "" {
+			merged.Ref = resolved.Ref
+		}
+		if len(merged.Enum) == 0 && len(resolved.Enum) > 0 {
+			merged.Enum = resolved.Enum
+		}
+		if len(merged.AnyOf) == 0 && len(resolved.AnyOf) > 0 {
+			merged.AnyOf = resolved.AnyOf
+		}
+		if len(merged.OneOf) == 0 && len(resolved.OneOf) > 0 {
+			merged.OneOf = resolved.OneOf
+		}
+
+		if len(resolved.Properties) > 0 {
+			if merged.Properties == nil {
+				merged.Properties = make(map[string]*load.Definition)
+			}
+			for k, v := range resolved.Properties {
+				if _, ok := merged.Properties[k]; ok {
+					continue
+				}
+				merged.Properties[k] = v
+			}
+		}
+		for _, r := range resolved.Required {
+			if _, ok := reqSet[r]; ok {
+				continue
+			}
+			merged.Required = append(merged.Required, r)
+			reqSet[r] = struct{}{}
+		}
+	}
+
+	return &merged
+}
+
 func jenTypeFor(d *load.Definition) Code {
 	if d == nil {
 		return Any()
 	}
+
+	// JSON Schema 2020-12 commonly uses allOf wrappers around a single $ref so a property can
+	// attach local metadata like descriptions and defaults.
+	if len(d.AllOf) > 0 && d.Ref == "" {
+		// Prefer a $ref element when present.
+		for _, e := range d.AllOf {
+			if e != nil && e.Ref != "" {
+				return jenTypeFor(e)
+			}
+		}
+		// Otherwise fall back to the first non-nil schema.
+		for _, e := range d.AllOf {
+			if e != nil {
+				return jenTypeFor(e)
+			}
+		}
+	}
+
 	if d.Ref != "" {
 		if strings.HasPrefix(d.Ref, "#/$defs/") {
 			return Id(d.Ref[len("#/$defs/"):])
@@ -717,7 +836,7 @@ func jenTypeForOptional(d *load.Definition) Code {
 // emitAvailableCommandInputJen generates a concrete variant type for anyOf and a thin union wrapper
 // that supports JSON unmarshal by probing object shape. Currently the schema defines one variant
 // (title: UnstructuredCommandInput) with a required 'hint' field.
-func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.Definition, exactlyOne bool, usedTypeNames map[string]bool) {
+func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Definition, defs []*load.Definition, exactlyOne bool, usedTypeNames map[string]bool) {
 	type variantInfo struct {
 		fieldName   string
 		typeName    string
@@ -741,6 +860,7 @@ func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.De
 			if v == nil {
 				continue
 			}
+			v = expandAllOf(schema, v)
 			for k, pd := range v.Properties {
 				if pd != nil && pd.Const != nil {
 					discKey = k
@@ -756,6 +876,23 @@ func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.De
 		if v == nil {
 			continue
 		}
+		ref := v.Ref
+		// If this is an allOf wrapper around a single $ref with no additional structure, treat it
+		// as a $ref variant (keeps types stable and avoids duplicate structs).
+		if ref == "" &&
+			v.Type == nil &&
+			len(v.Properties) == 0 &&
+			len(v.Required) == 0 &&
+			len(v.Enum) == 0 &&
+			v.Items == nil &&
+			len(v.AnyOf) == 0 &&
+			len(v.OneOf) == 0 &&
+			len(v.AllOf) == 1 &&
+			v.AllOf[0] != nil &&
+			v.AllOf[0].Ref != "" {
+			ref = v.AllOf[0].Ref
+		}
+		v = expandAllOf(schema, v)
 		// Detect null-only variant
 		isNull := false
 		if s, ok := v.Type.(string); ok && s == "null" {
@@ -763,8 +900,8 @@ func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.De
 		}
 		// Determine type name: prefer $ref target name when present; do not treat Title as a rename for $ref.
 		tname := ""
-		if v.Ref != "" && strings.HasPrefix(v.Ref, "#/$defs/") {
-			tname = v.Ref[len("#/$defs/"):]
+		if ref != "" && strings.HasPrefix(ref, "#/$defs/") {
+			tname = ref[len("#/$defs/"):]
 		} else if v.Title != "" {
 			// Scope inline variant titles to parent union name with smart naming
 			tname = generateNestedTypeName(name, v.Title, usedTypeNames)
@@ -825,7 +962,7 @@ func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.De
 		isObj := len(v.Properties) > 0
 		// Skip phantom variants that have neither $ref nor object shape nor null nor title
 		// (but allow title-only variants like ExtMethodRequest to generate as empty structs)
-		if !isObj && v.Ref == "" && !isNull && v.Title == "" {
+		if !isObj && ref == "" && !isNull && v.Title == "" {
 			continue
 		}
 		// collect const properties (e.g., type, outcome)
@@ -838,7 +975,7 @@ func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.De
 			}
 		}
 		// Emit struct for inline variants (non-$ref)
-		if (isObj || isNull || v.Title != "") && v.Ref == "" {
+		if (isObj || isNull || v.Title != "") && ref == "" {
 			// DEFENSIVE PROGRAMMING: Verify tname is registered before emitting
 			if !usedTypeNames[tname] {
 				panic(fmt.Sprintf("BUG: attempting to emit unregistered type: %q (parent union: %q)", tname, name))
@@ -958,21 +1095,6 @@ func emitUnion(f *File, name string, parentDef *load.Definition, defs []*load.De
 					}
 				})
 			})
-		}
-		// Special-case: EmbeddedResourceResource variants distinguished by keys
-		if name == "EmbeddedResourceResource" {
-			g.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit("text")), Id("ok")).Block(
-				Var().Id("v").Id("TextResourceContents"),
-				If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
-				Id("u").Dot("TextResourceContents").Op("=").Op("&").Id("v"),
-				Return(Nil()),
-			)
-			g.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit("blob")), Id("ok")).Block(
-				Var().Id("v").Id("BlobResourceContents"),
-				If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
-				Id("u").Dot("BlobResourceContents").Op("=").Op("&").Id("v"),
-				Return(Nil()),
-			)
 		}
 		// required-key match
 		for _, vi := range variants {

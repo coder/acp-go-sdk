@@ -16,7 +16,7 @@ type ClientSideConnection struct {
 func NewClientSideConnection(client Client, peerInput io.Writer, peerOutput io.Reader) *ClientSideConnection {
 	csc := &ClientSideConnection{}
 	csc.client = client
-	csc.conn = NewConnection(csc.handle, peerInput, peerOutput)
+	csc.conn = NewConnection(csc.handleWithExtensions, peerInput, peerOutput)
 	return csc
 }
 

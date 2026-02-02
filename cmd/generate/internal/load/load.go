@@ -39,6 +39,7 @@ type Definition struct {
 	Ref         string                 `json:"$ref"`
 	AnyOf       []*Definition          `json:"anyOf"`
 	OneOf       []*Definition          `json:"oneOf"`
+	AllOf       []*Definition          `json:"allOf"`
 	DocsIgnore  bool                   `json:"x-docs-ignore"`
 	Title       string                 `json:"title"`
 	Const       any                    `json:"const"`

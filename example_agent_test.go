@@ -57,7 +57,7 @@ func (a *agentExample) Prompt(ctx context.Context, p PromptRequest) (PromptRespo
 	// Ask the client for permission to proceed with the change.
 	resp, _ := a.conn.RequestPermission(ctx, RequestPermissionRequest{
 		SessionId: p.SessionId,
-		ToolCall: RequestPermissionToolCall{
+		ToolCall: ToolCallUpdate{
 			ToolCallId: ToolCallId("call_1"),
 			Title:      Ptr("Modifying configuration"),
 			Kind:       Ptr(ToolKindEdit),

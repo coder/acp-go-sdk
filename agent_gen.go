@@ -121,23 +121,6 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return resp, nil
-	case AgentMethodSessionSetModel:
-		var p SetSessionModelRequest
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		exp, ok := a.agent.(AgentExperimental)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.SetSessionModel(ctx, p)
-		if err != nil {
-			return nil, toReqErr(err)
-		}
-		return resp, nil
 	default:
 		return nil, NewMethodNotFound(method)
 	}

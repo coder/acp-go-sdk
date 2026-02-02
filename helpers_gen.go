@@ -8,9 +8,6 @@ func NewRequestPermissionOutcomeCancelled() RequestPermissionOutcome {
 }
 
 // NewRequestPermissionOutcomeSelected constructs a RequestPermissionOutcome using the 'selected' variant.
-func NewRequestPermissionOutcomeSelected(optionId PermissionOptionId) RequestPermissionOutcome {
-	return RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{
-		OptionId: optionId,
-		Outcome:  "selected",
-	}}
+func NewRequestPermissionOutcomeSelected() RequestPermissionOutcome {
+	return RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{Outcome: "selected"}}
 }

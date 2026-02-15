@@ -126,6 +126,16 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		}
 		return resp, nil
 	default:
+		if h, ok := c.client.(ClientExtensionHandler); ok {
+			res, err := h.HandleExtension(ctx, method, params)
+			if err != nil {
+				if reqErr, ok := err.(*RequestError); ok {
+					return nil, reqErr
+				}
+				return nil, NewInternalError(err.Error())
+			}
+			return res, nil
+		}
 		return nil, NewMethodNotFound(method)
 	}
 }

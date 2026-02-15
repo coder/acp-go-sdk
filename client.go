@@ -1,6 +1,8 @@
 package acp
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 )
@@ -9,6 +11,11 @@ import (
 type ClientSideConnection struct {
 	conn   *Connection
 	client Client
+}
+
+// ClientExtensionHandler allows clients to handle custom/extension methods that are not part of the standard protocol.
+type ClientExtensionHandler interface {
+	HandleExtension(ctx context.Context, method string, params json.RawMessage) (any, error)
 }
 
 // NewClientSideConnection creates a new client-side connection bound to the

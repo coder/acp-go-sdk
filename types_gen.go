@@ -185,7 +185,7 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u AgentResponse) MarshalJSON() ([]byte, error) {
 	if u.Result != nil {
@@ -342,7 +342,7 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
 	if u.Unstructured != nil {
@@ -561,7 +561,7 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u ClientResponse) MarshalJSON() ([]byte, error) {
 	if u.Result != nil {
@@ -907,7 +907,7 @@ func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u ContentBlock) MarshalJSON() ([]byte, error) {
 	if u.Text != nil {
@@ -1041,7 +1041,7 @@ func (u *ContentBlock) Validate() error {
 	if count != 1 {
 		return errors.New("ContentBlock must have exactly one variant set")
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 
 // A streamed item of content
@@ -1219,7 +1219,7 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 	if u.TextResourceContents != nil {
@@ -1394,7 +1394,7 @@ func (u *ErrorCode) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u ErrorCode) MarshalJSON() ([]byte, error) {
 	if u.ParseError != nil {
@@ -2056,7 +2056,7 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u McpServer) MarshalJSON() ([]byte, error) {
 	if u.Http != nil {
@@ -2566,7 +2566,7 @@ func (u *RequestId) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u RequestId) MarshalJSON() ([]byte, error) {
 	if u.Null != nil {
@@ -2710,7 +2710,7 @@ func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u RequestPermissionOutcome) MarshalJSON() ([]byte, error) {
 	if u.Cancelled != nil {
@@ -2751,7 +2751,7 @@ func (u *RequestPermissionOutcome) Validate() error {
 	if count != 1 {
 		return errors.New("RequestPermissionOutcome must have exactly one variant set")
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 
 // Request for user permission to execute a tool call.
@@ -3348,7 +3348,7 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 	if u.UserMessageChunk != nil {
@@ -3479,7 +3479,7 @@ func (u *SessionUpdate) Validate() error {
 	if count != 1 {
 		return errors.New("SessionUpdate must have exactly one variant set")
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 
 // Request parameters for setting a session mode.
@@ -3830,7 +3830,7 @@ func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u ToolCallContent) MarshalJSON() ([]byte, error) {
 	if u.Content != nil {
@@ -3886,7 +3886,7 @@ func (u *ToolCallContent) Validate() error {
 	if count != 1 {
 		return errors.New("ToolCallContent must have exactly one variant set")
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 
 // Unique identifier for a tool call within a session.
@@ -4300,7 +4300,7 @@ func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u UnstableSessionConfigOption) MarshalJSON() ([]byte, error) {
 	if u.Select != nil {
@@ -4326,7 +4326,7 @@ func (u *UnstableSessionConfigOption) Validate() error {
 	if count != 1 {
 		return errors.New("UnstableSessionConfigOption must have exactly one variant set")
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 
 // **UNSTABLE**
@@ -4365,7 +4365,7 @@ func (u *UnstableSessionConfigOptionCategory) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u UnstableSessionConfigOptionCategory) MarshalJSON() ([]byte, error) {
 	if u.Other != nil {
@@ -4474,7 +4474,7 @@ func (u *UnstableSessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 	}
-	return nil
+	return errors.New("no matching variant for union")
 }
 func (u UnstableSessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 	if u.Ungrouped != nil {

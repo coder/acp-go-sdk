@@ -20,22 +20,32 @@ schema/meta.unstable.json: schema/version
 	@set -e; \
 		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/meta.unstable.json; \
 		tmp=$@.tmp; \
-		if curl -o "$$tmp" --fail -L "$$url"; then \
+		status=$$(curl -sS -L -o "$$tmp" -w '%{http_code}' "$$url") || { rm -f "$$tmp"; exit 1; }; \
+		if [ "$$status" = "200" ]; then \
 			mv "$$tmp" $@; \
-		else \
+		elif [ "$$status" = "404" ]; then \
 			rm -f "$$tmp"; \
 			printf '%s\n' '{"agentMethods":{},"clientMethods":{},"version":1}' > $@; \
+		else \
+			rm -f "$$tmp"; \
+			echo "failed to download $$url (http $$status)" 1>&2; \
+			exit 1; \
 		fi
 
 schema/schema.unstable.json: schema/version
 	@set -e; \
 		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/schema.unstable.json; \
 		tmp=$@.tmp; \
-		if curl -o "$$tmp" --fail -L "$$url"; then \
+		status=$$(curl -sS -L -o "$$tmp" -w '%{http_code}' "$$url") || { rm -f "$$tmp"; exit 1; }; \
+		if [ "$$status" = "200" ]; then \
 			mv "$$tmp" $@; \
-		else \
+		elif [ "$$status" = "404" ]; then \
 			rm -f "$$tmp"; \
 			printf '%s\n' '{"$$defs":{}}' > $@; \
+		else \
+			rm -f "$$tmp"; \
+			echo "failed to download $$url (http $$status)" 1>&2; \
+			exit 1; \
 		fi
 
 README.md: schema/version

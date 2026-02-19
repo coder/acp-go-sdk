@@ -315,7 +315,12 @@ func (c *Connection) sendCancelRequest(idKey string) {
 	default:
 	}
 
-	_ = c.SendNotification(context.Background(), "$/cancel_request", cancelRequestParams{RequestID: json.RawMessage([]byte(idKey))})
+	requestID := json.RawMessage(append([]byte(nil), idKey...))
+	go func() {
+		if err := c.SendNotification(context.Background(), "$/cancel_request", cancelRequestParams{RequestID: requestID}); err != nil {
+			c.loggerOrDefault().Debug("failed to send $/cancel_request", "err", err)
+		}
+	}()
 }
 
 func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, idKey string) (anyMessage, error) {

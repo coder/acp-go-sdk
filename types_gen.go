@@ -171,6 +171,9 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 			return err
 		}
 	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
 	{
 		var v AgentResult
 		if json.Unmarshal(b, &v) == nil {
@@ -334,6 +337,9 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
 		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
 	}
 	{
 		var v UnstructuredCommandInput
@@ -546,6 +552,9 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
 		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
 	}
 	{
 		var v ClientResult
@@ -871,6 +880,9 @@ func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
 		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
 	}
 	{
 		var v ContentBlockText
@@ -1205,6 +1217,9 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 			return err
 		}
 	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
 	{
 		var v TextResourceContents
 		if json.Unmarshal(b, &v) == nil {
@@ -1337,6 +1352,9 @@ func (u *ErrorCode) UnmarshalJSON(b []byte) error {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
 		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
 	}
 	{
 		var v ErrorCodeParseError
@@ -2043,6 +2061,9 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 			return err
 		}
 	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
 	{
 		var v McpServerHttpInline
 		if json.Unmarshal(b, &v) == nil {
@@ -2553,6 +2574,9 @@ func (u *RequestId) UnmarshalJSON(b []byte) error {
 			return err
 		}
 	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
 	{
 		var v RequestIdNull
 		if json.Unmarshal(b, &v) == nil {
@@ -2705,6 +2729,9 @@ func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
 		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
 	}
 	{
 		var v RequestPermissionOutcomeCancelled
@@ -3302,6 +3329,9 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 			return err
 		}
 	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
 	{
 		var v SessionUpdateUserMessageChunk
 		if json.Unmarshal(b, &v) == nil {
@@ -3819,6 +3849,9 @@ func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 			return err
 		}
 	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
 	{
 		var v ToolCallContentContent
 		if json.Unmarshal(b, &v) == nil {
@@ -4303,6 +4336,9 @@ func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
 			return err
 		}
 	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
 	{
 		var v UnstableSessionConfigOptionSelect
 		if json.Unmarshal(b, &v) == nil {
@@ -4367,6 +4403,9 @@ func (u *UnstableSessionConfigOptionCategory) UnmarshalJSON(b []byte) error {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
 		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
 	}
 	{
 		var v UnstableSessionConfigOptionCategoryOther
@@ -4469,6 +4508,50 @@ func (u *UnstableSessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
+		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+		{
+			var v UnstableSessionConfigSelectOptionsUngrouped
+			var match bool = true
+			for _, elem := range arr {
+				if _, ok := elem["name"]; !ok {
+					match = false
+				}
+				if _, ok := elem["value"]; !ok {
+					match = false
+				}
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Ungrouped = &v
+				return nil
+			}
+		}
+		{
+			var v UnstableSessionConfigSelectOptionsGrouped
+			var match bool = true
+			for _, elem := range arr {
+				if _, ok := elem["group"]; !ok {
+					match = false
+				}
+				if _, ok := elem["name"]; !ok {
+					match = false
+				}
+				if _, ok := elem["options"]; !ok {
+					match = false
+				}
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Grouped = &v
+				return nil
+			}
 		}
 	}
 	{

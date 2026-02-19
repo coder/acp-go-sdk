@@ -838,14 +838,16 @@ func jenTypeForOptional(d *load.Definition) Code {
 // (title: UnstructuredCommandInput) with a required 'hint' field.
 func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Definition, defs []*load.Definition, exactlyOne bool, usedTypeNames map[string]bool) {
 	type variantInfo struct {
-		fieldName   string
-		typeName    string
-		required    []string
-		isObject    bool
-		discValue   string
-		constPairs  [][2]string
-		isNull      bool
-		description string
+		fieldName         string
+		typeName          string
+		required          []string
+		isObject          bool
+		isArray           bool
+		arrayItemRequired []string
+		discValue         string
+		constPairs        [][2]string
+		isNull            bool
+		description       string
 	}
 	variants := []variantInfo{}
 	discKey := ""
@@ -960,6 +962,21 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			fieldName = util.ToExportedField(tname)
 		}
 		isObj := len(v.Properties) > 0
+		isArray := ir.PrimaryType(v) == "array"
+		arrayItemRequired := []string{}
+		if isArray && v.Items != nil {
+			item := v.Items
+			if item.Ref != "" && strings.HasPrefix(item.Ref, "#/$defs/") {
+				if d := schema.Defs[item.Ref[len("#/$defs/"):]]; d != nil {
+					item = d
+				}
+			}
+			item = expandAllOf(schema, item)
+			if ir.PrimaryType(item) == "object" && len(item.Required) > 0 {
+				arrayItemRequired = append(arrayItemRequired, item.Required...)
+				sort.Strings(arrayItemRequired)
+			}
+		}
 		// Skip phantom variants that have neither $ref nor object shape nor null nor title
 		// (but allow title-only variants like ExtMethodRequest to generate as empty structs)
 		if !isObj && ref == "" && !isNull && v.Title == "" {
@@ -1038,14 +1055,16 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 		skipStructEmit:
 		}
 		variants = append(variants, variantInfo{
-			fieldName:   fieldName,
-			typeName:    tname,
-			required:    v.Required,
-			isObject:    isObj,
-			discValue:   dv,
-			constPairs:  consts,
-			isNull:      isNull,
-			description: v.Description,
+			fieldName:         fieldName,
+			typeName:          tname,
+			required:          v.Required,
+			isObject:          isObj,
+			isArray:           isArray,
+			arrayItemRequired: arrayItemRequired,
+			discValue:         dv,
+			constPairs:        consts,
+			isNull:            isNull,
+			description:       v.Description,
 		})
 	}
 	// wrapper
@@ -1121,6 +1140,29 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			// Not an object (e.g., primitive union variant) or invalid JSON.
 			If(List(Id("_"), Id("ok")).Op(":=").Id("err").Assert(Op("*").Qual("encoding/json", "UnmarshalTypeError")), Op("!").Id("ok")).Block(Return(Id("err"))),
 		)
+		// For array variants with required keys on object items, try key-based matching first.
+		g.Var().Id("arr").Index().Map(String()).Qual("encoding/json", "RawMessage")
+		g.If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("arr")).Op("==").Nil()).BlockFunc(func(arr *Group) {
+			for _, vi := range variants {
+				if !vi.isArray || len(vi.arrayItemRequired) == 0 {
+					continue
+				}
+				arr.BlockFunc(func(h *Group) {
+					h.Var().Id("v").Id(vi.typeName)
+					h.Var().Id("match").Bool().Op("=").Lit(true)
+					h.For(List(Id("_"), Id("elem")).Op(":=").Range().Id("arr")).BlockFunc(func(loop *Group) {
+						for _, rk := range vi.arrayItemRequired {
+							loop.If(List(Id("_"), Id("ok")).Op(":=").Id("elem").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+						}
+					})
+					h.If(Id("match")).Block(
+						If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
+						Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
+						Return(Nil()),
+					)
+				})
+			}
+		})
 		// fallback: try decode sequentially
 		for _, vi := range variants {
 			g.Block(

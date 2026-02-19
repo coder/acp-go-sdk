@@ -75,7 +75,7 @@ func toReqErr(err error) *RequestError {
 	if re, ok := err.(*RequestError); ok {
 		return re
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) {
 		return NewRequestCancelled(map[string]any{"error": err.Error()})
 	}
 	return NewInternalError(map[string]any{"error": err.Error()})

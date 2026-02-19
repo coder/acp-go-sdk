@@ -81,6 +81,70 @@ func TestConnectionInboundCancelRequest_CancelsHandler(t *testing.T) {
 	}
 }
 
+func TestConnectionInboundCancelRequest_CanonicalizesEquivalentIDs(t *testing.T) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	defer func() {
+		_ = inW.Close()
+		_ = outW.Close()
+		_ = inR.Close()
+		_ = outR.Close()
+	}()
+
+	started := make(chan struct{})
+	c := NewConnection(func(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
+		close(started)
+		<-ctx.Done()
+		return nil, toReqErr(ctx.Err())
+	}, outW, inR)
+	_ = c
+
+	lines := make(chan []byte, 10)
+	go func() {
+		scanner := bufio.NewScanner(outR)
+		for scanner.Scan() {
+			b := append([]byte(nil), scanner.Bytes()...)
+			lines <- b
+		}
+		close(lines)
+	}()
+
+	// Request id is encoded as a unicode escape sequence; cancel uses the canonical form.
+	_, err := inW.Write([]byte(`{"jsonrpc":"2.0","id":"\u0061","method":"test","params":{}}` + "\n"))
+	if err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not start")
+	}
+
+	_, err = inW.Write([]byte(`{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":"a"}}` + "\n"))
+	if err != nil {
+		t.Fatalf("write cancel notification: %v", err)
+	}
+
+	var raw []byte
+	select {
+	case raw = <-lines:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for response")
+	}
+
+	var msg anyMessage
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if msg.Error == nil {
+		t.Fatalf("expected error response, got: %s", string(raw))
+	}
+	if msg.Error.Code != -32800 {
+		t.Fatalf("expected error code -32800, got %d (%s)", msg.Error.Code, msg.Error.Message)
+	}
+}
+
 func TestConnectionInboundCancelRequest_ImmediateCancelNoRace(t *testing.T) {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()

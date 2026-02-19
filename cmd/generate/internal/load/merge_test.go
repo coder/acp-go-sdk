@@ -54,6 +54,29 @@ func TestMergeStableAndUnstable(t *testing.T) {
 		}
 	})
 
+	t.Run("allows omitted unstable version", func(t *testing.T) {
+		stableMeta := &Meta{Version: 2}
+		stableSchema := &Schema{Defs: map[string]*Definition{}}
+
+		unstableMeta := &Meta{AgentMethods: map[string]string{"foo": "unstable/foo"}}
+		unstableSchema := &Schema{Defs: map[string]*Definition{
+			"FooRequest": {
+				Type:    "object",
+				XMethod: "unstable/foo",
+				XSide:   "agent",
+			},
+		}}
+
+		combinedMeta, _ := mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
+
+		if combinedMeta.Version != stableMeta.Version {
+			t.Fatalf("expected merged version %d, got %d", stableMeta.Version, combinedMeta.Version)
+		}
+		if combinedMeta.AgentMethods["foo"] != "unstable/foo" {
+			t.Fatalf("combined meta missing unstable method: got %q", combinedMeta.AgentMethods["foo"])
+		}
+	})
+
 	t.Run("transitive ref rewriting when referenced type is new or changed", func(t *testing.T) {
 		stableMeta := &Meta{Version: 1}
 		stableSchema := &Schema{Defs: map[string]*Definition{

@@ -1234,7 +1234,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			g.If(Id("count").Op("!=").Lit(1)).Block(
 				Return(Qual("errors", "New").Call(Lit(name + " must have exactly one variant set"))),
 			)
-			g.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
+			g.Return(Nil())
 		})
 		f.Line()
 	}

@@ -39,6 +39,7 @@ type Connection struct {
 	handler MethodHandler
 
 	mu       sync.Mutex
+	writeMu  sync.Mutex
 	nextID   atomic.Uint64
 	pending  map[string]*pendingResponse
 	inflight map[string]context.CancelCauseFunc
@@ -229,14 +230,15 @@ func (c *Connection) handleInbound(ctx context.Context, req *anyMessage) {
 }
 
 func (c *Connection) sendMessage(msg anyMessage) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	msg.JSONRPC = "2.0"
 	b, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
 	b = append(b, '\n')
+
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	_, err = c.w.Write(b)
 	return err
 }

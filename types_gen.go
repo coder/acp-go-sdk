@@ -1041,7 +1041,7 @@ func (u *ContentBlock) Validate() error {
 	if count != 1 {
 		return errors.New("ContentBlock must have exactly one variant set")
 	}
-	return errors.New("no matching variant for union")
+	return nil
 }
 
 // A streamed item of content
@@ -2751,7 +2751,7 @@ func (u *RequestPermissionOutcome) Validate() error {
 	if count != 1 {
 		return errors.New("RequestPermissionOutcome must have exactly one variant set")
 	}
-	return errors.New("no matching variant for union")
+	return nil
 }
 
 // Request for user permission to execute a tool call.
@@ -3479,7 +3479,7 @@ func (u *SessionUpdate) Validate() error {
 	if count != 1 {
 		return errors.New("SessionUpdate must have exactly one variant set")
 	}
-	return errors.New("no matching variant for union")
+	return nil
 }
 
 // Request parameters for setting a session mode.
@@ -3886,7 +3886,7 @@ func (u *ToolCallContent) Validate() error {
 	if count != 1 {
 		return errors.New("ToolCallContent must have exactly one variant set")
 	}
-	return errors.New("no matching variant for union")
+	return nil
 }
 
 // Unique identifier for a tool call within a session.
@@ -4326,7 +4326,7 @@ func (u *UnstableSessionConfigOption) Validate() error {
 	if count != 1 {
 		return errors.New("UnstableSessionConfigOption must have exactly one variant set")
 	}
-	return errors.New("no matching variant for union")
+	return nil
 }
 
 // **UNSTABLE**

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -396,5 +397,43 @@ func TestConnectionOutboundCancelRequest_DoesNotBlockWhenPeerStopsReading(t *tes
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("SendRequest blocked on cancel notification write")
+	}
+}
+
+func TestConnectionWaitForResponse_PeerDisconnectWinsOverDerivedContextCancel(t *testing.T) {
+	const iterations = 64
+
+	for i := 0; i < iterations; i++ {
+		baseCtx, baseCancel := context.WithCancelCause(context.Background())
+		c := &Connection{
+			pending: make(map[string]*pendingResponse),
+			ctx:     baseCtx,
+			cancel:  baseCancel,
+		}
+
+		idKey := fmt.Sprintf("id-%d", i)
+		pr := &pendingResponse{ch: make(chan anyMessage)}
+		c.pending[idKey] = pr
+
+		requestCtx, requestCancel := context.WithCancel(baseCtx)
+		baseCancel(errors.New("peer closed"))
+
+		_, err := c.waitForResponse(requestCtx, pr, idKey)
+		requestCancel()
+
+		if err == nil {
+			t.Fatalf("iteration %d: expected error", i)
+		}
+		re, ok := err.(*RequestError)
+		if !ok {
+			t.Fatalf("iteration %d: expected *RequestError, got %T (%v)", i, err, err)
+		}
+		if re.Code != -32603 {
+			t.Fatalf("iteration %d: expected disconnect error code -32603, got %d (%s)", i, re.Code, re.Message)
+		}
+
+		if _, ok := c.pending[idKey]; ok {
+			t.Fatalf("iteration %d: pending request %q was not cleaned up", i, idKey)
+		}
 	}
 }

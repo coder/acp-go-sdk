@@ -405,10 +405,21 @@ func (c *Connection) sendCancelRequest(idKey string) {
 }
 
 func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, idKey string) (anyMessage, error) {
+	peerDisconnectedErr := NewInternalError(map[string]any{"error": "peer disconnected before response"})
+
 	select {
 	case resp := <-pr.ch:
 		return resp, nil
 	case <-ctx.Done():
+		// If the connection dropped at the same time, prefer reporting peer disconnect
+		// and avoid queueing a best-effort cancel notification to a dead peer.
+		select {
+		case <-c.Done():
+			c.cleanupPending(idKey)
+			return anyMessage{}, peerDisconnectedErr
+		default:
+		}
+
 		c.sendCancelRequest(idKey)
 		c.cleanupPending(idKey)
 
@@ -421,7 +432,8 @@ func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, i
 		}
 		return anyMessage{}, NewRequestCancelled(nil)
 	case <-c.Done():
-		return anyMessage{}, NewInternalError(map[string]any{"error": "peer disconnected before response"})
+		c.cleanupPending(idKey)
+		return anyMessage{}, peerDisconnectedErr
 	}
 }
 

@@ -146,6 +146,70 @@ func TestConnectionInboundCancelRequest_CanonicalizesEquivalentIDs(t *testing.T)
 	}
 }
 
+func TestConnectionInboundCancelRequest_CanonicalizesEquivalentNumericIDs(t *testing.T) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	defer func() {
+		_ = inW.Close()
+		_ = outW.Close()
+		_ = inR.Close()
+		_ = outR.Close()
+	}()
+
+	started := make(chan struct{})
+	c := NewConnection(func(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
+		close(started)
+		<-ctx.Done()
+		return nil, toReqErr(ctx.Err())
+	}, outW, inR)
+	_ = c
+
+	lines := make(chan []byte, 10)
+	go func() {
+		scanner := bufio.NewScanner(outR)
+		for scanner.Scan() {
+			b := append([]byte(nil), scanner.Bytes()...)
+			lines <- b
+		}
+		close(lines)
+	}()
+
+	// Request id uses exponent notation; cancel uses normalized integer notation.
+	_, err := inW.Write([]byte(`{"jsonrpc":"2.0","id":1e0,"method":"test","params":{}}` + "\n"))
+	if err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not start")
+	}
+
+	_, err = inW.Write([]byte(`{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":1}}` + "\n"))
+	if err != nil {
+		t.Fatalf("write cancel notification: %v", err)
+	}
+
+	var raw []byte
+	select {
+	case raw = <-lines:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for response")
+	}
+
+	var msg anyMessage
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if msg.Error == nil {
+		t.Fatalf("expected error response, got: %s", string(raw))
+	}
+	if msg.Error.Code != -32800 {
+		t.Fatalf("expected error code -32800, got %d (%s)", msg.Error.Code, msg.Error.Message)
+	}
+}
+
 func TestCanonicalJSONRPCIDKey_LargeNumericIDsDoNotCollide(t *testing.T) {
 	id1 := json.RawMessage(`9007199254740992`)
 	id2 := json.RawMessage(`9007199254740993`)
@@ -167,6 +231,76 @@ func TestCanonicalJSONRPCIDKey_LargeNumericIDsDoNotCollide(t *testing.T) {
 	}
 	if key1 == key2 {
 		t.Fatalf("canonical keys collided: id1=%q id2=%q key=%q", id1, id2, key1)
+	}
+}
+
+func TestCanonicalJSONRPCIDKey_NumericRepresentationsMatch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		a    json.RawMessage
+		b    json.RawMessage
+	}{
+		{name: "integer exponent", a: json.RawMessage(`1`), b: json.RawMessage(`1e0`)},
+		{name: "integer decimal", a: json.RawMessage(`1`), b: json.RawMessage(`1.0`)},
+		{name: "fraction exponent", a: json.RawMessage(`0.1`), b: json.RawMessage(`1e-1`)},
+		{name: "negative zero", a: json.RawMessage(`-0`), b: json.RawMessage(`0`)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			keyA, err := canonicalJSONRPCIDKey(tc.a)
+			if err != nil {
+				t.Fatalf("canonicalize a: %v", err)
+			}
+			keyB, err := canonicalJSONRPCIDKey(tc.b)
+			if err != nil {
+				t.Fatalf("canonicalize b: %v", err)
+			}
+			if keyA != keyB {
+				t.Fatalf("expected equivalent numeric ids to match: a=%q b=%q keyA=%q keyB=%q", tc.a, tc.b, keyA, keyB)
+			}
+		})
+	}
+}
+
+func TestConnectionResponseID_CanonicalizesEquivalentNumericRepresentations(t *testing.T) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	defer func() {
+		_ = inW.Close()
+		_ = outW.Close()
+		_ = inR.Close()
+		_ = outR.Close()
+	}()
+
+	c := NewConnection(nil, outW, inR)
+
+	responderErr := make(chan error, 1)
+	go func() {
+		br := bufio.NewReader(outR)
+		if _, err := br.ReadBytes('\n'); err != nil {
+			responderErr <- fmt.Errorf("read outbound request: %w", err)
+			return
+		}
+		if _, err := inW.Write([]byte(`{"jsonrpc":"2.0","id":1e0,"result":{"ok":true}}` + "\n")); err != nil {
+			responderErr <- fmt.Errorf("write response: %w", err)
+			return
+		}
+		responderErr <- nil
+	}()
+
+	result, err := SendRequest[map[string]bool](c, context.Background(), "test/method", map[string]any{"x": 1})
+	if err != nil {
+		t.Fatalf("SendRequest returned error: %v", err)
+	}
+	if !result["ok"] {
+		t.Fatalf("unexpected response payload: %#v", result)
+	}
+
+	if err := <-responderErr; err != nil {
+		t.Fatal(err)
 	}
 }
 

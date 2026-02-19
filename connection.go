@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math/big"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -111,6 +112,12 @@ func (c *Connection) loggerOrDefault() *slog.Logger {
 	return slog.Default()
 }
 
+var (
+	bigIntOne  = big.NewInt(1)
+	bigIntTwo  = big.NewInt(2)
+	bigIntFive = big.NewInt(5)
+)
+
 func canonicalJSONRPCIDKey(raw json.RawMessage) (string, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
@@ -133,18 +140,115 @@ func canonicalJSONRPCIDKey(raw json.RawMessage) (string, error) {
 		return "", err
 	}
 
-	switch id.(type) {
-	case nil, string, json.Number:
-		// Valid JSON-RPC id types.
+	switch v := id.(type) {
+	case nil:
+		return "null", nil
+	case string:
+		canon, err := json.Marshal(v)
+		if err != nil {
+			return "", err
+		}
+		return string(canon), nil
+	case json.Number:
+		return canonicalJSONRPCNumericIDKey(v)
 	default:
 		return "", errors.New("json-rpc id must be string, number, or null")
 	}
+}
 
-	canon, err := json.Marshal(id)
-	if err != nil {
-		return "", err
+func canonicalJSONRPCNumericIDKey(v json.Number) (string, error) {
+	raw := strings.TrimSpace(v.String())
+	if raw == "" {
+		return "", errors.New("empty json-rpc numeric id")
 	}
-	return string(canon), nil
+
+	r := new(big.Rat)
+	if _, ok := r.SetString(raw); !ok {
+		return "", errors.New("invalid json-rpc numeric id")
+	}
+
+	return canonicalFiniteDecimal(r), nil
+}
+
+func canonicalFiniteDecimal(r *big.Rat) string {
+	if r == nil || r.Sign() == 0 {
+		return "0"
+	}
+	if r.IsInt() {
+		return r.Num().String()
+	}
+
+	num := new(big.Int).Set(r.Num())
+	den := new(big.Int).Set(r.Denom())
+	twos := factorOut(den, bigIntTwo)
+	fives := factorOut(den, bigIntFive)
+
+	// JSON numbers are decimal, so denominator should fully factor into 2s and 5s.
+	// Fall back to a precise rational string if that invariant is violated.
+	if den.Cmp(bigIntOne) != 0 {
+		return r.RatString()
+	}
+
+	scale := twos
+	if fives > scale {
+		scale = fives
+	}
+
+	if twos < scale {
+		num.Mul(num, intPow(bigIntTwo, scale-twos))
+	}
+	if fives < scale {
+		num.Mul(num, intPow(bigIntFive, scale-fives))
+	}
+
+	sign := ""
+	if num.Sign() < 0 {
+		sign = "-"
+		num.Abs(num)
+	}
+
+	digits := num.String()
+	if scale == 0 {
+		return sign + digits
+	}
+
+	if len(digits) <= scale {
+		frac := strings.Repeat("0", scale-len(digits)) + digits
+		frac = strings.TrimRight(frac, "0")
+		if frac == "" {
+			return "0"
+		}
+		return sign + "0." + frac
+	}
+
+	intPart := digits[:len(digits)-scale]
+	frac := strings.TrimRight(digits[len(digits)-scale:], "0")
+	if frac == "" {
+		return sign + intPart
+	}
+	return sign + intPart + "." + frac
+}
+
+func factorOut(v, factor *big.Int) int {
+	count := 0
+	q := new(big.Int)
+	rem := new(big.Int)
+	for {
+		q.QuoRem(v, factor, rem)
+		if rem.Sign() != 0 {
+			break
+		}
+		v.Set(q)
+		count++
+	}
+	return count
+}
+
+func intPow(base *big.Int, exp int) *big.Int {
+	if exp <= 0 {
+		return new(big.Int).Set(bigIntOne)
+	}
+	return new(big.Int).Exp(base, big.NewInt(int64(exp)), nil)
 }
 
 func (c *Connection) receive() {

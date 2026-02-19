@@ -84,6 +84,24 @@ func (c *Connection) loggerOrDefault() *slog.Logger {
 	return slog.Default()
 }
 
+func canonicalJSONRPCIDKey(raw json.RawMessage) (string, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return "", errors.New("empty json-rpc id")
+	}
+
+	var id any
+	if err := json.Unmarshal(trimmed, &id); err != nil {
+		return "", err
+	}
+
+	canon, err := json.Marshal(id)
+	if err != nil {
+		return "", err
+	}
+	return string(canon), nil
+}
+
 func (c *Connection) receive() {
 	const (
 		initialBufSize = 1024 * 1024
@@ -118,7 +136,11 @@ func (c *Connection) receive() {
 			c.handleResponse(&msg)
 		case msg.Method != "":
 			if msg.ID != nil {
-				idKey := string(*msg.ID)
+				idKey, err := canonicalJSONRPCIDKey(*msg.ID)
+				if err != nil {
+					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", string(*msg.ID))
+					idKey = string(*msg.ID)
+				}
 				reqCtx, cancel := context.WithCancelCause(c.ctx)
 
 				c.mu.Lock()
@@ -156,7 +178,11 @@ func (c *Connection) receive() {
 }
 
 func (c *Connection) handleResponse(msg *anyMessage) {
-	idStr := string(*msg.ID)
+	idStr, err := canonicalJSONRPCIDKey(*msg.ID)
+	if err != nil {
+		c.loggerOrDefault().Error("failed to canonicalize response id", "err", err, "id", string(*msg.ID))
+		idStr = string(*msg.ID)
+	}
 
 	c.mu.Lock()
 	pr := c.pending[idStr]
@@ -181,7 +207,11 @@ func (c *Connection) handleCancelRequest(msg *anyMessage) {
 		return
 	}
 
-	idKey := string(p.RequestID)
+	idKey, err := canonicalJSONRPCIDKey(p.RequestID)
+	if err != nil {
+		c.loggerOrDefault().Error("failed to canonicalize $/cancel_request requestId", "err", err, "requestId", string(p.RequestID))
+		idKey = string(p.RequestID)
+	}
 
 	c.mu.Lock()
 	cancel := c.inflight[idKey]

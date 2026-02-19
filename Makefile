@@ -25,7 +25,7 @@ schema/meta.unstable.json: schema/version
 			mv "$$tmp" $@; \
 		elif [ "$$status" = "404" ]; then \
 			rm -f "$$tmp"; \
-			printf '%s\n' '{"agentMethods":{},"clientMethods":{},"version":1}' > $@; \
+			printf '%s\n' '{"agentMethods":{},"clientMethods":{},"protocolMethods":{}}' > $@; \
 		else \
 			rm -f "$$tmp"; \
 			echo "failed to download $$url (http $$status)" 1>&2; \

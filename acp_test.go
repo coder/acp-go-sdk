@@ -231,6 +231,68 @@ func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, pa
 	return nil, NewMethodNotFound(method)
 }
 
+type forkOnlyUnstableAgent struct {
+	called bool
+}
+
+func (a *forkOnlyUnstableAgent) Authenticate(context.Context, AuthenticateRequest) (AuthenticateResponse, error) {
+	return AuthenticateResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) Initialize(context.Context, InitializeRequest) (InitializeResponse, error) {
+	return InitializeResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) Cancel(context.Context, CancelNotification) error {
+	return nil
+}
+
+func (a *forkOnlyUnstableAgent) NewSession(context.Context, NewSessionRequest) (NewSessionResponse, error) {
+	return NewSessionResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) Prompt(context.Context, PromptRequest) (PromptResponse, error) {
+	return PromptResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) SetSessionMode(context.Context, SetSessionModeRequest) (SetSessionModeResponse, error) {
+	return SetSessionModeResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) UnstableForkSession(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
+	a.called = true
+	return UnstableForkSessionResponse{SessionId: "forked-session"}, nil
+}
+
+func TestAgentDispatch_AllowsPartialUnstableMethodImplementation(t *testing.T) {
+	agent := &forkOnlyUnstableAgent{}
+	conn := &AgentSideConnection{
+		agent:          agent,
+		sessionCancels: make(map[string]context.CancelFunc),
+	}
+
+	params, err := json.Marshal(UnstableForkSessionRequest{Cwd: "/tmp", SessionId: "source-session"})
+	if err != nil {
+		t.Fatalf("marshal request params: %v", err)
+	}
+
+	result, reqErr := conn.handle(context.Background(), AgentMethodSessionFork, params)
+	if reqErr != nil {
+		t.Fatalf("unexpected request error: %+v", reqErr)
+	}
+	if !agent.called {
+		t.Fatal("expected UnstableForkSession method to be invoked")
+	}
+
+	resp, ok := result.(UnstableForkSessionResponse)
+	if !ok {
+		t.Fatalf("expected UnstableForkSessionResponse, got %T", result)
+	}
+	if resp.SessionId != "forked-session" {
+		t.Fatalf("unexpected response session id: %q", resp.SessionId)
+	}
+}
+
 // Test bidirectional error handling similar to typescript/acp.test.ts
 func TestConnectionHandlesErrorsBidirectional(t *testing.T) {
 	ctx := context.Background()

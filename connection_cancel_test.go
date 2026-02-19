@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -77,6 +78,68 @@ func TestConnectionInboundCancelRequest_CancelsHandler(t *testing.T) {
 	}
 	if msg.Error.Code != -32800 {
 		t.Fatalf("expected error code -32800, got %d (%s)", msg.Error.Code, msg.Error.Message)
+	}
+}
+
+func TestConnectionInboundCancelRequest_ImmediateCancelNoRace(t *testing.T) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	defer func() {
+		_ = inW.Close()
+		_ = outW.Close()
+		_ = inR.Close()
+		_ = outR.Close()
+	}()
+
+	c := NewConnection(func(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
+		<-ctx.Done()
+		return nil, toReqErr(ctx.Err())
+	}, outW, inR)
+	_ = c
+
+	lines := make(chan []byte, 10)
+	go func() {
+		scanner := bufio.NewScanner(outR)
+		for scanner.Scan() {
+			b := append([]byte(nil), scanner.Bytes()...)
+			lines <- b
+		}
+		close(lines)
+	}()
+
+	for i := 1; i <= 25; i++ {
+		payload := fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":%d,"method":"test","params":{}}`+"\n"+
+				`{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":%d}}`+"\n",
+			i, i,
+		)
+		if _, err := inW.Write([]byte(payload)); err != nil {
+			t.Fatalf("write request/cancel pair %d: %v", i, err)
+		}
+
+		var raw []byte
+		select {
+		case raw = <-lines:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for response on iteration %d", i)
+		}
+
+		var msg anyMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			t.Fatalf("unmarshal response on iteration %d: %v", i, err)
+		}
+		if msg.ID == nil {
+			t.Fatalf("response missing id on iteration %d: %s", i, string(raw))
+		}
+		if got := string(*msg.ID); got != fmt.Sprintf("%d", i) {
+			t.Fatalf("unexpected response id on iteration %d: got %q", i, got)
+		}
+		if msg.Error == nil {
+			t.Fatalf("expected error response on iteration %d, got: %s", i, string(raw))
+		}
+		if msg.Error.Code != -32800 {
+			t.Fatalf("expected error code -32800 on iteration %d, got %d (%s)", i, msg.Error.Code, msg.Error.Message)
+		}
 	}
 }
 

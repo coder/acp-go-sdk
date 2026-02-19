@@ -112,18 +112,35 @@ func (c *Connection) receive() {
 		case msg.ID != nil && msg.Method == "":
 			c.handleResponse(&msg)
 		case msg.Method != "":
-			// Only track notifications (no ID) in the WaitGroup, not requests (with ID).
-			// This prevents deadlock when a request handler makes another request.
-			isNotification := msg.ID == nil
-			if isNotification {
-				c.notificationWg.Add(1)
+			if msg.ID != nil {
+				idKey := string(*msg.ID)
+				reqCtx, cancel := context.WithCancelCause(c.ctx)
+
+				c.mu.Lock()
+				c.inflight[idKey] = cancel
+				c.mu.Unlock()
+
+				m := msg
+				go func(m *anyMessage, idKey string, reqCtx context.Context, cancel context.CancelCauseFunc) {
+					defer func() {
+						c.mu.Lock()
+						delete(c.inflight, idKey)
+						c.mu.Unlock()
+
+						cancel(nil)
+					}()
+					c.handleInbound(reqCtx, m)
+				}(&m, idKey, reqCtx, cancel)
+				continue
 			}
-			go func(m *anyMessage, isNotif bool) {
-				if isNotif {
-					defer c.notificationWg.Done()
-				}
-				c.handleInbound(m)
-			}(&msg, isNotification)
+
+			// Only track notifications (no ID) in the WaitGroup.
+			c.notificationWg.Add(1)
+			m := msg
+			go func(m *anyMessage) {
+				defer c.notificationWg.Done()
+				c.handleInbound(c.ctx, m)
+			}(&m)
 		default:
 			c.loggerOrDefault().Error("received message with neither id nor method", "raw", string(line))
 		}
@@ -171,7 +188,7 @@ func (c *Connection) handleCancelRequest(msg *anyMessage) {
 	cancel(context.Canceled)
 }
 
-func (c *Connection) handleInbound(req *anyMessage) {
+func (c *Connection) handleInbound(ctx context.Context, req *anyMessage) {
 	res := anyMessage{JSONRPC: "2.0"}
 	// copy ID if present
 	if req.ID != nil {
@@ -183,25 +200,6 @@ func (c *Connection) handleInbound(req *anyMessage) {
 			_ = c.sendMessage(res)
 		}
 		return
-	}
-
-	ctx := c.ctx
-	var cancel context.CancelCauseFunc
-	var idKey string
-	if req.ID != nil && req.Method != "" {
-		idKey = string(*req.ID)
-		ctx, cancel = context.WithCancelCause(c.ctx)
-
-		c.mu.Lock()
-		c.inflight[idKey] = cancel
-		c.mu.Unlock()
-		defer func() {
-			c.mu.Lock()
-			delete(c.inflight, idKey)
-			c.mu.Unlock()
-
-			cancel(nil)
-		}()
 	}
 
 	result, err := c.handler(ctx, req.Method, req.Params)

@@ -46,19 +46,24 @@ type Connection struct {
 	// notificationWg tracks in-flight notification handlers.  This ensures SendRequest waits
 	// for all notifications received before the response to complete processing.
 	notificationWg sync.WaitGroup
+
+	// notificationQueue serializes notification processing to maintain message ordering.
+	notificationQueue chan *anyMessage
 }
 
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	c := &Connection{
-		w:       peerInput,
-		r:       peerOutput,
-		handler: handler,
-		pending: make(map[string]*pendingResponse),
-		ctx:     ctx,
-		cancel:  cancel,
+		w:                 peerInput,
+		r:                 peerOutput,
+		handler:           handler,
+		pending:           make(map[string]*pendingResponse),
+		ctx:               ctx,
+		cancel:            cancel,
+		notificationQueue: make(chan *anyMessage, 1000),
 	}
 	go c.receive()
+	go c.processNotifications()
 	return c
 }
 
@@ -99,18 +104,15 @@ func (c *Connection) receive() {
 		case msg.ID != nil && msg.Method == "":
 			c.handleResponse(&msg)
 		case msg.Method != "":
-			// Only track notifications (no ID) in the WaitGroup, not requests (with ID).
-			// This prevents deadlock when a request handler makes another request.
-			isNotification := msg.ID == nil
-			if isNotification {
+			// Notifications (no ID) are queued for serial processing to maintain ordering.
+			// Requests (with ID) are handled concurrently since they have their own response mechanism.
+			if msg.ID == nil {
 				c.notificationWg.Add(1)
+				msgCopy := msg
+				c.notificationQueue <- &msgCopy
+			} else {
+				go c.handleInbound(&msg)
 			}
-			go func(m *anyMessage, isNotif bool) {
-				if isNotif {
-					defer c.notificationWg.Done()
-				}
-				c.handleInbound(m)
-			}(&msg, isNotification)
 		default:
 			c.loggerOrDefault().Error("received message with neither id nor method", "raw", string(line))
 		}
@@ -118,6 +120,14 @@ func (c *Connection) receive() {
 
 	c.cancel(errors.New("peer connection closed"))
 	c.loggerOrDefault().Info("peer connection closed")
+	close(c.notificationQueue)
+}
+
+func (c *Connection) processNotifications() {
+	for msg := range c.notificationQueue {
+		c.handleInbound(msg)
+		c.notificationWg.Done()
+	}
 }
 
 func (c *Connection) handleResponse(msg *anyMessage) {

@@ -139,12 +139,25 @@ func (c *Connection) receive() {
 		case msg.ID != nil && msg.Method == "":
 			c.handleResponse(&msg)
 		case msg.Method != "":
-			// Requests (method+id) must not be serialized behind notifications, otherwise
-			// a long-running request (e.g. session/prompt) can deadlock cancellation
-			// notifications (session/cancel) that are required to stop it.
 			if msg.ID != nil {
+				idKey := string(*msg.ID)
+				reqCtx, cancel := context.WithCancelCause(c.ctx)
+
+				c.mu.Lock()
+				c.inflight[idKey] = cancel
+				c.mu.Unlock()
+
 				m := msg
-				go c.handleInbound(&m)
+				go func(m *anyMessage, idKey string, reqCtx context.Context, cancel context.CancelCauseFunc) {
+					defer func() {
+						c.mu.Lock()
+						delete(c.inflight, idKey)
+						c.mu.Unlock()
+
+						cancel(nil)
+					}()
+					c.handleInbound(reqCtx, m)
+				}(&m, idKey, reqCtx, cancel)
 				continue
 			}
 
@@ -208,7 +221,7 @@ func (c *Connection) shutdownReceive(cause error) {
 // It terminates when notificationQueue is closed (e.g. on disconnect in receive()).
 func (c *Connection) processNotifications() {
 	for msg := range c.notificationQueue {
-		c.handleInbound(msg)
+		c.handleInbound(c.inboundCtx, msg)
 		c.notificationWg.Done()
 	}
 }
@@ -251,17 +264,9 @@ func (c *Connection) handleCancelRequest(msg *anyMessage) {
 	cancel(context.Canceled)
 }
 
-func (c *Connection) handleInbound(req *anyMessage) {
+func (c *Connection) handleInbound(ctx context.Context, req *anyMessage) {
 	res := anyMessage{JSONRPC: "2.0"}
 
-	// Notifications are allowed a slightly longer-lived context during disconnect so we can
-	// process already-received end-of-connection messages. Requests, however, should be
-	// canceled promptly when the peer disconnects to avoid doing unnecessary work after
-	// the caller is gone.
-	ctx := c.ctx
-	if req.ID == nil {
-		ctx = c.inboundCtx
-	}
 	// copy ID if present
 	if req.ID != nil {
 		res.ID = req.ID
@@ -274,25 +279,7 @@ func (c *Connection) handleInbound(req *anyMessage) {
 		return
 	}
 
-		var cancel context.CancelCauseFunc
-		var idKey string
-		if req.ID != nil && req.Method != "" {
-			idKey = string(*req.ID)
-			ctx, cancel = context.WithCancelCause(c.ctx)
-
-			c.mu.Lock()
-			c.inflight[idKey] = cancel
-			c.mu.Unlock()
-			defer func() {
-				c.mu.Lock()
-				delete(c.inflight, idKey)
-				c.mu.Unlock()
-
-				cancel(nil)
-			}()
-		}
-
-		result, err := c.handler(ctx, req.Method, req.Params)
+	result, err := c.handler(ctx, req.Method, req.Params)
 	if req.ID == nil {
 		// Notification: no response is sent; log handler errors to surface decode failures.
 		if err != nil {

@@ -46,12 +46,13 @@ type Connection struct {
 	r       io.Reader
 	handler MethodHandler
 
-	mu              sync.Mutex
-	writeMu         sync.Mutex
-	nextID          atomic.Uint64
-	pending         map[string]*pendingResponse
-	inflight        map[string]context.CancelCauseFunc
-	cancelRequestCh chan string
+	mu                   sync.Mutex
+	writeMu              sync.Mutex
+	nextID               atomic.Uint64
+	pending              map[string]*pendingResponse
+	inflight             map[string]context.CancelCauseFunc
+	pendingCancelRequest []string
+	cancelRequestSignal  chan struct{}
 
 	// ctx/cancel govern connection lifetime and are used for Done() and for canceling
 	// callers waiting on responses when the peer disconnects.
@@ -81,17 +82,17 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
-			w:                 peerInput,
-			r:                 peerOutput,
-			handler:           handler,
-			pending:           make(map[string]*pendingResponse),
-			inflight:          make(map[string]context.CancelCauseFunc),
-			cancelRequestCh:   make(chan string, 64),
-			ctx:               ctx,
-			cancel:            cancel,
-			inboundCtx:        inboundCtx,
-			inboundCancel:     inboundCancel,
-			notificationQueue: make(chan *anyMessage, defaultMaxQueuedNotifications),
+			w:                   peerInput,
+			r:                   peerOutput,
+			handler:             handler,
+			pending:             make(map[string]*pendingResponse),
+			inflight:            make(map[string]context.CancelCauseFunc),
+			cancelRequestSignal: make(chan struct{}, 1),
+			ctx:                 ctx,
+			cancel:              cancel,
+			inboundCtx:          inboundCtx,
+			inboundCancel:       inboundCancel,
+			notificationQueue:   make(chan *anyMessage, defaultMaxQueuedNotifications),
 	}
 	go c.sendCancelRequests()
 	go c.receive()
@@ -391,10 +392,21 @@ func (c *Connection) sendCancelRequests() {
 		select {
 		case <-c.Done():
 			return
-		case idKey := <-c.cancelRequestCh:
-			requestID := json.RawMessage(append([]byte(nil), idKey...))
-			if err := c.SendNotification(context.Background(), "$/cancel_request", cancelRequestParams{RequestID: requestID}); err != nil {
-				c.loggerOrDefault().Debug("failed to send $/cancel_request", "err", err)
+		case <-c.cancelRequestSignal:
+			for {
+				c.mu.Lock()
+				if len(c.pendingCancelRequest) == 0 {
+					c.mu.Unlock()
+					break
+				}
+				idKey := c.pendingCancelRequest[0]
+				c.pendingCancelRequest = c.pendingCancelRequest[1:]
+				c.mu.Unlock()
+
+				requestID := json.RawMessage(append([]byte(nil), idKey...))
+				if err := c.SendNotification(context.Background(), "$/cancel_request", cancelRequestParams{RequestID: requestID}); err != nil {
+					c.loggerOrDefault().Debug("failed to send $/cancel_request", "err", err)
+				}
 			}
 		}
 	}
@@ -411,10 +423,13 @@ func (c *Connection) sendCancelRequest(idKey string) {
 	default:
 	}
 
+	c.mu.Lock()
+	c.pendingCancelRequest = append(c.pendingCancelRequest, idKey)
+	c.mu.Unlock()
+
 	select {
-	case c.cancelRequestCh <- idKey:
+	case c.cancelRequestSignal <- struct{}{}:
 	default:
-		c.loggerOrDefault().Debug("dropping $/cancel_request: queue full")
 	}
 }
 

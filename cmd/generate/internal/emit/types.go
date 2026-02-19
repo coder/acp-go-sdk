@@ -1018,11 +1018,15 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				}
 
 				if isExtension {
-					// Emit as type alias (=) to json.RawMessage to preserve marshal/unmarshal methods
+					// Emit as type alias (=) to json.RawMessage to preserve marshal/unmarshal methods.
 					// Using type alias ensures the RawMessage methods are inherited, unlike a defined type.
 					f.Type().Id(tname).Op("=").Qual("encoding/json", "RawMessage")
+				} else if ir.PrimaryType(v) != "" {
+					// Non-object title-only variants can still carry payloads (e.g. arrays).
+					// Emit a concrete type so sequential decode can succeed for valid payloads.
+					f.Type().Id(tname).Add(jenTypeFor(v))
 				} else {
-					// Emit as empty struct (rare case for truly empty variants)
+					// Emit as empty struct only for truly empty variants.
 					f.Type().Id(tname).Struct(st...)
 				}
 				f.Line()
@@ -1137,10 +1141,14 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				if vi.isNull {
 					gg.Return(Qual("encoding/json", "Marshal").Call(Nil()))
 				} else {
-					// Marshal variant to map for discriminant injection and shaping
-					gg.Var().Id("m").Map(String()).Any()
 					gg.List(Id("_b"), Id("_e")).Op(":=").Qual("encoding/json", "Marshal").Call(Op("*").Id("u").Dot(vi.fieldName))
 					gg.If(Id("_e").Op("!=").Nil()).Block(Return(Index().Byte().Values(), Id("_e")))
+					if !vi.isObject {
+						// Non-object variants (e.g., arrays/primitives) are already in final wire shape.
+						gg.Return(Id("_b"), Nil())
+					}
+					// Marshal object variant to map for discriminant injection and shaping.
+					gg.Var().Id("m").Map(String()).Any()
 					gg.If(Qual("encoding/json", "Unmarshal").Call(Id("_b"), Op("&").Id("m")).Op("!=").Nil()).Block(Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload"))))
 					// Inject const discriminants
 					if len(vi.constPairs) > 0 {

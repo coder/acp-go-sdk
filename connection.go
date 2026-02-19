@@ -117,9 +117,27 @@ func canonicalJSONRPCIDKey(raw json.RawMessage) (string, error) {
 		return "", errors.New("empty json-rpc id")
 	}
 
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	dec.UseNumber()
+
 	var id any
-	if err := json.Unmarshal(trimmed, &id); err != nil {
+	if err := dec.Decode(&id); err != nil {
 		return "", err
+	}
+
+	// Ensure the id contains a single JSON value.
+	var trailing any
+	if err := dec.Decode(&trailing); err == nil {
+		return "", errors.New("invalid json-rpc id: trailing data")
+	} else if !errors.Is(err, io.EOF) {
+		return "", err
+	}
+
+	switch id.(type) {
+	case nil, string, json.Number:
+		// Valid JSON-RPC id types.
+	default:
+		return "", errors.New("json-rpc id must be string, number, or null")
 	}
 
 	canon, err := json.Marshal(id)

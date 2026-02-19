@@ -145,6 +145,30 @@ func TestConnectionInboundCancelRequest_CanonicalizesEquivalentIDs(t *testing.T)
 	}
 }
 
+func TestCanonicalJSONRPCIDKey_LargeNumericIDsDoNotCollide(t *testing.T) {
+	id1 := json.RawMessage(`9007199254740992`)
+	id2 := json.RawMessage(`9007199254740993`)
+
+	key1, err := canonicalJSONRPCIDKey(id1)
+	if err != nil {
+		t.Fatalf("canonicalize id1: %v", err)
+	}
+	key2, err := canonicalJSONRPCIDKey(id2)
+	if err != nil {
+		t.Fatalf("canonicalize id2: %v", err)
+	}
+
+	if key1 != string(id1) {
+		t.Fatalf("unexpected canonical id1: got %q want %q", key1, string(id1))
+	}
+	if key2 != string(id2) {
+		t.Fatalf("unexpected canonical id2: got %q want %q", key2, string(id2))
+	}
+	if key1 == key2 {
+		t.Fatalf("canonical keys collided: id1=%q id2=%q key=%q", id1, id2, key1)
+	}
+}
+
 func TestConnectionInboundCancelRequest_ImmediateCancelNoRace(t *testing.T) {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()

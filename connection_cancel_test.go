@@ -239,3 +239,74 @@ func TestConnectionOutboundCancelRequest_SendsNotification(t *testing.T) {
 		t.Fatal("timed out waiting for SendRequest to return")
 	}
 }
+
+func TestConnectionOutboundCancelRequest_DoesNotBlockWhenPeerStopsReading(t *testing.T) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	defer func() {
+		_ = inW.Close()
+		_ = outW.Close()
+		_ = inR.Close()
+		_ = outR.Close()
+	}()
+
+	c := NewConnection(nil, outW, inR)
+
+	firstReq := make(chan []byte, 1)
+	go func() {
+		br := bufio.NewReader(outR)
+		line, err := br.ReadBytes('\n')
+		if err == nil {
+			firstReq <- append([]byte(nil), line...)
+		}
+		close(firstReq)
+		// Intentionally stop reading after the first request line.
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := SendRequest[json.RawMessage](c, ctx, "test/method", map[string]any{"x": 1})
+		errCh <- err
+	}()
+
+	var reqRaw []byte
+	select {
+	case reqRaw = <-firstReq:
+		if len(reqRaw) == 0 {
+			t.Fatal("failed to read first outbound request")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first request")
+	}
+
+	var req anyMessage
+	if err := json.Unmarshal(reqRaw, &req); err != nil {
+		t.Fatalf("unmarshal request: %v", err)
+	}
+	if req.ID == nil {
+		t.Fatalf("request missing id: %s", string(reqRaw))
+	}
+
+	// Peer is no longer reading. The best-effort cancel write may block in the background,
+	// but SendRequest should still return promptly on context cancellation.
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected request error")
+		}
+		re, ok := err.(*RequestError)
+		if !ok {
+			t.Fatalf("expected *RequestError, got %T: %v", err, err)
+		}
+		if re.Code != -32800 {
+			t.Fatalf("expected error code -32800, got %d", re.Code)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("SendRequest blocked on cancel notification write")
+	}
+}

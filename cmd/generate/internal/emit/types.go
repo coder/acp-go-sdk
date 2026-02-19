@@ -1127,7 +1127,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				),
 			)
 		}
-		g.Return(Nil())
+		g.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
 	})
 	// Marshal
 	f.Func().Params(Id("u").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
@@ -1234,7 +1234,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			g.If(Id("count").Op("!=").Lit(1)).Block(
 				Return(Qual("errors", "New").Call(Lit(name + " must have exactly one variant set"))),
 			)
-			g.Return(Nil())
+			g.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
 		})
 		f.Line()
 	}

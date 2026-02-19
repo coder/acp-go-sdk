@@ -38,11 +38,12 @@ type Connection struct {
 	r       io.Reader
 	handler MethodHandler
 
-	mu       sync.Mutex
-	writeMu  sync.Mutex
-	nextID   atomic.Uint64
-	pending  map[string]*pendingResponse
-	inflight map[string]context.CancelCauseFunc
+	mu              sync.Mutex
+	writeMu         sync.Mutex
+	nextID          atomic.Uint64
+	pending         map[string]*pendingResponse
+	inflight        map[string]context.CancelCauseFunc
+	cancelRequestCh chan string
 
 	ctx    context.Context
 	cancel context.CancelCauseFunc
@@ -57,14 +58,16 @@ type Connection struct {
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	c := &Connection{
-		w:        peerInput,
-		r:        peerOutput,
-		handler:  handler,
-		pending:  make(map[string]*pendingResponse),
-		inflight: make(map[string]context.CancelCauseFunc),
-		ctx:      ctx,
-		cancel:   cancel,
+		w:               peerInput,
+		r:               peerOutput,
+		handler:         handler,
+		pending:         make(map[string]*pendingResponse),
+		inflight:        make(map[string]context.CancelCauseFunc),
+		cancelRequestCh: make(chan string, 64),
+		ctx:             ctx,
+		cancel:          cancel,
 	}
+	go c.sendCancelRequests()
 	go c.receive()
 	return c
 }
@@ -306,6 +309,20 @@ func (c *Connection) prepareRequest(method string, params any) (anyMessage, stri
 	return msg, string(idRaw), nil
 }
 
+func (c *Connection) sendCancelRequests() {
+	for {
+		select {
+		case <-c.Done():
+			return
+		case idKey := <-c.cancelRequestCh:
+			requestID := json.RawMessage(append([]byte(nil), idKey...))
+			if err := c.SendNotification(context.Background(), "$/cancel_request", cancelRequestParams{RequestID: requestID}); err != nil {
+				c.loggerOrDefault().Debug("failed to send $/cancel_request", "err", err)
+			}
+		}
+	}
+}
+
 func (c *Connection) sendCancelRequest(idKey string) {
 	if strings.TrimSpace(idKey) == "" {
 		return
@@ -317,12 +334,11 @@ func (c *Connection) sendCancelRequest(idKey string) {
 	default:
 	}
 
-	requestID := json.RawMessage(append([]byte(nil), idKey...))
-	go func() {
-		if err := c.SendNotification(context.Background(), "$/cancel_request", cancelRequestParams{RequestID: requestID}); err != nil {
-			c.loggerOrDefault().Debug("failed to send $/cancel_request", "err", err)
-		}
-	}()
+	select {
+	case c.cancelRequestCh <- idKey:
+	default:
+		c.loggerOrDefault().Debug("dropping $/cancel_request: queue full")
+	}
 }
 
 func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, idKey string) (anyMessage, error) {

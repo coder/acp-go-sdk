@@ -155,7 +155,8 @@ func buildUnstableDuplicateSet(stableSchema *Schema, unstableSchema *Schema, uns
 		}
 	}
 
-	dupSet := map[string]struct{}{}
+	roots := map[string]struct{}{}
+	reachable := map[string]struct{}{}
 	queue := []string{}
 
 	// Seed with request/response/notification types for unstable-only methods.
@@ -172,14 +173,15 @@ func buildUnstableDuplicateSet(stableSchema *Schema, unstableSchema *Schema, uns
 		if !strings.HasSuffix(name, "Request") && !strings.HasSuffix(name, "Response") && !strings.HasSuffix(name, "Notification") {
 			continue
 		}
-		if _, ok := dupSet[name]; ok {
+		if _, ok := roots[name]; ok {
 			continue
 		}
-		dupSet[name] = struct{}{}
+		roots[name] = struct{}{}
+		reachable[name] = struct{}{}
 		queue = append(queue, name)
 	}
 
-	// Expand transitive closure across $ref edges, but only for types that are new/changed.
+	// Traverse all reachable refs from unstable roots, including unchanged intermediaries.
 	for len(queue) > 0 {
 		name := queue[0]
 		queue = queue[1:]
@@ -189,14 +191,50 @@ func buildUnstableDuplicateSet(stableSchema *Schema, unstableSchema *Schema, uns
 		}
 		refs := collectDefinitionRefs(def)
 		for refName := range refs {
-			if !newOrChanged[refName] {
+			if _, ok := unstableSchema.Defs[refName]; !ok {
 				continue
 			}
-			if _, ok := dupSet[refName]; ok {
+			if _, ok := reachable[refName]; ok {
 				continue
 			}
-			dupSet[refName] = struct{}{}
+			reachable[refName] = struct{}{}
 			queue = append(queue, refName)
+		}
+	}
+
+	dupSet := map[string]struct{}{}
+	for name := range roots {
+		dupSet[name] = struct{}{}
+	}
+
+	// Duplicate reachable defs that are new/changed.
+	for name := range reachable {
+		if newOrChanged[name] {
+			dupSet[name] = struct{}{}
+		}
+	}
+
+	// Fixpoint: if a reachable def references a duplicated def, duplicate that def too so
+	// rewritten unstable refs remain within the unstable-prefixed subgraph.
+	changed := true
+	for changed {
+		changed = false
+		for name := range reachable {
+			if _, ok := dupSet[name]; ok {
+				continue
+			}
+			def := unstableSchema.Defs[name]
+			if def == nil {
+				return nil, fmt.Errorf("unstable schema missing definition %q", name)
+			}
+			refs := collectDefinitionRefs(def)
+			for refName := range refs {
+				if _, ok := dupSet[refName]; ok {
+					dupSet[name] = struct{}{}
+					changed = true
+					break
+				}
+			}
 		}
 	}
 

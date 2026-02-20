@@ -117,6 +117,12 @@ type agentFuncs struct {
 	PromptFunc         func(context.Context, PromptRequest) (PromptResponse, error)
 	CancelFunc         func(context.Context, CancelNotification) error
 	SetSessionModeFunc func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
+	// Unstable (schema/meta.unstable.json)
+	UnstableForkSessionFunc            func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
+	UnstableListSessionsFunc           func(context.Context, UnstableListSessionsRequest) (UnstableListSessionsResponse, error)
+	UnstableResumeSessionFunc          func(context.Context, UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
+	UnstableSetSessionConfigOptionFunc func(context.Context, UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error)
+	UnstableSetSessionModelFunc        func(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
@@ -178,11 +184,113 @@ func (a agentFuncs) SetSessionMode(ctx context.Context, params SetSessionModeReq
 	return SetSessionModeResponse{}, nil
 }
 
+// UnstableForkSession implements AgentExperimental.
+func (a agentFuncs) UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
+	if a.UnstableForkSessionFunc != nil {
+		return a.UnstableForkSessionFunc(ctx, params)
+	}
+	return UnstableForkSessionResponse{}, nil
+}
+
+// UnstableListSessions implements AgentExperimental.
+func (a agentFuncs) UnstableListSessions(ctx context.Context, params UnstableListSessionsRequest) (UnstableListSessionsResponse, error) {
+	if a.UnstableListSessionsFunc != nil {
+		return a.UnstableListSessionsFunc(ctx, params)
+	}
+	return UnstableListSessionsResponse{}, nil
+}
+
+// UnstableResumeSession implements AgentExperimental.
+func (a agentFuncs) UnstableResumeSession(ctx context.Context, params UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error) {
+	if a.UnstableResumeSessionFunc != nil {
+		return a.UnstableResumeSessionFunc(ctx, params)
+	}
+	return UnstableResumeSessionResponse{}, nil
+}
+
+// UnstableSetSessionConfigOption implements AgentExperimental.
+func (a agentFuncs) UnstableSetSessionConfigOption(ctx context.Context, params UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error) {
+	if a.UnstableSetSessionConfigOptionFunc != nil {
+		return a.UnstableSetSessionConfigOptionFunc(ctx, params)
+	}
+	return UnstableSetSessionConfigOptionResponse{}, nil
+}
+
+// UnstableSetSessionModel implements AgentExperimental.
+func (a agentFuncs) UnstableSetSessionModel(ctx context.Context, params UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error) {
+	if a.UnstableSetSessionModelFunc != nil {
+		return a.UnstableSetSessionModelFunc(ctx, params)
+	}
+	return UnstableSetSessionModelResponse{}, nil
+}
+
 func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	if a.HandleExtensionMethodFunc != nil {
 		return a.HandleExtensionMethodFunc(ctx, method, params)
 	}
 	return nil, NewMethodNotFound(method)
+}
+
+type forkOnlyUnstableAgent struct {
+	called bool
+}
+
+func (a *forkOnlyUnstableAgent) Authenticate(context.Context, AuthenticateRequest) (AuthenticateResponse, error) {
+	return AuthenticateResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) Initialize(context.Context, InitializeRequest) (InitializeResponse, error) {
+	return InitializeResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) Cancel(context.Context, CancelNotification) error {
+	return nil
+}
+
+func (a *forkOnlyUnstableAgent) NewSession(context.Context, NewSessionRequest) (NewSessionResponse, error) {
+	return NewSessionResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) Prompt(context.Context, PromptRequest) (PromptResponse, error) {
+	return PromptResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) SetSessionMode(context.Context, SetSessionModeRequest) (SetSessionModeResponse, error) {
+	return SetSessionModeResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) UnstableForkSession(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
+	a.called = true
+	return UnstableForkSessionResponse{SessionId: "forked-session"}, nil
+}
+
+func TestAgentDispatch_AllowsPartialUnstableMethodImplementation(t *testing.T) {
+	agent := &forkOnlyUnstableAgent{}
+	conn := &AgentSideConnection{
+		agent:          agent,
+		sessionCancels: make(map[string]context.CancelFunc),
+	}
+
+	params, err := json.Marshal(UnstableForkSessionRequest{Cwd: "/tmp", SessionId: "source-session"})
+	if err != nil {
+		t.Fatalf("marshal request params: %v", err)
+	}
+
+	result, reqErr := conn.handle(context.Background(), AgentMethodSessionFork, params)
+	if reqErr != nil {
+		t.Fatalf("unexpected request error: %+v", reqErr)
+	}
+	if !agent.called {
+		t.Fatal("expected UnstableForkSession method to be invoked")
+	}
+
+	resp, ok := result.(UnstableForkSessionResponse)
+	if !ok {
+		t.Fatalf("expected UnstableForkSessionResponse, got %T", result)
+	}
+	if resp.SessionId != "forked-session" {
+		t.Fatalf("unexpected response session id: %q", resp.SessionId)
+	}
 }
 
 // Test bidirectional error handling similar to typescript/acp.test.ts

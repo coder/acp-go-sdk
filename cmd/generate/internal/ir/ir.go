@@ -221,6 +221,13 @@ func isUnstableMethod(schema *load.Schema, mi *MethodInfo) bool {
 	if mi == nil {
 		return false
 	}
+
+	// Any method whose public Go types are emitted with an "Unstable" prefix is
+	// considered unstable, regardless of description text.
+	if strings.HasPrefix(mi.Req, "Unstable") || strings.HasPrefix(mi.Resp, "Unstable") || strings.HasPrefix(mi.Notif, "Unstable") {
+		return true
+	}
+
 	has := func(name string) bool {
 		if name == "" {
 			return false

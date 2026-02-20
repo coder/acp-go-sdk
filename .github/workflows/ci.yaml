@@ -19,7 +19,10 @@ concurrency:
 jobs:
   check:
     name: check
-    runs-on: ${{ github.repository_owner == 'coder' && 'depot-ubuntu-latest' || 'ubuntu-latest' }}
+    # Temporarily disabled Depot runner selection due connectivity issues.
+    # Re-enable once Depot runners can reliably connect to the repository.
+    # runs-on: ${{ github.repository_owner == 'coder' && 'depot-ubuntu-latest' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: write

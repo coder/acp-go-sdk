@@ -463,6 +463,39 @@ func TestConnectionOutboundCancelRequest_SendsNotification(t *testing.T) {
 	}
 }
 
+func TestConnectionOutboundRequestTimeout_ReturnsInternalError(t *testing.T) {
+	inR, inW := io.Pipe()
+	defer func() {
+		_ = inW.Close()
+		_ = inR.Close()
+	}()
+
+	c := NewConnection(nil, io.Discard, inR)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := SendRequest[json.RawMessage](c, ctx, "test/method", map[string]any{"x": 1})
+	if err == nil {
+		t.Fatal("expected request error")
+	}
+
+	re, ok := err.(*RequestError)
+	if !ok {
+		t.Fatalf("expected *RequestError, got %T: %v", err, err)
+	}
+	if re.Code != -32603 {
+		t.Fatalf("expected timeout to map to internal error code -32603, got %d (%s)", re.Code, re.Message)
+	}
+
+	c.mu.Lock()
+	pendingCount := len(c.pending)
+	c.mu.Unlock()
+	if pendingCount != 0 {
+		t.Fatalf("expected pending map to be cleaned up after timeout, got %d entries", pendingCount)
+	}
+}
+
 func TestConnectionOutboundCancelRequest_DoesNotBlockWhenPeerStopsReading(t *testing.T) {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()

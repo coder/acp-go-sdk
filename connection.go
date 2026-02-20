@@ -609,9 +609,9 @@ func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, i
 			cause = ctx.Err()
 		}
 		if cause != nil {
-			return anyMessage{}, NewRequestCancelled(map[string]any{"error": cause.Error()})
+			return anyMessage{}, toReqErr(cause)
 		}
-		return anyMessage{}, NewRequestCancelled(nil)
+		return anyMessage{}, NewInternalError(map[string]any{"error": "request context ended without cause"})
 	case <-c.Done():
 		c.cleanupPending(idKey)
 		return anyMessage{}, peerDisconnectedErr

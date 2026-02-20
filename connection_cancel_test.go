@@ -265,6 +265,25 @@ func TestCanonicalJSONRPCIDKey_NumericRepresentationsMatch(t *testing.T) {
 	}
 }
 
+func TestCanonicalJSONRPCIDKey_RejectsOversizedExponent(t *testing.T) {
+	t.Parallel()
+
+	tests := []json.RawMessage{
+		json.RawMessage(`1e4097`),
+		json.RawMessage(`1e-4097`),
+	}
+
+	for _, raw := range tests {
+		raw := raw
+		t.Run(string(raw), func(t *testing.T) {
+			_, err := canonicalJSONRPCIDKey(raw)
+			if !errors.Is(err, errJSONRPCNumericIDTooLarge) {
+				t.Fatalf("expected oversized numeric id error for %q, got %v", raw, err)
+			}
+		})
+	}
+}
+
 func TestConnectionResponseID_CanonicalizesEquivalentNumericRepresentations(t *testing.T) {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"math/big"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -85,10 +84,14 @@ func (c *Connection) loggerOrDefault() *slog.Logger {
 	return slog.Default()
 }
 
+const (
+	maxCanonicalJSONRPCIDKeyLen   = 4096
+	maxCanonicalJSONRPCIDAbsExp10 = 4096
+)
+
 var (
-	bigIntOne  = big.NewInt(1)
-	bigIntTwo  = big.NewInt(2)
-	bigIntFive = big.NewInt(5)
+	errInvalidJSONRPCNumericID  = errors.New("invalid json-rpc numeric id")
+	errJSONRPCNumericIDTooLarge = errors.New("json-rpc numeric id too large")
 )
 
 func canonicalJSONRPCIDKey(raw json.RawMessage) (string, error) {
@@ -132,96 +135,184 @@ func canonicalJSONRPCIDKey(raw json.RawMessage) (string, error) {
 func canonicalJSONRPCNumericIDKey(v json.Number) (string, error) {
 	raw := strings.TrimSpace(v.String())
 	if raw == "" {
-		return "", errors.New("empty json-rpc numeric id")
+		return "", errInvalidJSONRPCNumericID
 	}
 
-	r := new(big.Rat)
-	if _, ok := r.SetString(raw); !ok {
-		return "", errors.New("invalid json-rpc numeric id")
+	negative, digits, exp10, err := parseJSONRPCNumericID(raw)
+	if err != nil {
+		return "", err
 	}
 
-	return canonicalFiniteDecimal(r), nil
+	return formatCanonicalJSONRPCNumericID(negative, digits, exp10)
 }
 
-func canonicalFiniteDecimal(r *big.Rat) string {
-	if r == nil || r.Sign() == 0 {
-		return "0"
-	}
-	if r.IsInt() {
-		return r.Num().String()
-	}
-
-	num := new(big.Int).Set(r.Num())
-	den := new(big.Int).Set(r.Denom())
-	twos := factorOut(den, bigIntTwo)
-	fives := factorOut(den, bigIntFive)
-
-	// JSON numbers are decimal, so denominator should fully factor into 2s and 5s.
-	// Fall back to a precise rational string if that invariant is violated.
-	if den.Cmp(bigIntOne) != 0 {
-		return r.RatString()
+func parseJSONRPCNumericID(raw string) (negative bool, digits string, exp10 int, err error) {
+	i := 0
+	if raw[i] == '-' {
+		negative = true
+		i++
+		if i >= len(raw) {
+			return false, "", 0, errInvalidJSONRPCNumericID
+		}
 	}
 
-	scale := twos
-	if fives > scale {
-		scale = fives
+	intStart := i
+	switch {
+	case raw[i] == '0':
+		i++
+		if i < len(raw) && isASCIIDigit(raw[i]) {
+			return false, "", 0, errInvalidJSONRPCNumericID
+		}
+	case raw[i] >= '1' && raw[i] <= '9':
+		for i < len(raw) && isASCIIDigit(raw[i]) {
+			i++
+		}
+	default:
+		return false, "", 0, errInvalidJSONRPCNumericID
+	}
+	intDigits := raw[intStart:i]
+
+	fracDigits := ""
+	if i < len(raw) && raw[i] == '.' {
+		i++
+		fracStart := i
+		for i < len(raw) && isASCIIDigit(raw[i]) {
+			i++
+		}
+		if fracStart == i {
+			return false, "", 0, errInvalidJSONRPCNumericID
+		}
+		fracDigits = raw[fracStart:i]
 	}
 
-	if twos < scale {
-		num.Mul(num, intPow(bigIntTwo, scale-twos))
+	exponent := 0
+	if i < len(raw) && (raw[i] == 'e' || raw[i] == 'E') {
+		i++
+		if i >= len(raw) {
+			return false, "", 0, errInvalidJSONRPCNumericID
+		}
+
+		exponentSign := 1
+		if raw[i] == '+' || raw[i] == '-' {
+			if raw[i] == '-' {
+				exponentSign = -1
+			}
+			i++
+			if i >= len(raw) {
+				return false, "", 0, errInvalidJSONRPCNumericID
+			}
+		}
+
+		exponentStart := i
+		for i < len(raw) && isASCIIDigit(raw[i]) {
+			i++
+		}
+		if exponentStart == i {
+			return false, "", 0, errInvalidJSONRPCNumericID
+		}
+
+		exponentMagnitude, parseErr := parseBoundedInt(raw[exponentStart:i], maxCanonicalJSONRPCIDAbsExp10)
+		if parseErr != nil {
+			return false, "", 0, parseErr
+		}
+		exponent = exponentSign * exponentMagnitude
 	}
-	if fives < scale {
-		num.Mul(num, intPow(bigIntFive, scale-fives))
+
+	if i != len(raw) {
+		return false, "", 0, errInvalidJSONRPCNumericID
+	}
+
+	digits = strings.TrimLeft(intDigits+fracDigits, "0")
+	if digits == "" {
+		return false, "", 0, nil
+	}
+	if len(digits) > maxCanonicalJSONRPCIDKeyLen {
+		return false, "", 0, errJSONRPCNumericIDTooLarge
+	}
+
+	exp10 = exponent - len(fracDigits)
+	return negative, digits, exp10, nil
+}
+
+func parseBoundedInt(raw string, max int) (int, error) {
+	if raw == "" {
+		return 0, errInvalidJSONRPCNumericID
+	}
+
+	value := 0
+	for i := 0; i < len(raw); i++ {
+		if !isASCIIDigit(raw[i]) {
+			return 0, errInvalidJSONRPCNumericID
+		}
+		digit := int(raw[i] - '0')
+		if value > (max-digit)/10 {
+			return 0, errJSONRPCNumericIDTooLarge
+		}
+		value = value*10 + digit
+	}
+	return value, nil
+}
+
+func isASCIIDigit(ch byte) bool {
+	return ch >= '0' && ch <= '9'
+}
+
+func formatCanonicalJSONRPCNumericID(negative bool, digits string, exp10 int) (string, error) {
+	for len(digits) > 0 && digits[len(digits)-1] == '0' {
+		digits = digits[:len(digits)-1]
+		exp10++
+	}
+
+	if digits == "" {
+		return "0", nil
 	}
 
 	sign := ""
-	if num.Sign() < 0 {
+	if negative {
 		sign = "-"
-		num.Abs(num)
 	}
 
-	digits := num.String()
-	if scale == 0 {
-		return sign + digits
-	}
-
-	if len(digits) <= scale {
-		frac := strings.Repeat("0", scale-len(digits)) + digits
-		frac = strings.TrimRight(frac, "0")
-		if frac == "" {
-			return "0"
+	if exp10 >= 0 {
+		if exp10 > maxCanonicalJSONRPCIDKeyLen-len(digits) {
+			return "", errJSONRPCNumericIDTooLarge
 		}
-		return sign + "0." + frac
-	}
-
-	intPart := digits[:len(digits)-scale]
-	frac := strings.TrimRight(digits[len(digits)-scale:], "0")
-	if frac == "" {
-		return sign + intPart
-	}
-	return sign + intPart + "." + frac
-}
-
-func factorOut(v, factor *big.Int) int {
-	count := 0
-	q := new(big.Int)
-	rem := new(big.Int)
-	for {
-		q.QuoRem(v, factor, rem)
-		if rem.Sign() != 0 {
-			break
+		result := digits + strings.Repeat("0", exp10)
+		if sign != "" {
+			result = sign + result
 		}
-		v.Set(q)
-		count++
+		if len(result) > maxCanonicalJSONRPCIDKeyLen+len(sign) {
+			return "", errJSONRPCNumericIDTooLarge
+		}
+		return result, nil
 	}
-	return count
-}
 
-func intPow(base *big.Int, exp int) *big.Int {
-	if exp <= 0 {
-		return new(big.Int).Set(bigIntOne)
+	scale := -exp10
+	if scale > maxCanonicalJSONRPCIDKeyLen {
+		return "", errJSONRPCNumericIDTooLarge
 	}
-	return new(big.Int).Exp(base, big.NewInt(int64(exp)), nil)
+
+	if len(digits) > scale {
+		intPart := digits[:len(digits)-scale]
+		fracPart := digits[len(digits)-scale:]
+		if len(intPart)+1+len(fracPart) > maxCanonicalJSONRPCIDKeyLen {
+			return "", errJSONRPCNumericIDTooLarge
+		}
+		result := intPart + "." + fracPart
+		if sign != "" {
+			result = sign + result
+		}
+		return result, nil
+	}
+
+	leadingZeros := scale - len(digits)
+	if leadingZeros > maxCanonicalJSONRPCIDKeyLen-len(digits)-2 {
+		return "", errJSONRPCNumericIDTooLarge
+	}
+	result := "0." + strings.Repeat("0", leadingZeros) + digits
+	if sign != "" {
+		result = sign + result
+	}
+	return result, nil
 }
 
 func (c *Connection) receive() {

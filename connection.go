@@ -114,6 +114,7 @@ func (c *Connection) loggerOrDefault() *slog.Logger {
 const (
 	maxCanonicalJSONRPCIDKeyLen   = 4096
 	maxCanonicalJSONRPCIDAbsExp10 = 4096
+	maxPendingCancelRequests      = 1024
 )
 
 var (
@@ -666,9 +667,19 @@ func (c *Connection) sendCancelRequest(idKey string) {
 	default:
 	}
 
+	queueFull := false
 	c.mu.Lock()
-	c.pendingCancelRequest = append(c.pendingCancelRequest, idKey)
+	if len(c.pendingCancelRequest) >= maxPendingCancelRequests {
+		queueFull = true
+	} else {
+		c.pendingCancelRequest = append(c.pendingCancelRequest, idKey)
+	}
 	c.mu.Unlock()
+
+	if queueFull {
+		c.loggerOrDefault().Debug("dropping $/cancel_request due to full queue", "queue_len", maxPendingCancelRequests)
+		return
+	}
 
 	select {
 	case c.cancelRequestSignal <- struct{}{}:

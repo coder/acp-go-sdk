@@ -586,6 +586,39 @@ func TestConnectionOutboundCancelRequest_DoesNotBlockWhenPeerStopsReading(t *tes
 	}
 }
 
+func TestConnectionSendCancelRequest_BoundsPendingQueue(t *testing.T) {
+	baseCtx, baseCancel := context.WithCancelCause(context.Background())
+	defer baseCancel(nil)
+
+	c := &Connection{
+		pending:             make(map[string]*pendingResponse),
+		inflight:            make(map[string]context.CancelCauseFunc),
+		cancelRequestSignal: make(chan struct{}, 1),
+		ctx:                 baseCtx,
+		cancel:              baseCancel,
+	}
+
+	for i := 0; i < maxPendingCancelRequests+128; i++ {
+		c.sendCancelRequest(fmt.Sprintf("%d", i))
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.pendingCancelRequest) != maxPendingCancelRequests {
+		t.Fatalf("expected pending cancel queue length %d, got %d", maxPendingCancelRequests, len(c.pendingCancelRequest))
+	}
+
+	if got := c.pendingCancelRequest[0]; got != "0" {
+		t.Fatalf("expected queue to retain earliest id when full, got first id %q", got)
+	}
+
+	expectedLast := fmt.Sprintf("%d", maxPendingCancelRequests-1)
+	if got := c.pendingCancelRequest[len(c.pendingCancelRequest)-1]; got != expectedLast {
+		t.Fatalf("expected queue to drop ids beyond capacity, got last id %q want %q", got, expectedLast)
+	}
+}
+
 func TestConnectionWaitForResponse_PeerDisconnectWinsOverDerivedContextCancel(t *testing.T) {
 	const iterations = 64
 

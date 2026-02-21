@@ -2995,8 +2995,22 @@ type SessionConfigId string
 // A session configuration option selector and its current state.
 // Single-value selector (dropdown).
 type SessionConfigOptionSelect struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Optional semantic category for this option (UX only).
+	Category *SessionConfigOptionCategory `json:"category,omitempty"`
 	// The currently selected value.
 	CurrentValue SessionConfigValueId `json:"currentValue"`
+	// Optional description for the Client to display to the user.
+	Description *string `json:"description,omitempty"`
+	// Unique identifier for the configuration option.
+	Id SessionConfigId `json:"id"`
+	// Human-readable label for the option.
+	Name string `json:"name"`
 	// The set of selectable options.
 	Options SessionConfigSelectOptions `json:"options"`
 	Type    string                     `json:"type"`
@@ -4921,8 +4935,22 @@ type UnstableSessionConfigId string
 // A session configuration option selector and its current state.
 // Single-value selector (dropdown).
 type UnstableSessionConfigOptionSelect struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Optional semantic category for this option (UX only).
+	Category *UnstableSessionConfigOptionCategory `json:"category,omitempty"`
 	// The currently selected value.
 	CurrentValue UnstableSessionConfigValueId `json:"currentValue"`
+	// Optional description for the Client to display to the user.
+	Description *string `json:"description,omitempty"`
+	// Unique identifier for the configuration option.
+	Id UnstableSessionConfigId `json:"id"`
+	// Human-readable label for the option.
+	Name string `json:"name"`
 	// The set of selectable options.
 	Options UnstableSessionConfigSelectOptions `json:"options"`
 	Type    string                             `json:"type"`

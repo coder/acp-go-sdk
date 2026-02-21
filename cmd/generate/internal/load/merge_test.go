@@ -266,6 +266,55 @@ func TestMergeStableAndUnstable(t *testing.T) {
 		}
 	})
 
+	t.Run("promotes changed shared defs and pulls in new dependencies", func(t *testing.T) {
+		stableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"session_new": "session/new"}}
+		stableSchema := &Schema{Defs: map[string]*Definition{
+			"NewSessionResponse": {
+				Type:    "object",
+				XMethod: "session/new",
+				XSide:   "agent",
+				Properties: map[string]*Definition{
+					"sessionId": {Type: "string"},
+				},
+			},
+		}}
+
+		unstableMeta := &Meta{Version: 1}
+		unstableSchema := &Schema{Defs: map[string]*Definition{
+			"NewSessionResponse": {
+				Type:    "object",
+				XMethod: "session/new",
+				XSide:   "agent",
+				Properties: map[string]*Definition{
+					"sessionId": {Type: "string"},
+					"models":    ref("SessionModelState"),
+				},
+			},
+			"SessionModelState": {
+				Type: "object",
+				Properties: map[string]*Definition{
+					"currentModelId": {Type: "string"},
+				},
+			},
+		}}
+
+		_, combinedSchema := mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
+
+		merged := combinedSchema.Defs["NewSessionResponse"]
+		if merged == nil {
+			t.Fatalf("expected NewSessionResponse to exist")
+		}
+		if merged.Properties == nil || merged.Properties["models"] == nil {
+			t.Fatalf("expected promoted NewSessionResponse to contain models")
+		}
+		if got := merged.Properties["models"].Ref; got != "#/$defs/SessionModelState" {
+			t.Fatalf("expected models ref to SessionModelState; got %q", got)
+		}
+		if combinedSchema.Defs["SessionModelState"] == nil {
+			t.Fatalf("expected SessionModelState dependency to be copied from unstable")
+		}
+	})
+
 	t.Run("stable defs are not mutated", func(t *testing.T) {
 		stableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"stable": "stable/method"}}
 		unstableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"foo": "unstable/foo"}}

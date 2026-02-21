@@ -71,6 +71,9 @@ func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta
 		combinedSchema.Defs[name] = def
 	}
 
+	promotedSharedDefs := promoteChangedSharedDefs(combinedSchema, stableSchema, unstableSchema, stableWires)
+	ensureRefsAvailable(combinedSchema, unstableSchema, promotedSharedDefs)
+
 	for oldName, newName := range dupMap {
 		if _, exists := combinedSchema.Defs[newName]; exists {
 			return nil, nil, fmt.Errorf("cannot merge unstable schema: %q already exists in stable defs", newName)
@@ -239,6 +242,87 @@ func buildUnstableDuplicateSet(stableSchema *Schema, unstableSchema *Schema, uns
 	}
 
 	return dupSet, nil
+}
+
+func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires map[string]struct{}) map[string]struct{} {
+	promoted := map[string]struct{}{}
+	queue := []string{}
+	seen := map[string]struct{}{}
+
+	for name, sdef := range stableSchema.Defs {
+		if sdef == nil || sdef.XMethod == "" || sdef.XSide == "" {
+			continue
+		}
+		if _, ok := stableWires[sdef.XMethod]; !ok {
+			continue
+		}
+		if !strings.HasSuffix(name, "Request") && !strings.HasSuffix(name, "Response") && !strings.HasSuffix(name, "Notification") {
+			continue
+		}
+		queue = append(queue, name)
+		seen[name] = struct{}{}
+	}
+
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		udef := unstableSchema.Defs[name]
+		if udef == nil {
+			continue
+		}
+		sdef := stableSchema.Defs[name]
+		if sdef == nil || !reflect.DeepEqual(sdef, udef) {
+			combinedSchema.Defs[name] = deepCopyDefinition(udef)
+			promoted[name] = struct{}{}
+		}
+		for refName := range collectDefinitionRefs(udef) {
+			if _, ok := seen[refName]; ok {
+				continue
+			}
+			if unstableSchema.Defs[refName] == nil {
+				continue
+			}
+			seen[refName] = struct{}{}
+			queue = append(queue, refName)
+		}
+	}
+
+	return promoted
+}
+
+func ensureRefsAvailable(combinedSchema *Schema, unstableSchema *Schema, roots map[string]struct{}) {
+	if len(roots) == 0 {
+		return
+	}
+	queue := make([]string, 0, len(roots))
+	seen := make(map[string]struct{}, len(roots))
+	for name := range roots {
+		queue = append(queue, name)
+		seen[name] = struct{}{}
+	}
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		def := combinedSchema.Defs[name]
+		if def == nil {
+			def = unstableSchema.Defs[name]
+		}
+		if def == nil {
+			continue
+		}
+		refs := collectDefinitionRefs(def)
+		for refName := range refs {
+			if _, ok := combinedSchema.Defs[refName]; !ok {
+				if uref := unstableSchema.Defs[refName]; uref != nil {
+					combinedSchema.Defs[refName] = deepCopyDefinition(uref)
+				}
+			}
+			if _, ok := seen[refName]; !ok {
+				seen[refName] = struct{}{}
+				queue = append(queue, refName)
+			}
+		}
+	}
 }
 
 func collectDefinitionRefs(root *Definition) map[string]struct{} {

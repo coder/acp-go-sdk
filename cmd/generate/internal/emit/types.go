@@ -874,6 +874,17 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			}
 		}
 	}
+	sharedProps := map[string]*load.Definition{}
+	sharedRequired := map[string]struct{}{}
+	if parentDef != nil {
+		for k, p := range parentDef.Properties {
+			sharedProps[k] = p
+		}
+		for _, r := range parentDef.Required {
+			sharedRequired[r] = struct{}{}
+		}
+	}
+
 	for idx, v := range defs {
 		if v == nil {
 			continue
@@ -1004,8 +1015,18 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				for _, r := range v.Required {
 					req[r] = struct{}{}
 				}
-				pkeys := make([]string, 0, len(v.Properties))
-				for pk := range v.Properties {
+				for r := range sharedRequired {
+					req[r] = struct{}{}
+				}
+				mergedProps := make(map[string]*load.Definition, len(sharedProps)+len(v.Properties))
+				for pk, pDef := range sharedProps {
+					mergedProps[pk] = pDef
+				}
+				for pk, pDef := range v.Properties {
+					mergedProps[pk] = pDef
+				}
+				pkeys := make([]string, 0, len(mergedProps))
+				for pk := range mergedProps {
 					pkeys = append(pkeys, pk)
 				}
 				sort.Strings(pkeys)
@@ -1013,7 +1034,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 					emitDocComment(f, v.Description)
 				}
 				for _, pk := range pkeys {
-					pDef := v.Properties[pk]
+					pDef := mergedProps[pk]
 					field := util.ToExportedField(pk)
 					if pDef.Description != "" {
 						st = appendDocComments(st, pDef.Description)

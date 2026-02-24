@@ -838,14 +838,16 @@ func jenTypeForOptional(d *load.Definition) Code {
 // (title: UnstructuredCommandInput) with a required 'hint' field.
 func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Definition, defs []*load.Definition, exactlyOne bool, usedTypeNames map[string]bool) {
 	type variantInfo struct {
-		fieldName   string
-		typeName    string
-		required    []string
-		isObject    bool
-		discValue   string
-		constPairs  [][2]string
-		isNull      bool
-		description string
+		fieldName         string
+		typeName          string
+		required          []string
+		isObject          bool
+		isArray           bool
+		arrayItemRequired []string
+		discValue         string
+		constPairs        [][2]string
+		isNull            bool
+		description       string
 	}
 	variants := []variantInfo{}
 	discKey := ""
@@ -960,6 +962,21 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			fieldName = util.ToExportedField(tname)
 		}
 		isObj := len(v.Properties) > 0
+		isArray := ir.PrimaryType(v) == "array"
+		arrayItemRequired := []string{}
+		if isArray && v.Items != nil {
+			item := v.Items
+			if item.Ref != "" && strings.HasPrefix(item.Ref, "#/$defs/") {
+				if d := schema.Defs[item.Ref[len("#/$defs/"):]]; d != nil {
+					item = d
+				}
+			}
+			item = expandAllOf(schema, item)
+			if ir.PrimaryType(item) == "object" && len(item.Required) > 0 {
+				arrayItemRequired = append(arrayItemRequired, item.Required...)
+				sort.Strings(arrayItemRequired)
+			}
+		}
 		// Skip phantom variants that have neither $ref nor object shape nor null nor title
 		// (but allow title-only variants like ExtMethodRequest to generate as empty structs)
 		if !isObj && ref == "" && !isNull && v.Title == "" {
@@ -1018,11 +1035,15 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				}
 
 				if isExtension {
-					// Emit as type alias (=) to json.RawMessage to preserve marshal/unmarshal methods
+					// Emit as type alias (=) to json.RawMessage to preserve marshal/unmarshal methods.
 					// Using type alias ensures the RawMessage methods are inherited, unlike a defined type.
 					f.Type().Id(tname).Op("=").Qual("encoding/json", "RawMessage")
+				} else if ir.PrimaryType(v) != "" {
+					// Non-object title-only variants can still carry payloads (e.g. arrays).
+					// Emit a concrete type so sequential decode can succeed for valid payloads.
+					f.Type().Id(tname).Add(jenTypeFor(v))
 				} else {
-					// Emit as empty struct (rare case for truly empty variants)
+					// Emit as empty struct only for truly empty variants.
 					f.Type().Id(tname).Struct(st...)
 				}
 				f.Line()
@@ -1034,14 +1055,16 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 		skipStructEmit:
 		}
 		variants = append(variants, variantInfo{
-			fieldName:   fieldName,
-			typeName:    tname,
-			required:    v.Required,
-			isObject:    isObj,
-			discValue:   dv,
-			constPairs:  consts,
-			isNull:      isNull,
-			description: v.Description,
+			fieldName:         fieldName,
+			typeName:          tname,
+			required:          v.Required,
+			isObject:          isObj,
+			isArray:           isArray,
+			arrayItemRequired: arrayItemRequired,
+			discValue:         dv,
+			constPairs:        consts,
+			isNull:            isNull,
+			description:       v.Description,
 		})
 	}
 	// wrapper
@@ -1074,37 +1097,64 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			}
 		}
 		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
-		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("!=").Nil()).Block(Return(Id("err")))
-		// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
-		if discKey != "" {
-			g.BlockFunc(func(h *Group) {
-				h.Var().Id("disc").String()
-				h.If(List(Id("v"), Id("ok")).Op(":=").Id("m").Index(Lit(discKey)), Id("ok")).Block(
-					Qual("encoding/json", "Unmarshal").Call(Id("v"), Op("&").Id("disc")),
-				)
-				h.Switch(Id("disc")).BlockFunc(func(sw *Group) {
-					for _, vi := range variants {
-						if vi.discValue != "" {
-							sw.Case(Lit(vi.discValue)).Block(
-								Var().Id("v").Id(vi.typeName),
-								If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
-								Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
-								Return(Nil()),
-							)
+		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
+			// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
+			if discKey != "" {
+				obj.BlockFunc(func(h *Group) {
+					h.Var().Id("disc").String()
+					h.If(List(Id("v"), Id("ok")).Op(":=").Id("m").Index(Lit(discKey)), Id("ok")).Block(
+						Qual("encoding/json", "Unmarshal").Call(Id("v"), Op("&").Id("disc")),
+					)
+					h.Switch(Id("disc")).BlockFunc(func(sw *Group) {
+						for _, vi := range variants {
+							if vi.discValue != "" {
+								sw.Case(Lit(vi.discValue)).Block(
+									Var().Id("v").Id(vi.typeName),
+									If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
+									Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
+									Return(Nil()),
+								)
+							}
 						}
-					}
+					})
 				})
-			})
-		}
-		// required-key match
-		for _, vi := range variants {
-			if vi.isObject && len(vi.required) > 0 {
-				g.BlockFunc(func(h *Group) {
+			}
+			// required-key match
+			for _, vi := range variants {
+				if vi.isObject && len(vi.required) > 0 {
+					obj.BlockFunc(func(h *Group) {
+						h.Var().Id("v").Id(vi.typeName)
+						h.Var().Id("match").Bool().Op("=").Lit(true)
+						for _, rk := range vi.required {
+							h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+						}
+						h.If(Id("match")).Block(
+							If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
+							Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
+							Return(Nil()),
+						)
+					})
+				}
+			}
+		}).Else().Block(
+			// Not an object (e.g., primitive union variant) or invalid JSON.
+			If(List(Id("_"), Id("ok")).Op(":=").Id("err").Assert(Op("*").Qual("encoding/json", "UnmarshalTypeError")), Op("!").Id("ok")).Block(Return(Id("err"))),
+		)
+		// For array variants with required keys on object items, try key-based matching first.
+		g.Var().Id("arr").Index().Map(String()).Qual("encoding/json", "RawMessage")
+		g.If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("arr")).Op("==").Nil()).BlockFunc(func(arr *Group) {
+			for _, vi := range variants {
+				if !vi.isArray || len(vi.arrayItemRequired) == 0 {
+					continue
+				}
+				arr.BlockFunc(func(h *Group) {
 					h.Var().Id("v").Id(vi.typeName)
 					h.Var().Id("match").Bool().Op("=").Lit(true)
-					for _, rk := range vi.required {
-						h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
-					}
+					h.For(List(Id("_"), Id("elem")).Op(":=").Range().Id("arr")).BlockFunc(func(loop *Group) {
+						for _, rk := range vi.arrayItemRequired {
+							loop.If(List(Id("_"), Id("ok")).Op(":=").Id("elem").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+						}
+					})
 					h.If(Id("match")).Block(
 						If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
 						Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
@@ -1112,7 +1162,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 					)
 				})
 			}
-		}
+		})
 		// fallback: try decode sequentially
 		for _, vi := range variants {
 			g.Block(
@@ -1123,7 +1173,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				),
 			)
 		}
-		g.Return(Nil())
+		g.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
 	})
 	// Marshal
 	f.Func().Params(Id("u").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
@@ -1133,10 +1183,14 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				if vi.isNull {
 					gg.Return(Qual("encoding/json", "Marshal").Call(Nil()))
 				} else {
-					// Marshal variant to map for discriminant injection and shaping
-					gg.Var().Id("m").Map(String()).Any()
 					gg.List(Id("_b"), Id("_e")).Op(":=").Qual("encoding/json", "Marshal").Call(Op("*").Id("u").Dot(vi.fieldName))
 					gg.If(Id("_e").Op("!=").Nil()).Block(Return(Index().Byte().Values(), Id("_e")))
+					if !vi.isObject {
+						// Non-object variants (e.g., arrays/primitives) are already in final wire shape.
+						gg.Return(Id("_b"), Nil())
+					}
+					// Marshal object variant to map for discriminant injection and shaping.
+					gg.Var().Id("m").Map(String()).Any()
 					gg.If(Qual("encoding/json", "Unmarshal").Call(Id("_b"), Op("&").Id("m")).Op("!=").Nil()).Block(Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload"))))
 					// Inject const discriminants
 					if len(vi.constPairs) > 0 {

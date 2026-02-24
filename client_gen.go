@@ -140,6 +140,14 @@ func (c *ClientSideConnection) Initialize(ctx context.Context, params Initialize
 func (c *ClientSideConnection) Cancel(ctx context.Context, params CancelNotification) error {
 	return c.conn.SendNotification(ctx, AgentMethodSessionCancel, params)
 }
+func (c *ClientSideConnection) UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
+	resp, err := SendRequest[UnstableForkSessionResponse](c.conn, ctx, AgentMethodSessionFork, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableListSessions(ctx context.Context, params UnstableListSessionsRequest) (UnstableListSessionsResponse, error) {
+	resp, err := SendRequest[UnstableListSessionsResponse](c.conn, ctx, AgentMethodSessionList, params)
+	return resp, err
+}
 func (c *ClientSideConnection) LoadSession(ctx context.Context, params LoadSessionRequest) (LoadSessionResponse, error) {
 	resp, err := SendRequest[LoadSessionResponse](c.conn, ctx, AgentMethodSessionLoad, params)
 	return resp, err
@@ -157,7 +165,19 @@ func (c *ClientSideConnection) Prompt(ctx context.Context, params PromptRequest)
 	}
 	return resp, err
 }
+func (c *ClientSideConnection) UnstableResumeSession(ctx context.Context, params UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error) {
+	resp, err := SendRequest[UnstableResumeSessionResponse](c.conn, ctx, AgentMethodSessionResume, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableSetSessionConfigOption(ctx context.Context, params UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error) {
+	resp, err := SendRequest[UnstableSetSessionConfigOptionResponse](c.conn, ctx, AgentMethodSessionSetConfigOption, params)
+	return resp, err
+}
 func (c *ClientSideConnection) SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error) {
 	resp, err := SendRequest[SetSessionModeResponse](c.conn, ctx, AgentMethodSessionSetMode, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableSetSessionModel(ctx context.Context, params UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error) {
+	resp, err := SendRequest[UnstableSetSessionModelResponse](c.conn, ctx, AgentMethodSessionSetModel, params)
 	return resp, err
 }

@@ -484,6 +484,166 @@ func TestConnectionHandlesNotifications(t *testing.T) {
 	}
 }
 
+func TestConnectionDoesNotCancelInboundContextBeforeDrainingNotificationsOnDisconnect(t *testing.T) {
+	const n = 25
+
+	incomingR, incomingW := io.Pipe()
+
+	var (
+		wg            sync.WaitGroup
+		canceledCount atomic.Int64
+	)
+	wg.Add(n)
+
+	c := NewConnection(func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		defer wg.Done()
+		// Slow down processing so some notifications are handled after the receive
+		// loop observes EOF and signals disconnect.
+		time.Sleep(10 * time.Millisecond)
+		if ctx.Err() != nil {
+			canceledCount.Add(1)
+		}
+		return nil, nil
+	}, io.Discard, incomingR)
+
+	// Write notifications quickly and then close the stream to simulate a peer disconnect.
+	for i := 0; i < n; i++ {
+		if _, err := io.WriteString(incomingW, `{"jsonrpc":"2.0","method":"test/notify","params":{}}`+"\n"); err != nil {
+			t.Fatalf("write notification: %v", err)
+		}
+	}
+	_ = incomingW.Close()
+
+	select {
+	case <-c.Done():
+		// Expected: peer disconnect observed promptly.
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for connection Done()")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for notification handlers")
+	}
+
+	if got := canceledCount.Load(); got != 0 {
+		t.Fatalf("inbound handler context was canceled for %d/%d notifications", got, n)
+	}
+}
+
+func TestConnectionCancelsRequestHandlersOnDisconnectEvenWithNotificationBacklog(t *testing.T) {
+	const numNotifications = 200
+
+	incomingR, incomingW := io.Pipe()
+
+	reqDone := make(chan struct{})
+
+	c := NewConnection(func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		switch method {
+		case "test/notify":
+			// Slow down to create a backlog of queued notifications.
+			time.Sleep(5 * time.Millisecond)
+			return nil, nil
+		case "test/request":
+			// Requests should be canceled promptly on disconnect (uses c.ctx).
+			<-ctx.Done()
+			close(reqDone)
+			return nil, NewInternalError(map[string]any{"error": "canceled"})
+		default:
+			return nil, nil
+		}
+	}, io.Discard, incomingR)
+
+	for i := 0; i < numNotifications; i++ {
+		if _, err := io.WriteString(incomingW, `{"jsonrpc":"2.0","method":"test/notify","params":{}}`+"\n"); err != nil {
+			t.Fatalf("write notification: %v", err)
+		}
+	}
+	if _, err := io.WriteString(incomingW, `{"jsonrpc":"2.0","id":1,"method":"test/request","params":{}}`+"\n"); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	_ = incomingW.Close()
+
+	// Disconnect should be observed quickly.
+	select {
+	case <-c.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for connection Done()")
+	}
+
+	// Even with a big notification backlog, the request handler should be canceled promptly.
+	select {
+	case <-reqDone:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timeout waiting for request handler cancellation")
+	}
+}
+
+func TestConnectionFailsFastOnNotificationQueueOverflow(t *testing.T) {
+	incomingR, incomingW := io.Pipe()
+
+	// Block the first notification handler so the queue can fill deterministically.
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var handled atomic.Int64
+
+	c := NewConnection(func(context.Context, string, json.RawMessage) (any, *RequestError) {
+		if handled.Add(1) == 1 {
+			close(firstStarted)
+			<-releaseFirst
+		}
+		return nil, nil
+	}, io.Discard, incomingR)
+
+	if _, err := io.WriteString(incomingW, `{"jsonrpc":"2.0","method":"test/notify","params":{}}`+"\n"); err != nil {
+		t.Fatalf("write first notification: %v", err)
+	}
+	select {
+	case <-firstStarted:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timeout waiting for first notification handler to start")
+	}
+
+	// Fill the buffered queue, then send one extra notification to force overflow.
+	for i := 0; i < defaultMaxQueuedNotifications+1; i++ {
+		if _, err := io.WriteString(incomingW, `{"jsonrpc":"2.0","method":"test/notify","params":{}}`+"\n"); err != nil {
+			t.Fatalf("write overflow notification %d: %v", i, err)
+		}
+	}
+
+	select {
+	case <-c.Done():
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timeout waiting for connection cancellation on queue overflow")
+	}
+
+	cause := context.Cause(c.ctx)
+	if !errors.Is(cause, errNotificationQueueOverflow) {
+		t.Fatalf("expected overflow cancellation cause, got %v", cause)
+	}
+
+	// Let queued work drain and ensure waitgroup accounting remains balanced.
+	close(releaseFirst)
+
+	drained := make(chan struct{})
+	go func() {
+		c.notificationWg.Wait()
+		close(drained)
+	}()
+
+	select {
+	case <-drained:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("notification waitgroup did not drain after overflow")
+	}
+}
+
 // Test initialize method behavior
 func TestConnectionHandlesInitialize(t *testing.T) {
 	c2aR, c2aW := io.Pipe()

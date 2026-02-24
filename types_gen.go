@@ -598,10 +598,6 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Session configuration options have been updated.
 type ConfigOptionUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -1082,6 +1078,18 @@ type ContentChunk struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// A single item of content
 	Content ContentBlock `json:"content"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Cost information for a session.
+type Cost struct {
+	// Total cumulative cost for session.
+	Amount float64 `json:"amount"`
+	// ISO 4217 currency code (e.g., "USD", "EUR").
+	Currency string `json:"currency"`
 }
 
 // Request to create a new terminal and execute a command.
@@ -1858,10 +1866,6 @@ type LoadSessionResponse struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Initial session configuration options if supported by the Agent.
 	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
 	// **UNSTABLE**
@@ -2267,10 +2271,6 @@ type NewSessionResponse struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Initial session configuration options if supported by the Agent.
 	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
 	// **UNSTABLE**
@@ -2515,6 +2515,12 @@ type PromptResponse struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Indicates why the agent stopped processing the turn.
 	StopReason StopReason `json:"stopReason"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Token usage for this turn (optional).
+	Usage *Usage `json:"usage,omitempty"`
 }
 
 func (v *PromptResponse) Validate() error {
@@ -2974,24 +2980,12 @@ type SessionCapabilities struct {
 	Resume *SessionResumeCapabilities `json:"resume,omitempty"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Unique identifier for a session configuration option value group.
 type SessionConfigGroupId string
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Unique identifier for a session configuration option.
 type SessionConfigId string
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A session configuration option selector and its current state.
 // Single-value selector (dropdown).
 type SessionConfigOptionSelect struct {
@@ -3103,10 +3097,6 @@ func (u *SessionConfigOption) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Semantic category for a session configuration option.
 //
 // This is intended to help Clients distinguish broadly common selectors (e.g. model selector vs
@@ -3160,10 +3150,6 @@ func (u SessionConfigOptionCategory) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A single-value selector (dropdown) session configuration option payload.
 type SessionConfigSelect struct {
 	// The currently selected value.
@@ -3172,10 +3158,6 @@ type SessionConfigSelect struct {
 	Options SessionConfigSelectOptions `json:"options"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A group of possible values for a session configuration option.
 type SessionConfigSelectGroup struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -3192,10 +3174,6 @@ type SessionConfigSelectGroup struct {
 	Options []SessionConfigSelectOption `json:"options"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A possible value for a session configuration option.
 type SessionConfigSelectOption struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -3212,10 +3190,6 @@ type SessionConfigSelectOption struct {
 	Value SessionConfigValueId `json:"value"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Possible values for a session configuration option.
 // A flat list of options with no grouping.
 type SessionConfigSelectOptionsUngrouped []SessionConfigSelectOption
@@ -3326,10 +3300,6 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Unique identifier for a session configuration option value.
 type SessionConfigValueId string
 
@@ -3621,10 +3591,6 @@ type SessionCurrentModeUpdate struct {
 	SessionUpdate string        `json:"sessionUpdate"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Session configuration options have been updated.
 type SessionConfigOptionUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -3653,6 +3619,27 @@ type SessionSessionInfoUpdate struct {
 	UpdatedAt *string `json:"updatedAt,omitempty"`
 }
 
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Context window and cost update for the session.
+type SessionUsageUpdate struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Cumulative session cost (optional).
+	Cost          *Cost  `json:"cost,omitempty"`
+	SessionUpdate string `json:"sessionUpdate"`
+	// Total context window size in tokens.
+	Size int `json:"size"`
+	// Tokens currently in context.
+	Used int `json:"used"`
+}
+
 type SessionUpdate struct {
 	// A chunk of the user's message being streamed.
 	UserMessageChunk *SessionUpdateUserMessageChunk `json:"-"`
@@ -3673,14 +3660,16 @@ type SessionUpdate struct {
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
 	CurrentModeUpdate *SessionCurrentModeUpdate `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Session configuration options have been updated.
 	ConfigOptionUpdate *SessionConfigOptionUpdate `json:"-"`
 	// Session metadata has been updated (title, timestamps, custom metadata)
 	SessionInfoUpdate *SessionSessionInfoUpdate `json:"-"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Context window and cost update for the session.
+	UsageUpdate *SessionUsageUpdate `json:"-"`
 }
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
@@ -3761,6 +3750,13 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 					return errors.New("invalid variant payload")
 				}
 				u.SessionInfoUpdate = &v
+				return nil
+			case "usage_update":
+				var v SessionUsageUpdate
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.UsageUpdate = &v
 				return nil
 			}
 		}
@@ -3934,6 +3930,26 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
+		{
+			var v SessionUsageUpdate
+			var match bool = true
+			if _, ok := m["sessionUpdate"]; !ok {
+				match = false
+			}
+			if _, ok := m["used"]; !ok {
+				match = false
+			}
+			if _, ok := m["size"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.UsageUpdate = &v
+				return nil
+			}
+		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -4009,6 +4025,13 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 		var v SessionSessionInfoUpdate
 		if json.Unmarshal(b, &v) == nil {
 			u.SessionInfoUpdate = &v
+			return nil
+		}
+	}
+	{
+		var v SessionUsageUpdate
+		if json.Unmarshal(b, &v) == nil {
+			u.UsageUpdate = &v
 			return nil
 		}
 	}
@@ -4135,6 +4158,18 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		m["sessionUpdate"] = "session_info_update"
 		return json.Marshal(m)
 	}
+	if u.UsageUpdate != nil {
+		_b, _e := json.Marshal(*u.UsageUpdate)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]any
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["sessionUpdate"] = "usage_update"
+		return json.Marshal(m)
+	}
 	return []byte{}, nil
 }
 
@@ -4168,6 +4203,9 @@ func (u *SessionUpdate) Validate() error {
 		count++
 	}
 	if u.SessionInfoUpdate != nil {
+		count++
+	}
+	if u.UsageUpdate != nil {
 		count++
 	}
 	if count != 1 {
@@ -4747,10 +4785,6 @@ type UnstableForkSessionResponse struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Initial session configuration options if supported by the Agent.
 	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
 	// **UNSTABLE**
@@ -4892,10 +4926,6 @@ type UnstableResumeSessionResponse struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Initial session configuration options if supported by the Agent.
 	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
 	// **UNSTABLE**
@@ -4914,24 +4944,12 @@ func (v *UnstableResumeSessionResponse) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Unique identifier for a session configuration option value group.
 type UnstableSessionConfigGroupId string
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Unique identifier for a session configuration option.
 type UnstableSessionConfigId string
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A session configuration option selector and its current state.
 // Single-value selector (dropdown).
 type UnstableSessionConfigOptionSelect struct {
@@ -5043,10 +5061,6 @@ func (u *UnstableSessionConfigOption) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Semantic category for a session configuration option.
 //
 // This is intended to help Clients distinguish broadly common selectors (e.g. model selector vs
@@ -5100,10 +5114,6 @@ func (u UnstableSessionConfigOptionCategory) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A single-value selector (dropdown) session configuration option payload.
 type UnstableSessionConfigSelect struct {
 	// The currently selected value.
@@ -5112,10 +5122,6 @@ type UnstableSessionConfigSelect struct {
 	Options UnstableSessionConfigSelectOptions `json:"options"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A group of possible values for a session configuration option.
 type UnstableSessionConfigSelectGroup struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -5132,10 +5138,6 @@ type UnstableSessionConfigSelectGroup struct {
 	Options []UnstableSessionConfigSelectOption `json:"options"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A possible value for a session configuration option.
 type UnstableSessionConfigSelectOption struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -5152,10 +5154,6 @@ type UnstableSessionConfigSelectOption struct {
 	Value UnstableSessionConfigValueId `json:"value"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Possible values for a session configuration option.
 // A flat list of options with no grouping.
 type UnstableSessionConfigSelectOptionsUngrouped []UnstableSessionConfigSelectOption
@@ -5266,10 +5264,6 @@ func (u UnstableSessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Unique identifier for a session configuration option value.
 type UnstableSessionConfigValueId string
 
@@ -5313,10 +5307,6 @@ type UnstableSessionModelState struct {
 	CurrentModelId UnstableModelId `json:"currentModelId"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Request parameters for setting a session configuration option.
 type UnstableSetSessionConfigOptionRequest struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -5337,10 +5327,6 @@ func (v *UnstableSetSessionConfigOptionRequest) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Response to 'session/set_config_option' method.
 type UnstableSetSessionConfigOptionResponse struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -5410,6 +5396,46 @@ type UnstructuredCommandInput struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// A hint to display when the input hasn't been provided yet
 	Hint string `json:"hint"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Token usage information for a prompt turn.
+type Usage struct {
+	// Total cache read tokens.
+	CachedReadTokens *int `json:"cachedReadTokens,omitempty"`
+	// Total cache write tokens.
+	CachedWriteTokens *int `json:"cachedWriteTokens,omitempty"`
+	// Total input tokens across all turns.
+	InputTokens int `json:"inputTokens"`
+	// Total output tokens across all turns.
+	OutputTokens int `json:"outputTokens"`
+	// Total thought/reasoning tokens
+	ThoughtTokens *int `json:"thoughtTokens,omitempty"`
+	// Sum of all token types across session.
+	TotalTokens int `json:"totalTokens"`
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Context window and cost update for a session.
+type UsageUpdate struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Cumulative session cost (optional).
+	Cost *Cost `json:"cost,omitempty"`
+	// Total context window size in tokens.
+	Size int `json:"size"`
+	// Tokens currently in context.
+	Used int `json:"used"`
 }
 
 // Request to wait for a terminal command to exit.
@@ -5564,10 +5590,6 @@ type AgentExperimental interface {
 	//
 	// Only available if the Agent supports the 'session.resume' capability.
 	UnstableResumeSession(ctx context.Context, params UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Request parameters for setting a session configuration option.
 	UnstableSetSessionConfigOption(ctx context.Context, params UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error)
 	// **UNSTABLE**

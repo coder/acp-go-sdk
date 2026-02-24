@@ -82,17 +82,17 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
-			w:                   peerInput,
-			r:                   peerOutput,
-			handler:             handler,
-			pending:             make(map[string]*pendingResponse),
-			inflight:            make(map[string]context.CancelCauseFunc),
-			cancelRequestSignal: make(chan struct{}, 1),
-			ctx:                 ctx,
-			cancel:              cancel,
-			inboundCtx:          inboundCtx,
-			inboundCancel:       inboundCancel,
-			notificationQueue:   make(chan *anyMessage, defaultMaxQueuedNotifications),
+		w:                   peerInput,
+		r:                   peerOutput,
+		handler:             handler,
+		pending:             make(map[string]*pendingResponse),
+		inflight:            make(map[string]context.CancelCauseFunc),
+		cancelRequestSignal: make(chan struct{}, 1),
+		ctx:                 ctx,
+		cancel:              cancel,
+		inboundCtx:          inboundCtx,
+		inboundCancel:       inboundCancel,
+		notificationQueue:   make(chan *anyMessage, defaultMaxQueuedNotifications),
 	}
 	go c.sendCancelRequests()
 	go c.receive()

@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestUnstableSessionConfigSelectOptions_UnmarshalArrayVariants(t *testing.T) {
+func TestSessionConfigSelectOptions_UnmarshalArrayVariants(t *testing.T) {
 	t.Run("ungrouped", func(t *testing.T) {
-		var got UnstableSessionConfigSelectOptions
+		var got SessionConfigSelectOptions
 		payload := []byte(`[{"name":"fast","value":"fast"}]`)
 		if err := json.Unmarshal(payload, &got); err != nil {
 			t.Fatalf("unmarshal ungrouped options: %v", err)
@@ -21,13 +21,13 @@ func TestUnstableSessionConfigSelectOptions_UnmarshalArrayVariants(t *testing.T)
 		if len(*got.Ungrouped) != 1 {
 			t.Fatalf("expected one ungrouped option, got %d", len(*got.Ungrouped))
 		}
-		if (*got.Ungrouped)[0].Value != UnstableSessionConfigValueId("fast") {
+		if (*got.Ungrouped)[0].Value != SessionConfigValueId("fast") {
 			t.Fatalf("unexpected option value: %q", (*got.Ungrouped)[0].Value)
 		}
 	})
 
 	t.Run("grouped", func(t *testing.T) {
-		var got UnstableSessionConfigSelectOptions
+		var got SessionConfigSelectOptions
 		payload := []byte(`[{"group":"performance","name":"Performance","options":[{"name":"Balanced","value":"balanced"}]}]`)
 		if err := json.Unmarshal(payload, &got); err != nil {
 			t.Fatalf("unmarshal grouped options: %v", err)
@@ -44,7 +44,7 @@ func TestUnstableSessionConfigSelectOptions_UnmarshalArrayVariants(t *testing.T)
 		if len((*got.Grouped)[0].Options) != 1 {
 			t.Fatalf("expected one option in first group, got %d", len((*got.Grouped)[0].Options))
 		}
-		if (*got.Grouped)[0].Options[0].Value != UnstableSessionConfigValueId("balanced") {
+		if (*got.Grouped)[0].Options[0].Value != SessionConfigValueId("balanced") {
 			t.Fatalf("unexpected grouped option value: %q", (*got.Grouped)[0].Options[0].Value)
 		}
 		if _, err := json.Marshal(got); err != nil {
@@ -92,15 +92,15 @@ func TestSessionConfigOptionSelect_MetadataRoundTrip(t *testing.T) {
 	}
 }
 
-func TestUnstableSessionConfigOptionSelect_MetadataRoundTrip(t *testing.T) {
+func TestSessionConfigOptionSelect_MetadataUnmarshalAndMarshal(t *testing.T) {
 	payload := []byte(`{"type":"select","id":"model","name":"Model","category":"model","description":"Choose a model","currentValue":"gpt-4.1","options":[{"name":"GPT-4.1","value":"gpt-4.1"}]}`)
 
-	var opt UnstableSessionConfigOption
+	var opt SessionConfigOption
 	if err := json.Unmarshal(payload, &opt); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if opt.Select == nil || opt.Select.Id != "model" || opt.Select.Name != "Model" {
-		t.Fatalf("missing unstable identity metadata: %+v", opt.Select)
+		t.Fatalf("missing identity metadata: %+v", opt.Select)
 	}
 
 	b, err := json.Marshal(opt)
@@ -112,6 +112,6 @@ func TestUnstableSessionConfigOptionSelect_MetadataRoundTrip(t *testing.T) {
 		t.Fatalf("unmarshal raw: %v", err)
 	}
 	if raw["id"] != "model" || raw["name"] != "Model" {
-		t.Fatalf("identity metadata not emitted in unstable json: %s", string(b))
+		t.Fatalf("identity metadata not emitted in json: %s", string(b))
 	}
 }

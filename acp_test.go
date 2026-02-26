@@ -118,11 +118,11 @@ type agentFuncs struct {
 	CancelFunc         func(context.Context, CancelNotification) error
 	SetSessionModeFunc func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
 	// Unstable (schema/meta.unstable.json)
-	UnstableForkSessionFunc            func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-	UnstableListSessionsFunc           func(context.Context, UnstableListSessionsRequest) (UnstableListSessionsResponse, error)
-	UnstableResumeSessionFunc          func(context.Context, UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
-	UnstableSetSessionConfigOptionFunc func(context.Context, UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error)
-	UnstableSetSessionModelFunc        func(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
+	UnstableForkSessionFunc     func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
+	UnstableListSessionsFunc    func(context.Context, UnstableListSessionsRequest) (UnstableListSessionsResponse, error)
+	UnstableResumeSessionFunc   func(context.Context, UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
+	SetSessionConfigOptionFunc  func(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error)
+	UnstableSetSessionModelFunc func(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
@@ -208,12 +208,12 @@ func (a agentFuncs) UnstableResumeSession(ctx context.Context, params UnstableRe
 	return UnstableResumeSessionResponse{}, nil
 }
 
-// UnstableSetSessionConfigOption implements AgentExperimental.
-func (a agentFuncs) UnstableSetSessionConfigOption(ctx context.Context, params UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error) {
-	if a.UnstableSetSessionConfigOptionFunc != nil {
-		return a.UnstableSetSessionConfigOptionFunc(ctx, params)
+// SetSessionConfigOption implements Agent.
+func (a agentFuncs) SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
+	if a.SetSessionConfigOptionFunc != nil {
+		return a.SetSessionConfigOptionFunc(ctx, params)
 	}
-	return UnstableSetSessionConfigOptionResponse{}, nil
+	return SetSessionConfigOptionResponse{}, nil
 }
 
 // UnstableSetSessionModel implements AgentExperimental.
@@ -257,6 +257,10 @@ func (a *forkOnlyUnstableAgent) Prompt(context.Context, PromptRequest) (PromptRe
 
 func (a *forkOnlyUnstableAgent) SetSessionMode(context.Context, SetSessionModeRequest) (SetSessionModeResponse, error) {
 	return SetSessionModeResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) SetSessionConfigOption(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
+	return SetSessionConfigOptionResponse{}, nil
 }
 
 func (a *forkOnlyUnstableAgent) UnstableForkSession(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
@@ -1135,6 +1139,10 @@ func (agentNoExtensions) Prompt(ctx context.Context, params PromptRequest) (Prom
 
 func (agentNoExtensions) SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error) {
 	return SetSessionModeResponse{}, nil
+}
+
+func (agentNoExtensions) SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
+	return SetSessionConfigOptionResponse{}, nil
 }
 
 func TestExtensionMethods_ClientToAgentRequest(t *testing.T) {

@@ -56,9 +56,9 @@ func (a *exampleAgent) UnstableResumeSession(ctx context.Context, params acp.Uns
 	return acp.UnstableResumeSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionResume)
 }
 
-// UnstableSetSessionConfigOption implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableSetSessionConfigOption(ctx context.Context, params acp.UnstableSetSessionConfigOptionRequest) (acp.UnstableSetSessionConfigOptionResponse, error) {
-	return acp.UnstableSetSessionConfigOptionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionSetConfigOption)
+// SetSessionConfigOption implements acp.Agent.
+func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+	return acp.SetSessionConfigOptionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionSetConfigOption)
 }
 
 // UnstableSetSessionModel implements acp.AgentExperimental.

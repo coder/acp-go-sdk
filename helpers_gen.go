@@ -12,7 +12,7 @@ func NewRequestPermissionOutcomeSelected() RequestPermissionOutcome {
 	return RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{Outcome: "selected"}}
 }
 
-// NewUnstableSessionConfigOptionSelect constructs a UnstableSessionConfigOption using the 'select' variant.
-func NewUnstableSessionConfigOptionSelect() UnstableSessionConfigOption {
-	return UnstableSessionConfigOption{Select: &UnstableSessionConfigOptionSelect{Type: "select"}}
+// NewSessionConfigOptionSelect constructs a SessionConfigOption using the 'select' variant.
+func NewSessionConfigOptionSelect() SessionConfigOption {
+	return SessionConfigOption{Select: &SessionConfigOptionSelect{Type: "select"}}
 }

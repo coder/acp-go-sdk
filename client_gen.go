@@ -169,8 +169,8 @@ func (c *ClientSideConnection) UnstableResumeSession(ctx context.Context, params
 	resp, err := SendRequest[UnstableResumeSessionResponse](c.conn, ctx, AgentMethodSessionResume, params)
 	return resp, err
 }
-func (c *ClientSideConnection) UnstableSetSessionConfigOption(ctx context.Context, params UnstableSetSessionConfigOptionRequest) (UnstableSetSessionConfigOptionResponse, error) {
-	resp, err := SendRequest[UnstableSetSessionConfigOptionResponse](c.conn, ctx, AgentMethodSessionSetConfigOption, params)
+func (c *ClientSideConnection) SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
+	resp, err := SendRequest[SetSessionConfigOptionResponse](c.conn, ctx, AgentMethodSessionSetConfigOption, params)
 	return resp, err
 }
 func (c *ClientSideConnection) SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error) {

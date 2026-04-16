@@ -1,6 +1,7 @@
 {
   "protocolVersion": 1,
   "clientCapabilities": {
+    "auth": {},
     "fs": {
       "readTextFile": true,
       "writeTextFile": true

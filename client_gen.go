@@ -9,6 +9,43 @@ import (
 
 func (c *ClientSideConnection) handle(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
 	switch method {
+	case ClientMethodElicitationComplete:
+		var p UnstableCompleteElicitationNotification
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := c.client.(interface {
+			UnstableCompleteElicitation(context.Context, UnstableCompleteElicitationNotification) error
+		})
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		if err := exp.UnstableCompleteElicitation(ctx, p); err != nil {
+			return nil, toReqErr(err)
+		}
+		return nil, nil
+	case ClientMethodElicitationCreate:
+		var p UnstableCreateElicitationRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := c.client.(interface {
+			UnstableCreateElicitation(context.Context, UnstableCreateElicitationRequest) (UnstableCreateElicitationResponse, error)
+		})
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableCreateElicitation(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
 	case ClientMethodFsReadTextFile:
 		var p ReadTextFileRequest
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -74,14 +111,14 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		}
 		return resp, nil
 	case ClientMethodTerminalKill:
-		var p KillTerminalCommandRequest
+		var p KillTerminalRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		resp, err := c.client.KillTerminalCommand(ctx, p)
+		resp, err := c.client.KillTerminal(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -133,19 +170,72 @@ func (c *ClientSideConnection) Authenticate(ctx context.Context, params Authenti
 	resp, err := SendRequest[AuthenticateResponse](c.conn, ctx, AgentMethodAuthenticate, params)
 	return resp, err
 }
+func (c *ClientSideConnection) UnstableDidChangeDocument(ctx context.Context, params UnstableDidChangeDocumentNotification) error {
+	return c.conn.SendNotification(ctx, AgentMethodDocumentDidChange, params)
+}
+func (c *ClientSideConnection) UnstableDidCloseDocument(ctx context.Context, params UnstableDidCloseDocumentNotification) error {
+	return c.conn.SendNotification(ctx, AgentMethodDocumentDidClose, params)
+}
+func (c *ClientSideConnection) UnstableDidFocusDocument(ctx context.Context, params UnstableDidFocusDocumentNotification) error {
+	return c.conn.SendNotification(ctx, AgentMethodDocumentDidFocus, params)
+}
+func (c *ClientSideConnection) UnstableDidOpenDocument(ctx context.Context, params UnstableDidOpenDocumentNotification) error {
+	return c.conn.SendNotification(ctx, AgentMethodDocumentDidOpen, params)
+}
+func (c *ClientSideConnection) UnstableDidSaveDocument(ctx context.Context, params UnstableDidSaveDocumentNotification) error {
+	return c.conn.SendNotification(ctx, AgentMethodDocumentDidSave, params)
+}
 func (c *ClientSideConnection) Initialize(ctx context.Context, params InitializeRequest) (InitializeResponse, error) {
 	resp, err := SendRequest[InitializeResponse](c.conn, ctx, AgentMethodInitialize, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableLogout(ctx context.Context, params UnstableLogoutRequest) (UnstableLogoutResponse, error) {
+	resp, err := SendRequest[UnstableLogoutResponse](c.conn, ctx, AgentMethodLogout, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableAcceptNes(ctx context.Context, params UnstableAcceptNesNotification) error {
+	return c.conn.SendNotification(ctx, AgentMethodNesAccept, params)
+}
+func (c *ClientSideConnection) UnstableCloseNes(ctx context.Context, params UnstableCloseNesRequest) (UnstableCloseNesResponse, error) {
+	resp, err := SendRequest[UnstableCloseNesResponse](c.conn, ctx, AgentMethodNesClose, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableRejectNes(ctx context.Context, params UnstableRejectNesNotification) error {
+	return c.conn.SendNotification(ctx, AgentMethodNesReject, params)
+}
+func (c *ClientSideConnection) UnstableStartNes(ctx context.Context, params UnstableStartNesRequest) (UnstableStartNesResponse, error) {
+	resp, err := SendRequest[UnstableStartNesResponse](c.conn, ctx, AgentMethodNesStart, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableSuggestNes(ctx context.Context, params UnstableSuggestNesRequest) (UnstableSuggestNesResponse, error) {
+	resp, err := SendRequest[UnstableSuggestNesResponse](c.conn, ctx, AgentMethodNesSuggest, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableDisableProviders(ctx context.Context, params UnstableDisableProvidersRequest) (UnstableDisableProvidersResponse, error) {
+	resp, err := SendRequest[UnstableDisableProvidersResponse](c.conn, ctx, AgentMethodProvidersDisable, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableListProviders(ctx context.Context, params UnstableListProvidersRequest) (UnstableListProvidersResponse, error) {
+	resp, err := SendRequest[UnstableListProvidersResponse](c.conn, ctx, AgentMethodProvidersList, params)
+	return resp, err
+}
+func (c *ClientSideConnection) UnstableSetProviders(ctx context.Context, params UnstableSetProvidersRequest) (UnstableSetProvidersResponse, error) {
+	resp, err := SendRequest[UnstableSetProvidersResponse](c.conn, ctx, AgentMethodProvidersSet, params)
 	return resp, err
 }
 func (c *ClientSideConnection) Cancel(ctx context.Context, params CancelNotification) error {
 	return c.conn.SendNotification(ctx, AgentMethodSessionCancel, params)
 }
+func (c *ClientSideConnection) UnstableCloseSession(ctx context.Context, params UnstableCloseSessionRequest) (UnstableCloseSessionResponse, error) {
+	resp, err := SendRequest[UnstableCloseSessionResponse](c.conn, ctx, AgentMethodSessionClose, params)
+	return resp, err
+}
 func (c *ClientSideConnection) UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
 	resp, err := SendRequest[UnstableForkSessionResponse](c.conn, ctx, AgentMethodSessionFork, params)
 	return resp, err
 }
-func (c *ClientSideConnection) UnstableListSessions(ctx context.Context, params UnstableListSessionsRequest) (UnstableListSessionsResponse, error) {
-	resp, err := SendRequest[UnstableListSessionsResponse](c.conn, ctx, AgentMethodSessionList, params)
+func (c *ClientSideConnection) ListSessions(ctx context.Context, params ListSessionsRequest) (ListSessionsResponse, error) {
+	resp, err := SendRequest[ListSessionsResponse](c.conn, ctx, AgentMethodSessionList, params)
 	return resp, err
 }
 func (c *ClientSideConnection) LoadSession(ctx context.Context, params LoadSessionRequest) (LoadSessionResponse, error) {

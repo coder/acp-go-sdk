@@ -93,8 +93,8 @@ func (clientExample) CreateTerminal(ctx context.Context, p CreateTerminalRequest
 	return CreateTerminalResponse{TerminalId: "t-1"}, nil
 }
 
-func (clientExample) KillTerminalCommand(ctx context.Context, p KillTerminalCommandRequest) (KillTerminalCommandResponse, error) {
-	return KillTerminalCommandResponse{}, nil
+func (clientExample) KillTerminal(ctx context.Context, p KillTerminalRequest) (KillTerminalResponse, error) {
+	return KillTerminalResponse{}, nil
 }
 
 func (clientExample) ReleaseTerminal(ctx context.Context, p ReleaseTerminalRequest) (ReleaseTerminalResponse, error) {
@@ -123,7 +123,7 @@ func Example_client() {
 	_, _ = conn.Initialize(ctx, InitializeRequest{
 		ProtocolVersion: ProtocolVersionNumber,
 		ClientCapabilities: ClientCapabilities{
-			Fs: FileSystemCapability{
+			Fs: FileSystemCapabilities{
 				ReadTextFile:  true,
 				WriteTextFile: true,
 			},

@@ -8,11 +8,117 @@ func NewRequestPermissionOutcomeCancelled() RequestPermissionOutcome {
 }
 
 // NewRequestPermissionOutcomeSelected constructs a RequestPermissionOutcome using the 'selected' variant.
-func NewRequestPermissionOutcomeSelected() RequestPermissionOutcome {
-	return RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{Outcome: "selected"}}
+func NewRequestPermissionOutcomeSelected(optionId PermissionOptionId) RequestPermissionOutcome {
+	return RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{
+		OptionId: optionId,
+		Outcome:  "selected",
+	}}
 }
 
 // NewSessionConfigOptionSelect constructs a SessionConfigOption using the 'select' variant.
-func NewSessionConfigOptionSelect() SessionConfigOption {
-	return SessionConfigOption{Select: &SessionConfigOptionSelect{Type: "select"}}
+func NewSessionConfigOptionSelect(currentValue SessionConfigValueId, options SessionConfigSelectOptions) SessionConfigOption {
+	return SessionConfigOption{Select: &SessionConfigOptionSelect{
+		CurrentValue: currentValue,
+		Options:      options,
+		Type:         "select",
+	}}
+}
+
+// NewSessionConfigOptionBoolean constructs a SessionConfigOption using the 'boolean' variant.
+func NewSessionConfigOptionBoolean(currentValue bool) SessionConfigOption {
+	return SessionConfigOption{Boolean: &SessionConfigOptionBoolean{
+		CurrentValue: currentValue,
+		Type:         "boolean",
+	}}
+}
+
+// NewUnstableCreateElicitationRequestForm constructs a UnstableCreateElicitationRequest using the 'form' variant.
+func NewUnstableCreateElicitationRequestForm(requestedSchema UnstableElicitationSchema) UnstableCreateElicitationRequest {
+	return UnstableCreateElicitationRequest{Form: &UnstableCreateElicitationForm{
+		Mode:            "form",
+		RequestedSchema: requestedSchema,
+	}}
+}
+
+// NewUnstableCreateElicitationRequestUrl constructs a UnstableCreateElicitationRequest using the 'url' variant.
+func NewUnstableCreateElicitationRequestUrl(elicitationId UnstableElicitationId, url string) UnstableCreateElicitationRequest {
+	return UnstableCreateElicitationRequest{Url: &UnstableCreateElicitationUrl{
+		ElicitationId: elicitationId,
+		Mode:          "url",
+		Url:           url,
+	}}
+}
+
+// NewUnstableCreateElicitationResponseAccept constructs a UnstableCreateElicitationResponse using the 'accept' variant.
+func NewUnstableCreateElicitationResponseAccept() UnstableCreateElicitationResponse {
+	return UnstableCreateElicitationResponse{Accept: &UnstableCreateElicitationAccept{Action: "accept"}}
+}
+
+// NewUnstableCreateElicitationResponseDecline constructs a UnstableCreateElicitationResponse using the 'decline' variant.
+func NewUnstableCreateElicitationResponseDecline() UnstableCreateElicitationResponse {
+	return UnstableCreateElicitationResponse{Decline: &UnstableCreateElicitationDecline{Action: "decline"}}
+}
+
+// NewUnstableCreateElicitationResponseCancel constructs a UnstableCreateElicitationResponse using the 'cancel' variant.
+func NewUnstableCreateElicitationResponseCancel() UnstableCreateElicitationResponse {
+	return UnstableCreateElicitationResponse{Cancel: &UnstableCreateElicitationCancel{Action: "cancel"}}
+}
+
+// NewUnstableNesSuggestionEdit constructs a UnstableNesSuggestion using the 'edit' variant.
+func NewUnstableNesSuggestionEdit(id string, uri string, edits []UnstableNesTextEdit) UnstableNesSuggestion {
+	return UnstableNesSuggestion{Edit: &UnstableNesSuggestionEdit{
+		Edits: edits,
+		Id:    id,
+		Kind:  "edit",
+		Uri:   uri,
+	}}
+}
+
+// NewUnstableNesSuggestionJump constructs a UnstableNesSuggestion using the 'jump' variant.
+func NewUnstableNesSuggestionJump(id string, uri string, position UnstablePosition) UnstableNesSuggestion {
+	return UnstableNesSuggestion{Jump: &UnstableNesSuggestionJump{
+		Id:       id,
+		Kind:     "jump",
+		Position: position,
+		Uri:      uri,
+	}}
+}
+
+// NewUnstableNesSuggestionRename constructs a UnstableNesSuggestion using the 'rename' variant.
+func NewUnstableNesSuggestionRename(id string, uri string, position UnstablePosition, newName string) UnstableNesSuggestion {
+	return UnstableNesSuggestion{Rename: &UnstableNesSuggestionRename{
+		Id:       id,
+		Kind:     "rename",
+		NewName:  newName,
+		Position: position,
+		Uri:      uri,
+	}}
+}
+
+// NewUnstableNesSuggestionSearchAndReplace constructs a UnstableNesSuggestion using the 'searchAndReplace' variant.
+func NewUnstableNesSuggestionSearchAndReplace(id string, uri string, search string, replace string) UnstableNesSuggestion {
+	return UnstableNesSuggestion{SearchAndReplace: &UnstableNesSuggestionSearchAndReplace{
+		Id:      id,
+		Kind:    "searchAndReplace",
+		Replace: replace,
+		Search:  search,
+		Uri:     uri,
+	}}
+}
+
+// NewUnstableSessionConfigOptionSelect constructs a UnstableSessionConfigOption using the 'select' variant.
+func NewUnstableSessionConfigOptionSelect(currentValue SessionConfigValueId, options SessionConfigSelectOptions) UnstableSessionConfigOption {
+	return UnstableSessionConfigOption{Select: &UnstableSessionConfigOptionSelect{
+		CurrentValue: currentValue,
+		Options:      options,
+		Type:         "select",
+	}}
+}
+
+// NewUnstableSessionConfigOptionBoolean constructs a UnstableSessionConfigOption using the 'boolean' variant.
+func NewUnstableSessionConfigOptionBoolean(currentValue bool) UnstableSessionConfigOption {
+	return UnstableSessionConfigOption{Boolean: &UnstableSessionConfigOptionBoolean{
+		CurrentValue: currentValue,
+		Type:         "boolean",
+	}}
 }

@@ -137,9 +137,7 @@ func TestJSONGolden_RequestPermissionOutcome(t *testing.T) {
 			return RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{Outcome: "selected", OptionId: "allow-once"}}
 		},
 		func() RequestPermissionOutcome {
-			o := NewRequestPermissionOutcomeSelected()
-			o.Selected.OptionId = "allow-once"
-			return o
+			return NewRequestPermissionOutcomeSelected("allow-once")
 		},
 	))
 	t.Run("permission_outcome_cancelled", runGolden(
@@ -231,7 +229,7 @@ func TestJSONGolden_SessionUpdates(t *testing.T) {
 func TestJSONGolden_MethodPayloads(t *testing.T) {
 	t.Parallel()
 	t.Run("initialize_request", runGolden(func() InitializeRequest {
-		return InitializeRequest{ProtocolVersion: 1, ClientCapabilities: ClientCapabilities{Fs: FileSystemCapability{ReadTextFile: true, WriteTextFile: true}}}
+		return InitializeRequest{ProtocolVersion: 1, ClientCapabilities: ClientCapabilities{Fs: FileSystemCapabilities{ReadTextFile: true, WriteTextFile: true}}}
 	}))
 	t.Run("initialize_response", runGolden(func() InitializeResponse {
 		return InitializeResponse{ProtocolVersion: 1, AgentCapabilities: AgentCapabilities{LoadSession: true, PromptCapabilities: PromptCapabilities{Image: true, Audio: true, EmbeddedContext: true}}}

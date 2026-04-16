@@ -1,6 +1,7 @@
 {
   "protocolVersion": 1,
   "agentCapabilities": {
+    "auth": {},
     "loadSession": true,
     "mcpCapabilities": {},
     "promptCapabilities": {

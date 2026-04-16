@@ -397,8 +397,10 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 		}
 
 		// validators for selected types
-		// Note: oneOf union wrappers get a generic Validate emitted in emitUnion.
-		if strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification") || name == "ToolCallUpdate" {
+		// Note: oneOf union wrappers get a generic Validate emitted in emitUnion,
+		// so skip emitValidateJen for types that already have a union Validate.
+		hasUnionValidate := len(def.OneOf) > 0 && !isStringConstUnion(def)
+		if !hasUnionValidate && (strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification") || name == "ToolCallUpdate") {
 			emitValidateJen(f, name, def)
 		}
 	}

@@ -22,7 +22,7 @@ type clientFuncs struct {
 	SessionUpdateFunc     func(context.Context, SessionNotification) error
 	// Terminal-related handlers
 	CreateTerminalFunc      func(context.Context, CreateTerminalRequest) (CreateTerminalResponse, error)
-	KillTerminalCommandFunc func(context.Context, KillTerminalCommandRequest) (KillTerminalCommandResponse, error)
+	KillTerminalFunc        func(context.Context, KillTerminalRequest) (KillTerminalResponse, error)
 	ReleaseTerminalFunc     func(context.Context, ReleaseTerminalRequest) (ReleaseTerminalResponse, error)
 	TerminalOutputFunc      func(context.Context, TerminalOutputRequest) (TerminalOutputResponse, error)
 	WaitForTerminalExitFunc func(context.Context, WaitForTerminalExitRequest) (WaitForTerminalExitResponse, error)
@@ -70,12 +70,12 @@ func (c *clientFuncs) CreateTerminal(ctx context.Context, params CreateTerminalR
 	return CreateTerminalResponse{TerminalId: "test-terminal"}, nil
 }
 
-// KillTerminalCommand implements Client.
-func (c clientFuncs) KillTerminalCommand(ctx context.Context, params KillTerminalCommandRequest) (KillTerminalCommandResponse, error) {
-	if c.KillTerminalCommandFunc != nil {
-		return c.KillTerminalCommandFunc(ctx, params)
+// KillTerminal implements Client.
+func (c clientFuncs) KillTerminal(ctx context.Context, params KillTerminalRequest) (KillTerminalResponse, error) {
+	if c.KillTerminalFunc != nil {
+		return c.KillTerminalFunc(ctx, params)
 	}
-	return KillTerminalCommandResponse{}, nil
+	return KillTerminalResponse{}, nil
 }
 
 // ReleaseTerminal implements Client.
@@ -110,19 +110,34 @@ func (c clientFuncs) HandleExtensionMethod(ctx context.Context, method string, p
 }
 
 type agentFuncs struct {
-	InitializeFunc     func(context.Context, InitializeRequest) (InitializeResponse, error)
-	NewSessionFunc     func(context.Context, NewSessionRequest) (NewSessionResponse, error)
-	LoadSessionFunc    func(context.Context, LoadSessionRequest) (LoadSessionResponse, error)
-	AuthenticateFunc   func(context.Context, AuthenticateRequest) (AuthenticateResponse, error)
-	PromptFunc         func(context.Context, PromptRequest) (PromptResponse, error)
-	CancelFunc         func(context.Context, CancelNotification) error
-	SetSessionModeFunc func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
+	InitializeFunc             func(context.Context, InitializeRequest) (InitializeResponse, error)
+	NewSessionFunc             func(context.Context, NewSessionRequest) (NewSessionResponse, error)
+	LoadSessionFunc            func(context.Context, LoadSessionRequest) (LoadSessionResponse, error)
+	AuthenticateFunc           func(context.Context, AuthenticateRequest) (AuthenticateResponse, error)
+	PromptFunc                 func(context.Context, PromptRequest) (PromptResponse, error)
+	CancelFunc                 func(context.Context, CancelNotification) error
+	SetSessionModeFunc         func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
+	ListSessionsFunc           func(context.Context, ListSessionsRequest) (ListSessionsResponse, error)
+	SetSessionConfigOptionFunc func(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error)
 	// Unstable (schema/meta.unstable.json)
-	UnstableForkSessionFunc     func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-	UnstableListSessionsFunc    func(context.Context, UnstableListSessionsRequest) (UnstableListSessionsResponse, error)
-	UnstableResumeSessionFunc   func(context.Context, UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
-	SetSessionConfigOptionFunc  func(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error)
-	UnstableSetSessionModelFunc func(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
+	UnstableDidChangeDocumentFunc func(context.Context, UnstableDidChangeDocumentNotification) error
+	UnstableDidCloseDocumentFunc  func(context.Context, UnstableDidCloseDocumentNotification) error
+	UnstableDidFocusDocumentFunc  func(context.Context, UnstableDidFocusDocumentNotification) error
+	UnstableDidOpenDocumentFunc   func(context.Context, UnstableDidOpenDocumentNotification) error
+	UnstableDidSaveDocumentFunc   func(context.Context, UnstableDidSaveDocumentNotification) error
+	UnstableLogoutFunc            func(context.Context, UnstableLogoutRequest) (UnstableLogoutResponse, error)
+	UnstableAcceptNesFunc         func(context.Context, UnstableAcceptNesNotification) error
+	UnstableCloseNesFunc          func(context.Context, UnstableCloseNesRequest) (UnstableCloseNesResponse, error)
+	UnstableRejectNesFunc         func(context.Context, UnstableRejectNesNotification) error
+	UnstableStartNesFunc          func(context.Context, UnstableStartNesRequest) (UnstableStartNesResponse, error)
+	UnstableSuggestNesFunc        func(context.Context, UnstableSuggestNesRequest) (UnstableSuggestNesResponse, error)
+	UnstableDisableProvidersFunc  func(context.Context, UnstableDisableProvidersRequest) (UnstableDisableProvidersResponse, error)
+	UnstableListProvidersFunc     func(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
+	UnstableSetProvidersFunc      func(context.Context, UnstableSetProvidersRequest) (UnstableSetProvidersResponse, error)
+	UnstableCloseSessionFunc      func(context.Context, UnstableCloseSessionRequest) (UnstableCloseSessionResponse, error)
+	UnstableForkSessionFunc       func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
+	UnstableResumeSessionFunc     func(context.Context, UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
+	UnstableSetSessionModelFunc   func(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
@@ -192,12 +207,12 @@ func (a agentFuncs) UnstableForkSession(ctx context.Context, params UnstableFork
 	return UnstableForkSessionResponse{}, nil
 }
 
-// UnstableListSessions implements AgentExperimental.
-func (a agentFuncs) UnstableListSessions(ctx context.Context, params UnstableListSessionsRequest) (UnstableListSessionsResponse, error) {
-	if a.UnstableListSessionsFunc != nil {
-		return a.UnstableListSessionsFunc(ctx, params)
+// ListSessions implements Agent.
+func (a agentFuncs) ListSessions(ctx context.Context, params ListSessionsRequest) (ListSessionsResponse, error) {
+	if a.ListSessionsFunc != nil {
+		return a.ListSessionsFunc(ctx, params)
 	}
-	return UnstableListSessionsResponse{}, nil
+	return ListSessionsResponse{}, nil
 }
 
 // UnstableResumeSession implements AgentExperimental.
@@ -222,6 +237,111 @@ func (a agentFuncs) UnstableSetSessionModel(ctx context.Context, params Unstable
 		return a.UnstableSetSessionModelFunc(ctx, params)
 	}
 	return UnstableSetSessionModelResponse{}, nil
+}
+
+func (a agentFuncs) UnstableDidChangeDocument(ctx context.Context, params UnstableDidChangeDocumentNotification) error {
+	if a.UnstableDidChangeDocumentFunc != nil {
+		return a.UnstableDidChangeDocumentFunc(ctx, params)
+	}
+	return nil
+}
+
+func (a agentFuncs) UnstableDidCloseDocument(ctx context.Context, params UnstableDidCloseDocumentNotification) error {
+	if a.UnstableDidCloseDocumentFunc != nil {
+		return a.UnstableDidCloseDocumentFunc(ctx, params)
+	}
+	return nil
+}
+
+func (a agentFuncs) UnstableDidFocusDocument(ctx context.Context, params UnstableDidFocusDocumentNotification) error {
+	if a.UnstableDidFocusDocumentFunc != nil {
+		return a.UnstableDidFocusDocumentFunc(ctx, params)
+	}
+	return nil
+}
+
+func (a agentFuncs) UnstableDidOpenDocument(ctx context.Context, params UnstableDidOpenDocumentNotification) error {
+	if a.UnstableDidOpenDocumentFunc != nil {
+		return a.UnstableDidOpenDocumentFunc(ctx, params)
+	}
+	return nil
+}
+
+func (a agentFuncs) UnstableDidSaveDocument(ctx context.Context, params UnstableDidSaveDocumentNotification) error {
+	if a.UnstableDidSaveDocumentFunc != nil {
+		return a.UnstableDidSaveDocumentFunc(ctx, params)
+	}
+	return nil
+}
+
+func (a agentFuncs) UnstableLogout(ctx context.Context, params UnstableLogoutRequest) (UnstableLogoutResponse, error) {
+	if a.UnstableLogoutFunc != nil {
+		return a.UnstableLogoutFunc(ctx, params)
+	}
+	return UnstableLogoutResponse{}, nil
+}
+
+func (a agentFuncs) UnstableAcceptNes(ctx context.Context, params UnstableAcceptNesNotification) error {
+	if a.UnstableAcceptNesFunc != nil {
+		return a.UnstableAcceptNesFunc(ctx, params)
+	}
+	return nil
+}
+
+func (a agentFuncs) UnstableCloseNes(ctx context.Context, params UnstableCloseNesRequest) (UnstableCloseNesResponse, error) {
+	if a.UnstableCloseNesFunc != nil {
+		return a.UnstableCloseNesFunc(ctx, params)
+	}
+	return UnstableCloseNesResponse{}, nil
+}
+
+func (a agentFuncs) UnstableRejectNes(ctx context.Context, params UnstableRejectNesNotification) error {
+	if a.UnstableRejectNesFunc != nil {
+		return a.UnstableRejectNesFunc(ctx, params)
+	}
+	return nil
+}
+
+func (a agentFuncs) UnstableStartNes(ctx context.Context, params UnstableStartNesRequest) (UnstableStartNesResponse, error) {
+	if a.UnstableStartNesFunc != nil {
+		return a.UnstableStartNesFunc(ctx, params)
+	}
+	return UnstableStartNesResponse{}, nil
+}
+
+func (a agentFuncs) UnstableSuggestNes(ctx context.Context, params UnstableSuggestNesRequest) (UnstableSuggestNesResponse, error) {
+	if a.UnstableSuggestNesFunc != nil {
+		return a.UnstableSuggestNesFunc(ctx, params)
+	}
+	return UnstableSuggestNesResponse{}, nil
+}
+
+func (a agentFuncs) UnstableDisableProviders(ctx context.Context, params UnstableDisableProvidersRequest) (UnstableDisableProvidersResponse, error) {
+	if a.UnstableDisableProvidersFunc != nil {
+		return a.UnstableDisableProvidersFunc(ctx, params)
+	}
+	return UnstableDisableProvidersResponse{}, nil
+}
+
+func (a agentFuncs) UnstableListProviders(ctx context.Context, params UnstableListProvidersRequest) (UnstableListProvidersResponse, error) {
+	if a.UnstableListProvidersFunc != nil {
+		return a.UnstableListProvidersFunc(ctx, params)
+	}
+	return UnstableListProvidersResponse{}, nil
+}
+
+func (a agentFuncs) UnstableSetProviders(ctx context.Context, params UnstableSetProvidersRequest) (UnstableSetProvidersResponse, error) {
+	if a.UnstableSetProvidersFunc != nil {
+		return a.UnstableSetProvidersFunc(ctx, params)
+	}
+	return UnstableSetProvidersResponse{}, nil
+}
+
+func (a agentFuncs) UnstableCloseSession(ctx context.Context, params UnstableCloseSessionRequest) (UnstableCloseSessionResponse, error) {
+	if a.UnstableCloseSessionFunc != nil {
+		return a.UnstableCloseSessionFunc(ctx, params)
+	}
+	return UnstableCloseSessionResponse{}, nil
 }
 
 func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
@@ -257,6 +377,10 @@ func (a *forkOnlyUnstableAgent) Prompt(context.Context, PromptRequest) (PromptRe
 
 func (a *forkOnlyUnstableAgent) SetSessionMode(context.Context, SetSessionModeRequest) (SetSessionModeResponse, error) {
 	return SetSessionModeResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) ListSessions(context.Context, ListSessionsRequest) (ListSessionsResponse, error) {
+	return ListSessionsResponse{}, nil
 }
 
 func (a *forkOnlyUnstableAgent) SetSessionConfigOption(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
@@ -782,9 +906,11 @@ func TestConnectionHandlesInitialize(t *testing.T) {
 				},
 				AuthMethods: []AuthMethod{
 					{
-						Id:          "oauth",
-						Name:        "OAuth",
-						Description: Ptr("Authenticate with OAuth"),
+						Agent: &AuthMethodAgent{
+							Id:          "oauth",
+							Name:        "OAuth",
+							Description: Ptr("Authenticate with OAuth"),
+						},
 					},
 				},
 			}, nil
@@ -806,7 +932,7 @@ func TestConnectionHandlesInitialize(t *testing.T) {
 
 	resp, err := agentConn.Initialize(context.Background(), InitializeRequest{
 		ProtocolVersion:    ProtocolVersionNumber,
-		ClientCapabilities: ClientCapabilities{Fs: FileSystemCapability{ReadTextFile: false, WriteTextFile: false}},
+		ClientCapabilities: ClientCapabilities{Fs: FileSystemCapabilities{ReadTextFile: false, WriteTextFile: false}},
 	})
 	if err != nil {
 		t.Fatalf("initialize error: %v", err)
@@ -817,7 +943,7 @@ func TestConnectionHandlesInitialize(t *testing.T) {
 	if !resp.AgentCapabilities.LoadSession {
 		t.Fatalf("expected loadSession true")
 	}
-	if len(resp.AuthMethods) != 1 || resp.AuthMethods[0].Id != "oauth" {
+	if len(resp.AuthMethods) != 1 || resp.AuthMethods[0].Agent == nil || resp.AuthMethods[0].Agent.Id != "oauth" {
 		t.Fatalf("unexpected authMethods: %+v", resp.AuthMethods)
 	}
 }
@@ -1139,6 +1265,10 @@ func (agentNoExtensions) Prompt(ctx context.Context, params PromptRequest) (Prom
 
 func (agentNoExtensions) SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error) {
 	return SetSessionModeResponse{}, nil
+}
+
+func (agentNoExtensions) ListSessions(ctx context.Context, params ListSessionsRequest) (ListSessionsResponse, error) {
+	return ListSessionsResponse{}, nil
 }
 
 func (agentNoExtensions) SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {

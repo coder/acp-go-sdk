@@ -155,10 +155,10 @@ func (c *replClient) WaitForTerminalExit(ctx context.Context, params acp.WaitFor
 	return acp.WaitForTerminalExitResponse{}, nil
 }
 
-// KillTerminalCommand implements acp.Client.
-func (c *replClient) KillTerminalCommand(ctx context.Context, params acp.KillTerminalCommandRequest) (acp.KillTerminalCommandResponse, error) {
-	fmt.Printf("[Client] KillTerminalCommand: %v\n", params)
-	return acp.KillTerminalCommandResponse{}, nil
+// KillTerminal implements acp.Client.
+func (c *replClient) KillTerminal(ctx context.Context, params acp.KillTerminalRequest) (acp.KillTerminalResponse, error) {
+	fmt.Printf("[Client] KillTerminal: %v\n", params)
+	return acp.KillTerminalResponse{}, nil
 }
 
 func main() {
@@ -209,7 +209,7 @@ func main() {
 	initResp, err := conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
-			Fs:       acp.FileSystemCapability{ReadTextFile: true, WriteTextFile: true},
+			Fs:       acp.FileSystemCapabilities{ReadTextFile: true, WriteTextFile: true},
 			Terminal: true,
 		},
 	})

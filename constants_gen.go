@@ -8,8 +8,23 @@ const ProtocolVersionNumber = 1
 // Agent method names
 const (
 	AgentMethodAuthenticate           = "authenticate"
+	AgentMethodDocumentDidChange      = "document/didChange"
+	AgentMethodDocumentDidClose       = "document/didClose"
+	AgentMethodDocumentDidFocus       = "document/didFocus"
+	AgentMethodDocumentDidOpen        = "document/didOpen"
+	AgentMethodDocumentDidSave        = "document/didSave"
 	AgentMethodInitialize             = "initialize"
+	AgentMethodLogout                 = "logout"
+	AgentMethodNesAccept              = "nes/accept"
+	AgentMethodNesClose               = "nes/close"
+	AgentMethodNesReject              = "nes/reject"
+	AgentMethodNesStart               = "nes/start"
+	AgentMethodNesSuggest             = "nes/suggest"
+	AgentMethodProvidersDisable       = "providers/disable"
+	AgentMethodProvidersList          = "providers/list"
+	AgentMethodProvidersSet           = "providers/set"
 	AgentMethodSessionCancel          = "session/cancel"
+	AgentMethodSessionClose           = "session/close"
 	AgentMethodSessionFork            = "session/fork"
 	AgentMethodSessionList            = "session/list"
 	AgentMethodSessionLoad            = "session/load"
@@ -23,6 +38,8 @@ const (
 
 // Client method names
 const (
+	ClientMethodElicitationComplete      = "elicitation/complete"
+	ClientMethodElicitationCreate        = "elicitation/create"
 	ClientMethodFsReadTextFile           = "fs/read_text_file"
 	ClientMethodFsWriteTextFile          = "fs/write_text_file"
 	ClientMethodSessionRequestPermission = "session/request_permission"

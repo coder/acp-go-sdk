@@ -631,7 +631,7 @@ func TestConnectionWaitForResponse_PeerDisconnectWinsOverDerivedContextCancel(t 
 		}
 
 		idKey := fmt.Sprintf("id-%d", i)
-		pr := &pendingResponse{ch: make(chan anyMessage)}
+		pr := &pendingResponse{ch: make(chan responseEnvelope)}
 		c.pending[idKey] = pr
 
 		requestCtx, requestCancel := context.WithCancel(baseCtx)

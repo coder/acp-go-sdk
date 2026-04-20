@@ -30,8 +30,18 @@ type anyMessage struct {
 	Error   *RequestError    `json:"error,omitempty"`
 }
 
+type queuedNotification struct {
+	seq uint64
+	msg *anyMessage
+}
+
+type responseEnvelope struct {
+	msg                   anyMessage
+	notificationWatermark uint64
+}
+
 type pendingResponse struct {
-	ch chan anyMessage
+	ch chan responseEnvelope
 }
 
 type cancelRequestParams struct {
@@ -69,13 +79,16 @@ type Connection struct {
 
 	logger *slog.Logger
 
-	// notificationWg tracks in-flight notification handlers.  This ensures SendRequest waits
-	// for all notifications received before the response to complete processing.
-	notificationWg sync.WaitGroup
+	notifyMu sync.Mutex
+	// notifyCond coordinates response-scoped waits for sequential notification processing.
+	notifyCond *sync.Cond
+	// invariant: completedNotificationSeq <= lastEnqueuedNotificationSeq.
+	lastEnqueuedNotificationSeq uint64
+	completedNotificationSeq    uint64
 
 	// notificationQueue serializes notification processing to maintain order.
 	// It is bounded to keep memory usage predictable.
-	notificationQueue chan *anyMessage
+	notificationQueue chan queuedNotification
 }
 
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
@@ -92,8 +105,15 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		cancel:              cancel,
 		inboundCtx:          inboundCtx,
 		inboundCancel:       inboundCancel,
-		notificationQueue:   make(chan *anyMessage, defaultMaxQueuedNotifications),
+		notificationQueue:   make(chan queuedNotification, defaultMaxQueuedNotifications),
 	}
+	c.notifyCond = sync.NewCond(&c.notifyMu)
+	go func() {
+		<-c.ctx.Done()
+		c.notifyMu.Lock()
+		c.notifyCond.Broadcast()
+		c.notifyMu.Unlock()
+	}()
 	go c.sendCancelRequests()
 	go c.receive()
 	go c.processNotifications()
@@ -402,15 +422,27 @@ func (c *Connection) receive() {
 				continue
 			}
 
-			c.notificationWg.Add(1)
-
-			// Queue the notification for sequential processing.
+			// Queue the notification for sequential processing. The sequence number marks
+			// the response-scoped barrier boundary for requests that observe later responses.
 			m := msg
+			c.notifyMu.Lock()
+			c.lastEnqueuedNotificationSeq++
+			seq := c.lastEnqueuedNotificationSeq
 			select {
-			case c.notificationQueue <- &m:
+			case c.notificationQueue <- queuedNotification{seq: seq, msg: &m}:
+				c.notifyMu.Unlock()
 			default:
-				// Balance Add above when the message was not accepted.
-				c.notificationWg.Done()
+				if c.lastEnqueuedNotificationSeq != seq {
+					c.notifyMu.Unlock()
+					panic("notification sequence advanced while receive goroutine was queueing")
+				}
+				c.lastEnqueuedNotificationSeq--
+				// invariant: completedNotificationSeq never exceeds the highest accepted enqueue.
+				if c.completedNotificationSeq > c.lastEnqueuedNotificationSeq {
+					c.notifyMu.Unlock()
+					panic("completed notification sequence exceeded enqueued notification sequence")
+				}
+				c.notifyMu.Unlock()
 				c.loggerOrDefault().Error("failed to queue notification; closing connection", "err", errNotificationQueueOverflow, "capacity", cap(c.notificationQueue), "queued", len(c.notificationQueue))
 				c.shutdownReceive(errNotificationQueueOverflow)
 				return
@@ -440,20 +472,20 @@ func (c *Connection) shutdownReceive(cause error) {
 	// notification handlers may legitimately block until their context is canceled.
 	close(c.notificationQueue)
 
+	c.notifyMu.Lock()
+	finalEnqueuedSeq := c.lastEnqueuedNotificationSeq
+	if c.completedNotificationSeq > finalEnqueuedSeq {
+		c.notifyMu.Unlock()
+		panic("completed notification sequence exceeded final enqueued sequence during shutdown")
+	}
+	c.notifyMu.Unlock()
+
 	// Cancel inboundCtx after notifications finish, but ensure we don't leak forever if a
 	// handler blocks waiting for cancellation.
-	go func() {
-		done := make(chan struct{})
-		go func() {
-			c.notificationWg.Wait()
-			close(done)
-		}()
-		select {
-		case <-done:
-		case <-time.After(notificationQueueDrainTimeout):
-		}
+	go func(finalEnqueuedSeq uint64) {
+		c.waitForNotificationDrain(finalEnqueuedSeq, notificationQueueDrainTimeout)
 		c.inboundCancel(cause)
-	}()
+	}(finalEnqueuedSeq)
 
 	c.loggerOrDefault().Info("connection closed", "cause", cause.Error())
 }
@@ -461,9 +493,22 @@ func (c *Connection) shutdownReceive(cause error) {
 // processNotifications processes notifications sequentially to maintain order.
 // It terminates when notificationQueue is closed (e.g. on disconnect in receive()).
 func (c *Connection) processNotifications() {
-	for msg := range c.notificationQueue {
-		c.handleInbound(c.inboundCtx, msg)
-		c.notificationWg.Done()
+	for queued := range c.notificationQueue {
+		c.handleInbound(c.inboundCtx, queued.msg)
+
+		c.notifyMu.Lock()
+		expectedSeq := c.completedNotificationSeq + 1
+		if queued.seq != expectedSeq {
+			c.notifyMu.Unlock()
+			panic("notification sequence completed out of order")
+		}
+		c.completedNotificationSeq = queued.seq
+		if c.completedNotificationSeq > c.lastEnqueuedNotificationSeq {
+			c.notifyMu.Unlock()
+			panic("completed notification sequence exceeded enqueued notification sequence")
+		}
+		c.notifyCond.Broadcast()
+		c.notifyMu.Unlock()
 	}
 }
 
@@ -482,7 +527,14 @@ func (c *Connection) handleResponse(msg *anyMessage) {
 	c.mu.Unlock()
 
 	if pr != nil {
-		pr.ch <- *msg
+		c.notifyMu.Lock()
+		watermark := c.lastEnqueuedNotificationSeq
+		if c.completedNotificationSeq > watermark {
+			c.notifyMu.Unlock()
+			panic("completed notification sequence exceeded response watermark")
+		}
+		c.notifyMu.Unlock()
+		pr.ch <- responseEnvelope{msg: *msg, notificationWatermark: watermark}
 	}
 }
 
@@ -578,7 +630,7 @@ func SendRequest[T any](c *Connection, ctx context.Context, method string, param
 		return result, err
 	}
 
-	pr := &pendingResponse{ch: make(chan anyMessage, 1)}
+	pr := &pendingResponse{ch: make(chan responseEnvelope, 1)}
 	c.mu.Lock()
 	c.pending[idKey] = pr
 	c.mu.Unlock()
@@ -592,18 +644,16 @@ func SendRequest[T any](c *Connection, ctx context.Context, method string, param
 	if err != nil {
 		return result, err
 	}
-
-	// Wait for all notification handlers that were spawned before this response to complete
-	// processing.  This ensures that when a request returns, all notifications sent by the
-	// server before the response have been fully processed.
-	c.notificationWg.Wait()
-
-	if resp.Error != nil {
-		return result, resp.Error
+	if err := c.waitNotificationsUpTo(ctx, resp.notificationWatermark); err != nil {
+		return result, err
 	}
 
-	if len(resp.Result) > 0 {
-		if err := json.Unmarshal(resp.Result, &result); err != nil {
+	if resp.msg.Error != nil {
+		return result, resp.msg.Error
+	}
+
+	if len(resp.msg.Result) > 0 {
+		if err := json.Unmarshal(resp.msg.Result, &result); err != nil {
 			return result, NewInternalError(map[string]any{"error": err.Error()})
 		}
 	}
@@ -687,7 +737,7 @@ func (c *Connection) sendCancelRequest(idKey string) {
 	}
 }
 
-func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, idKey string) (anyMessage, error) {
+func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, idKey string) (responseEnvelope, error) {
 	peerDisconnectedErr := NewInternalError(map[string]any{"error": "peer disconnected before response"})
 
 	select {
@@ -699,7 +749,7 @@ func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, i
 		select {
 		case <-c.Done():
 			c.cleanupPending(idKey)
-			return anyMessage{}, peerDisconnectedErr
+			return responseEnvelope{}, peerDisconnectedErr
 		default:
 		}
 
@@ -711,12 +761,110 @@ func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, i
 			cause = ctx.Err()
 		}
 		if cause != nil {
-			return anyMessage{}, toReqErr(cause)
+			return responseEnvelope{}, toReqErr(cause)
 		}
-		return anyMessage{}, NewInternalError(map[string]any{"error": "request context ended without cause"})
+		return responseEnvelope{}, NewInternalError(map[string]any{"error": "request context ended without cause"})
 	case <-c.Done():
 		c.cleanupPending(idKey)
-		return anyMessage{}, peerDisconnectedErr
+		return responseEnvelope{}, peerDisconnectedErr
+	}
+}
+
+func (c *Connection) waitNotificationsUpTo(ctx context.Context, target uint64) error {
+	if target == 0 {
+		return nil
+	}
+
+	peerDisconnectedErr := NewInternalError(map[string]any{"error": "peer disconnected while waiting for pre-response notifications"})
+	stopWake := make(chan struct{})
+	defer close(stopWake)
+
+	c.notifyMu.Lock()
+	defer c.notifyMu.Unlock()
+	if target > c.lastEnqueuedNotificationSeq {
+		panic("response watermark exceeded last enqueued notification sequence")
+	}
+
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-stopWake:
+			return
+		}
+		c.notifyMu.Lock()
+		c.notifyCond.Broadcast()
+		c.notifyMu.Unlock()
+	}()
+
+	for c.completedNotificationSeq < target {
+		if c.completedNotificationSeq > c.lastEnqueuedNotificationSeq {
+			panic("completed notification sequence exceeded enqueued notification sequence while waiting")
+		}
+
+		select {
+		case <-c.Done():
+			return peerDisconnectedErr
+		default:
+		}
+		select {
+		case <-ctx.Done():
+			select {
+			case <-c.Done():
+				return peerDisconnectedErr
+			default:
+			}
+			cause := context.Cause(ctx)
+			if cause == nil {
+				cause = ctx.Err()
+			}
+			if cause != nil {
+				return toReqErr(cause)
+			}
+			return NewInternalError(map[string]any{"error": "request context ended without cause while waiting for notifications"})
+		default:
+		}
+
+		c.notifyCond.Wait()
+	}
+	return nil
+}
+
+func (c *Connection) waitForNotificationDrain(target uint64, timeout time.Duration) {
+	if target == 0 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	stopWake := make(chan struct{})
+	defer close(stopWake)
+
+	c.notifyMu.Lock()
+	defer c.notifyMu.Unlock()
+	if target > c.lastEnqueuedNotificationSeq {
+		panic("drain target exceeded last enqueued notification sequence")
+	}
+
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-stopWake:
+			return
+		}
+		c.notifyMu.Lock()
+		c.notifyCond.Broadcast()
+		c.notifyMu.Unlock()
+	}()
+
+	for c.completedNotificationSeq < target {
+		if c.completedNotificationSeq > c.lastEnqueuedNotificationSeq {
+			panic("completed notification sequence exceeded enqueued notification sequence during drain")
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		c.notifyCond.Wait()
 	}
 }
 
@@ -733,7 +881,7 @@ func (c *Connection) SendRequestNoResult(ctx context.Context, method string, par
 		return err
 	}
 
-	pr := &pendingResponse{ch: make(chan anyMessage, 1)}
+	pr := &pendingResponse{ch: make(chan responseEnvelope, 1)}
 	c.mu.Lock()
 	c.pending[idKey] = pr
 	c.mu.Unlock()
@@ -747,14 +895,12 @@ func (c *Connection) SendRequestNoResult(ctx context.Context, method string, par
 	if err != nil {
 		return err
 	}
+	if err := c.waitNotificationsUpTo(ctx, resp.notificationWatermark); err != nil {
+		return err
+	}
 
-	// Wait for all notification handlers that were spawned before this response to complete
-	// processing.  This ensures that when a request returns, all notifications sent by the
-	// server before the response have been fully processed.
-	c.notificationWg.Wait()
-
-	if resp.Error != nil {
-		return resp.Error
+	if resp.msg.Error != nil {
+		return resp.msg.Error
 	}
 	return nil
 }

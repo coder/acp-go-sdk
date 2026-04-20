@@ -864,20 +864,9 @@ func TestConnectionFailsFastOnNotificationQueueOverflow(t *testing.T) {
 		t.Fatalf("expected overflow cancellation cause, got %v", cause)
 	}
 
-	// Let queued work drain and ensure waitgroup accounting remains balanced.
+	// Let queued work drain and ensure the notification barrier remains balanced.
 	close(releaseFirst)
-
-	drained := make(chan struct{})
-	go func() {
-		c.notificationWg.Wait()
-		close(drained)
-	}()
-
-	select {
-	case <-drained:
-	case <-time.After(1 * time.Second):
-		t.Fatalf("notification waitgroup did not drain after overflow")
-	}
+	waitForNotificationBarrierDrain(t, c, 1*time.Second)
 }
 
 // Test initialize method behavior

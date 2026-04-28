@@ -22,6 +22,16 @@ func (a *agentExample) ListSessions(ctx context.Context, params ListSessionsRequ
 	return ListSessionsResponse{}, nil
 }
 
+// ResumeSession implements Agent.
+func (a *agentExample) ResumeSession(ctx context.Context, params ResumeSessionRequest) (ResumeSessionResponse, error) {
+	return ResumeSessionResponse{}, nil
+}
+
+// CloseSession implements Agent.
+func (a *agentExample) CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error) {
+	return CloseSessionResponse{}, nil
+}
+
 // SetSessionConfigOption implements Agent.
 func (a *agentExample) SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
 	return SetSessionConfigOptionResponse{}, nil

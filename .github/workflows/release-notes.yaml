@@ -60,6 +60,25 @@ jobs:
           install -m 0755 "$tmp/communique" /usr/local/bin/communique
           communique --version
 
+      - name: Resolve previous release ref
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          release_commit="$(git rev-parse --verify "${RELEASE_TAG}^{commit}")"
+          : "${release_commit:?release commit is required}"
+
+          if previous_ref="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' "${release_commit}^" 2>/dev/null)"; then
+            echo "Previous release tag: $previous_ref"
+          else
+            previous_ref="$(git rev-list --max-parents=0 "$release_commit" | head -n 1)"
+            : "${previous_ref:?previous release ref is required}"
+            echo "No previous release tag found; using root commit: $previous_ref"
+          fi
+
+          echo "PREVIOUS_RELEASE_REF=$previous_ref" >> "$GITHUB_ENV"
+
       - name: Generate GitHub release notes
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -68,4 +87,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          communique generate "$RELEASE_TAG" --github-release --repo "${{ github.repository }}"
+          : "${PREVIOUS_RELEASE_REF:?previous release ref is required}"
+
+          communique generate "$RELEASE_TAG" "$PREVIOUS_RELEASE_REF" --github-release --repo "${{ github.repository }}"

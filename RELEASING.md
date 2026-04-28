@@ -12,6 +12,8 @@ code, helper APIs, and library version remain in sync.
 - Nix is required for `make fmt` and `make check` (they invoke `nix fmt` and
   `nix flake check`). Use `nix develop` or an equivalent environment before
   running these targets.
+- The repository must have an Actions secret named `ANTHROPIC_API_KEY` so the
+  release-notes workflow can update GitHub Release bodies after publication.
 
 ## Bump the Schema Version
 
@@ -70,6 +72,10 @@ file agree before you publish.
 1. Create a GitHub release for the tag. Include a summary of notable changes and
    reference the upstream ACP schema version.
 
+After the GitHub release is published, CI runs `communique` and replaces the
+release body with generated notes. The workflow requires a `v*` release tag and
+the `ANTHROPIC_API_KEY` Actions secret.
+
 Consumers rely on the `vX.Y.Z` semver tag for `go get`, so ensure the tag is
 pushed before announcing the release.
 
@@ -77,6 +83,8 @@ pushed before announcing the release.
 
 - If the new schema introduces breaking changes, update examples and docs in
   the same commit.
+- Release-note automation updates GitHub Release bodies only; it does not
+  maintain a `CHANGELOG.md`.
 - The helper uses a repository-local Go build cache (`.gocache`) to avoid
   sandbox restrictions in CI and local development. You can delete it with
   `rm -rf .gocache` if needed.

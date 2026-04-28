@@ -1,0 +1,71 @@
+name: Release Notes
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+jobs:
+  release-notes:
+    name: release-notes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate release inputs
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          : "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY secret is required}"
+          : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+          : "${RELEASE_TAG:?release tag is required}"
+
+          case "$RELEASE_TAG" in
+            v*) ;;
+            *)
+              echo "release tag must start with 'v': $RELEASE_TAG" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Install communique
+        env:
+          COMMUNIQUE_SHA256: 01a6a8b49e635a5a209fdaf6c7b2e976374debc2db1c846c033f567fdba0d86c
+          COMMUNIQUE_VERSION: v1.1.2
+        run: |
+          set -euo pipefail
+
+          archive="communique-x86_64-unknown-linux-musl.tar.gz"
+          url="https://github.com/jdx/communique/releases/download/${COMMUNIQUE_VERSION}/${archive}"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          curl --fail --location --show-error --silent "$url" --output "$tmp/$archive"
+          echo "${COMMUNIQUE_SHA256}  $tmp/$archive" | sha256sum --check -
+          tar -xzf "$tmp/$archive" -C "$tmp"
+          test -x "$tmp/communique"
+
+          install -m 0755 "$tmp/communique" /usr/local/bin/communique
+          communique --version
+
+      - name: Generate GitHub release notes
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          communique generate "$RELEASE_TAG" --github-release --repo "${{ github.repository }}"

@@ -1098,6 +1098,42 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+// Request parameters for closing an active session.
+//
+// If supported, the agent **must** cancel any ongoing work related to the session
+// (treat it as if 'session/cancel' was called) and then free up any resources
+// associated with the session.
+//
+// Only available if the Agent supports the 'sessionCapabilities.close' capability.
+type CloseSessionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The ID of the session to close.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *CloseSessionRequest) Validate() error {
+	return nil
+}
+
+// Response from closing a session.
+type CloseSessionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *CloseSessionResponse) Validate() error {
+	return nil
+}
+
 // Session configuration options have been updated.
 type ConfigOptionUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -3829,6 +3865,70 @@ type ResourceLink struct {
 	Uri         string         `json:"uri"`
 }
 
+// Request parameters for resuming an existing session.
+//
+// Resumes an existing session without returning previous messages (unlike 'session/load').
+// This is useful for agents that can resume sessions but don't implement full session loading.
+//
+// Only available if the Agent supports the 'sessionCapabilities.resume' capability.
+type ResumeSessionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Additional workspace roots to activate for this session. Each path must be absolute.
+	//
+	// When omitted or empty, no additional roots are activated. When non-empty,
+	// this is the complete resulting additional-root list for the resumed
+	// session.
+	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`
+	// The working directory for this session.
+	Cwd string `json:"cwd"`
+	// List of MCP servers to connect to for this session.
+	McpServers []McpServer `json:"mcpServers,omitempty"`
+	// The ID of the session to resume.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *ResumeSessionRequest) Validate() error {
+	if v.Cwd == "" {
+		return fmt.Errorf("cwd is required")
+	}
+	return nil
+}
+
+// Response from resuming an existing session.
+type ResumeSessionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Initial session configuration options if supported by the Agent.
+	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Initial model state if supported by the Agent
+	Models *SessionModelState `json:"models,omitempty"`
+	// Initial mode state if supported by the Agent
+	//
+	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
+	Modes *SessionModeState `json:"modes,omitempty"`
+}
+
+func (v *ResumeSessionResponse) Validate() error {
+	return nil
+}
+
 // The sender or recipient of messages and data in a conversation.
 type Role string
 
@@ -3888,10 +3988,6 @@ type SessionCapabilities struct {
 	//
 	// Whether the agent supports 'additionalDirectories' on supported session lifecycle requests and 'session/list'.
 	AdditionalDirectories *SessionAdditionalDirectoriesCapabilities `json:"additionalDirectories,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Whether the agent supports 'session/close'.
 	Close *SessionCloseCapabilities `json:"close,omitempty"`
 	// **UNSTABLE**
@@ -3902,18 +3998,10 @@ type SessionCapabilities struct {
 	Fork *SessionForkCapabilities `json:"fork,omitempty"`
 	// Whether the agent supports 'session/list'.
 	List *SessionListCapabilities `json:"list,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Whether the agent supports 'session/resume'.
 	Resume *SessionResumeCapabilities `json:"resume,omitempty"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Capabilities for the 'session/close' method.
 //
 // By supplying '{}' it means that the agent supports closing of sessions.
@@ -4487,10 +4575,6 @@ func (v *SessionNotification) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Capabilities for the 'session/resume' method.
 //
 // By supplying '{}' it means that the agent supports resuming of sessions.
@@ -6064,50 +6148,6 @@ type UnstableCloseNesResponse struct {
 }
 
 func (v *UnstableCloseNesResponse) Validate() error {
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Request parameters for closing an active session.
-//
-// If supported, the agent **must** cancel any ongoing work related to the session
-// (treat it as if 'session/cancel' was called) and then free up any resources
-// associated with the session.
-//
-// Only available if the Agent supports the 'sessionCapabilities.close' capability.
-type UnstableCloseSessionRequest struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// The ID of the session to close.
-	SessionId SessionId `json:"sessionId"`
-}
-
-func (v *UnstableCloseSessionRequest) Validate() error {
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Response from closing a session.
-type UnstableCloseSessionResponse struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-}
-
-func (v *UnstableCloseSessionResponse) Validate() error {
 	return nil
 }
 
@@ -7754,8 +7794,8 @@ type UnstableProviderInfo struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Current effective non-secret routing config.
-	// Null means provider is disabled.
-	Current *UnstableProviderCurrentConfig `json:"current"`
+	// Null or omitted means provider is disabled.
+	Current *UnstableProviderCurrentConfig `json:"current,omitempty"`
 	// Provider identifier, for example "main" or "openai".
 	Id string `json:"id"`
 	// Whether this provider is mandatory and cannot be disabled via 'providers/disable'.
@@ -7793,78 +7833,6 @@ func (v *UnstableRejectNesNotification) Validate() error {
 	if v.Id == "" {
 		return fmt.Errorf("id is required")
 	}
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Request parameters for resuming an existing session.
-//
-// Resumes an existing session without returning previous messages (unlike 'session/load').
-// This is useful for agents that can resume sessions but don't implement full session loading.
-//
-// Only available if the Agent supports the 'sessionCapabilities.resume' capability.
-type UnstableResumeSessionRequest struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Additional workspace roots to activate for this session. Each path must be absolute.
-	//
-	// When omitted or empty, no additional roots are activated. When non-empty,
-	// this is the complete resulting additional-root list for the resumed
-	// session.
-	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`
-	// The working directory for this session.
-	Cwd string `json:"cwd"`
-	// List of MCP servers to connect to for this session.
-	McpServers []McpServer `json:"mcpServers,omitempty"`
-	// The ID of the session to resume.
-	SessionId SessionId `json:"sessionId"`
-}
-
-func (v *UnstableResumeSessionRequest) Validate() error {
-	if v.Cwd == "" {
-		return fmt.Errorf("cwd is required")
-	}
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Response from resuming an existing session.
-type UnstableResumeSessionResponse struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// Initial session configuration options if supported by the Agent.
-	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Initial model state if supported by the Agent
-	Models *UnstableSessionModelState `json:"models,omitempty"`
-	// Initial mode state if supported by the Agent
-	//
-	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
-	Modes *SessionModeState `json:"modes,omitempty"`
-}
-
-func (v *UnstableResumeSessionResponse) Validate() error {
 	return nil
 }
 
@@ -8430,6 +8398,14 @@ type Agent interface {
 	//
 	// See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-turn#cancellation)
 	Cancel(ctx context.Context, params CancelNotification) error
+	// Request parameters for closing an active session.
+	//
+	// If supported, the agent **must** cancel any ongoing work related to the session
+	// (treat it as if 'session/cancel' was called) and then free up any resources
+	// associated with the session.
+	//
+	// Only available if the Agent supports the 'sessionCapabilities.close' capability.
+	CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error)
 	// Request parameters for listing existing sessions.
 	//
 	// Only available if the Agent supports the 'sessionCapabilities.list' capability.
@@ -8444,6 +8420,13 @@ type Agent interface {
 	//
 	// See protocol docs: [User Message](https://agentclientprotocol.com/protocol/prompt-turn#1-user-message)
 	Prompt(ctx context.Context, params PromptRequest) (PromptResponse, error)
+	// Request parameters for resuming an existing session.
+	//
+	// Resumes an existing session without returning previous messages (unlike 'session/load').
+	// This is useful for agents that can resume sessions but don't implement full session loading.
+	//
+	// Only available if the Agent supports the 'sessionCapabilities.resume' capability.
+	ResumeSession(ctx context.Context, params ResumeSessionRequest) (ResumeSessionResponse, error)
 	// Request parameters for setting a session configuration option.
 	SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error)
 	// Request parameters for setting a session mode.
@@ -8517,18 +8500,6 @@ type AgentExperimental interface {
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
 	//
-	// Request parameters for closing an active session.
-	//
-	// If supported, the agent **must** cancel any ongoing work related to the session
-	// (treat it as if 'session/cancel' was called) and then free up any resources
-	// associated with the session.
-	//
-	// Only available if the Agent supports the 'sessionCapabilities.close' capability.
-	UnstableCloseSession(ctx context.Context, params UnstableCloseSessionRequest) (UnstableCloseSessionResponse, error)
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Request parameters for forking an existing session.
 	//
 	// Creates a new session based on the context of an existing one, allowing
@@ -8536,17 +8507,6 @@ type AgentExperimental interface {
 	//
 	// Only available if the Agent supports the 'session.fork' capability.
 	UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Request parameters for resuming an existing session.
-	//
-	// Resumes an existing session without returning previous messages (unlike 'session/load').
-	// This is useful for agents that can resume sessions but don't implement full session loading.
-	//
-	// Only available if the Agent supports the 'sessionCapabilities.resume' capability.
-	UnstableResumeSession(ctx context.Context, params UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.

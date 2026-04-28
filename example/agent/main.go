@@ -51,9 +51,9 @@ func (a *exampleAgent) ListSessions(ctx context.Context, params acp.ListSessions
 	return acp.ListSessionsResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionList)
 }
 
-// UnstableResumeSession implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableResumeSession(ctx context.Context, params acp.UnstableResumeSessionRequest) (acp.UnstableResumeSessionResponse, error) {
-	return acp.UnstableResumeSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionResume)
+// ResumeSession implements acp.Agent.
+func (a *exampleAgent) ResumeSession(ctx context.Context, params acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
+	return acp.ResumeSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionResume)
 }
 
 // SetSessionConfigOption implements acp.Agent.
@@ -136,9 +136,9 @@ func (a *exampleAgent) UnstableSetProviders(ctx context.Context, params acp.Unst
 	return acp.UnstableSetProvidersResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersSet)
 }
 
-// UnstableCloseSession implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableCloseSession(ctx context.Context, params acp.UnstableCloseSessionRequest) (acp.UnstableCloseSessionResponse, error) {
-	return acp.UnstableCloseSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionClose)
+// CloseSession implements acp.Agent.
+func (a *exampleAgent) CloseSession(ctx context.Context, params acp.CloseSessionRequest) (acp.CloseSessionResponse, error) {
+	return acp.CloseSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionClose)
 }
 
 // Implement acp.AgentConnAware to receive the connection after construction.

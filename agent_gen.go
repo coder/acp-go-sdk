@@ -313,20 +313,14 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		}
 		return nil, nil
 	case AgentMethodSessionClose:
-		var p UnstableCloseSessionRequest
+		var p CloseSessionRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableCloseSession(context.Context, UnstableCloseSessionRequest) (UnstableCloseSessionResponse, error)
-		})
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.UnstableCloseSession(ctx, p)
+		resp, err := a.agent.CloseSession(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -419,20 +413,14 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		}
 		return resp, nil
 	case AgentMethodSessionResume:
-		var p UnstableResumeSessionRequest
+		var p ResumeSessionRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableResumeSession(context.Context, UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
-		})
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.UnstableResumeSession(ctx, p)
+		resp, err := a.agent.ResumeSession(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}

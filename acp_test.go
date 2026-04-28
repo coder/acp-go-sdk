@@ -116,8 +116,10 @@ type agentFuncs struct {
 	AuthenticateFunc           func(context.Context, AuthenticateRequest) (AuthenticateResponse, error)
 	PromptFunc                 func(context.Context, PromptRequest) (PromptResponse, error)
 	CancelFunc                 func(context.Context, CancelNotification) error
+	CloseSessionFunc           func(context.Context, CloseSessionRequest) (CloseSessionResponse, error)
 	SetSessionModeFunc         func(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
 	ListSessionsFunc           func(context.Context, ListSessionsRequest) (ListSessionsResponse, error)
+	ResumeSessionFunc          func(context.Context, ResumeSessionRequest) (ResumeSessionResponse, error)
 	SetSessionConfigOptionFunc func(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error)
 	// Unstable (schema/meta.unstable.json)
 	UnstableDidChangeDocumentFunc func(context.Context, UnstableDidChangeDocumentNotification) error
@@ -134,9 +136,7 @@ type agentFuncs struct {
 	UnstableDisableProvidersFunc  func(context.Context, UnstableDisableProvidersRequest) (UnstableDisableProvidersResponse, error)
 	UnstableListProvidersFunc     func(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
 	UnstableSetProvidersFunc      func(context.Context, UnstableSetProvidersRequest) (UnstableSetProvidersResponse, error)
-	UnstableCloseSessionFunc      func(context.Context, UnstableCloseSessionRequest) (UnstableCloseSessionResponse, error)
 	UnstableForkSessionFunc       func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-	UnstableResumeSessionFunc     func(context.Context, UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error)
 	UnstableSetSessionModelFunc   func(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
@@ -191,6 +191,14 @@ func (a agentFuncs) Cancel(ctx context.Context, n CancelNotification) error {
 	return nil
 }
 
+// CloseSession implements Agent.
+func (a agentFuncs) CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error) {
+	if a.CloseSessionFunc != nil {
+		return a.CloseSessionFunc(ctx, params)
+	}
+	return CloseSessionResponse{}, nil
+}
+
 // SetSessionMode implements Agent.
 func (a agentFuncs) SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error) {
 	if a.SetSessionModeFunc != nil {
@@ -215,12 +223,12 @@ func (a agentFuncs) ListSessions(ctx context.Context, params ListSessionsRequest
 	return ListSessionsResponse{}, nil
 }
 
-// UnstableResumeSession implements AgentExperimental.
-func (a agentFuncs) UnstableResumeSession(ctx context.Context, params UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error) {
-	if a.UnstableResumeSessionFunc != nil {
-		return a.UnstableResumeSessionFunc(ctx, params)
+// ResumeSession implements Agent.
+func (a agentFuncs) ResumeSession(ctx context.Context, params ResumeSessionRequest) (ResumeSessionResponse, error) {
+	if a.ResumeSessionFunc != nil {
+		return a.ResumeSessionFunc(ctx, params)
 	}
-	return UnstableResumeSessionResponse{}, nil
+	return ResumeSessionResponse{}, nil
 }
 
 // SetSessionConfigOption implements Agent.
@@ -337,13 +345,6 @@ func (a agentFuncs) UnstableSetProviders(ctx context.Context, params UnstableSet
 	return UnstableSetProvidersResponse{}, nil
 }
 
-func (a agentFuncs) UnstableCloseSession(ctx context.Context, params UnstableCloseSessionRequest) (UnstableCloseSessionResponse, error) {
-	if a.UnstableCloseSessionFunc != nil {
-		return a.UnstableCloseSessionFunc(ctx, params)
-	}
-	return UnstableCloseSessionResponse{}, nil
-}
-
 func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	if a.HandleExtensionMethodFunc != nil {
 		return a.HandleExtensionMethodFunc(ctx, method, params)
@@ -367,6 +368,10 @@ func (a *forkOnlyUnstableAgent) Cancel(context.Context, CancelNotification) erro
 	return nil
 }
 
+func (a *forkOnlyUnstableAgent) CloseSession(context.Context, CloseSessionRequest) (CloseSessionResponse, error) {
+	return CloseSessionResponse{}, nil
+}
+
 func (a *forkOnlyUnstableAgent) NewSession(context.Context, NewSessionRequest) (NewSessionResponse, error) {
 	return NewSessionResponse{}, nil
 }
@@ -381,6 +386,10 @@ func (a *forkOnlyUnstableAgent) SetSessionMode(context.Context, SetSessionModeRe
 
 func (a *forkOnlyUnstableAgent) ListSessions(context.Context, ListSessionsRequest) (ListSessionsResponse, error) {
 	return ListSessionsResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) ResumeSession(context.Context, ResumeSessionRequest) (ResumeSessionResponse, error) {
+	return ResumeSessionResponse{}, nil
 }
 
 func (a *forkOnlyUnstableAgent) SetSessionConfigOption(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
@@ -1244,6 +1253,10 @@ func (agentNoExtensions) Initialize(ctx context.Context, params InitializeReques
 
 func (agentNoExtensions) Cancel(ctx context.Context, params CancelNotification) error { return nil }
 
+func (agentNoExtensions) CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error) {
+	return CloseSessionResponse{}, nil
+}
+
 func (agentNoExtensions) NewSession(ctx context.Context, params NewSessionRequest) (NewSessionResponse, error) {
 	return NewSessionResponse{}, nil
 }
@@ -1258,6 +1271,10 @@ func (agentNoExtensions) SetSessionMode(ctx context.Context, params SetSessionMo
 
 func (agentNoExtensions) ListSessions(ctx context.Context, params ListSessionsRequest) (ListSessionsResponse, error) {
 	return ListSessionsResponse{}, nil
+}
+
+func (agentNoExtensions) ResumeSession(ctx context.Context, params ResumeSessionRequest) (ResumeSessionResponse, error) {
+	return ResumeSessionResponse{}, nil
 }
 
 func (agentNoExtensions) SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {

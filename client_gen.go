@@ -226,8 +226,8 @@ func (c *ClientSideConnection) UnstableSetProviders(ctx context.Context, params 
 func (c *ClientSideConnection) Cancel(ctx context.Context, params CancelNotification) error {
 	return c.conn.SendNotification(ctx, AgentMethodSessionCancel, params)
 }
-func (c *ClientSideConnection) UnstableCloseSession(ctx context.Context, params UnstableCloseSessionRequest) (UnstableCloseSessionResponse, error) {
-	resp, err := SendRequest[UnstableCloseSessionResponse](c.conn, ctx, AgentMethodSessionClose, params)
+func (c *ClientSideConnection) CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error) {
+	resp, err := SendRequest[CloseSessionResponse](c.conn, ctx, AgentMethodSessionClose, params)
 	return resp, err
 }
 func (c *ClientSideConnection) UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
@@ -255,8 +255,8 @@ func (c *ClientSideConnection) Prompt(ctx context.Context, params PromptRequest)
 	}
 	return resp, err
 }
-func (c *ClientSideConnection) UnstableResumeSession(ctx context.Context, params UnstableResumeSessionRequest) (UnstableResumeSessionResponse, error) {
-	resp, err := SendRequest[UnstableResumeSessionResponse](c.conn, ctx, AgentMethodSessionResume, params)
+func (c *ClientSideConnection) ResumeSession(ctx context.Context, params ResumeSessionRequest) (ResumeSessionResponse, error) {
+	resp, err := SendRequest[ResumeSessionResponse](c.conn, ctx, AgentMethodSessionResume, params)
 	return resp, err
 }
 func (c *ClientSideConnection) SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {

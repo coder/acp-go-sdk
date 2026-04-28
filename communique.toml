@@ -1,0 +1,15 @@
+context = """
+acp-go-sdk is the Go SDK for the Agent Client Protocol (ACP). Releases track ACP schema tags from agentclientprotocol/agent-client-protocol and should help Go SDK users understand what changed in generated protocol APIs, helper APIs, examples, and compatibility.
+
+Generated Go files with the _gen.go suffix come from schema updates. When schema-aligned releases change generated APIs, explain the user-visible Go surface and migration impact rather than restating internal generator mechanics.
+
+Primary readers are Go developers integrating ACP agents and clients. Call out breaking changes, behavior changes, dependency or tooling requirements, schema/version alignment, and example updates.
+"""
+
+system_extra = """
+Write direct, practical release notes for SDK users.
+Lead with what changed and why it matters.
+Keep sections concise and avoid marketing language.
+Prefer concrete migration guidance when APIs or generated types changed.
+Do not invent changes that are not supported by the commits, pull requests, or diffs.
+"""

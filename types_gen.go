@@ -4227,49 +4227,13 @@ func (u *SessionConfigOption) Validate() error {
 //
 // Category names beginning with '_' are free for custom use, like other ACP extension methods.
 // Category names that do not begin with '_' are reserved for the ACP spec.
-// Unknown / uncategorized selector.
-type SessionConfigOptionCategoryOther string
+type SessionConfigOptionCategory string
 
-type SessionConfigOptionCategory struct {
-	// Unknown / uncategorized selector.
-	Other *SessionConfigOptionCategoryOther `json:"-"`
-}
-
-func (u *SessionConfigOptionCategory) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err == nil {
-	} else {
-		if _, ok := err.(*json.UnmarshalTypeError); !ok {
-			return err
-		}
-	}
-	var arr []map[string]json.RawMessage
-	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v SessionConfigOptionCategoryOther
-		if json.Unmarshal(b, &v) == nil {
-			u.Other = &v
-			return nil
-		}
-	}
-	return errors.New("no matching variant for union")
-}
-func (u SessionConfigOptionCategory) MarshalJSON() ([]byte, error) {
-	if u.Other != nil {
-		_b, _e := json.Marshal(*u.Other)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
-	}
-	return []byte{}, nil
-}
+const (
+	SessionConfigOptionCategoryMode         SessionConfigOptionCategory = "mode"
+	SessionConfigOptionCategoryModel        SessionConfigOptionCategory = "model"
+	SessionConfigOptionCategoryThoughtLevel SessionConfigOptionCategory = "thought_level"
+)
 
 // A single-value selector (dropdown) session configuration option payload.
 type SessionConfigSelect struct {
@@ -7150,49 +7114,15 @@ func (v *UnstableListProvidersResponse) Validate() error {
 //
 // Protocol names beginning with '_' are free for custom use, like other ACP extension methods.
 // Protocol names that do not begin with '_' are reserved for the ACP spec.
-// Unknown or custom protocol.
-type UnstableLlmProtocolOther string
+type UnstableLlmProtocol string
 
-type UnstableLlmProtocol struct {
-	// Unknown or custom protocol.
-	Other *UnstableLlmProtocolOther `json:"-"`
-}
-
-func (u *UnstableLlmProtocol) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err == nil {
-	} else {
-		if _, ok := err.(*json.UnmarshalTypeError); !ok {
-			return err
-		}
-	}
-	var arr []map[string]json.RawMessage
-	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v UnstableLlmProtocolOther
-		if json.Unmarshal(b, &v) == nil {
-			u.Other = &v
-			return nil
-		}
-	}
-	return errors.New("no matching variant for union")
-}
-func (u UnstableLlmProtocol) MarshalJSON() ([]byte, error) {
-	if u.Other != nil {
-		_b, _e := json.Marshal(*u.Other)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
-	}
-	return []byte{}, nil
-}
+const (
+	UnstableLlmProtocolAnthropic UnstableLlmProtocol = "anthropic"
+	UnstableLlmProtocolOpenai    UnstableLlmProtocol = "openai"
+	UnstableLlmProtocolAzure     UnstableLlmProtocol = "azure"
+	UnstableLlmProtocolVertex    UnstableLlmProtocol = "vertex"
+	UnstableLlmProtocolBedrock   UnstableLlmProtocol = "bedrock"
+)
 
 // **UNSTABLE**
 //

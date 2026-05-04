@@ -54,6 +54,7 @@ func TestSessionConfigSelectOptions_UnmarshalArrayVariants(t *testing.T) {
 }
 
 func TestSessionConfigOptionSelect_MetadataRoundTrip(t *testing.T) {
+	modelCategory := SessionConfigOptionCategoryModel
 	in := SessionConfigOption{
 		Select: &SessionConfigOptionSelect{
 			Type:         "select",
@@ -65,10 +66,9 @@ func TestSessionConfigOptionSelect_MetadataRoundTrip(t *testing.T) {
 				{Name: "Low", Value: SessionConfigValueId("low")},
 				{Name: "Medium", Value: SessionConfigValueId("medium")},
 			}},
+			Category: &modelCategory,
 		},
 	}
-	modelCategory := SessionConfigOptionCategoryOther("model")
-	in.Select.Category = &SessionConfigOptionCategory{Other: &modelCategory}
 
 	b, err := json.Marshal(in)
 	if err != nil {

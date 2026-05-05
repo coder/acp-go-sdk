@@ -193,6 +193,27 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 				f.Const().Defs(defs...)
 			}
 			f.Line()
+		case len(def.AnyOf) > 0 && isOpenStringEnum(def):
+			// "Open" string enum: `anyOf` of string consts plus (typically) a
+			// free-form string catch-all. Emit as a named string type with
+			// constants for the known values. Unknown values are still
+			// representable as strings, matching the schema's extensibility.
+			f.Type().Id(name).String()
+			defs := []Code{}
+			for _, v := range def.AnyOf {
+				if v == nil || v.Const == nil {
+					continue
+				}
+				s, ok := v.Const.(string)
+				if !ok {
+					continue
+				}
+				defs = append(defs, Id(util.ToEnumConst(name, s)).Id(name).Op("=").Lit(s))
+			}
+			if len(defs) > 0 {
+				f.Const().Defs(defs...)
+			}
+			f.Line()
 		case len(def.AnyOf) > 0:
 			emitUnion(f, name, schema, def, def.AnyOf, false, usedTypeNames)
 		case len(def.OneOf) > 0 && !isStringConstUnion(def):
@@ -514,6 +535,43 @@ func isStringConstUnion(def *load.Definition) bool {
 		}
 	}
 	return true
+}
+
+// isOpenStringEnum reports whether def is an "open" string enum: an `anyOf`
+// where every variant is a plain string schema (type: "string") and at least
+// one variant has a string `const`. Such schemas describe a string value with
+// a recommended set of known values while still permitting arbitrary strings
+// for extensibility (see e.g. SessionConfigOptionCategory).
+//
+// These are emitted as a Go string-derived type with named constants for each
+// known value, rather than as a discriminated union wrapper.
+func isOpenStringEnum(def *load.Definition) bool {
+	if def == nil || len(def.AnyOf) == 0 {
+		return false
+	}
+	sawConst := false
+	for _, v := range def.AnyOf {
+		if v == nil {
+			return false
+		}
+		// Each variant must be a plain string schema: type "string", no nested
+		// structure (properties, items, refs, nested unions, allOf, etc.).
+		if ir.PrimaryType(v) != "string" {
+			return false
+		}
+		if v.Ref != "" || len(v.Properties) > 0 || v.Items != nil ||
+			len(v.AnyOf) > 0 || len(v.OneOf) > 0 || len(v.AllOf) > 0 ||
+			len(v.Enum) > 0 {
+			return false
+		}
+		if v.Const != nil {
+			if _, ok := v.Const.(string); !ok {
+				return false
+			}
+			sawConst = true
+		}
+	}
+	return sawConst
 }
 
 // emitValidateJen generates validators for selected types (logic unchanged).

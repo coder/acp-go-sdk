@@ -489,6 +489,14 @@ func (c *AgentSideConnection) WriteTextFile(ctx context.Context, params WriteTex
 	resp, err := SendRequest[WriteTextFileResponse](c.conn, ctx, ClientMethodFsWriteTextFile, params)
 	return resp, err
 }
+func (c *AgentSideConnection) UnstableConnectMcp(ctx context.Context, params UnstableConnectMcpRequest) (UnstableConnectMcpResponse, error) {
+	resp, err := SendRequest[UnstableConnectMcpResponse](c.conn, ctx, ClientMethodMcpConnect, params)
+	return resp, err
+}
+func (c *AgentSideConnection) UnstableDisconnectMcp(ctx context.Context, params UnstableDisconnectMcpRequest) (UnstableDisconnectMcpResponse, error) {
+	resp, err := SendRequest[UnstableDisconnectMcpResponse](c.conn, ctx, ClientMethodMcpDisconnect, params)
+	return resp, err
+}
 func (c *AgentSideConnection) RequestPermission(ctx context.Context, params RequestPermissionRequest) (RequestPermissionResponse, error) {
 	resp, err := SendRequest[RequestPermissionResponse](c.conn, ctx, ClientMethodSessionRequestPermission, params)
 	return resp, err

@@ -36,7 +36,8 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 			caseBody = append(caseBody, jUnmarshalValidate(mi.Notif)...)
 			// Special-case: session/cancel should also cancel any in-flight prompt ctx for the session.
 			if mi.Method == "session/cancel" {
-				caseBody = append(caseBody,
+				caseBody = append(
+					caseBody,
 					// cancel active prompt context if present
 					Id("a").Dot("mu").Dot("Lock").Call(),
 					If(List(Id("cn"), Id("ok")).Op(":=").Id("a").Dot("sessionCancels").Index(Id("string").Call(Id("p").Dot("SessionId"))), Id("ok")).Block(
@@ -63,7 +64,8 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 			}
 			if mi.Method == "session/prompt" {
 				// Derive a cancellable context per session prompt.
-				caseBody = append(caseBody,
+				caseBody = append(
+					caseBody,
 					Var().Id("reqCtx").Qual("context", "Context"), Var().Id("cancel").Qual("context", "CancelFunc"),
 					List(Id("reqCtx"), Id("cancel")).Op("=").Qual("context", "WithCancel").Call(Id("ctx")),
 					Id("a").Dot("mu").Dot("Lock").Call(),
@@ -72,7 +74,8 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 					Id("a").Dot("mu").Dot("Unlock").Call(),
 				)
 				// Call agent.Prompt(reqCtx, p)
-				caseBody = append(caseBody,
+				caseBody = append(
+					caseBody,
 					List(Id("resp"), Id("err")).Op(":=").Id(recv).Dot(methodName).Call(Id("reqCtx"), Id("p")),
 					// cleanup entry after return
 					Id("a").Dot("mu").Dot("Lock").Call(),
@@ -93,7 +96,8 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 	}
 	switchCases = append(switchCases, Default().Block(Return(Nil(), Id("NewMethodNotFound").Call(Id("method")))))
 	fAgent.Func().Params(Id("a").Op("*").Id("AgentSideConnection")).Id("handle").Params(
-		Id("ctx").Qual("context", "Context"), Id("method").String(), Id("params").Qual("encoding/json", "RawMessage")).
+		Id("ctx").Qual("context", "Context"), Id("method").String(), Id("params").Qual("encoding/json", "RawMessage"),
+	).
 		Params(Any(), Op("*").Id("RequestError")).
 		Block(Switch(Id("method")).Block(switchCases...))
 
@@ -201,7 +205,8 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 	}
 	cCases = append(cCases, Default().Block(Return(Nil(), Id("NewMethodNotFound").Call(Id("method")))))
 	fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id("handle").Params(
-		Id("ctx").Qual("context", "Context"), Id("method").String(), Id("params").Qual("encoding/json", "RawMessage")).
+		Id("ctx").Qual("context", "Context"), Id("method").String(), Id("params").Qual("encoding/json", "RawMessage"),
+	).
 		Params(Any(), Op("*").Id("RequestError")).
 		Block(Switch(Id("method")).Block(cCases...))
 

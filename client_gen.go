@@ -72,6 +72,44 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 			return nil, toReqErr(err)
 		}
 		return resp, nil
+	case ClientMethodMcpConnect:
+		var p UnstableConnectMcpRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := c.client.(interface {
+			UnstableConnectMcp(context.Context, UnstableConnectMcpRequest) (UnstableConnectMcpResponse, error)
+		})
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableConnectMcp(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case ClientMethodMcpDisconnect:
+		var p UnstableDisconnectMcpRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := c.client.(interface {
+			UnstableDisconnectMcp(context.Context, UnstableDisconnectMcpRequest) (UnstableDisconnectMcpResponse, error)
+		})
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableDisconnectMcp(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
 	case ClientMethodSessionRequestPermission:
 		var p RequestPermissionRequest
 		if err := json.Unmarshal(params, &p); err != nil {

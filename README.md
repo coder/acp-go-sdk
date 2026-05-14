@@ -34,6 +34,8 @@ You can run them from your terminal or connect to external ACP agents.
 - `go run ./example/claude-code` demonstrates bridging to Claude Code.
 - `go run ./example/client` connects to a running agent and streams a sample turn.
 - `go run ./example/gemini` bridges to the Gemini CLI in ACP mode (flags: -model, -sandbox, -debug, -gemini /path/to/gemini).
+- `go run ./example/agent-http -listen 127.0.0.1:7777` serves the demo agent over HTTP using the [Streamable HTTP transport](https://github.com/agentclientprotocol/agent-client-protocol/blob/main/docs/rfds/streamable-http-websocket-transport.mdx).
+- `go run ./example/client-http -url http://127.0.0.1:7777/acp` connects to a remote ACP agent over the same transport (pair it with `./example/agent-http` in another terminal).
 
 You can watch the interaction by running `go run ./example/client` locally.
 

@@ -91,7 +91,34 @@ type Connection struct {
 	notificationQueue chan queuedNotification
 }
 
-func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
+// ConnectionOption configures optional parameters for a Connection.
+type ConnectionOption func(*connectionConfig)
+
+type connectionConfig struct {
+	maxQueuedNotifications int
+}
+
+// WithMaxQueuedNotifications sets the maximum number of queued notifications
+// before the connection is closed with a notification queue overflow error.
+// The default is 1024. Increase this value when multiplexing many concurrent
+// sessions over a single connection, as the combined notification rate may
+// exceed the processing speed of the single-threaded notification consumer.
+func WithMaxQueuedNotifications(n int) ConnectionOption {
+	return func(cfg *connectionConfig) {
+		if n > 0 {
+			cfg.maxQueuedNotifications = n
+		}
+	}
+}
+
+func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
+	cfg := connectionConfig{
+		maxQueuedNotifications: defaultMaxQueuedNotifications,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
@@ -105,7 +132,7 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		cancel:              cancel,
 		inboundCtx:          inboundCtx,
 		inboundCancel:       inboundCancel,
-		notificationQueue:   make(chan queuedNotification, defaultMaxQueuedNotifications),
+		notificationQueue:   make(chan queuedNotification, cfg.maxQueuedNotifications),
 	}
 	c.notifyCond = sync.NewCond(&c.notifyMu)
 	go func() {

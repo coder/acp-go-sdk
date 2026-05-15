@@ -2,7 +2,6 @@ package acp
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -149,5 +148,4 @@ func TestLargerQueue_SurvivesNotificationBurst(t *testing.T) {
 	if got != burstSize {
 		t.Fatalf("received %d notifications, want %d", got, burstSize)
 	}
-	_ = fmt.Sprintf("") // use fmt
 }

@@ -27,8 +27,12 @@ func H2CHandler(h http.Handler) http.Handler {
 // BuildHTTPServer returns an *http.Server that wraps the receiver's
 // Handler() with h2c and uses sensible defaults for SSE workloads:
 //
-//   - ReadTimeout/WriteTimeout are 0 (SSE streams live for the entire
-//     session and must not be cut off by a server-side timeout).
+//   - ReadTimeout/WriteTimeout are 0 because SSE streams live for the entire
+//     session and must not be cut off by a server-side timeout.
+//   - ReadHeaderTimeout is 10s: request *headers* always arrive promptly,
+//     so bounding them (while leaving the body/response unbounded for SSE)
+//     defends against slowloris-style header dribbling without affecting
+//     long-lived streams.
 //   - IdleTimeout is 120s so idle keep-alive connections eventually
 //     recycle.
 //
@@ -40,10 +44,11 @@ func H2CHandler(h http.Handler) http.Handler {
 // Serve(), or set Addr and call ListenAndServe.
 func (s *Server) BuildHTTPServer() *http.Server {
 	return &http.Server{
-		Handler:      H2CHandler(s.Handler()),
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		IdleTimeout:  120 * time.Second,
+		Handler:           H2CHandler(s.Handler()),
+		ReadTimeout:       0,
+		WriteTimeout:      0,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 }
 

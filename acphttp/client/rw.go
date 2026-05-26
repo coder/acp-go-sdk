@@ -134,7 +134,7 @@ func (t *Transport) dispatch(msg []byte) error {
 		t.ensureSessionStream(sessionID)
 	}
 
-	ctx, cancel := context.WithTimeout(t.ctx, t.httpClient.Timeout)
+	ctx, cancel := context.WithTimeout(t.ctx, t.httpTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.url, bytes.NewReader(msg))
@@ -170,7 +170,7 @@ func (t *Transport) dispatch(msg []byte) error {
 // Acp-Connection-Id, forwards the response body to the SDK via the inbound
 // channel, and starts the connection-scoped GET stream.
 func (t *Transport) doInitialize(msg []byte) error {
-	ctx, cancel := context.WithTimeout(t.ctx, t.httpClient.Timeout)
+	ctx, cancel := context.WithTimeout(t.ctx, t.httpTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.url, bytes.NewReader(msg))

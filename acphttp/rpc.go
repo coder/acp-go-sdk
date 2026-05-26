@@ -3,6 +3,8 @@ package acphttp
 import (
 	"bytes"
 	"encoding/json"
+
+	acp "github.com/coder/acp-go-sdk"
 )
 
 // JSON-RPC introspection helpers shared by the server and client
@@ -110,29 +112,42 @@ func IsInitialize(raw []byte) bool {
 // IsSessionScoped reports whether the JSON-RPC method must carry an
 // Acp-Session-Id header on a POST and is logically associated with a
 // single session. Derived from the ACP schema by listing every
-// agent-side request type whose params include a required "sessionId"
-// field.
+// agent-side request/notification type whose params include a required
+// "sessionId" field. The list references the generated AgentMethod*
+// constants so it fails to compile (rather than silently drifting) if a
+// method is renamed; rpc_test.go asserts the list stays in sync with the
+// schema's request types.
 //
-// Note: session/load is included even though its *response* is delivered
-// on the connection-scoped GET stream (the client cannot have opened the
-// session-scoped stream yet at that point). The POST itself still
-// carries Acp-Session-Id; servers should special-case the response
-// routing.
+// Note: session/load and session/fork are included even though their
+// *responses* are delivered on the connection-scoped GET stream (the
+// client cannot have opened the new session's stream yet at that point).
+// The POST itself still carries Acp-Session-Id; servers special-case the
+// response routing for these two.
 //
-// session/set_model belongs to the unstable schema today but is listed
-// here so transports speaking the unstable protocol get correct header
-// behaviour out of the box; servers that only implement stable methods
-// will simply never see it.
+// The unstable methods (session/set_model, session/fork, the nes/* and
+// document/did* family) are listed so transports speaking the unstable
+// protocol get correct header behaviour out of the box; servers that only
+// implement stable methods will simply never see them.
 func IsSessionScoped(method string) bool {
 	switch method {
-	case "session/cancel",
-		"session/close",
-		"session/load",
-		"session/prompt",
-		"session/resume",
-		"session/set_config_option",
-		"session/set_mode",
-		"session/set_model":
+	case acp.AgentMethodSessionCancel,
+		acp.AgentMethodSessionClose,
+		acp.AgentMethodSessionLoad,
+		acp.AgentMethodSessionPrompt,
+		acp.AgentMethodSessionResume,
+		acp.AgentMethodSessionSetConfigOption,
+		acp.AgentMethodSessionSetMode,
+		acp.AgentMethodSessionSetModel,
+		acp.AgentMethodSessionFork,
+		acp.AgentMethodNesAccept,
+		acp.AgentMethodNesClose,
+		acp.AgentMethodNesReject,
+		acp.AgentMethodNesSuggest,
+		acp.AgentMethodDocumentDidChange,
+		acp.AgentMethodDocumentDidClose,
+		acp.AgentMethodDocumentDidFocus,
+		acp.AgentMethodDocumentDidOpen,
+		acp.AgentMethodDocumentDidSave:
 		return true
 	}
 	return false

@@ -14,9 +14,9 @@ import (
 )
 
 // outboundSubscriber is a single consumer of one outbound stream (one SSE
-// GET). Messages are pushed via send(); closed() is set when the stream
-// should stop (either the server side is tearing down or the HTTP client
-// disconnected).
+// GET). Messages are delivered on ch; done is closed (via closeDone) when
+// the stream should stop, either because the server side is tearing down,
+// the HTTP client disconnected, or the subscriber fell too far behind.
 type outboundSubscriber struct {
 	ch       chan string
 	done     chan struct{}
@@ -42,17 +42,22 @@ func (s *outboundSubscriber) closeDone() {
 // attaches so no messages are lost in the window between a session being
 // created and the client opening its session-scoped GET.
 type outboundStream struct {
+	logger      *slog.Logger
 	mu          sync.Mutex
 	preBuffer   []string
 	subscribers []*outboundSubscriber
 	// cap on the pre-subscribe buffer to keep memory bounded if a client
 	// never attaches. Excess messages are dropped from the front.
 	preBufferCap int
-	closed       bool
+	// warnedOverflow is set the first time the pre-buffer overflows so the
+	// warning fires once per overflow window (it resets when a subscriber
+	// attaches and drains the buffer) rather than once per dropped message.
+	warnedOverflow bool
+	closed         bool
 }
 
-func newOutboundStream() *outboundStream {
-	return &outboundStream{preBufferCap: 1024}
+func newOutboundStream(logger *slog.Logger) *outboundStream {
+	return &outboundStream{logger: logger, preBufferCap: 1024}
 }
 
 // push delivers msg to every current subscriber. If no subscriber has
@@ -66,7 +71,13 @@ func (s *outboundStream) push(msg string) {
 	}
 	if len(s.subscribers) == 0 {
 		if len(s.preBuffer) >= s.preBufferCap {
-			// Drop oldest; warn once per overflow window.
+			// Drop oldest. Warn once per overflow window so a client that
+			// never opens its GET stream leaves a breadcrumb instead of
+			// silently losing messages.
+			if !s.warnedOverflow {
+				s.logger.Warn("outbound pre-subscribe buffer overflow, dropping oldest messages", "cap", s.preBufferCap)
+				s.warnedOverflow = true
+			}
 			s.preBuffer = s.preBuffer[1:]
 		}
 		s.preBuffer = append(s.preBuffer, msg)
@@ -76,9 +87,16 @@ func (s *outboundStream) push(msg string) {
 		select {
 		case sub.ch <- msg:
 		default:
-			// Slow subscriber: drop the message. Real consumers
-			// keep up; this just protects the push path from
-			// blocking the router goroutine.
+			// The subscriber's buffer is full: the SSE handler is blocked
+			// (TCP backpressure, slow client, buffering proxy). Dropping
+			// silently would discard JSON-RPC responses and hang the client
+			// SDK forever with no diagnostic. Instead tear the subscriber
+			// down: the SSE handler unblocks via sub.done, the client sees
+			// the stream close, and its reconnect logic re-establishes a
+			// fresh stream. The dropped message is still lost, but a silent
+			// hang becomes a visible disconnect.
+			s.logger.Warn("outbound subscriber overflow, closing stream to force client reconnect", "buffer", cap(sub.ch))
+			sub.closeDone()
 		}
 	}
 }
@@ -92,6 +110,7 @@ func (s *outboundStream) subscribe() (replay []string, sub *outboundSubscriber) 
 	s.subscribers = append(s.subscribers, sub)
 	replay = s.preBuffer
 	s.preBuffer = nil
+	s.warnedOverflow = false
 	return replay, sub
 }
 
@@ -189,7 +208,13 @@ type connection struct {
 // createConnection starts a new agent and wires up the pipes. It returns
 // the new connection, ready to receive the initialize message on
 // c.toAgentW.
-func (s *Server) createConnection(parent context.Context) (*connection, error) {
+//
+// The connection context is intentionally rooted in context.Background()
+// rather than the initiating request's context: a connection outlives the
+// single HTTP request that creates it and must survive until the client
+// DELETEs it (or the server shuts down). Do not thread the request context
+// in here.
+func (s *Server) createConnection() (*connection, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	agent, bindConn, cleanup, err := s.cfg.Factory(ctx)
 	if err != nil {
@@ -209,12 +234,12 @@ func (s *Server) createConnection(parent context.Context) (*connection, error) {
 		fromAgentR:     fromAgentR,
 		fromAgentW:     fromAgentW,
 		agentCleanup:   cleanup,
-		connStream:     newOutboundStream(),
 		pending:        make(map[string]pendingResponse),
 		ctx:            ctx,
 		cancel:         cancel,
 		initResponseCh: make(chan string, 1),
 	}
+	c.connStream = newOutboundStream(c.logger.With("stream", "connection"))
 
 	// Spin up the SDK's agent-side connection. Its goroutines will read
 	// from toAgentR (what the client POSTed) and write JSON-RPC messages
@@ -229,12 +254,15 @@ func (s *Server) createConnection(parent context.Context) (*connection, error) {
 
 	// Observe the agent-side connection's lifecycle so if the agent
 	// goroutines die (peer closed, unrecoverable error), we tear the
-	// connection down.
+	// connection down. Remove it from the server's map first so a client
+	// that never sends DELETE (crash, timeout, dropped network) does not
+	// leave a zombie entry that grows the map without bound.
 	go func() {
 		select {
 		case <-c.agentConn.Done():
 		case <-c.ctx.Done():
 		}
+		s.removeConn(c.id)
 		c.shutdown()
 	}()
 
@@ -266,7 +294,7 @@ func (c *connection) getOrCreateSessionStream(sessionID string) *outboundStream 
 	if v, ok := c.sessionStreams.Load(sessionID); ok {
 		return v.(*outboundStream)
 	}
-	fresh := newOutboundStream()
+	fresh := newOutboundStream(c.logger.With("stream", "session", "session_id", sessionID))
 	actual, _ := c.sessionStreams.LoadOrStore(sessionID, fresh)
 	return actual.(*outboundStream)
 }
@@ -373,6 +401,13 @@ func (c *connection) shutdown() {
 		_ = c.toAgentR.Close()
 		_ = c.fromAgentW.Close()
 		_ = c.fromAgentR.Close()
+
+		// Wait for the router goroutine to observe the closed read pipe and
+		// exit before we report the connection as fully torn down, so callers
+		// (e.g. Server.Close) don't race with the router touching connection
+		// state. cancel() above already unblocks any send on initResponseCh,
+		// so this returns promptly.
+		c.routerWG.Wait()
 
 		c.connStream.closeAll()
 		c.sessionStreams.Range(func(_, v any) bool {

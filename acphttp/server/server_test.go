@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -307,6 +306,61 @@ func TestSessionLoadResponseGoesToConnectionStream(t *testing.T) {
 	}
 }
 
+// TestSpuriousSessionHeaderDoesNotDivertConnectionResponse verifies that a
+// non-session-scoped method (session/new) carrying an Acp-Session-Id header
+// still has its response delivered on the connection-scoped stream. Routing
+// is gated on IsSessionScoped rather than the raw header, so a malformed or
+// adversarial POST cannot push a response onto a session stream the client
+// is not waiting on.
+func TestSpuriousSessionHeaderDoesNotDivertConnectionResponse(t *testing.T) {
+	base, stop := startServer(t, func(ctx context.Context) (acp.Agent, func(*acp.AgentSideConnection), func(), error) {
+		a := &stubAgent{}
+		return a, func(c *acp.AgentSideConnection) { a.conn = c }, nil, nil
+	})
+	defer stop()
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	req, _ := http.NewRequest(http.MethodPost, base, strings.NewReader(
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":2}}`))
+	req.Header.Set("Content-Type", mimeJSON)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	connID := resp.Header.Get(HeaderConnectionID)
+	resp.Body.Close()
+	require.NotEmpty(t, connID)
+
+	connStream := openStream(t, base, connID, "")
+	defer connStream.close()
+	bogusStream := openStream(t, base, connID, "bogus-sess")
+	defer bogusStream.close()
+
+	// session/new is NOT session-scoped, but we attach a spurious
+	// Acp-Session-Id header anyway.
+	req, _ = http.NewRequest(http.MethodPost, base, strings.NewReader(
+		`{"jsonrpc":"2.0","id":9,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}`))
+	req.Header.Set("Content-Type", mimeJSON)
+	req.Header.Set(HeaderConnectionID, connID)
+	req.Header.Set(HeaderSessionID, "bogus-sess")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	resp.Body.Close()
+
+	ev := connStream.waitFor(t, 2*time.Second)
+	assert.Contains(t, ev, `"id":9`, "session/new response must arrive on the connection-scoped stream")
+
+	// Negative check: the response must not leak onto the spuriously named
+	// session stream.
+	select {
+	case got := <-bogusStream.events:
+		if strings.Contains(got, `"id":9`) {
+			t.Fatalf("session/new response should not appear on the session stream; got %s", got)
+		}
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
 // TestDeleteUnknownConnectionIs404 verifies the 404 path on DELETE.
 func TestDeleteUnknownConnectionIs404(t *testing.T) {
 	base, stop := startServer(t, func(ctx context.Context) (acp.Agent, func(*acp.AgentSideConnection), func(), error) {
@@ -421,16 +475,3 @@ func (s *sseTap) close() {
 		close(s.cancel)
 	}
 }
-
-// --- JSON envelope helper used in tests ---
-
-type jsonRPCMessage struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-}
-
-// silence unused warnings for jsonRPCMessage (kept for future use).
-var _ = jsonRPCMessage{}

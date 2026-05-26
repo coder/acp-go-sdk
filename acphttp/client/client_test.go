@@ -81,7 +81,13 @@ func (s *fakeServer) handler() http.Handler {
 
 func (s *fakeServer) handlePOST(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
-	require.NoError(s.t, err)
+	if !assert.NoError(s.t, err) {
+		// require.NoError here would call runtime.Goexit and silently kill
+		// this handler goroutine, hanging the test on a never-answered
+		// request. assert + return surfaces the failure and still responds.
+		http.Error(w, "read body: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	s.mu.Lock()
 	s.posts = append(s.posts, append([]byte(nil), body...))

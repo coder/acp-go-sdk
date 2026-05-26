@@ -48,11 +48,6 @@ const (
 const (
 	mimeJSON = acphttp.MimeJSON
 	mimeSSE  = acphttp.MimeSSE
-
-	// Pipe buffer sizes. 256KB comfortably fits even the largest
-	// single-message payloads seen in practice (session/prompt with large
-	// embedded context blocks) without splitting writes.
-	pipeBufferSize = 256 * 1024
 )
 
 // AgentFactory produces a fresh Agent for each new ACP connection. Along
@@ -120,6 +115,12 @@ func New(cfg Config) (*Server, error) {
 // Handler returns an http.Handler that serves the ACP endpoint. Mount it
 // at the root of an http.Server (routing is done internally so callers can
 // mix with unrelated routes if they use an outer mux).
+//
+// Connections created through this handler are rooted in a background
+// context, not any server-level context; ListenAndServe/Serve call Close()
+// on shutdown, but callers wiring Handler() into their own *http.Server
+// must call Server.Close() themselves to tear down in-flight connections
+// and avoid leaking their goroutines.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(s.path, s.route)

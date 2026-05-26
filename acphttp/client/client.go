@@ -78,8 +78,13 @@ type Transport struct {
 	url    string
 	logger *slog.Logger
 
-	// httpClient handles all non-streaming POSTs (including initialize).
+	// httpClient handles all non-streaming POSTs (including initialize). Its
+	// own Timeout is left at 0; the per-request deadline is enforced via
+	// httpTimeout on the request context so failures report a single,
+	// unambiguous "context deadline exceeded".
 	httpClient *http.Client
+	// httpTimeout is the per-request deadline applied to non-streaming POSTs.
+	httpTimeout time.Duration
 	// streamClient is used for long-lived GET SSE streams (no timeout).
 	streamClient *http.Client
 
@@ -155,7 +160,9 @@ func Dial(ctx context.Context, cfg Config) (*Transport, error) {
 	httpClient := &http.Client{
 		Transport: rt,
 		Jar:       jar,
-		Timeout:   timeout,
+		// Timeout intentionally 0: the per-request deadline is applied via
+		// context (httpTimeout) so we don't get two independent timers racing
+		// to produce different errors at the same instant.
 	}
 	streamClient := &http.Client{
 		Transport: rt,
@@ -169,6 +176,7 @@ func Dial(ctx context.Context, cfg Config) (*Transport, error) {
 		url:          u.String(),
 		logger:       logger,
 		httpClient:   httpClient,
+		httpTimeout:  timeout,
 		streamClient: streamClient,
 		ctx:          tctx,
 		cancel:       cancel,

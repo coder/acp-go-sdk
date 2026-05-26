@@ -107,8 +107,23 @@ func TestServe_GracefulShutdownOnContextCancel(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(ctx, ln) }()
 
-	// Give Serve a moment to start serving before cancelling.
-	time.Sleep(50 * time.Millisecond)
+	// Wait until Serve is actually handling requests (rather than sleeping a
+	// fixed interval that may be too short on a loaded CI runner) by issuing
+	// a real initialize until it succeeds. This also leaves an active
+	// connection in place, so the cancel below exercises graceful shutdown
+	// against a live connection.
+	addr := "http://" + ln.Addr().String() + "/acp"
+	initBody := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":2}}`
+	require.Eventually(t, func() bool {
+		resp, err := http.Post(addr, mimeJSON, strings.NewReader(initBody))
+		if err != nil {
+			return false
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 2*time.Second, 10*time.Millisecond, "server did not become ready")
+
 	cancel()
 
 	select {

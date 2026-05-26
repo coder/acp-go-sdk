@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,10 +31,10 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 32*1024*1024))
 	discardBody(r.Body)
 	if err != nil {
-		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		http.Error(w, "failed to read request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	body = []byte(strings.TrimSpace(string(body)))
+	body = bytes.TrimSpace(body)
 	if len(body) == 0 {
 		http.Error(w, "empty body", http.StatusBadRequest)
 		return
@@ -55,7 +56,10 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if acphttp.IsInitialize(body) {
+	// initialize is the only POST returning 200 with a body; detect it from
+	// the already-parsed envelope rather than re-unmarshalling via
+	// acphttp.IsInitialize.
+	if envelope.Method == "initialize" && acphttp.CanonicalIDFromRaw(envelope.ID) != "" {
 		s.handleInitialize(w, r, body)
 		return
 	}
@@ -80,12 +84,20 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	// Record where this request's response (if any) should be routed.
 	if len(envelope.ID) > 0 && envelope.Method != "" {
 		route := pendingResponse{route: routeConnection}
-		// session/load is a session-scoped POST (it carries Acp-Session-Id)
-		// but per the RFD its response is delivered on the connection-scoped
-		// stream alongside session/new: the client hasn't necessarily opened
-		// the session-scoped GET when it issues session/load, so the
-		// connection stream is the only place it is guaranteed to land.
-		if sessionHeader != "" && envelope.Method != "session/load" {
+		// session/load and session/fork are session-scoped POSTs (they carry
+		// Acp-Session-Id) but per the RFD their responses are delivered on the
+		// connection-scoped stream alongside session/new: the client hasn't
+		// opened the (new, for fork) session-scoped GET when it issues them,
+		// so the connection stream is the only place the response is
+		// guaranteed to land. The client then opens the session stream once it
+		// sees the sessionId in the result.
+		//
+		// We consult IsSessionScoped rather than the raw header so a
+		// non-session-scoped POST (e.g. an adversarial session/new carrying a
+		// spurious Acp-Session-Id) cannot divert its response onto a session
+		// stream the client isn't listening on.
+		deliverOnConnStream := envelope.Method == "session/load" || envelope.Method == "session/fork"
+		if acphttp.IsSessionScoped(envelope.Method) && sessionHeader != "" && !deliverOnConnStream {
 			route = pendingResponse{route: routeSession, sessionID: sessionHeader}
 			// Ensure the session stream exists so the response has
 			// somewhere to land even if the client hasn't yet
@@ -96,7 +108,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := conn.writeToAgent(body); err != nil {
-		http.Error(w, "failed to forward to agent", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to forward %s to agent %s: %v", envelope.Method, connID, err), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
@@ -106,9 +118,12 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 // message, and synchronously returns the agent's response with the
 // Acp-Connection-Id header.
 func (s *Server) handleInitialize(w http.ResponseWriter, r *http.Request, body []byte) {
-	conn, err := s.createConnection(r.Context())
+	conn, err := s.createConnection()
 	if err != nil {
-		http.Error(w, "failed to create connection: "+err.Error(), http.StatusInternalServerError)
+		// The factory error may embed internal detail (connection strings,
+		// paths, stack traces). Log it server-side; return a generic message.
+		s.logger.Error("failed to create connection", "err", err)
+		http.Error(w, "failed to create connection", http.StatusInternalServerError)
 		return
 	}
 
@@ -166,11 +181,10 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionID := r.Header.Get(HeaderSessionID)
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported by server", http.StatusInternalServerError)
-		return
-	}
+	// http.NewResponseController unwraps middleware-wrapped ResponseWriters
+	// (logging, metrics, auth) to find the underlying Flusher, where a bare
+	// w.(http.Flusher) assertion would fail. Flush also surfaces errors.
+	rc := http.NewResponseController(w)
 
 	w.Header().Set("Content-Type", mimeSSE)
 	w.Header().Set("Cache-Control", "no-cache")
@@ -180,7 +194,13 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(HeaderSessionID, sessionID)
 	}
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	if err := rc.Flush(); err != nil {
+		// Streaming is unsupported by this writer chain (e.g. an HTTP/1.0
+		// client, or a wrapper that does not implement Flush). The status is
+		// already committed, so we can only log and abandon the stream.
+		conn.logger.Warn("get: flush unsupported, abandoning stream", "err", err)
+		return
+	}
 
 	var stream *outboundStream
 	if sessionID == "" {
@@ -193,7 +213,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	defer stream.unsubscribe(sub)
 
 	for _, msg := range replay {
-		if !writeSSEEvent(w, flusher, msg) {
+		if !writeSSEEvent(w, rc, msg) {
 			return
 		}
 	}
@@ -210,7 +230,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			if !writeSSEEvent(w, flusher, msg) {
+			if !writeSSEEvent(w, rc, msg) {
 				return
 			}
 		}
@@ -235,11 +255,11 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeSSEEvent writes one `data:` event followed by a blank line and
-// flushes. Returns false if the client connection is gone.
-func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, msg string) bool {
+// flushes. Returns false if the client connection is gone (write or flush
+// error).
+func writeSSEEvent(w http.ResponseWriter, rc *http.ResponseController, msg string) bool {
 	if _, err := fmt.Fprintf(w, "data: %s\n\n", msg); err != nil {
 		return false
 	}
-	flusher.Flush()
-	return true
+	return rc.Flush() == nil
 }

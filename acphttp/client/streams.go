@@ -85,7 +85,13 @@ func (t *Transport) runStream(ctx context.Context, sessionID, label string) {
 			return
 		}
 
-		err := t.runSingleStream(ctx, connID, sessionID, label)
+		// resetBackoff is invoked by runSingleStream once the stream has
+		// successfully opened and delivered an event, so a long-lived stream
+		// that later drops reconnects quickly instead of inheriting the
+		// 5s ceiling accumulated across earlier failures.
+		err := t.runSingleStream(ctx, connID, sessionID, label, func() {
+			backoff = 250 * time.Millisecond
+		})
 		if err == nil || errors.Is(err, context.Canceled) || t.isClosed() {
 			return
 		}
@@ -107,10 +113,10 @@ func (t *Transport) runStream(ctx context.Context, sessionID, label string) {
 // runSingleStream opens one GET SSE connection and pumps events into the
 // inbound channel. It returns nil on clean EOF (server closed stream) and
 // an error on transport failure.
-func (t *Transport) runSingleStream(ctx context.Context, connID, sessionID, label string) error {
+func (t *Transport) runSingleStream(ctx context.Context, connID, sessionID, label string, onConnected func()) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.url, nil)
 	if err != nil {
-		return fmt.Errorf("build GET: %w", err)
+		return fmt.Errorf("httpclient: build GET: %w", err)
 	}
 	req.Header.Set("Accept", mimeSSE)
 	req.Header.Set(headerConnectionID, connID)
@@ -121,16 +127,19 @@ func (t *Transport) runSingleStream(ctx context.Context, connID, sessionID, labe
 
 	resp, err := t.streamClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("GET /acp: %w", err)
+		return fmt.Errorf("httpclient: GET /acp: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("GET /acp returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
+		return fmt.Errorf("httpclient: GET /acp returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
 	}
 
 	t.logger.Debug("stream open", "stream", label, "session_id", sessionID)
+	// Stream is open; reset the caller's reconnect backoff on the first
+	// delivered event.
+	delivered := false
 
 	// Parse the SSE stream. The reference implementation emits each
 	// JSON-RPC message as the `data` field of a single event with no
@@ -145,6 +154,12 @@ func (t *Transport) runSingleStream(ctx context.Context, connID, sessionID, labe
 		payload := strings.TrimSpace(data)
 		if payload == "" {
 			return
+		}
+		if !delivered {
+			delivered = true
+			if onConnected != nil {
+				onConnected()
+			}
 		}
 		t.logger.Debug("SSE event",
 			"stream", label,
@@ -227,20 +242,18 @@ func parseSSE(body io.Reader, onEvent func(eventType, data string)) error {
 	// Dispatch trailing event if the body ended without a final blank line.
 	dispatch()
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("SSE scan: %w", err)
+		return fmt.Errorf("httpclient: SSE scan: %w", err)
 	}
 	return nil
 }
 
 // splitSSEField parses an SSE field line of the form "name:value". Per the
-// spec, a single leading space after the colon is stripped.
+// spec, a single leading space after the colon is stripped. Lines without a
+// colon are treated as a field with an empty value.
 func splitSSEField(line string) (name, value string, ok bool) {
-	colon := strings.IndexByte(line, ':')
-	if colon < 0 {
-		// Lines without a colon are treated as a field with empty value.
+	name, value, found := strings.Cut(line, ":")
+	if !found {
 		return line, "", true
 	}
-	name = line[:colon]
-	value = strings.TrimPrefix(line[colon+1:], " ")
-	return name, value, true
+	return name, strings.TrimPrefix(value, " "), true
 }

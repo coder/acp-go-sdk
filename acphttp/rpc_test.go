@@ -105,11 +105,24 @@ func TestIsSessionScoped(t *testing.T) {
 		"session/set_config_option",
 		"session/set_mode",
 		"session/set_model",
+		"session/fork",
+		"nes/accept",
+		"nes/close",
+		"nes/reject",
+		"nes/suggest",
+		"document/didChange",
+		"document/didClose",
+		"document/didFocus",
+		"document/didOpen",
+		"document/didSave",
 	}
 	for _, m := range scoped {
 		assert.True(t, IsSessionScoped(m), "expected %q to be session-scoped", m)
 	}
-	for _, m := range []string{"initialize", "session/new", "session/list", "fs/read_text_file", "", "session/unknown"} {
+	// session/new and session/list create or enumerate sessions and carry no
+	// required sessionId in their params, so they are connection-scoped.
+	// nes/start likewise has no sessionId.
+	for _, m := range []string{"initialize", "session/new", "session/list", "nes/start", "fs/read_text_file", "", "session/unknown"} {
 		assert.False(t, IsSessionScoped(m), "expected %q NOT to be session-scoped", m)
 	}
 }

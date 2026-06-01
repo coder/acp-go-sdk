@@ -5,6 +5,6 @@
 .gocache
 .gopath
 
-# Nix files
-.envrc
-.direnv
+# mise
+mise.local.toml
+.mise.local.toml

@@ -6,7 +6,7 @@ MDSH ?= mdsh
 
 version: README.md schema/meta.json schema/schema.json schema/meta.unstable.json schema/schema.unstable.json
 	cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .
-	env -u GOPATH -u GOMODCACHE go run mvdan.cc/gofumpt@latest -w .
+	gofumpt -w .
 	touch $@
 	echo $(ACP_VERSION) > $@
 
@@ -49,21 +49,18 @@ schema/schema.unstable.json: schema/version
 		fi
 
 README.md: schema/version
-	@command -v $(MDSH) >/dev/null || { echo "mdsh not found; run 'nix develop' or install it." 1>&2; exit 1; }
+	@command -v $(MDSH) >/dev/null || { echo "mdsh not found; run 'mise install' or install it." 1>&2; exit 1; }
 	$(MDSH) --input README.md
-
-.PHONY: guard-readme
-guard-readme:
-	@command -v $(MDSH) >/dev/null || { echo "mdsh not found; run 'nix develop' or install it." 1>&2; exit 1; }
-	$(MDSH) --frozen --input README.md
 
 .PHONY: fmt
 fmt:
-	nix fmt
+	treefmt
 
+# treefmt runs mdsh + mdformat over the markdown, so --fail-on-change also
+# verifies README.md is regenerated and in sync (replacing the old mdsh guard).
 .PHONY: check
-check: guard-readme
-	nix flake check
+check:
+	treefmt --fail-on-change
 
 .PHONY: test
 test: $(GO_FILES)

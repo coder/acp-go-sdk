@@ -56,11 +56,16 @@ README.md: schema/version
 fmt:
 	treefmt
 
-# treefmt runs mdsh + mdformat over the markdown, so --fail-on-change also
-# verifies README.md is regenerated and in sync (replacing the old mdsh guard).
+# treefmt runs mdsh + mdformat over the markdown, which keeps README.md
+# regenerated and in sync (replacing the old mdsh guard). mdsh and mdformat
+# disagree on the blank line after an mdsh directive: mdsh strips it, mdformat
+# re-adds it. The net result is a no-op (README is a fixpoint of the pair), but
+# that intermediate churn trips treefmt's own --fail-on-change. So we format in
+# place and let git confirm there's no net drift instead.
 .PHONY: check
 check:
-	treefmt --fail-on-change
+	treefmt
+	git diff --exit-code
 
 .PHONY: test
 test: $(GO_FILES)

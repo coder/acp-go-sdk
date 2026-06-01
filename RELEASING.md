@@ -7,11 +7,10 @@ code, helper APIs, and library version remain in sync.
 
 ## Prerequisites
 
-- Go 1.21 or newer.
 - `make`, `curl`, and `git` in your `PATH`.
-- Nix is required for `make fmt` and `make check` (they invoke `nix fmt` and
-  `nix flake check`). Use `nix develop` or an equivalent environment before
-  running these targets.
+- [mise](https://mise.jdx.dev) for the toolchain. Run `mise install` once to
+  provision Go, `treefmt`, and the formatters/linters that `make fmt` and
+  `make check` invoke.
 - The repository must have an Actions secret named `ANTHROPIC_API_KEY` so the
   release-notes workflow can update GitHub Release bodies after publication.
 

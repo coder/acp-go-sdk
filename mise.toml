@@ -1,0 +1,31 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+
+# Toolchain for the ACP Go SDK. Replaces the former Nix devshell/flake.
+# `mise install` provisions everything below; tasks still live in the Makefile.
+[tools]
+# Go toolchain and editor helpers
+go = "1.26.3"
+"go:golang.org/x/tools/gopls" = "0.22.0"
+golangci-lint = "2.12.2"
+gofumpt = "0.10.0"
+
+# Tree-wide formatter and its linters/formatters
+"aqua:numtide/treefmt" = "2.5.0"
+actionlint = "1.7.12"
+zizmor = "1.25.2"
+
+# Markdown tooling.
+# mdformat is pure Python — installed through uv (via the pipx backend).
+# mdsh ships only to crates.io, so it is built with the cargo backend.
+uv = "0.11.17"
+"pipx:mdformat" = "1.0.0"
+rust = "1.96.0"
+"cargo:mdsh" = "0.7.0"
+
+[settings]
+# Use uv to back pipx installs, so no separate pipx binary is required.
+pipx.uvx = true
+
+[env]
+# Keep the Go build cache inside the repo, matching the old Makefile default.
+GOCACHE = "{{ config_root }}/.gocache"

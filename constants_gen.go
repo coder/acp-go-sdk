@@ -26,6 +26,7 @@ const (
 	AgentMethodProvidersSet           = "providers/set"
 	AgentMethodSessionCancel          = "session/cancel"
 	AgentMethodSessionClose           = "session/close"
+	AgentMethodSessionDelete          = "session/delete"
 	AgentMethodSessionFork            = "session/fork"
 	AgentMethodSessionList            = "session/list"
 	AgentMethodSessionLoad            = "session/load"

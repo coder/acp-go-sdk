@@ -27,7 +27,7 @@
       "x-side": "agent"
     },
     "AgentAuthCapabilities": {
-      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nAuthentication-related capabilities supported by the agent.",
+      "description": "Authentication-related capabilities supported by the agent.",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -63,7 +63,7 @@
             }
           ],
           "default": {},
-          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nAuthentication-related capabilities supported by the agent."
+          "description": "Authentication-related capabilities supported by the agent."
         },
         "loadSession": {
           "default": false,
@@ -376,18 +376,18 @@
                 {
                   "allOf": [
                     {
-                      "$ref": "#/$defs/SetProvidersResponse"
+                      "$ref": "#/$defs/SetProviderResponse"
                     }
                   ],
-                  "title": "SetProvidersResponse"
+                  "title": "SetProviderResponse"
                 },
                 {
                   "allOf": [
                     {
-                      "$ref": "#/$defs/DisableProvidersResponse"
+                      "$ref": "#/$defs/DisableProviderResponse"
                     }
                   ],
-                  "title": "DisableProvidersResponse"
+                  "title": "DisableProviderResponse"
                 },
                 {
                   "allOf": [
@@ -420,6 +420,14 @@
                     }
                   ],
                   "title": "ListSessionsResponse"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/DeleteSessionResponse"
+                    }
+                  ],
+                  "title": "DeleteSessionResponse"
                 },
                 {
                   "allOf": [
@@ -1013,6 +1021,17 @@
           ],
           "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nNES (Next Edit Suggestions) capabilities supported by the client."
         },
+        "planCapabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nWhether the client supports `plan_update` and `plan_removed` session updates.\n\nOptional. Omitted means the client does not advertise support.\nSupplying `{}` means the client can receive both update types."
+        },
         "positionEncodings": {
           "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nThe position encodings supported by the client, in order of preference.",
           "items": {
@@ -1226,20 +1245,20 @@
                 {
                   "allOf": [
                     {
-                      "$ref": "#/$defs/SetProvidersRequest"
+                      "$ref": "#/$defs/SetProviderRequest"
                     }
                   ],
                   "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nReplaces the configuration for a provider.",
-                  "title": "SetProvidersRequest"
+                  "title": "SetProviderRequest"
                 },
                 {
                   "allOf": [
                     {
-                      "$ref": "#/$defs/DisableProvidersRequest"
+                      "$ref": "#/$defs/DisableProviderRequest"
                     }
                   ],
                   "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nDisables a provider.",
-                  "title": "DisableProvidersRequest"
+                  "title": "DisableProviderRequest"
                 },
                 {
                   "allOf": [
@@ -1247,7 +1266,7 @@
                       "$ref": "#/$defs/LogoutRequest"
                     }
                   ],
-                  "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nLogs out of the current authenticated state.\n\nAfter a successful logout, all new sessions will require authentication.\nThere is no guarantee about the behavior of already running sessions.",
+                  "description": "Logs out of the current authenticated state.\n\nAfter a successful logout, all new sessions will require authentication.\nThere is no guarantee about the behavior of already running sessions.",
                   "title": "LogoutRequest"
                 },
                 {
@@ -1276,6 +1295,15 @@
                   ],
                   "description": "Lists existing sessions known to the agent.\n\nThis method is only available if the agent advertises the `sessionCapabilities.list` capability.\n\nThe agent should return metadata about sessions with optional filtering and pagination support.",
                   "title": "ListSessionsRequest"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/DeleteSessionRequest"
+                    }
+                  ],
+                  "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nDeletes an existing session from `session/list`.\n\nThis method is only available if the agent advertises the `sessionCapabilities.delete` capability.",
+                  "title": "DeleteSessionRequest"
                 },
                 {
                   "allOf": [
@@ -2037,6 +2065,41 @@
       "required": ["currentModeId"],
       "type": "object"
     },
+    "DeleteSessionRequest": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nRequest parameters for deleting an existing session from `session/list`.\n\nOnly available if the Agent supports the `sessionCapabilities.delete` capability.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "sessionId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            }
+          ],
+          "description": "The ID of the session to delete."
+        }
+      },
+      "required": ["sessionId"],
+      "type": "object",
+      "x-method": "session/delete",
+      "x-side": "agent"
+    },
+    "DeleteSessionResponse": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nResponse from deleting a session.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object",
+      "x-method": "session/delete",
+      "x-side": "agent"
+    },
     "DidChangeDocumentNotification": {
       "description": "Notification sent when a file is edited.",
       "properties": {
@@ -2237,7 +2300,7 @@
       "required": ["path", "newText"],
       "type": "object"
     },
-    "DisableProvidersRequest": {
+    "DisableProviderRequest": {
       "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nRequest parameters for `providers/disable`.",
       "properties": {
         "_meta": {
@@ -2255,7 +2318,7 @@
       "x-method": "providers/disable",
       "x-side": "agent"
     },
-    "DisableProvidersResponse": {
+    "DisableProviderResponse": {
       "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nResponse to `providers/disable`.",
       "properties": {
         "_meta": {
@@ -3264,13 +3327,6 @@
           "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
           "type": ["object", "null"]
         },
-        "additionalDirectories": {
-          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nFilter sessions by the exact ordered additional workspace roots. Each path must be absolute.\n\nThis filter applies only when the field is present and non-empty. When\nomitted or empty, no additional-root filter is applied.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
         "cursor": {
           "description": "Opaque cursor token from a previous response's nextCursor field for cursor-based pagination",
           "type": ["string", "null"]
@@ -3353,7 +3409,7 @@
           "type": ["object", "null"]
         },
         "additionalDirectories": {
-          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nAdditional workspace roots to activate for this session. Each path must be absolute.\n\nWhen omitted or empty, no additional roots are activated. When non-empty,\nthis is the complete resulting additional-root list for the loaded\nsession.",
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nAdditional workspace roots to activate for this session. Each path must be absolute.\n\nWhen omitted or empty, no additional roots are activated. When non-empty,\nthis is the complete resulting additional-root list for the loaded\nsession. It may differ from any previously used or reported list as long as\nthe request `cwd` matches the session's `cwd`.",
           "items": {
             "type": "string"
           },
@@ -3427,7 +3483,7 @@
       "x-side": "agent"
     },
     "LogoutCapabilities": {
-      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nLogout capabilities supported by the agent.\n\nBy supplying `{}` it means that the agent supports the logout method.",
+      "description": "Logout capabilities supported by the agent.\n\nBy supplying `{}` it means that the agent supports the logout method.",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -3438,7 +3494,7 @@
       "type": "object"
     },
     "LogoutRequest": {
-      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nRequest parameters for the logout method.\n\nTerminates the current authenticated session.",
+      "description": "Request parameters for the logout method.\n\nTerminates the current authenticated session.",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -3451,7 +3507,7 @@
       "x-side": "agent"
     },
     "LogoutResponse": {
-      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nResponse to the `logout` method.",
+      "description": "Response to the `logout` method.",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -4916,6 +4972,17 @@
       "required": ["entries"],
       "type": "object"
     },
+    "PlanCapabilities": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nCapabilities for receiving `plan_update` and `plan_removed` session updates.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object"
+    },
     "PlanEntry": {
       "description": "A single entry in the execution plan.\n\nRepresents a task or goal that the assistant intends to accomplish\nas part of fulfilling the user's request.\nSee protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)",
       "properties": {
@@ -4985,6 +5052,181 @@
           "const": "completed",
           "description": "The task has been successfully completed.",
           "type": "string"
+        }
+      ]
+    },
+    "PlanFile": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA plan represented by a file URI.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "id": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanId"
+            }
+          ],
+          "description": "The plan ID to update."
+        },
+        "uri": {
+          "description": "The URI of the file containing the plan.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "uri"],
+      "type": "object"
+    },
+    "PlanId": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nUnique identifier for a plan within a session.",
+      "type": "string"
+    },
+    "PlanItems": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA plan represented as structured entries.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "entries": {
+          "description": "The list of tasks to be accomplished.\n\nWhen updating an item-based plan, the agent must send a complete list of all entries\nwith their current status. The client replaces that plan with each update.",
+          "items": {
+            "$ref": "#/$defs/PlanEntry"
+          },
+          "type": "array"
+        },
+        "id": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanId"
+            }
+          ],
+          "description": "The plan ID to update."
+        }
+      },
+      "required": ["id", "entries"],
+      "type": "object"
+    },
+    "PlanMarkdown": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA plan represented as raw markdown content.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "content": {
+          "description": "Markdown content for the plan.",
+          "type": "string"
+        },
+        "id": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanId"
+            }
+          ],
+          "description": "The plan ID to update."
+        }
+      },
+      "required": ["id", "content"],
+      "type": "object"
+    },
+    "PlanRemoved": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nRemoval notice for a plan identified by ID.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "id": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanId"
+            }
+          ],
+          "description": "The plan ID to remove."
+        }
+      },
+      "required": ["id"],
+      "type": "object"
+    },
+    "PlanUpdate": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA content update for a plan identified by ID.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanUpdateContent"
+            }
+          ],
+          "description": "The updated plan content."
+        }
+      },
+      "required": ["plan"],
+      "type": "object"
+    },
+    "PlanUpdateContent": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nUpdated content for a plan.",
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanItems"
+            }
+          ],
+          "description": "Structured plan entries.",
+          "properties": {
+            "type": {
+              "const": "items",
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanFile"
+            }
+          ],
+          "description": "A URI pointing to a file containing the plan.",
+          "properties": {
+            "type": {
+              "const": "file",
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanMarkdown"
+            }
+          ],
+          "description": "Raw markdown content for the plan.",
+          "properties": {
+            "type": {
+              "const": "markdown",
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
         }
       ]
     },
@@ -5514,7 +5756,7 @@
           "type": ["object", "null"]
         },
         "additionalDirectories": {
-          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nAdditional workspace roots to activate for this session. Each path must be absolute.\n\nWhen omitted or empty, no additional roots are activated. When non-empty,\nthis is the complete resulting additional-root list for the resumed\nsession.",
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nAdditional workspace roots to activate for this session. Each path must be absolute.\n\nWhen omitted or empty, no additional roots are activated. When non-empty,\nthis is the complete resulting additional-root list for the resumed\nsession. It may differ from any previously used or reported list as long as\nthe request `cwd` matches the session's `cwd`.",
           "items": {
             "type": "string"
           },
@@ -5613,7 +5855,7 @@
       "type": "object"
     },
     "SessionAdditionalDirectoriesCapabilities": {
-      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nCapabilities for additional session directories support.\n\nBy supplying `{}` it means that the agent supports the `additionalDirectories` field on\nsupported session lifecycle requests and `session/list`.",
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nCapabilities for additional session directories support.\n\nBy supplying `{}` it means that the agent supports the `additionalDirectories`\nfield on supported session lifecycle requests. Agents that also support\n`session/list` may return `SessionInfo.additionalDirectories` to report the\ncomplete ordered additional-root list associated with a listed session.",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -5640,7 +5882,7 @@
               "type": "null"
             }
           ],
-          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nWhether the agent supports `additionalDirectories` on supported session lifecycle requests and `session/list`."
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nWhether the agent supports `additionalDirectories` on supported session lifecycle requests.\n\nAgents that also support `session/list` may return\n`SessionInfo.additionalDirectories` to report the complete ordered\nadditional-root list associated with a listed session."
         },
         "close": {
           "anyOf": [
@@ -5652,6 +5894,17 @@
             }
           ],
           "description": "Whether the agent supports `session/close`."
+        },
+        "delete": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionDeleteCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nWhether the agent supports `session/delete`.\n\nOptional. Omitted or `null` both mean the agent does not advertise support.\nSupplying `{}` means the agent supports deleting sessions from `session/list`."
         },
         "fork": {
           "anyOf": [
@@ -5927,6 +6180,17 @@
       "description": "Unique identifier for a session configuration option value.",
       "type": "string"
     },
+    "SessionDeleteCapabilities": {
+      "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nCapabilities for the `session/delete` method.\n\nSupplying `{}` means the agent supports deleting sessions from `session/list`.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object"
+    },
     "SessionForkCapabilities": {
       "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nCapabilities for the `session/fork` method.\n\nBy supplying `{}` it means that the agent supports forking of sessions.",
       "properties": {
@@ -5951,7 +6215,7 @@
           "type": ["object", "null"]
         },
         "additionalDirectories": {
-          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nAuthoritative ordered additional workspace roots for this session. Each path must be absolute.\n\nWhen omitted or empty, there are no additional roots for the session.",
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nAdditional workspace roots reported for this session. Each path must be absolute.\n\nWhen present, this is the complete ordered additional-root list reported\nby the Agent. Omitted and empty values are equivalent: the response\nreports no additional roots.",
           "items": {
             "type": "string"
           },
@@ -6236,6 +6500,38 @@
         {
           "allOf": [
             {
+              "$ref": "#/$defs/PlanUpdate"
+            }
+          ],
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nA content update for a plan identified by ID.",
+          "properties": {
+            "sessionUpdate": {
+              "const": "plan_update",
+              "type": "string"
+            }
+          },
+          "required": ["sessionUpdate"],
+          "type": "object"
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/PlanRemoved"
+            }
+          ],
+          "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nRemoval notice for a plan identified by ID.",
+          "properties": {
+            "sessionUpdate": {
+              "const": "plan_removed",
+              "type": "string"
+            }
+          },
+          "required": ["sessionUpdate"],
+          "type": "object"
+        },
+        {
+          "allOf": [
+            {
               "$ref": "#/$defs/AvailableCommandsUpdate"
             }
           ],
@@ -6315,7 +6611,7 @@
         }
       ]
     },
-    "SetProvidersRequest": {
+    "SetProviderRequest": {
       "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nRequest parameters for `providers/set`.\n\nReplaces the full configuration for one provider id.",
       "properties": {
         "_meta": {
@@ -6352,7 +6648,7 @@
       "x-method": "providers/set",
       "x-side": "agent"
     },
-    "SetProvidersResponse": {
+    "SetProviderResponse": {
       "description": "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nResponse to `providers/set`.",
       "properties": {
         "_meta": {

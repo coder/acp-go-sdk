@@ -37,6 +37,11 @@ func (a *agentExample) SetSessionConfigOption(ctx context.Context, params SetSes
 	return SetSessionConfigOptionResponse{}, nil
 }
 
+// Logout implements Agent.
+func (a *agentExample) Logout(ctx context.Context, params LogoutRequest) (LogoutResponse, error) {
+	return LogoutResponse{}, nil
+}
+
 func (a *agentExample) SetAgentConnection(c *AgentSideConnection) { a.conn = c }
 
 func (agentExample) Authenticate(ctx context.Context, _ AuthenticateRequest) (AuthenticateResponse, error) {

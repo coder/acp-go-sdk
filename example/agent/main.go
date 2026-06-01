@@ -91,9 +91,9 @@ func (a *exampleAgent) UnstableDidSaveDocument(ctx context.Context, params acp.U
 	return nil
 }
 
-// UnstableLogout implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableLogout(ctx context.Context, params acp.UnstableLogoutRequest) (acp.UnstableLogoutResponse, error) {
-	return acp.UnstableLogoutResponse{}, acp.NewMethodNotFound(acp.AgentMethodLogout)
+// Logout implements acp.Agent.
+func (a *exampleAgent) Logout(ctx context.Context, params acp.LogoutRequest) (acp.LogoutResponse, error) {
+	return acp.LogoutResponse{}, acp.NewMethodNotFound(acp.AgentMethodLogout)
 }
 
 // UnstableAcceptNes implements acp.AgentExperimental.
@@ -121,9 +121,9 @@ func (a *exampleAgent) UnstableSuggestNes(ctx context.Context, params acp.Unstab
 	return acp.UnstableSuggestNesResponse{}, acp.NewMethodNotFound(acp.AgentMethodNesSuggest)
 }
 
-// UnstableDisableProviders implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDisableProviders(ctx context.Context, params acp.UnstableDisableProvidersRequest) (acp.UnstableDisableProvidersResponse, error) {
-	return acp.UnstableDisableProvidersResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersDisable)
+// UnstableDisableProvider implements acp.AgentExperimental.
+func (a *exampleAgent) UnstableDisableProvider(ctx context.Context, params acp.UnstableDisableProviderRequest) (acp.UnstableDisableProviderResponse, error) {
+	return acp.UnstableDisableProviderResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersDisable)
 }
 
 // UnstableListProviders implements acp.AgentExperimental.
@@ -131,9 +131,14 @@ func (a *exampleAgent) UnstableListProviders(ctx context.Context, params acp.Uns
 	return acp.UnstableListProvidersResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersList)
 }
 
-// UnstableSetProviders implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableSetProviders(ctx context.Context, params acp.UnstableSetProvidersRequest) (acp.UnstableSetProvidersResponse, error) {
-	return acp.UnstableSetProvidersResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersSet)
+// UnstableSetProvider implements acp.AgentExperimental.
+func (a *exampleAgent) UnstableSetProvider(ctx context.Context, params acp.UnstableSetProviderRequest) (acp.UnstableSetProviderResponse, error) {
+	return acp.UnstableSetProviderResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersSet)
+}
+
+// UnstableDeleteSession implements acp.AgentExperimental.
+func (a *exampleAgent) UnstableDeleteSession(ctx context.Context, params acp.UnstableDeleteSessionRequest) (acp.UnstableDeleteSessionResponse, error) {
+	return acp.UnstableDeleteSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionDelete)
 }
 
 // CloseSession implements acp.Agent.

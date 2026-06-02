@@ -2474,10 +2474,6 @@ type LoadSessionRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Additional workspace roots to activate for this session. Each path must be absolute.
 	//
 	// When omitted or empty, no additional roots are activated. When non-empty,
@@ -2513,12 +2509,6 @@ type LoadSessionResponse struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Initial session configuration options if supported by the Agent.
 	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Initial model state if supported by the Agent
-	Models *SessionModelState `json:"models,omitempty"`
 	// Initial mode state if supported by the Agent
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
@@ -3024,33 +3014,6 @@ type McpServerStdio struct {
 	Name string `json:"name"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// A unique identifier for a model.
-type ModelId string
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Information about a selectable model.
-type ModelInfo struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// Optional description of the model.
-	Description *string `json:"description,omitempty"`
-	// Unique identifier for the model.
-	ModelId ModelId `json:"modelId"`
-	// Human-readable name of the model.
-	Name string `json:"name"`
-}
-
 // NES capabilities advertised by the agent during initialization.
 type NesCapabilities struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -3277,10 +3240,6 @@ type NewSessionRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Additional workspace roots for this session. Each path must be absolute.
 	//
 	// These expand the session's filesystem scope without changing 'cwd', which
@@ -3315,12 +3274,6 @@ type NewSessionResponse struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Initial session configuration options if supported by the Agent.
 	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Initial model state if supported by the Agent
-	Models *SessionModelState `json:"models,omitempty"`
 	// Initial mode state if supported by the Agent
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
@@ -4378,10 +4331,6 @@ type ResumeSessionRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Additional workspace roots to activate for this session. Each path must be absolute.
 	//
 	// When omitted or empty, no additional roots are activated. When non-empty,
@@ -4414,12 +4363,6 @@ type ResumeSessionResponse struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Initial session configuration options if supported by the Agent.
 	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Initial model state if supported by the Agent
-	Models *SessionModelState `json:"models,omitempty"`
 	// Initial mode state if supported by the Agent
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
@@ -4450,10 +4393,6 @@ type SelectedPermissionOutcome struct {
 	OptionId PermissionOptionId `json:"optionId"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Capabilities for additional session directories support.
 //
 // By supplying '{}' it means that the agent supports the 'additionalDirectories'
@@ -4485,10 +4424,6 @@ type SessionCapabilities struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Whether the agent supports 'additionalDirectories' on supported session lifecycle requests.
 	//
 	// Agents that also support 'session/list' may return
@@ -4952,10 +4887,6 @@ type SessionInfo struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Additional workspace roots reported for this session. Each path must be absolute.
 	//
 	// When present, this is the complete ordered additional-root list reported
@@ -5031,24 +4962,6 @@ type SessionModeState struct {
 	AvailableModes []SessionMode `json:"availableModes"`
 	// The current mode the Agent is in.
 	CurrentModeId SessionModeId `json:"currentModeId"`
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// The set of models and the one currently active.
-type SessionModelState struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// The set of models that the Agent can use
-	AvailableModels []ModelInfo `json:"availableModels"`
-	// The current model the Agent is in.
-	CurrentModelId ModelId `json:"currentModelId"`
 }
 
 // Notification containing a session update from the agent.
@@ -7796,10 +7709,6 @@ type UnstableForkSessionRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Additional workspace roots to activate for this session. Each path must be absolute.
 	//
 	// When omitted or empty, no additional roots are activated. When non-empty,
@@ -7835,12 +7744,6 @@ type UnstableForkSessionResponse struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Initial session configuration options if supported by the Agent.
 	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Initial model state if supported by the Agent
-	Models *UnstableSessionModelState `json:"models,omitempty"`
 	// Initial mode state if supported by the Agent
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
@@ -8329,33 +8232,6 @@ func (v *UnstableMessageMcpRequest) Validate() error {
 // This is the inner MCP response result payload. Any JSON value is valid.
 // UnstableMessageMcpResponse is a union or complex schema; represented generically.
 type UnstableMessageMcpResponse any
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// A unique identifier for a model.
-type UnstableModelId string
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Information about a selectable model.
-type UnstableModelInfo struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// Optional description of the model.
-	Description *string `json:"description,omitempty"`
-	// Unique identifier for the model.
-	ModelId UnstableModelId `json:"modelId"`
-	// Human-readable name of the model.
-	Name string `json:"name"`
-}
 
 // A diagnostic (error, warning, etc.).
 type UnstableNesDiagnostic struct {
@@ -9136,24 +9012,6 @@ func (u *UnstableSessionConfigOption) Validate() error {
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
 //
-// The set of models and the one currently active.
-type UnstableSessionModelState struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// The set of models that the Agent can use
-	AvailableModels []UnstableModelInfo `json:"availableModels"`
-	// The current model the Agent is in.
-	CurrentModelId UnstableModelId `json:"currentModelId"`
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Request parameters for 'providers/set'.
 //
 // Replaces the full configuration for one provider id.
@@ -9200,46 +9058,6 @@ type UnstableSetProviderResponse struct {
 }
 
 func (v *UnstableSetProviderResponse) Validate() error {
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Request parameters for setting a session model.
-type UnstableSetSessionModelRequest struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// The ID of the model to set.
-	ModelId UnstableModelId `json:"modelId"`
-	// The ID of the session to set the model for.
-	SessionId SessionId `json:"sessionId"`
-}
-
-func (v *UnstableSetSessionModelRequest) Validate() error {
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Response to 'session/set_model' method.
-type UnstableSetSessionModelResponse struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-}
-
-func (v *UnstableSetSessionModelResponse) Validate() error {
 	return nil
 }
 
@@ -9609,12 +9427,6 @@ type AgentExperimental interface {
 	//
 	// Only available if the Agent supports the 'session.fork' capability.
 	UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Request parameters for setting a session model.
-	UnstableSetSessionModel(ctx context.Context, params UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
 }
 type Client interface {
 	// Request to read content from a text file.

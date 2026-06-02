@@ -35,7 +35,6 @@ const (
 	AgentMethodSessionResume          = "session/resume"
 	AgentMethodSessionSetConfigOption = "session/set_config_option"
 	AgentMethodSessionSetMode         = "session/set_mode"
-	AgentMethodSessionSetModel        = "session/set_model"
 )
 
 // Client method names

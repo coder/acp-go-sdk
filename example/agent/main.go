@@ -61,11 +61,6 @@ func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.Se
 	return acp.SetSessionConfigOptionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionSetConfigOption)
 }
 
-// UnstableSetSessionModel implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableSetSessionModel(ctx context.Context, params acp.UnstableSetSessionModelRequest) (acp.UnstableSetSessionModelResponse, error) {
-	return acp.UnstableSetSessionModelResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionSetModel)
-}
-
 // UnstableDidChangeDocument implements acp.AgentExperimental.
 func (a *exampleAgent) UnstableDidChangeDocument(ctx context.Context, params acp.UnstableDidChangeDocumentNotification) error {
 	return nil

@@ -309,7 +309,3 @@ func (c *ClientSideConnection) SetSessionMode(ctx context.Context, params SetSes
 	resp, err := SendRequest[SetSessionModeResponse](c.conn, ctx, AgentMethodSessionSetMode, params)
 	return resp, err
 }
-func (c *ClientSideConnection) UnstableSetSessionModel(ctx context.Context, params UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error) {
-	resp, err := SendRequest[UnstableSetSessionModelResponse](c.conn, ctx, AgentMethodSessionSetModel, params)
-	return resp, err
-}

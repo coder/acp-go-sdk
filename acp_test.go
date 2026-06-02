@@ -138,7 +138,6 @@ type agentFuncs struct {
 	UnstableSetProviderFunc       func(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
 	UnstableDeleteSessionFunc     func(context.Context, UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error)
 	UnstableForkSessionFunc       func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-	UnstableSetSessionModelFunc   func(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
@@ -238,14 +237,6 @@ func (a agentFuncs) SetSessionConfigOption(ctx context.Context, params SetSessio
 		return a.SetSessionConfigOptionFunc(ctx, params)
 	}
 	return SetSessionConfigOptionResponse{}, nil
-}
-
-// UnstableSetSessionModel implements AgentExperimental.
-func (a agentFuncs) UnstableSetSessionModel(ctx context.Context, params UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error) {
-	if a.UnstableSetSessionModelFunc != nil {
-		return a.UnstableSetSessionModelFunc(ctx, params)
-	}
-	return UnstableSetSessionModelResponse{}, nil
 }
 
 func (a agentFuncs) UnstableDidChangeDocument(ctx context.Context, params UnstableDidChangeDocumentNotification) error {

@@ -9,12 +9,13 @@ Core SDK code lives at the repo root (`agent.go`, `client.go`, `connection.go`, 
 - `go test ./...` exercises unit tests across packages.
 - `go run ./example/agent` and `go run ./example/client` provide quick manual validation of agent/client behavior.
 - `make test` runs `go test` and ensures all examples still build.
-- `make fmt` delegates to `nix fmt` so Go, Nix, and Markdown stay formatted consistently.
-- `nix flake check` validates the flake definition and linting hooks used in CI.
+- `make fmt` runs `treefmt` so Go and Markdown stay formatted consistently.
+- `make check` runs `treefmt --fail-on-change` plus the README guard used in CI.
+- `mise install` provisions the toolchain (Go, gopls, golangci-lint, treefmt, etc.); run it once after cloning.
 
 ## Coding Style & Naming Conventions
 
-Target Go 1.21 idioms: tabs for indentation, short receiver names, and CamelCase for exported symbols (`AgentLoader`), lowerCamelCase for unexported helpers. Prefer table-driven tests and keep files focused on a single protocol concern. Run `nix fmt` or `gofumpt -w .` to normalize spacing, imports, and composite literals before sending a change.
+Target Go 1.21 idioms: tabs for indentation, short receiver names, and CamelCase for exported symbols (`AgentLoader`), lowerCamelCase for unexported helpers. Prefer table-driven tests and keep files focused on a single protocol concern. Run `make fmt` or `gofumpt -w .` to normalize spacing, imports, and composite literals before sending a change.
 
 ## Testing Guidelines
 

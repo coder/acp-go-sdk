@@ -63,6 +63,10 @@ func (a *stubAgent) Authenticate(ctx context.Context, req acp.AuthenticateReques
 	return acp.AuthenticateResponse{}, nil
 }
 
+func (a *stubAgent) Logout(ctx context.Context, req acp.LogoutRequest) (acp.LogoutResponse, error) {
+	return acp.LogoutResponse{}, nil
+}
+
 func (a *stubAgent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptResponse, error) {
 	a.promptCalls.Add(1)
 	// Emit one session update notification so session-scoped streaming

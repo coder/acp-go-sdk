@@ -65,6 +65,10 @@ func (a *demoAgent) Authenticate(ctx context.Context, _ acp.AuthenticateRequest)
 	return acp.AuthenticateResponse{}, nil
 }
 
+func (a *demoAgent) Logout(ctx context.Context, _ acp.LogoutRequest) (acp.LogoutResponse, error) {
+	return acp.LogoutResponse{}, nil
+}
+
 func (a *demoAgent) NewSession(ctx context.Context, _ acp.NewSessionRequest) (acp.NewSessionResponse, error) {
 	sid := "sess_" + randomID()
 	a.mu.Lock()

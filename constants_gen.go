@@ -26,6 +26,7 @@ const (
 	AgentMethodProvidersSet           = "providers/set"
 	AgentMethodSessionCancel          = "session/cancel"
 	AgentMethodSessionClose           = "session/close"
+	AgentMethodSessionDelete          = "session/delete"
 	AgentMethodSessionFork            = "session/fork"
 	AgentMethodSessionList            = "session/list"
 	AgentMethodSessionLoad            = "session/load"
@@ -34,7 +35,6 @@ const (
 	AgentMethodSessionResume          = "session/resume"
 	AgentMethodSessionSetConfigOption = "session/set_config_option"
 	AgentMethodSessionSetMode         = "session/set_mode"
-	AgentMethodSessionSetModel        = "session/set_model"
 )
 
 // Client method names

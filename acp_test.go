@@ -121,23 +121,23 @@ type agentFuncs struct {
 	ListSessionsFunc           func(context.Context, ListSessionsRequest) (ListSessionsResponse, error)
 	ResumeSessionFunc          func(context.Context, ResumeSessionRequest) (ResumeSessionResponse, error)
 	SetSessionConfigOptionFunc func(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error)
+	LogoutFunc                 func(context.Context, LogoutRequest) (LogoutResponse, error)
 	// Unstable (schema/meta.unstable.json)
 	UnstableDidChangeDocumentFunc func(context.Context, UnstableDidChangeDocumentNotification) error
 	UnstableDidCloseDocumentFunc  func(context.Context, UnstableDidCloseDocumentNotification) error
 	UnstableDidFocusDocumentFunc  func(context.Context, UnstableDidFocusDocumentNotification) error
 	UnstableDidOpenDocumentFunc   func(context.Context, UnstableDidOpenDocumentNotification) error
 	UnstableDidSaveDocumentFunc   func(context.Context, UnstableDidSaveDocumentNotification) error
-	UnstableLogoutFunc            func(context.Context, UnstableLogoutRequest) (UnstableLogoutResponse, error)
 	UnstableAcceptNesFunc         func(context.Context, UnstableAcceptNesNotification) error
 	UnstableCloseNesFunc          func(context.Context, UnstableCloseNesRequest) (UnstableCloseNesResponse, error)
 	UnstableRejectNesFunc         func(context.Context, UnstableRejectNesNotification) error
 	UnstableStartNesFunc          func(context.Context, UnstableStartNesRequest) (UnstableStartNesResponse, error)
 	UnstableSuggestNesFunc        func(context.Context, UnstableSuggestNesRequest) (UnstableSuggestNesResponse, error)
-	UnstableDisableProvidersFunc  func(context.Context, UnstableDisableProvidersRequest) (UnstableDisableProvidersResponse, error)
+	UnstableDisableProviderFunc   func(context.Context, UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error)
 	UnstableListProvidersFunc     func(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
-	UnstableSetProvidersFunc      func(context.Context, UnstableSetProvidersRequest) (UnstableSetProvidersResponse, error)
+	UnstableSetProviderFunc       func(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
+	UnstableDeleteSessionFunc     func(context.Context, UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error)
 	UnstableForkSessionFunc       func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-	UnstableSetSessionModelFunc   func(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
@@ -239,14 +239,6 @@ func (a agentFuncs) SetSessionConfigOption(ctx context.Context, params SetSessio
 	return SetSessionConfigOptionResponse{}, nil
 }
 
-// UnstableSetSessionModel implements AgentExperimental.
-func (a agentFuncs) UnstableSetSessionModel(ctx context.Context, params UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error) {
-	if a.UnstableSetSessionModelFunc != nil {
-		return a.UnstableSetSessionModelFunc(ctx, params)
-	}
-	return UnstableSetSessionModelResponse{}, nil
-}
-
 func (a agentFuncs) UnstableDidChangeDocument(ctx context.Context, params UnstableDidChangeDocumentNotification) error {
 	if a.UnstableDidChangeDocumentFunc != nil {
 		return a.UnstableDidChangeDocumentFunc(ctx, params)
@@ -282,11 +274,11 @@ func (a agentFuncs) UnstableDidSaveDocument(ctx context.Context, params Unstable
 	return nil
 }
 
-func (a agentFuncs) UnstableLogout(ctx context.Context, params UnstableLogoutRequest) (UnstableLogoutResponse, error) {
-	if a.UnstableLogoutFunc != nil {
-		return a.UnstableLogoutFunc(ctx, params)
+func (a agentFuncs) Logout(ctx context.Context, params LogoutRequest) (LogoutResponse, error) {
+	if a.LogoutFunc != nil {
+		return a.LogoutFunc(ctx, params)
 	}
-	return UnstableLogoutResponse{}, nil
+	return LogoutResponse{}, nil
 }
 
 func (a agentFuncs) UnstableAcceptNes(ctx context.Context, params UnstableAcceptNesNotification) error {
@@ -324,11 +316,11 @@ func (a agentFuncs) UnstableSuggestNes(ctx context.Context, params UnstableSugge
 	return UnstableSuggestNesResponse{}, nil
 }
 
-func (a agentFuncs) UnstableDisableProviders(ctx context.Context, params UnstableDisableProvidersRequest) (UnstableDisableProvidersResponse, error) {
-	if a.UnstableDisableProvidersFunc != nil {
-		return a.UnstableDisableProvidersFunc(ctx, params)
+func (a agentFuncs) UnstableDisableProvider(ctx context.Context, params UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error) {
+	if a.UnstableDisableProviderFunc != nil {
+		return a.UnstableDisableProviderFunc(ctx, params)
 	}
-	return UnstableDisableProvidersResponse{}, nil
+	return UnstableDisableProviderResponse{}, nil
 }
 
 func (a agentFuncs) UnstableListProviders(ctx context.Context, params UnstableListProvidersRequest) (UnstableListProvidersResponse, error) {
@@ -338,11 +330,18 @@ func (a agentFuncs) UnstableListProviders(ctx context.Context, params UnstableLi
 	return UnstableListProvidersResponse{}, nil
 }
 
-func (a agentFuncs) UnstableSetProviders(ctx context.Context, params UnstableSetProvidersRequest) (UnstableSetProvidersResponse, error) {
-	if a.UnstableSetProvidersFunc != nil {
-		return a.UnstableSetProvidersFunc(ctx, params)
+func (a agentFuncs) UnstableSetProvider(ctx context.Context, params UnstableSetProviderRequest) (UnstableSetProviderResponse, error) {
+	if a.UnstableSetProviderFunc != nil {
+		return a.UnstableSetProviderFunc(ctx, params)
 	}
-	return UnstableSetProvidersResponse{}, nil
+	return UnstableSetProviderResponse{}, nil
+}
+
+func (a agentFuncs) UnstableDeleteSession(ctx context.Context, params UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error) {
+	if a.UnstableDeleteSessionFunc != nil {
+		return a.UnstableDeleteSessionFunc(ctx, params)
+	}
+	return UnstableDeleteSessionResponse{}, nil
 }
 
 func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
@@ -370,6 +369,10 @@ func (a *forkOnlyUnstableAgent) Cancel(context.Context, CancelNotification) erro
 
 func (a *forkOnlyUnstableAgent) CloseSession(context.Context, CloseSessionRequest) (CloseSessionResponse, error) {
 	return CloseSessionResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) Logout(context.Context, LogoutRequest) (LogoutResponse, error) {
+	return LogoutResponse{}, nil
 }
 
 func (a *forkOnlyUnstableAgent) NewSession(context.Context, NewSessionRequest) (NewSessionResponse, error) {
@@ -1252,6 +1255,10 @@ func (agentNoExtensions) Initialize(ctx context.Context, params InitializeReques
 }
 
 func (agentNoExtensions) Cancel(ctx context.Context, params CancelNotification) error { return nil }
+
+func (agentNoExtensions) Logout(ctx context.Context, params LogoutRequest) (LogoutResponse, error) {
+	return LogoutResponse{}, nil
+}
 
 func (agentNoExtensions) CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error) {
 	return CloseSessionResponse{}, nil

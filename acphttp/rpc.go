@@ -132,7 +132,7 @@ func IsInitialize(raw []byte) bool {
 // The POST itself still carries Acp-Session-Id; servers special-case the
 // response routing for these two.
 //
-// The unstable methods (session/set_model, session/fork, the nes/* and
+// The unstable methods (session/fork, session/delete, the nes/* and
 // document/did* family) are listed so transports speaking the unstable
 // protocol get correct header behaviour out of the box; servers that only
 // implement stable methods will simply never see them.
@@ -140,12 +140,12 @@ func IsSessionScoped(method string) bool {
 	switch method {
 	case acp.AgentMethodSessionCancel,
 		acp.AgentMethodSessionClose,
+		acp.AgentMethodSessionDelete,
 		acp.AgentMethodSessionLoad,
 		acp.AgentMethodSessionPrompt,
 		acp.AgentMethodSessionResume,
 		acp.AgentMethodSessionSetConfigOption,
 		acp.AgentMethodSessionSetMode,
-		acp.AgentMethodSessionSetModel,
 		acp.AgentMethodSessionFork,
 		acp.AgentMethodNesAccept,
 		acp.AgentMethodNesClose,

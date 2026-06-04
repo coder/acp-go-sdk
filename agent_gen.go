@@ -126,20 +126,14 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		}
 		return resp, nil
 	case AgentMethodLogout:
-		var p UnstableLogoutRequest
+		var p LogoutRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableLogout(context.Context, UnstableLogoutRequest) (UnstableLogoutResponse, error)
-		})
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.UnstableLogout(ctx, p)
+		resp, err := a.agent.Logout(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -238,7 +232,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		}
 		return resp, nil
 	case AgentMethodProvidersDisable:
-		var p UnstableDisableProvidersRequest
+		var p UnstableDisableProviderRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
@@ -246,12 +240,12 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		exp, ok := a.agent.(interface {
-			UnstableDisableProviders(context.Context, UnstableDisableProvidersRequest) (UnstableDisableProvidersResponse, error)
+			UnstableDisableProvider(context.Context, UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error)
 		})
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableDisableProviders(ctx, p)
+		resp, err := exp.UnstableDisableProvider(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -276,7 +270,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		}
 		return resp, nil
 	case AgentMethodProvidersSet:
-		var p UnstableSetProvidersRequest
+		var p UnstableSetProviderRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
@@ -284,12 +278,12 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		exp, ok := a.agent.(interface {
-			UnstableSetProviders(context.Context, UnstableSetProvidersRequest) (UnstableSetProvidersResponse, error)
+			UnstableSetProvider(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
 		})
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableSetProviders(ctx, p)
+		resp, err := exp.UnstableSetProvider(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -321,6 +315,25 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		resp, err := a.agent.CloseSession(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case AgentMethodSessionDelete:
+		var p UnstableDeleteSessionRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := a.agent.(interface {
+			UnstableDeleteSession(context.Context, UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error)
+		})
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := exp.UnstableDeleteSession(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -447,25 +460,6 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		resp, err := a.agent.SetSessionMode(ctx, p)
-		if err != nil {
-			return nil, toReqErr(err)
-		}
-		return resp, nil
-	case AgentMethodSessionSetModel:
-		var p UnstableSetSessionModelRequest
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		exp, ok := a.agent.(interface {
-			UnstableSetSessionModel(context.Context, UnstableSetSessionModelRequest) (UnstableSetSessionModelResponse, error)
-		})
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.UnstableSetSessionModel(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}

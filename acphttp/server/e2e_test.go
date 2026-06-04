@@ -44,6 +44,10 @@ func (a *endToEndAgent) Authenticate(ctx context.Context, req acp.AuthenticateRe
 	return acp.AuthenticateResponse{}, nil
 }
 
+func (a *endToEndAgent) Logout(ctx context.Context, req acp.LogoutRequest) (acp.LogoutResponse, error) {
+	return acp.LogoutResponse{}, nil
+}
+
 func (a *endToEndAgent) NewSession(ctx context.Context, req acp.NewSessionRequest) (acp.NewSessionResponse, error) {
 	n := a.sessionCounter.Add(1)
 	return acp.NewSessionResponse{SessionId: acp.SessionId(fmt.Sprintf("sess-%d", n))}, nil

@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -120,6 +121,10 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleInitialize(w http.ResponseWriter, r *http.Request, body []byte) {
 	conn, err := s.createConnection()
 	if err != nil {
+		if errors.Is(err, ErrTooManyConnections) {
+			http.Error(w, "too many connections", http.StatusServiceUnavailable)
+			return
+		}
 		// The factory error may embed internal detail (connection strings,
 		// paths, stack traces). Log it server-side; return a generic message.
 		s.logger.Error("failed to create connection", "err", err)

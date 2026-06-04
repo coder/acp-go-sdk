@@ -215,10 +215,18 @@ type connection struct {
 // DELETEs it (or the server shuts down). Do not thread the request context
 // in here.
 func (s *Server) createConnection() (*connection, error) {
+	// Claim a slot before doing any expensive work (the factory call, pipes,
+	// goroutines), so a flood of initialize POSTs cannot exhaust resources
+	// past MaxConnections.
+	if err := s.reserveConn(); err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	agent, bindConn, cleanup, err := s.cfg.Factory(ctx)
 	if err != nil {
 		cancel()
+		s.releaseConn()
 		return nil, err
 	}
 

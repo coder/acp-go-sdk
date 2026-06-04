@@ -94,8 +94,16 @@ func (t *Transport) Close() error {
 			}
 		}
 
+		// Close closedCh and cancel under sessionsMu so it is ordered against
+		// the stream openers (openConnectionStream/ensureSessionStream), which
+		// observe closedCh and call streams.Add under the same lock. Without
+		// this ordering a concurrent Write could call streams.Add(1) after
+		// streams.Wait() below has already returned with the counter at zero —
+		// a WaitGroup misuse.
+		t.sessionsMu.Lock()
 		close(t.closedCh)
 		t.cancel()
+		t.sessionsMu.Unlock()
 	})
 	t.streams.Wait()
 	return nil

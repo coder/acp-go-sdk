@@ -79,6 +79,14 @@ func PeekID(raw []byte) json.RawMessage {
 // CanonicalID returns a stable string representation of the JSON-RPC id
 // in raw, suitable for use as a map key when correlating responses with
 // requests. Returns "" if the id is absent or JSON-null.
+//
+// "Canonical" here means only "trimmed of surrounding whitespace": the raw
+// id bytes are used verbatim as the key. It deliberately does NOT normalize
+// numeric forms the way the root SDK's canonicalJSONRPCIDKey does (e.g.
+// `1.0e2` and `100` remain distinct keys). This is sound for the transport
+// because both sides of a single request/response exchange echo the id byte
+// pattern unchanged; do not rely on CanonicalID to equate numerically-equal
+// ids that were serialized differently.
 func CanonicalID(raw []byte) string {
 	id := PeekID(raw)
 	if len(id) == 0 || bytes.Equal(id, []byte("null")) {

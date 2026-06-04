@@ -66,6 +66,18 @@ type Config struct {
 	// Defaults to 60s. Streaming GETs are never subject to this timeout.
 	HTTPTimeout time.Duration
 
+	// MaxReconnectElapsed bounds how long a server→client SSE stream keeps
+	// retrying after consecutive connection failures (dial error, non-200,
+	// mid-stream read error). Once a stream has been failing to reconnect for
+	// longer than this without a single successful event, the transport is
+	// torn down so Read() returns io.EOF instead of the SDK hanging forever
+	// on a response that will never arrive — the same signal a broken stdio
+	// pipe gives. Clean stream closes by a reachable server (idle-proxy
+	// timeout, slow-subscriber force-close) do not count against this budget.
+	//
+	// Defaults to 90s. A negative value disables the cap (retry forever).
+	MaxReconnectElapsed time.Duration
+
 	// Logger is used for internal diagnostics. Defaults to slog.Default().
 	Logger *slog.Logger
 }
@@ -85,6 +97,9 @@ type Transport struct {
 	httpClient *http.Client
 	// httpTimeout is the per-request deadline applied to non-streaming POSTs.
 	httpTimeout time.Duration
+	// reconnectGiveUp bounds the total time a stream may spend failing to
+	// reconnect before the transport is torn down. 0 means retry forever.
+	reconnectGiveUp time.Duration
 	// streamClient is used for long-lived GET SSE streams (no timeout).
 	streamClient *http.Client
 
@@ -137,6 +152,17 @@ func Dial(ctx context.Context, cfg Config) (*Transport, error) {
 		timeout = 60 * time.Second
 	}
 
+	// Resolve the reconnect give-up budget: 0 in the config means "unset"
+	// (apply the 90s default); a negative value means "retry forever" which
+	// we represent internally as 0.
+	giveUp := cfg.MaxReconnectElapsed
+	switch {
+	case giveUp == 0:
+		giveUp = 90 * time.Second
+	case giveUp < 0:
+		giveUp = 0
+	}
+
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -172,17 +198,18 @@ func Dial(ctx context.Context, cfg Config) (*Transport, error) {
 
 	tctx, cancel := context.WithCancel(ctx)
 	t := &Transport{
-		cfg:          cfg,
-		url:          u.String(),
-		logger:       logger,
-		httpClient:   httpClient,
-		httpTimeout:  timeout,
-		streamClient: streamClient,
-		ctx:          tctx,
-		cancel:       cancel,
-		sessionGets:  make(map[string]context.CancelFunc),
-		inbound:      make(chan []byte, inboundChanCapacity),
-		closedCh:     make(chan struct{}),
+		cfg:             cfg,
+		url:             u.String(),
+		logger:          logger,
+		httpClient:      httpClient,
+		httpTimeout:     timeout,
+		reconnectGiveUp: giveUp,
+		streamClient:    streamClient,
+		ctx:             tctx,
+		cancel:          cancel,
+		sessionGets:     make(map[string]context.CancelFunc),
+		inbound:         make(chan []byte, inboundChanCapacity),
+		closedCh:        make(chan struct{}),
 	}
 	return t, nil
 }
@@ -247,6 +274,19 @@ func (t *Transport) getConnID() string {
 	t.connIDMu.RLock()
 	defer t.connIDMu.RUnlock()
 	return t.connID
+}
+
+// closedLocked reports whether Close has run. It must be called with
+// sessionsMu held; Close closes closedCh under the same lock, so a stream
+// opener that sees false here is guaranteed to register its streams.Add
+// before Close's streams.Wait can observe a zero counter.
+func (t *Transport) closedLocked() bool {
+	select {
+	case <-t.closedCh:
+		return true
+	default:
+		return false
+	}
 }
 
 // isClosed reports whether the transport has been closed via Close() or its

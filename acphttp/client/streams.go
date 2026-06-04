@@ -19,14 +19,17 @@ import (
 // session/load, and any connection-level server→client messages.
 func (t *Transport) openConnectionStream() {
 	t.sessionsMu.Lock()
-	if t.connGetOpen {
+	if t.connGetOpen || t.closedLocked() {
 		t.sessionsMu.Unlock()
 		return
 	}
 	t.connGetOpen = true
+	// Add under the lock, ordered against Close (which closes closedCh and
+	// then calls streams.Wait under the same lock), so the counter can never
+	// go 0→1 after Wait has already returned.
+	t.streams.Add(1)
 	t.sessionsMu.Unlock()
 
-	t.streams.Add(1)
 	go func() {
 		defer t.streams.Done()
 		defer func() {
@@ -43,15 +46,16 @@ func (t *Transport) openConnectionStream() {
 // notifications and responses to session-scoped POSTs.
 func (t *Transport) ensureSessionStream(sessionID string) {
 	t.sessionsMu.Lock()
-	if _, ok := t.sessionGets[sessionID]; ok {
+	if _, ok := t.sessionGets[sessionID]; ok || t.closedLocked() {
 		t.sessionsMu.Unlock()
 		return
 	}
 	ctx, cancel := context.WithCancel(t.ctx)
 	t.sessionGets[sessionID] = cancel
+	// Add under the lock; see openConnectionStream for the ordering rationale.
+	t.streams.Add(1)
 	t.sessionsMu.Unlock()
 
-	t.streams.Add(1)
 	go func() {
 		defer t.streams.Done()
 		defer func() {
@@ -72,6 +76,14 @@ func (t *Transport) runStream(ctx context.Context, sessionID, label string) {
 	backoff := 250 * time.Millisecond
 	const maxBackoff = 5 * time.Second
 
+	// failingSince marks when the current run of consecutive *failed*
+	// reconnect attempts began. It is zeroed whenever a stream delivers an
+	// event (onConnected) or the server closes a stream cleanly — both prove
+	// the server is reachable. If the give-up budget is exhausted without
+	// progress the transport is torn down so Read() returns io.EOF instead of
+	// the SDK hanging on a response that will never come.
+	var failingSince time.Time
+
 	for {
 		if err := ctx.Err(); err != nil {
 			return
@@ -85,18 +97,44 @@ func (t *Transport) runStream(ctx context.Context, sessionID, label string) {
 			return
 		}
 
-		// resetBackoff is invoked by runSingleStream once the stream has
+		// onConnected is invoked by runSingleStream once the stream has
 		// successfully opened and delivered an event, so a long-lived stream
 		// that later drops reconnects quickly instead of inheriting the
 		// 5s ceiling accumulated across earlier failures.
 		err := t.runSingleStream(ctx, connID, sessionID, label, func() {
 			backoff = 250 * time.Millisecond
+			failingSince = time.Time{}
 		})
-		if err == nil || errors.Is(err, context.Canceled) || t.isClosed() {
+		if errors.Is(err, context.Canceled) || t.isClosed() {
 			return
 		}
 
-		t.logger.Warn("stream disconnected, reconnecting", "stream", label, "session_id", sessionID, "err", err, "backoff", backoff)
+		if err == nil {
+			// Clean EOF: the server was reachable (it answered 200) and closed
+			// the stream — an idle-proxy timeout, or a deliberate
+			// slow-subscriber force-close (see acphttp/server/connection.go)
+			// that expects us to reconnect. Reopen the stream, otherwise the
+			// SDK goes permanently deaf to all later server→client messages on
+			// it. The server is healthy, so this attempt does not count
+			// against the give-up budget.
+			failingSince = time.Time{}
+			t.logger.Debug("stream closed by server, reconnecting", "stream", label, "session_id", sessionID, "backoff", backoff)
+		} else {
+			// Transport-level failure (dial error, non-200, mid-stream read
+			// error). If these persist past the give-up budget the connection
+			// is effectively dead; surface that to the SDK as EOF.
+			now := time.Now()
+			if failingSince.IsZero() {
+				failingSince = now
+			} else if t.reconnectGiveUp > 0 && now.Sub(failingSince) >= t.reconnectGiveUp {
+				t.logger.Error("stream giving up after repeated reconnect failures; tearing down transport",
+					"stream", label, "session_id", sessionID, "elapsed", now.Sub(failingSince), "err", err)
+				t.cancel()
+				return
+			}
+			t.logger.Warn("stream disconnected, reconnecting", "stream", label, "session_id", sessionID, "err", err, "backoff", backoff)
+		}
+
 		select {
 		case <-ctx.Done():
 			return

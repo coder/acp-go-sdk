@@ -395,6 +395,77 @@ func TestCustomHeadersAreSent(t *testing.T) {
 	assert.Equal(t, "secret", fs.gotHeaders[0].Get("X-Auth"))
 }
 
+// TestInitializeErrorPaths exercises the failure returns in doInitialize
+// that the happy-path tests never reach: a non-200 status, a 200 missing the
+// Acp-Connection-Id header, and a 200 with a body that is not valid JSON.
+// Each must surface as an error from the initial Write (the SDK relies on
+// that error to fail the initialize RPC rather than hang).
+func TestInitializeErrorPaths(t *testing.T) {
+	const initReq = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+		wantErr string
+	}{
+		{
+			name: "non-200 status",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "boom", http.StatusInternalServerError)
+			},
+			wantErr: "500",
+		},
+		{
+			name: "200 without connection id header",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", mimeJSON)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+			},
+			wantErr: headerConnectionID,
+		},
+		{
+			name: "200 with invalid JSON body",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set(headerConnectionID, "conn-1")
+				w.Header().Set("Content-Type", mimeJSON)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{not json`))
+			},
+			wantErr: "not valid JSON",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+
+			tr, err := Dial(context.Background(), Config{BaseURL: srv.URL + "/acp"})
+			require.NoError(t, err)
+			defer tr.Close()
+
+			_, err = tr.Write([]byte(initReq + "\n"))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
+// TestInitializeTransportError covers the HTTP-failure return in doInitialize:
+// the POST itself fails (the server is gone) before any status is read.
+func TestInitializeTransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL + "/acp"
+	srv.Close() // nothing is listening anymore
+
+	tr, err := Dial(context.Background(), Config{BaseURL: url, HTTPTimeout: 2 * time.Second})
+	require.NoError(t, err)
+	defer tr.Close()
+
+	_, err = tr.Write([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}` + "\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "initialize POST")
+}
+
 func TestParseSSE_MultipleDataLinesAreJoined(t *testing.T) {
 	body := "event: message\ndata: hello\ndata: world\n\n"
 	var got []string

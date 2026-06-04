@@ -75,7 +75,22 @@ type Config struct {
 	// Defaults to "/acp". The same path handles POST, GET (SSE) and
 	// DELETE.
 	Path string
+
+	// MaxConnections caps the number of concurrent ACP connections. Each
+	// connection holds an agent instance, two pipes, and a pair of
+	// goroutines, so an unbounded initialize POST loop (a misbehaving client
+	// or an attacker) would otherwise grow goroutines, file descriptors, and
+	// memory without limit. When the cap is reached, initialize POSTs are
+	// rejected with 503 Service Unavailable before the agent factory runs.
+	//
+	// Zero (the default) means no limit; callers fronting the server with
+	// their own connection limiting can leave it unset.
+	MaxConnections int
 }
+
+// ErrTooManyConnections is returned by createConnection when MaxConnections
+// is reached. handleInitialize maps it to 503 Service Unavailable.
+var ErrTooManyConnections = fmt.Errorf("httpserver: too many connections")
 
 // Server serves one or more remote ACP connections over Streamable HTTP.
 // Register the result of Handler() on your http.Server; Close() tears down
@@ -87,7 +102,12 @@ type Server struct {
 
 	mu          sync.RWMutex
 	connections map[string]*connection
-	closed      bool
+	// reserved counts connection slots claimed by in-flight initialize
+	// requests that have not yet been added to the connections map. It is
+	// folded into the MaxConnections check so concurrent initializes cannot
+	// race past the cap in the window between the factory call and addConn.
+	reserved int
+	closed   bool
 }
 
 // New constructs a Server. The Factory config field is required; other
@@ -184,10 +204,39 @@ func (s *Server) removeConn(id string) *connection {
 	return c
 }
 
-// addConn registers a newly created connection.
+// reserveConn claims a connection slot, enforcing MaxConnections before the
+// (potentially expensive) agent factory runs. The reservation is converted
+// into a real entry by addConn or released by releaseConn on failure.
+func (s *Server) reserveConn() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return fmt.Errorf("httpserver: server closed")
+	}
+	if s.cfg.MaxConnections > 0 && len(s.connections)+s.reserved >= s.cfg.MaxConnections {
+		return ErrTooManyConnections
+	}
+	s.reserved++
+	return nil
+}
+
+// releaseConn returns a reservation taken by reserveConn without adding a
+// connection (used when creation fails after the slot was claimed).
+func (s *Server) releaseConn() {
+	s.mu.Lock()
+	if s.reserved > 0 {
+		s.reserved--
+	}
+	s.mu.Unlock()
+}
+
+// addConn promotes a reservation into a registered connection.
 func (s *Server) addConn(id string, c *connection) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.reserved > 0 {
+		s.reserved--
+	}
 	if s.closed {
 		return fmt.Errorf("httpserver: server closed")
 	}

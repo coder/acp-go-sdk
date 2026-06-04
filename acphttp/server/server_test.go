@@ -251,6 +251,163 @@ func TestFullLifecycle(t *testing.T) {
 	resp.Body.Close()
 }
 
+// TestSessionStreamReplaysPreSubscribeBuffer exercises the pre-subscribe
+// buffer in outboundStream: messages emitted on a session-scoped stream
+// BEFORE the client opens its session-scoped GET must be buffered and
+// replayed when the GET finally arrives. TestFullLifecycle opens the GET
+// first, so it never touches this path. Here we POST session/prompt without
+// opening the session GET, confirm (via internal state) that the resulting
+// update + response land in the pre-subscribe buffer, then open the GET and
+// assert both are replayed.
+func TestSessionStreamReplaysPreSubscribeBuffer(t *testing.T) {
+	var agent *stubAgent
+	srv, err := New(Config{Factory: func(ctx context.Context) (acp.Agent, func(*acp.AgentSideConnection), func(), error) {
+		agent = &stubAgent{}
+		return agent, func(c *acp.AgentSideConnection) { agent.conn = c }, nil, nil
+	}})
+	require.NoError(t, err)
+	httpSrv := httptest.NewServer(srv.Handler())
+	defer func() {
+		_ = srv.Close()
+		httpSrv.Close()
+	}()
+	base := httpSrv.URL + "/acp"
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// initialize
+	req, _ := http.NewRequest(http.MethodPost, base, strings.NewReader(
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":2}}`))
+	req.Header.Set("Content-Type", mimeJSON)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	connID := resp.Header.Get(HeaderConnectionID)
+	resp.Body.Close()
+	require.NotEmpty(t, connID)
+
+	// connection-scoped GET to receive the session/new response.
+	connStream := openStream(t, base, connID, "")
+	defer connStream.close()
+
+	// session/new
+	req, _ = http.NewRequest(http.MethodPost, base, strings.NewReader(
+		`{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}`))
+	req.Header.Set("Content-Type", mimeJSON)
+	req.Header.Set(HeaderConnectionID, connID)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	ev := connStream.waitFor(t, 2*time.Second)
+	require.Contains(t, ev, `"sessionId":"sess-1"`)
+
+	// session/prompt WITHOUT opening the session-scoped GET first.
+	req, _ = http.NewRequest(http.MethodPost, base, strings.NewReader(
+		`{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":"sess-1","prompt":[]}}`))
+	req.Header.Set("Content-Type", mimeJSON)
+	req.Header.Set(HeaderConnectionID, connID)
+	req.Header.Set(HeaderSessionID, "sess-1")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusAccepted, resp.StatusCode)
+	resp.Body.Close()
+
+	// Wait until the agent's update + the prompt response have both been
+	// routed into the session stream's pre-subscribe buffer (no subscriber is
+	// attached yet). Inspecting internal state makes the test deterministic
+	// without sleeping on the agent goroutine.
+	require.Eventually(t, func() bool {
+		conn := srv.getConn(connID)
+		if conn == nil {
+			return false
+		}
+		v, ok := conn.sessionStreams.Load("sess-1")
+		if !ok {
+			return false
+		}
+		st := v.(*outboundStream)
+		st.mu.Lock()
+		n := len(st.preBuffer)
+		st.mu.Unlock()
+		return n >= 2
+	}, 2*time.Second, 10*time.Millisecond, "update + response should buffer before any subscriber attaches")
+
+	// Now open the session-scoped GET; it must replay the buffered messages.
+	sessionStream := openStream(t, base, connID, "sess-1")
+	defer sessionStream.close()
+
+	seenUpdate, seenResponse := false, false
+	for i := 0; i < 2; i++ {
+		ev := sessionStream.waitFor(t, 2*time.Second)
+		if strings.Contains(ev, "session/update") {
+			seenUpdate = true
+		}
+		if strings.Contains(ev, `"id":3`) {
+			seenResponse = true
+		}
+	}
+	assert.True(t, seenUpdate, "buffered session/update should replay on subscribe")
+	assert.True(t, seenResponse, "buffered prompt response should replay on subscribe")
+}
+
+// TestMaxConnectionsRejectsWith503 verifies the MaxConnections cap: once the
+// limit is reached, further initialize POSTs are rejected with 503 before the
+// factory runs, and a slot frees up after the connection is DELETEd.
+func TestMaxConnectionsRejectsWith503(t *testing.T) {
+	var factoryCalls atomic.Uint64
+	srv, err := New(Config{
+		MaxConnections: 1,
+		Factory: func(ctx context.Context) (acp.Agent, func(*acp.AgentSideConnection), func(), error) {
+			factoryCalls.Add(1)
+			a := &stubAgent{}
+			return a, func(c *acp.AgentSideConnection) { a.conn = c }, nil, nil
+		},
+	})
+	require.NoError(t, err)
+	httpSrv := httptest.NewServer(srv.Handler())
+	defer func() {
+		_ = srv.Close()
+		httpSrv.Close()
+	}()
+	base := httpSrv.URL + "/acp"
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	initialize := func() *http.Response {
+		req, _ := http.NewRequest(http.MethodPost, base, strings.NewReader(
+			`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":2}}`))
+		req.Header.Set("Content-Type", mimeJSON)
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		return resp
+	}
+
+	// First initialize succeeds and consumes the only slot.
+	resp := initialize()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	connID := resp.Header.Get(HeaderConnectionID)
+	resp.Body.Close()
+	require.NotEmpty(t, connID)
+
+	// Second initialize is rejected with 503 and never reaches the factory.
+	resp = initialize()
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	resp.Body.Close()
+	assert.Equal(t, uint64(1), factoryCalls.Load(), "factory must not run when the cap is hit")
+
+	// DELETE frees the slot; a subsequent initialize succeeds again.
+	req, _ := http.NewRequest(http.MethodDelete, base, nil)
+	req.Header.Set(HeaderConnectionID, connID)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	require.Eventually(t, func() bool {
+		resp := initialize()
+		ok := resp.StatusCode == http.StatusOK
+		resp.Body.Close()
+		return ok
+	}, 2*time.Second, 20*time.Millisecond, "slot should free up after DELETE")
+}
+
 // TestSessionLoadResponseGoesToConnectionStream verifies that session/load
 // responses land on the connection-scoped stream, per the RFD: "Connection-
 // Scoped Stream ... Carries responses to session/new, session/load." This

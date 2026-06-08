@@ -898,7 +898,7 @@ type ClientCapabilities struct {
 	//
 	// Optional. Omitted means the client does not advertise support.
 	// Supplying '{}' means the client can receive both update types.
-	PlanCapabilities *PlanCapabilities `json:"planCapabilities,omitempty"`
+	Plan *PlanCapabilities `json:"plan,omitempty"`
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -1615,22 +1615,13 @@ type ContentChunk struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// A single item of content
 	Content ContentBlock `json:"content"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// A unique identifier for the message this chunk belongs to.
 	//
 	// All chunks belonging to the same message share the same 'messageId'.
 	// A change in 'messageId' indicates a new message has started.
-	// Both clients and agents MUST use UUID format for message IDs.
-	MessageId *string `json:"messageId,omitempty"`
+	MessageId *MessageId `json:"messageId,omitempty"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Cost information for a session.
 type Cost struct {
 	// Total cumulative cost for session.
@@ -1706,6 +1697,38 @@ type CurrentModeUpdate struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// The ID of the current mode
 	CurrentModeId SessionModeId `json:"currentModeId"`
+}
+
+// Request parameters for deleting an existing session from 'session/list'.
+//
+// Only available if the Agent supports the 'sessionCapabilities.delete' capability.
+type DeleteSessionRequest struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The ID of the session to delete.
+	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *DeleteSessionRequest) Validate() error {
+	return nil
+}
+
+// Response from deleting a session.
+type DeleteSessionResponse struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *DeleteSessionResponse) Validate() error {
+	return nil
 }
 
 // A diff representing file modifications.
@@ -3014,6 +3037,9 @@ type McpServerStdio struct {
 	Name string `json:"name"`
 }
 
+// Unique identifier for a message within a session.
+type MessageId string
+
 // NES capabilities advertised by the agent during initialization.
 type NesCapabilities struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -3836,16 +3862,6 @@ type PromptRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// A client-generated unique identifier for this user message.
-	//
-	// If provided, the Agent SHOULD echo this value as 'userMessageId' in the
-	// ['PromptResponse'] to confirm it was recorded.
-	// Both clients and agents MUST use UUID format for message IDs.
-	MessageId *string `json:"messageId,omitempty"`
 	// The blocks of content that compose the user's message.
 	//
 	// As a baseline, the Agent MUST support ['ContentBlock::Text'] and ['ContentBlock::ResourceLink'],
@@ -3889,16 +3905,6 @@ type PromptResponse struct {
 	//
 	// Token usage for this turn (optional).
 	Usage *Usage `json:"usage,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// The acknowledged user message ID.
-	//
-	// If the client provided a 'messageId' in the ['PromptRequest'], the agent echoes it here
-	// to confirm it was recorded. If the client did not provide one, the agent MAY assign one
-	// and return it here. Absence of this field indicates the agent did not record a message ID.
-	UserMessageId *string `json:"userMessageId,omitempty"`
 }
 
 func (v *PromptResponse) Validate() error {
@@ -4432,10 +4438,6 @@ type SessionCapabilities struct {
 	AdditionalDirectories *SessionAdditionalDirectoriesCapabilities `json:"additionalDirectories,omitempty"`
 	// Whether the agent supports 'session/close'.
 	Close *SessionCloseCapabilities `json:"close,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Whether the agent supports 'session/delete'.
 	//
 	// Optional. Omitted or 'null' both mean the agent does not advertise support.
@@ -4839,10 +4841,6 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 // Unique identifier for a session configuration option value.
 type SessionConfigValueId string
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Capabilities for the 'session/delete' method.
 //
 // Supplying '{}' means the agent supports deleting sessions from 'session/list'.
@@ -5013,17 +5011,12 @@ type SessionUpdateUserMessageChunk struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// A single item of content
 	Content ContentBlock `json:"content"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// A unique identifier for the message this chunk belongs to.
 	//
 	// All chunks belonging to the same message share the same 'messageId'.
 	// A change in 'messageId' indicates a new message has started.
-	// Both clients and agents MUST use UUID format for message IDs.
-	MessageId     *string `json:"messageId,omitempty"`
-	SessionUpdate string  `json:"sessionUpdate"`
+	MessageId     *MessageId `json:"messageId,omitempty"`
+	SessionUpdate string     `json:"sessionUpdate"`
 }
 
 // A chunk of the agent's response being streamed.
@@ -5036,17 +5029,12 @@ type SessionUpdateAgentMessageChunk struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// A single item of content
 	Content ContentBlock `json:"content"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// A unique identifier for the message this chunk belongs to.
 	//
 	// All chunks belonging to the same message share the same 'messageId'.
 	// A change in 'messageId' indicates a new message has started.
-	// Both clients and agents MUST use UUID format for message IDs.
-	MessageId     *string `json:"messageId,omitempty"`
-	SessionUpdate string  `json:"sessionUpdate"`
+	MessageId     *MessageId `json:"messageId,omitempty"`
+	SessionUpdate string     `json:"sessionUpdate"`
 }
 
 // A chunk of the agent's internal reasoning being streamed.
@@ -5059,17 +5047,12 @@ type SessionUpdateAgentThoughtChunk struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// A single item of content
 	Content ContentBlock `json:"content"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// A unique identifier for the message this chunk belongs to.
 	//
 	// All chunks belonging to the same message share the same 'messageId'.
 	// A change in 'messageId' indicates a new message has started.
-	// Both clients and agents MUST use UUID format for message IDs.
-	MessageId     *string `json:"messageId,omitempty"`
-	SessionUpdate string  `json:"sessionUpdate"`
+	MessageId     *MessageId `json:"messageId,omitempty"`
+	SessionUpdate string     `json:"sessionUpdate"`
 }
 
 // Notification that a new tool call has been initiated.
@@ -5235,10 +5218,6 @@ type SessionSessionInfoUpdate struct {
 	UpdatedAt *string `json:"updatedAt,omitempty"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Context window and cost update for the session.
 type SessionUsageUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -5292,10 +5271,6 @@ type SessionUpdate struct {
 	ConfigOptionUpdate *SessionConfigOptionUpdate `json:"-"`
 	// Session metadata has been updated (title, timestamps, custom metadata)
 	SessionInfoUpdate *SessionSessionInfoUpdate `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Context window and cost update for the session.
 	UsageUpdate *SessionUsageUpdate `json:"-"`
 }
@@ -7144,46 +7119,6 @@ func (u *UnstableCreateElicitationResponse) Validate() error {
 	if count != 1 {
 		return errors.New("UnstableCreateElicitationResponse must have exactly one variant set")
 	}
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Request parameters for deleting an existing session from 'session/list'.
-//
-// Only available if the Agent supports the 'sessionCapabilities.delete' capability.
-type UnstableDeleteSessionRequest struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// The ID of the session to delete.
-	SessionId SessionId `json:"sessionId"`
-}
-
-func (v *UnstableDeleteSessionRequest) Validate() error {
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Response from deleting a session.
-type UnstableDeleteSessionResponse struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-}
-
-func (v *UnstableDeleteSessionResponse) Validate() error {
 	return nil
 }
 
@@ -9198,10 +9133,6 @@ type Usage struct {
 	TotalTokens int `json:"totalTokens"`
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Context window and cost update for a session.
 type UsageUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -9326,6 +9257,10 @@ type Agent interface {
 	//
 	// Only available if the Agent supports the 'sessionCapabilities.close' capability.
 	CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error)
+	// Request parameters for deleting an existing session from 'session/list'.
+	//
+	// Only available if the Agent supports the 'sessionCapabilities.delete' capability.
+	DeleteSession(ctx context.Context, params DeleteSessionRequest) (DeleteSessionResponse, error)
 	// Request parameters for listing existing sessions.
 	//
 	// Only available if the Agent supports the 'sessionCapabilities.list' capability.
@@ -9408,14 +9343,6 @@ type AgentExperimental interface {
 	//
 	// Replaces the full configuration for one provider id.
 	UnstableSetProvider(ctx context.Context, params UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Request parameters for deleting an existing session from 'session/list'.
-	//
-	// Only available if the Agent supports the 'sessionCapabilities.delete' capability.
-	UnstableDeleteSession(ctx context.Context, params UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error)
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.

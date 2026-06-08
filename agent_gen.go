@@ -320,20 +320,14 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		}
 		return resp, nil
 	case AgentMethodSessionDelete:
-		var p UnstableDeleteSessionRequest
+		var p DeleteSessionRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableDeleteSession(context.Context, UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error)
-		})
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.UnstableDeleteSession(ctx, p)
+		resp, err := a.agent.DeleteSession(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}

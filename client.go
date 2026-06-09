@@ -13,10 +13,10 @@ type ClientSideConnection struct {
 
 // NewClientSideConnection creates a new client-side connection bound to the
 // provided Client implementation.
-func NewClientSideConnection(client Client, peerInput io.Writer, peerOutput io.Reader) *ClientSideConnection {
+func NewClientSideConnection(client Client, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *ClientSideConnection {
 	csc := &ClientSideConnection{}
 	csc.client = client
-	csc.conn = NewConnection(csc.handleWithExtensions, peerInput, peerOutput)
+	csc.conn = NewConnection(csc.handleWithExtensions, peerInput, peerOutput, opts...)
 	return csc
 }
 

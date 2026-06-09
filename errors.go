@@ -7,11 +7,17 @@ import (
 	"fmt"
 )
 
+// ErrPeerDisconnected is wrapped by request errors returned when the peer
+// disconnects before a response is available.
+var ErrPeerDisconnected = errors.New("peer disconnected")
+
 // RequestError represents a JSON-RPC error response.
 type RequestError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data,omitempty"`
+
+	cause error
 }
 
 func (e *RequestError) Error() string {
@@ -39,6 +45,13 @@ func (e *RequestError) Error() string {
 	return fmt.Sprintf("code %d: %s", e.Code, e.Message)
 }
 
+func (e *RequestError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
 func NewParseError(data any) *RequestError {
 	return &RequestError{Code: -32700, Message: "Parse error", Data: data}
 }
@@ -57,6 +70,10 @@ func NewInvalidParams(data any) *RequestError {
 
 func NewInternalError(data any) *RequestError {
 	return &RequestError{Code: -32603, Message: "Internal error", Data: data}
+}
+
+func newInternalErrorWithCause(data any, cause error) *RequestError {
+	return &RequestError{Code: -32603, Message: "Internal error", Data: data, cause: cause}
 }
 
 func NewRequestCancelled(data any) *RequestError {

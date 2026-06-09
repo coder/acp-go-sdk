@@ -19,7 +19,29 @@ const (
 	defaultMaxQueuedNotifications = 1024
 )
 
-var errNotificationQueueOverflow = errors.New("notification queue overflow")
+// ErrNotificationQueueOverflow is the cancellation cause used when the inbound
+// notification queue reaches its configured per-connection capacity.
+var ErrNotificationQueueOverflow = errors.New("notification queue overflow")
+
+var errNotificationQueueOverflow = ErrNotificationQueueOverflow
+
+type connectionOptions struct {
+	maxQueuedNotifications int
+}
+
+// ConnectionOption configures a Connection.
+type ConnectionOption func(*connectionOptions)
+
+// WithMaxQueuedNotifications sets the per-connection capacity of the inbound
+// notification queue. Values less than or equal to zero use the default.
+//
+// This bounds inbound notification buffering only; outbound notifications and
+// requests are unaffected.
+func WithMaxQueuedNotifications(n int) ConnectionOption {
+	return func(o *connectionOptions) {
+		o.maxQueuedNotifications = n
+	}
+}
 
 type anyMessage struct {
 	JSONRPC string           `json:"jsonrpc"`
@@ -88,24 +110,36 @@ type Connection struct {
 
 	// notificationQueue serializes notification processing to maintain order.
 	// It is bounded to keep memory usage predictable.
-	notificationQueue chan queuedNotification
+	maxQueuedNotifications int
+	notificationQueue      chan queuedNotification
 }
 
-func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
+func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
+	options := connectionOptions{maxQueuedNotifications: defaultMaxQueuedNotifications}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
+	}
+	if options.maxQueuedNotifications <= 0 {
+		options.maxQueuedNotifications = defaultMaxQueuedNotifications
+	}
+
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
-		w:                   peerInput,
-		r:                   peerOutput,
-		handler:             handler,
-		pending:             make(map[string]*pendingResponse),
-		inflight:            make(map[string]context.CancelCauseFunc),
-		cancelRequestSignal: make(chan struct{}, 1),
-		ctx:                 ctx,
-		cancel:              cancel,
-		inboundCtx:          inboundCtx,
-		inboundCancel:       inboundCancel,
-		notificationQueue:   make(chan queuedNotification, defaultMaxQueuedNotifications),
+		w:                      peerInput,
+		r:                      peerOutput,
+		handler:                handler,
+		pending:                make(map[string]*pendingResponse),
+		inflight:               make(map[string]context.CancelCauseFunc),
+		cancelRequestSignal:    make(chan struct{}, 1),
+		ctx:                    ctx,
+		cancel:                 cancel,
+		inboundCtx:             inboundCtx,
+		inboundCancel:          inboundCancel,
+		maxQueuedNotifications: options.maxQueuedNotifications,
+		notificationQueue:      make(chan queuedNotification, options.maxQueuedNotifications),
 	}
 	c.notifyCond = sync.NewCond(&c.notifyMu)
 	go func() {
@@ -738,7 +772,7 @@ func (c *Connection) sendCancelRequest(idKey string) {
 }
 
 func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, idKey string) (responseEnvelope, error) {
-	peerDisconnectedErr := NewInternalError(map[string]any{"error": "peer disconnected before response"})
+	peerDisconnectedErr := newInternalErrorWithCause(map[string]any{"error": "peer disconnected before response"}, ErrPeerDisconnected)
 
 	select {
 	case resp := <-pr.ch:
@@ -775,7 +809,7 @@ func (c *Connection) waitNotificationsUpTo(ctx context.Context, target uint64) e
 		return nil
 	}
 
-	peerDisconnectedErr := NewInternalError(map[string]any{"error": "peer disconnected while waiting for pre-response notifications"})
+	peerDisconnectedErr := newInternalErrorWithCause(map[string]any{"error": "peer disconnected while waiting for pre-response notifications"}, ErrPeerDisconnected)
 	stopWake := make(chan struct{})
 	defer close(stopWake)
 

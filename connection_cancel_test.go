@@ -650,6 +650,9 @@ func TestConnectionWaitForResponse_PeerDisconnectWinsOverDerivedContextCancel(t 
 		if re.Code != -32603 {
 			t.Fatalf("iteration %d: expected disconnect error code -32603, got %d (%s)", i, re.Code, re.Message)
 		}
+		if !errors.Is(err, ErrPeerDisconnected) {
+			t.Fatalf("iteration %d: expected error to wrap ErrPeerDisconnected, got %v", i, err)
+		}
 
 		if _, ok := c.pending[idKey]; ok {
 			t.Fatalf("iteration %d: pending request %q was not cleaned up", i, idKey)

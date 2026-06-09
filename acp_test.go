@@ -872,7 +872,7 @@ func TestConnectionFailsFastOnNotificationQueueOverflow(t *testing.T) {
 	}
 
 	cause := context.Cause(c.ctx)
-	if !errors.Is(cause, errNotificationQueueOverflow) {
+	if !errors.Is(cause, ErrNotificationQueueOverflow) {
 		t.Fatalf("expected overflow cancellation cause, got %v", cause)
 	}
 

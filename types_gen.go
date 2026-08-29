@@ -234,6 +234,7 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u AgentResponse) MarshalJSON() ([]byte, error) {
 	if u.Result != nil {
 		_b, _e := json.Marshal(*u.Result)
@@ -590,6 +591,7 @@ func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u AuthMethod) MarshalJSON() ([]byte, error) {
 	if u.EnvVar != nil {
 		_b, _e := json.Marshal(*u.EnvVar)
@@ -791,6 +793,7 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
 	if u.Unstructured != nil {
 		_b, _e := json.Marshal(*u.Unstructured)
@@ -1073,6 +1076,7 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u ClientResponse) MarshalJSON() ([]byte, error) {
 	if u.Result != nil {
 		_b, _e := json.Marshal(*u.Result)
@@ -1470,6 +1474,7 @@ func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u ContentBlock) MarshalJSON() ([]byte, error) {
 	if u.Text != nil {
 		_b, _e := json.Marshal(*u.Text)
@@ -1481,13 +1486,17 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "text"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "text"
-			nm["text"] = m["text"]
-			return json.Marshal(nm)
+		var nm map[string]any
+		nm = make(map[string]any)
+		nm["type"] = "text"
+		nm["text"] = m["text"]
+		if value, ok := m["_meta"]; ok {
+			nm["_meta"] = value
 		}
+		if value, ok := m["annotations"]; ok {
+			nm["annotations"] = value
+		}
+		return json.Marshal(nm)
 	}
 	if u.Image != nil {
 		_b, _e := json.Marshal(*u.Image)
@@ -1499,17 +1508,21 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "image"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "image"
-			nm["data"] = m["data"]
-			nm["mimeType"] = m["mimeType"]
-			if _v, _ok := m["uri"]; _ok {
-				nm["uri"] = _v
-			}
-			return json.Marshal(nm)
+		var nm map[string]any
+		nm = make(map[string]any)
+		nm["type"] = "image"
+		nm["data"] = m["data"]
+		nm["mimeType"] = m["mimeType"]
+		if value, ok := m["_meta"]; ok {
+			nm["_meta"] = value
 		}
+		if value, ok := m["annotations"]; ok {
+			nm["annotations"] = value
+		}
+		if _v, _ok := m["uri"]; _ok {
+			nm["uri"] = _v
+		}
+		return json.Marshal(nm)
 	}
 	if u.Audio != nil {
 		_b, _e := json.Marshal(*u.Audio)
@@ -1521,14 +1534,18 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "audio"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "audio"
-			nm["data"] = m["data"]
-			nm["mimeType"] = m["mimeType"]
-			return json.Marshal(nm)
+		var nm map[string]any
+		nm = make(map[string]any)
+		nm["type"] = "audio"
+		nm["data"] = m["data"]
+		nm["mimeType"] = m["mimeType"]
+		if value, ok := m["_meta"]; ok {
+			nm["_meta"] = value
 		}
+		if value, ok := m["annotations"]; ok {
+			nm["annotations"] = value
+		}
+		return json.Marshal(nm)
 	}
 	if u.ResourceLink != nil {
 		_b, _e := json.Marshal(*u.ResourceLink)
@@ -1546,6 +1563,12 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			nm["type"] = "resource_link"
 			nm["name"] = m["name"]
 			nm["uri"] = m["uri"]
+			if value, ok := m["_meta"]; ok {
+				nm["_meta"] = value
+			}
+			if value, ok := m["annotations"]; ok {
+				nm["annotations"] = value
+			}
 			if v1, ok1 := m["description"]; ok1 {
 				nm["description"] = v1
 			}
@@ -1571,13 +1594,17 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "resource"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "resource"
-			nm["resource"] = m["resource"]
-			return json.Marshal(nm)
+		var nm map[string]any
+		nm = make(map[string]any)
+		nm["type"] = "resource"
+		nm["resource"] = m["resource"]
+		if value, ok := m["_meta"]; ok {
+			nm["_meta"] = value
 		}
+		if value, ok := m["annotations"]; ok {
+			nm["annotations"] = value
+		}
+		return json.Marshal(nm)
 	}
 	return []byte{}, nil
 }
@@ -1853,6 +1880,7 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 	if u.TextResourceContents != nil {
 		_b, _e := json.Marshal(*u.TextResourceContents)
@@ -2031,6 +2059,7 @@ func (u *ErrorCode) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u ErrorCode) MarshalJSON() ([]byte, error) {
 	if u.ParseError != nil {
 		_b, _e := json.Marshal(*u.ParseError)
@@ -2878,6 +2907,7 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u McpServer) MarshalJSON() ([]byte, error) {
 	if u.Http != nil {
 		_b, _e := json.Marshal(*u.Http)
@@ -3681,6 +3711,7 @@ func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u PlanUpdateContent) MarshalJSON() ([]byte, error) {
 	if u.Items != nil {
 		_b, _e := json.Marshal(*u.Items)
@@ -4067,6 +4098,7 @@ func (u *RequestId) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u RequestId) MarshalJSON() ([]byte, error) {
 	if u.Null != nil {
 		return json.Marshal(nil)
@@ -4216,6 +4248,7 @@ func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u RequestPermissionOutcome) MarshalJSON() ([]byte, error) {
 	if u.Cancelled != nil {
 		_b, _e := json.Marshal(*u.Cancelled)
@@ -4627,6 +4660,7 @@ func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u SessionConfigOption) MarshalJSON() ([]byte, error) {
 	if u.Select != nil {
 		_b, _e := json.Marshal(*u.Select)
@@ -4808,6 +4842,7 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 	if u.Ungrouped != nil {
 		_b, _e := json.Marshal(*u.Ungrouped)
@@ -5727,6 +5762,7 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 	if u.UserMessageChunk != nil {
 		_b, _e := json.Marshal(*u.UserMessageChunk)
@@ -6056,6 +6092,7 @@ func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 	if u.Boolean != nil {
 		_b, _e := json.Marshal(*u.Boolean)
@@ -6472,6 +6509,7 @@ func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u ToolCallContent) MarshalJSON() ([]byte, error) {
 	if u.Content != nil {
 		_b, _e := json.Marshal(*u.Content)
@@ -6894,6 +6932,7 @@ func (u *UnstableCreateElicitationRequest) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u UnstableCreateElicitationRequest) MarshalJSON() ([]byte, error) {
 	if u.Form != nil {
 		_b, _e := json.Marshal(*u.Form)
@@ -7090,6 +7129,7 @@ func (u *UnstableCreateElicitationResponse) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u UnstableCreateElicitationResponse) MarshalJSON() ([]byte, error) {
 	if u.Accept != nil {
 		_b, _e := json.Marshal(*u.Accept)
@@ -7474,6 +7514,7 @@ func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u UnstableElicitationFormMode) MarshalJSON() ([]byte, error) {
 	if u.Session != nil {
 		_b, _e := json.Marshal(*u.Session)
@@ -7666,6 +7707,7 @@ func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u UnstableElicitationUrlMode) MarshalJSON() ([]byte, error) {
 	if u.Session != nil {
 		_b, _e := json.Marshal(*u.Session)
@@ -8076,6 +8118,7 @@ func (u *UnstableMcpServer) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u UnstableMcpServer) MarshalJSON() ([]byte, error) {
 	if u.Http != nil {
 		_b, _e := json.Marshal(*u.Http)
@@ -8632,6 +8675,7 @@ func (u *UnstableNesSuggestion) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u UnstableNesSuggestion) MarshalJSON() ([]byte, error) {
 	if u.Edit != nil {
 		_b, _e := json.Marshal(*u.Edit)
@@ -8966,6 +9010,7 @@ func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
 	}
 	return errors.New("no matching variant for union")
 }
+
 func (u UnstableSessionConfigOption) MarshalJSON() ([]byte, error) {
 	if u.Select != nil {
 		_b, _e := json.Marshal(*u.Select)

@@ -27,6 +27,12 @@ func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Read
 	return asc
 }
 
+// DroppedNotifications reports how many inbound notifications the underlying
+// connection has dropped under OverflowDropNewest.
+func (c *AgentSideConnection) DroppedNotifications() uint64 {
+	return c.conn.DroppedNotifications()
+}
+
 // Done exposes a channel that closes when the peer disconnects.
 func (c *AgentSideConnection) Done() <-chan struct{} { return c.conn.Done() }
 

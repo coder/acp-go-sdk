@@ -89,6 +89,15 @@ type Connection struct {
 	// notificationQueue serializes notification processing to maintain order.
 	// It is bounded to keep memory usage predictable.
 	notificationQueue chan queuedNotification
+
+	// notificationOverflow is what receive does with a notification that arrives
+	// when notificationQueue is full.
+	notificationOverflow NotificationOverflowPolicy
+	// onNotificationDropped, if non-nil, is called for each notification dropped
+	// under OverflowDropNewest. It runs on the receive goroutine.
+	onNotificationDropped func(method string, totalDropped uint64)
+	// droppedNotifications counts notifications dropped under OverflowDropNewest.
+	droppedNotifications atomic.Uint64
 }
 
 // ConnectionOption configures optional parameters for a Connection.
@@ -96,6 +105,8 @@ type ConnectionOption func(*connectionConfig)
 
 type connectionConfig struct {
 	maxQueuedNotifications int
+	notificationOverflow   NotificationOverflowPolicy
+	onNotificationDropped  func(method string, totalDropped uint64)
 }
 
 // WithMaxQueuedNotifications sets the maximum number of queued notifications
@@ -108,6 +119,59 @@ func WithMaxQueuedNotifications(n int) ConnectionOption {
 		if n > 0 {
 			cfg.maxQueuedNotifications = n
 		}
+	}
+}
+
+// NotificationOverflowPolicy selects what a Connection does with an inbound
+// notification that arrives when its notification queue is full.
+// More policies may be added in the future.
+type NotificationOverflowPolicy int
+
+const (
+	// OverflowCloseConnection closes the connection when a notification cannot
+	// be queued, and in-flight requests fail. This is the default, and the
+	// behaviour of every release before this option existed.
+	OverflowCloseConnection NotificationOverflowPolicy = iota
+
+	// OverflowDropNewest discards the notification that could not be queued and
+	// keeps the connection open. Notifications that are delivered keep their
+	// relative order; the dropped one is never delivered and is not retried.
+	//
+	// Choosing it means accepting loss, so observe it: install a handler with
+	// WithNotificationDropHandler, or read DroppedNotifications.
+	//
+	// Two consequences to weigh first:
+	//   - A request waits for the notifications queued before its response
+	//     arrived. A dropped notification was never queued, so a request can
+	//     return although a notification that preceded its response on the
+	//     wire was dropped.
+	//   - The policy applies to every inbound notification. On an agent-side
+	//     connection that includes session/cancel; dropping one leaves the
+	//     agent working on a turn its client has abandoned.
+	OverflowDropNewest
+)
+
+// WithNotificationOverflowPolicy sets what the connection does with a
+// notification that arrives when its notification queue is full. The default
+// is OverflowCloseConnection, and any value this package does not define is
+// treated as the default.
+func WithNotificationOverflowPolicy(p NotificationOverflowPolicy) ConnectionOption {
+	return func(cfg *connectionConfig) {
+		cfg.notificationOverflow = p
+	}
+}
+
+// WithNotificationDropHandler registers fn to be called once for each
+// notification dropped under OverflowDropNewest, with the notification's method
+// and the number dropped on this connection so far, including this one.
+//
+// fn runs on the goroutine that reads from the peer, so no further messages are
+// read until it returns: it must return quickly and must not block. In
+// particular it must not send a request on the connection, whose response could
+// only be read by the goroutine fn is holding.
+func WithNotificationDropHandler(fn func(method string, totalDropped uint64)) ConnectionOption {
+	return func(cfg *connectionConfig) {
+		cfg.onNotificationDropped = fn
 	}
 }
 
@@ -133,6 +197,9 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		inboundCtx:          inboundCtx,
 		inboundCancel:       inboundCancel,
 		notificationQueue:   make(chan queuedNotification, cfg.maxQueuedNotifications),
+
+		notificationOverflow:  cfg.notificationOverflow,
+		onNotificationDropped: cfg.onNotificationDropped,
 	}
 	c.notifyCond = sync.NewCond(&c.notifyMu)
 	go func() {
@@ -145,6 +212,23 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 	go c.receive()
 	go c.processNotifications()
 	return c
+}
+
+// DroppedNotifications reports how many inbound notifications this connection
+// has dropped under OverflowDropNewest. It is always zero under the default
+// policy.
+func (c *Connection) DroppedNotifications() uint64 {
+	return c.droppedNotifications.Load()
+}
+
+// dropNotification records a notification discarded under OverflowDropNewest.
+// It runs on the receive goroutine, after notifyMu has been released.
+func (c *Connection) dropNotification(method string) {
+	total := c.droppedNotifications.Add(1)
+	c.loggerOrDefault().Debug("failed to queue notification; dropping it", "method", method, "capacity", cap(c.notificationQueue), "queued", len(c.notificationQueue), "dropped_total", total)
+	if fn := c.onNotificationDropped; fn != nil {
+		fn(method, total)
+	}
 }
 
 // SetLogger installs a logger used for internal connection diagnostics.
@@ -470,6 +554,14 @@ func (c *Connection) receive() {
 					panic("completed notification sequence exceeded enqueued notification sequence")
 				}
 				c.notifyMu.Unlock()
+				if c.notificationOverflow == OverflowDropNewest {
+					// The rollback above released this notification's sequence
+					// number, so the next one reuses it and ordering stays
+					// contiguous. The reader must not block here: responses are
+					// dispatched on this goroutine too.
+					c.dropNotification(m.Method)
+					continue
+				}
 				c.loggerOrDefault().Error("failed to queue notification; closing connection", "err", errNotificationQueueOverflow, "capacity", cap(c.notificationQueue), "queued", len(c.notificationQueue))
 				c.shutdownReceive(errNotificationQueueOverflow)
 				return

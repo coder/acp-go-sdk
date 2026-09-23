@@ -21,6 +21,12 @@ func NewClientSideConnection(client Client, peerInput io.Writer, peerOutput io.R
 	return csc
 }
 
+// DroppedNotifications reports how many inbound notifications the underlying
+// connection has dropped under OverflowDropNewest.
+func (c *ClientSideConnection) DroppedNotifications() uint64 {
+	return c.conn.DroppedNotifications()
+}
+
 // Done exposes a channel that closes when the peer disconnects.
 func (c *ClientSideConnection) Done() <-chan struct{} { return c.conn.Done() }
 

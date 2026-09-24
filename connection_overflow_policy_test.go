@@ -182,7 +182,8 @@ func TestConnection_NotificationOverflowPolicyDropNewestKeepsConnectionOpen(t *t
 		total  uint64
 	}
 	drops := make(chan drop, 16)
-	f := newOverflowFixture(t, 4,
+	f := newOverflowFixture(
+		t, 4,
 		WithNotificationOverflowPolicy(OverflowDropNewest),
 		WithNotificationDropHandler(func(method string, total uint64) {
 			drops <- drop{method, total}

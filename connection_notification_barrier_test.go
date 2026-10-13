@@ -368,42 +368,98 @@ func TestLoadSession_NotificationReplayOrdering(t *testing.T) {
 }
 
 func TestShutdownDrainsNotifications_WithBarrier(t *testing.T) {
-	handlerStarted := make(chan struct{})
-	var handlerCompleted atomic.Bool
-
-	client := &clientFuncs{
-		SessionUpdateFunc: func(context.Context, SessionNotification) error {
-			close(handlerStarted)
-			time.Sleep(50 * time.Millisecond)
-			handlerCompleted.Store(true)
-			return nil
+	t.Parallel()
+	type notificationConnection interface {
+		Done() <-chan struct{}
+		NotificationsDone() <-chan struct{}
+	}
+	tests := []struct {
+		name         string
+		notification string
+		connect      func(func(context.Context) error, io.Reader) notificationConnection
+	}{
+		{
+			name:         "client",
+			notification: `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"shutdown","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"chunk"}}}}` + "\n",
+			connect: func(handler func(context.Context) error, reader io.Reader) notificationConnection {
+				return NewClientSideConnection(&clientFuncs{
+					SessionUpdateFunc: func(ctx context.Context, _ SessionNotification) error { return handler(ctx) },
+				}, io.Discard, reader)
+			},
+		},
+		{
+			name:         "agent",
+			notification: `{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"shutdown"}}` + "\n",
+			connect: func(handler func(context.Context) error, reader io.Reader) notificationConnection {
+				return NewAgentSideConnection(agentFuncs{
+					CancelFunc: func(ctx context.Context, _ CancelNotification) error { return handler(ctx) },
+				}, io.Discard, reader)
+			},
 		},
 	}
-
-	clientConn, agentConn := newNotificationBarrierTestPair(t, client, agentFuncs{})
-
-	if err := agentConn.SessionUpdate(context.Background(), testSessionUpdate(SessionId("shutdown"), 1)); err != nil {
-		t.Fatalf("SessionUpdate returned error: %v", err)
-	}
-
-	select {
-	case <-handlerStarted:
-	case <-time.After(time.Second):
-		t.Fatalf("timeout waiting for shutdown notification handler to start")
-	}
-
-	if writer, ok := agentConn.conn.w.(*io.PipeWriter); ok {
-		_ = writer.Close()
-	} else {
-		t.Fatalf("expected io.PipeWriter, got %T", agentConn.conn.w)
-	}
-
-	select {
-	case <-clientConn.conn.inboundCtx.Done():
-		if !handlerCompleted.Load() {
-			t.Fatalf("shutdown canceled inbound context before notification handler completed")
-		}
-	case <-time.After(time.Second):
-		t.Fatalf("timeout waiting for shutdown to drain notifications")
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			reader, writer := io.Pipe()
+			t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+			started := make(chan struct{})
+			release := make(chan struct{})
+			var releaseOnce sync.Once
+			t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+			var handled, canceled atomic.Int64
+			conn := tt.connect(func(ctx context.Context) error {
+				if handled.Load() == 0 {
+					close(started)
+					<-release
+				}
+				if ctx.Err() != nil {
+					canceled.Add(1)
+				}
+				handled.Add(1)
+				return nil
+			}, reader)
+			const count = 3
+			for i := 0; i < count; i++ {
+				if _, err := io.WriteString(writer, tt.notification); err != nil {
+					t.Fatalf("write notification: %v", err)
+				}
+			}
+			select {
+			case <-started:
+			case <-ctx.Done():
+				t.Fatal("notification handler did not start")
+			}
+			select {
+			case <-conn.NotificationsDone():
+				t.Fatal("NotificationsDone closed while connected")
+			default:
+			}
+			_ = writer.Close()
+			select {
+			case <-conn.Done():
+			case <-ctx.Done():
+				t.Fatal("disconnect did not close Done")
+			}
+			select {
+			case <-conn.NotificationsDone():
+				t.Fatal("NotificationsDone closed before handlers returned")
+			default:
+			}
+			releaseOnce.Do(func() { close(release) })
+			select {
+			case <-conn.NotificationsDone():
+			case <-ctx.Done():
+				t.Fatal("notification handlers did not finish")
+			}
+			if got := handled.Load(); got != count {
+				t.Fatalf("handled %d notifications, want %d", got, count)
+			}
+			if got := canceled.Load(); got != 0 {
+				t.Fatalf("%d notification handlers ran with a canceled context", got)
+			}
+		})
 	}
 }

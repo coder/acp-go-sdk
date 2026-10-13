@@ -27,7 +27,14 @@ func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Read
 }
 
 // Done exposes a channel that closes when the peer disconnects.
+// Queued notification handlers may still be running.
 func (c *AgentSideConnection) Done() <-chan struct{} { return c.conn.Done() }
+
+// NotificationsDone exposes Connection.NotificationsDone. It closes after
+// disconnect once all queued notification handlers have returned.
+func (c *AgentSideConnection) NotificationsDone() <-chan struct{} {
+	return c.conn.NotificationsDone()
+}
 
 // SetLogger directs connection diagnostics to the provided logger.
 func (c *AgentSideConnection) SetLogger(l *slog.Logger) { c.conn.SetLogger(l) }

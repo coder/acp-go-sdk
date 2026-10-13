@@ -89,6 +89,7 @@ type Connection struct {
 	// notificationQueue serializes notification processing to maintain order.
 	// It is bounded to keep memory usage predictable.
 	notificationQueue chan queuedNotification
+	notificationsDone chan struct{}
 }
 
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
@@ -106,6 +107,7 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		inboundCtx:          inboundCtx,
 		inboundCancel:       inboundCancel,
 		notificationQueue:   make(chan queuedNotification, defaultMaxQueuedNotifications),
+		notificationsDone:   make(chan struct{}),
 	}
 	c.notifyCond = sync.NewCond(&c.notifyMu)
 	go func() {
@@ -493,6 +495,7 @@ func (c *Connection) shutdownReceive(cause error) {
 // processNotifications processes notifications sequentially to maintain order.
 // It terminates when notificationQueue is closed (e.g. on disconnect in receive()).
 func (c *Connection) processNotifications() {
+	defer close(c.notificationsDone)
 	for queued := range c.notificationQueue {
 		c.handleInbound(c.inboundCtx, queued.msg)
 
@@ -942,6 +945,16 @@ func (c *Connection) prepareNotification(method string, params any) (anyMessage,
 
 // Done returns a channel that is closed when the underlying reader loop exits
 // (typically when the peer disconnects or the input stream is closed).
+// Queued notification handlers may still be running; use NotificationsDone to
+// wait for them to finish.
 func (c *Connection) Done() <-chan struct{} {
 	return c.ctx.Done()
+}
+
+// NotificationsDone returns a channel that closes after the reader loop exits
+// and all queued notification handlers have returned. It does not wait for
+// request handlers. A notification handler that never returns prevents this
+// channel from closing, even after its context is canceled during shutdown.
+func (c *Connection) NotificationsDone() <-chan struct{} {
+	return c.notificationsDone
 }

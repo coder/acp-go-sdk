@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -875,10 +876,55 @@ func TestConnectionFailsFastOnNotificationQueueOverflow(t *testing.T) {
 	if !errors.Is(cause, errNotificationQueueOverflow) {
 		t.Fatalf("expected overflow cancellation cause, got %v", cause)
 	}
+	select {
+	case <-c.NotificationsDone():
+		t.Fatal("NotificationsDone closed before queued notifications finished")
+	default:
+	}
 
 	// Let queued work drain and ensure the notification barrier remains balanced.
 	close(releaseFirst)
 	waitForNotificationBarrierDrain(t, c, 1*time.Second)
+	select {
+	case <-c.NotificationsDone():
+	case <-time.After(time.Second):
+		t.Fatal("NotificationsDone did not close after queue overflow")
+	}
+	if got := handled.Load(); got != defaultMaxQueuedNotifications+1 {
+		t.Fatalf("handled %d notifications, want %d", got, defaultMaxQueuedNotifications+1)
+	}
+}
+
+func TestConnection_NotificationsDoneWithoutNotifications(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		reader io.Reader
+	}{
+		{name: "eof", reader: strings.NewReader("")},
+		{name: "read_error", reader: iotest.ErrReader(errors.New("read failure"))},
+		{name: "malformed_input", reader: strings.NewReader("invalid json\n")},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := NewConnection(func(context.Context, string, json.RawMessage) (any, *RequestError) {
+				t.Error("unexpected notification handler call")
+				return nil, nil
+			}, io.Discard, tt.reader)
+			select {
+			case <-c.NotificationsDone():
+			case <-time.After(time.Second):
+				t.Fatal("NotificationsDone did not close")
+			}
+			select {
+			case <-c.Done():
+			default:
+				t.Fatal("NotificationsDone closed before Done")
+			}
+		})
+	}
 }
 
 // Test initialize method behavior

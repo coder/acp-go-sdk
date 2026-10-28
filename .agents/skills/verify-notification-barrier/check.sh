@@ -246,11 +246,11 @@ for entry in "${run_list[@]}"; do
 	work=$(mktemp -d "${TMPDIR:-/tmp}/acp-barrier-run.XXXXXX")
 	cp "$SKILL_DIR/$SPEC.tla" "$work/"
 	cat "$SKILL_DIR/$cfg" "$OUT/facts.cfg" >"$work/$cfg"
-	set +e
+	# A non-zero TLC exit is a result, not an error: "|| got=$?" keeps the
+	# ERR trap from firing.
+	got=0
 	(cd "$work" && "$JAVA" -XX:+UseParallelGC "-Xmx${TLC_HEAP:-4g}" -cp "$JAR" tlc2.TLC \
-		-workers 1 -cleanup -metadir "$work/meta" -config "$cfg" "$SPEC.tla") >"$OUT/${cfg%.cfg}.out" 2>&1
-	got=$?
-	set -e
+		-workers 1 -cleanup -metadir "$work/meta" -config "$cfg" "$SPEC.tla") >"$OUT/${cfg%.cfg}.out" 2>&1 || got=$?
 	cp "$work/$cfg" "$OUT/${cfg%.cfg}.effective.cfg"
 	rm -rf "$work"
 	case $got in

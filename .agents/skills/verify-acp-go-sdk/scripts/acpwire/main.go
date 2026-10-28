@@ -98,6 +98,7 @@ type driver struct {
 	rules    map[string]step
 	stderrSB strings.Builder
 	exited   chan struct{}
+	badOut   []string // agent stdout that is not a JSON-RPC message, or a read error
 	exitCode int
 	changed  chan struct{} // closed and replaced whenever state changes
 }
@@ -166,6 +167,15 @@ func readJourney(path string) ([]step, []int, error) {
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&s); err != nil {
 			return nil, nil, fmt.Errorf("%s:%d: %w", path, n, err)
+		}
+		var extra json.RawMessage
+		if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+			return nil, nil, fmt.Errorf("%s:%d: content after the step object", path, n)
+		}
+		for _, dur := range []string{s.Sleep, s.Timeout} {
+			if _, err := time.ParseDuration(dur); dur != "" && err != nil {
+				return nil, nil, fmt.Errorf("%s:%d: %w", path, n, err)
+			}
 		}
 		steps = append(steps, s)
 		lines = append(lines, n)
@@ -248,6 +258,12 @@ func run(agent string, args []string, steps []step, lines []int, out string, lim
 		<-d.exited
 		results = append(results, stepResult{Step: "agent exit", Pass: false, Detail: "killed: agent did not exit 5s after stdin closed"})
 	}
+	d.mu.Lock()
+	if len(d.badOut) > 0 {
+		results = append(results, stepResult{Step: "agent stdout is JSON-RPC", Pass: false,
+			Detail: fmt.Sprintf("%d bad line(s), first: %q", len(d.badOut), d.badOut[0])})
+	}
+	d.mu.Unlock()
 
 	summary := map[string]any{"agent": agent, "args": args, "results": results, "exitCode": d.exitCode, "notifications": len(d.notes)}
 	b, _ := json.MarshalIndent(summary, "", "  ")
@@ -327,7 +343,11 @@ func (d *driver) readStdout(r io.Reader) {
 		}
 		d.record("agent->client", line)
 		var msg map[string]any
-		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+		if err := json.Unmarshal([]byte(line), &msg); err != nil || msg["jsonrpc"] != "2.0" {
+			d.mu.Lock()
+			d.badOut = append(d.badOut, line)
+			d.mu.Unlock()
+			d.notify()
 			continue
 		}
 		id, hasID := msg["id"]
@@ -349,6 +369,12 @@ func (d *driver) readStdout(r io.Reader) {
 			}
 			d.mu.Unlock()
 		}
+		d.notify()
+	}
+	if err := sc.Err(); err != nil {
+		d.mu.Lock()
+		d.badOut = append(d.badOut, "read error: "+err.Error())
+		d.mu.Unlock()
 		d.notify()
 	}
 }
@@ -561,6 +587,10 @@ func (d *driver) do(s step, runDeadline time.Time) (string, string, error) {
 		dur, err := time.ParseDuration(s.Sleep)
 		if err != nil {
 			return label("sleep"), "", err
+		}
+		if left := time.Until(runDeadline); dur > left {
+			time.Sleep(max(left, 0))
+			return label("sleep " + s.Sleep), "", errors.New("the sleep runs past the -timeout deadline")
 		}
 		time.Sleep(dur)
 		return label("sleep " + s.Sleep), "", nil

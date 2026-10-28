@@ -23,14 +23,24 @@ die() {
 	exit 2
 }
 
-# The source state the binaries come from: HEAD plus a hash of uncommitted
-# changes to Go files and journeys.
+# The source state the binaries come from: HEAD plus a hash of every
+# uncommitted change and every untracked file that git does not ignore.
 source_id() {
 	local head dirty
 	head=$(git -C "$REPO" rev-parse HEAD)
-	dirty=$(git -C "$REPO" diff HEAD -- '*.go' "$SKILL_DIR" | sha256sum | cut -c1-12)
+	dirty=$({
+		git -C "$REPO" diff HEAD --binary
+		(cd "$REPO" && git ls-files -z --others --exclude-standard | xargs -0r sha256sum)
+	} | sha256sum | cut -c1-12)
 	echo "$head+$dirty"
 }
+
+# start_of PID: the process start time, so a reused PID is never mistaken
+# for a process that this run started.
+start_of() { ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' || true; }
+
+# ours PID START: the PID is alive and is still the process recorded.
+ours() { [ -n "$2" ] && [ "$(start_of "$1")" = "$2" ]; }
 
 need_run() {
 	[ -n "${ACP_VERIFY_RUN:-}" ] || die "ACP_VERIFY_RUN is not set. Run 'acp-verify launch' and export what it prints."
@@ -51,7 +61,7 @@ tracked() {
 	# <&0: an explicit redirect, or bash gives a background job /dev/null.
 	"$@" <&0 &
 	local pid=$!
-	echo "$pid $*" >>"$WORK/pids"
+	printf '%s\t%s\t%s\n' "$pid" "$(start_of "$pid")" "$*" >>"$WORK/pids"
 	set +e
 	wait "$pid"
 	local rc=$?
@@ -62,9 +72,17 @@ tracked() {
 cmd_launch() {
 	local root id
 	root=${ACP_VERIFY_ROOT:-${TMPDIR:-/tmp}/acp-verify}
-	mkdir -p "$root"
-	id=$(date +%Y%m%d-%H%M%S)-$$
-	RUN=$root/$id
+	# The root holds binaries that later commands run, so it must be ours and
+	# private. mkdir is atomic: either it makes the root 0700, or the checks
+	# below judge the folder that is already there.
+	mkdir -p "$(dirname "$root")"
+	mkdir -m 700 "$root" 2>/dev/null || true
+	[ -d "$root" ] && [ ! -L "$root" ] && [ -O "$root" ] ||
+		die "refusing $root: it must be a directory that you own, not a symlink"
+	[ -z "$(find "$root" -maxdepth 0 \( -perm -0020 -o -perm -0002 \))" ] ||
+		die "refusing $root: other users can write to it"
+	RUN=$(mktemp -d "$root/$(date +%Y%m%d-%H%M%S)-XXXXXX") || die "cannot create a run folder in $root"
+	id=$(basename "$RUN")
 	WORK=$RUN/work
 	EVIDENCE=$RUN/evidence
 	BIN=$WORK/bin
@@ -84,7 +102,7 @@ cmd_launch() {
 	} >"$WORK/build.env"
 	cp "$WORK/build.env" "$EVIDENCE/build.env"
 	echo "Built run $id."
-	echo "export ACP_VERIFY_RUN=$RUN"
+	printf 'export ACP_VERIFY_RUN=%q\n' "$RUN"
 }
 
 cmd_doctor() {
@@ -110,12 +128,13 @@ cmd_doctor() {
 			ok=0
 		fi
 	fi
-	local live=0 pid rest
-	while read -r pid rest; do
+	local live=0 pid start cmd
+	while IFS=$'\t' read -r pid start cmd; do
 		[ -n "$pid" ] || continue
-		if kill -0 "$pid" 2>/dev/null; then
-			echo "WARN  pid $pid from this run is still running: $rest"
+		if ours "$pid" "$start"; then
+			echo "FAIL  pid $pid from this run is still running: $cmd"
 			live=1
+			ok=0
 		fi
 	done <"$WORK/pids"
 	[ "$live" = 0 ] && echo "ok    no process from this run is running"
@@ -135,9 +154,11 @@ cmd_wire() {
 	cp "$journey" "$out/journey.jsonl"
 	echo "$BIN/acpwire -agent $BIN/acp-example-agent -journey $journey -out $out" >"$out/command.txt"
 	set +e
-	tracked "$BIN/acpwire" -agent "$BIN/acp-example-agent" -journey "$journey" -out "$out" | tee "$out/result.txt"
+	tracked "$BIN/acpwire" -agent "$BIN/acp-example-agent" -journey "$journey" -out "$out" \
+		2>"$out/acpwire.stderr.log" | tee "$out/result.txt"
 	local rc=${PIPESTATUS[0]}
 	set -e
+	cat "$out/acpwire.stderr.log" >&2
 	echo "exit=$rc" >>"$out/result.txt"
 	echo "evidence $out"
 	return "$rc"
@@ -173,15 +194,15 @@ cmd_client() {
 
 cmd_cleanup() {
 	need_run
-	local pid rest
-	while read -r pid rest; do
+	local pid start cmd
+	while IFS=$'\t' read -r pid start cmd; do
 		[ -n "$pid" ] || continue
-		if kill -0 "$pid" 2>/dev/null; then
+		if ours "$pid" "$start"; then
 			# Kill the recorded process and its direct children (the agent
 			# that the client or acpwire started). Never by name.
 			pkill -TERM -P "$pid" 2>/dev/null || true
 			kill -TERM "$pid" 2>/dev/null || true
-			echo "stopped pid $pid ($rest)"
+			echo "stopped pid $pid ($cmd)"
 		fi
 	done <"$WORK/pids"
 	rm -rf "$WORK"

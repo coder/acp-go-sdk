@@ -27,7 +27,7 @@ export ACP_VERIFY_ROOT="${XUM_SCRATCH_DIR:-${TMPDIR:-/tmp}}/acp-verify"   # opti
 "$V" launch
 ```
 
-`launch` builds `acp-example-agent`, `acp-example-client` and `acpwire` from the current checkout into a new run folder. It needs only Go. Its last line is `export ACP_VERIFY_RUN=<run folder>`. Shell state does not carry over between tool calls, so start every later command with both variables:
+`launch` builds `acp-example-agent`, `acp-example-client` and `acpwire` from the current checkout into a new run folder. It needs only Go. It creates the root folder with mode 0700, and it refuses a root that another user owns or can write to, or that is a symlink, because later commands run the binaries in it. Its last line is `export ACP_VERIFY_RUN=<run folder>`. Shell state does not carry over between tool calls, so start every later command with both variables:
 
 ```bash
 V=.agents/skills/verify-acp-go-sdk/scripts/acp-verify; export ACP_VERIFY_RUN=<run folder from launch>
@@ -43,7 +43,7 @@ Run it first, and again whenever a result looks wrong:
 "$V" doctor
 ```
 
-It reads the run folder and checks four things: the three binaries exist, they were built from the current checkout, the agent starts and exits 0 when its input closes, and no process that this run started is still running. The checkout is shown as `<HEAD>+<hash>`, where the hash covers uncommitted changes to Go files and to this skill. `+e3b0c44298fc` (the hash of nothing) means no uncommitted changes. Exit 1 means a check failed. If the binaries are stale, run `launch` again and use the new run.
+It reads the run folder and checks four things: the three binaries exist, they were built from the current checkout, the agent starts and exits 0 when its input closes, and no process that this run started is still running. The checkout is shown as `<HEAD>+<hash>`, where the hash covers every uncommitted change and every untracked file that git does not ignore. `+e3b0c44298fc` (the hash of nothing) means a clean checkout. Any new or changed file, even one that is not Go code, makes `doctor` ask for a new `launch`. Exit 1 means a check failed. If the binaries are stale, run `launch` again and use the new run.
 
 ## Drive
 
@@ -69,7 +69,7 @@ The client reads its permission choice from stdin, so `client` gives it the keys
 
 Each drive writes `evidence/<label>/` in the run folder:
 
-- `wire`: `transcript.jsonl` (every line in both directions, with a timestamp and direction), `agent.stderr.log` (the agent's log, each line prefixed with milliseconds since `acpwire` started), `summary.json`, `result.txt` (the step lines and `exit=`), `journey.jsonl` and `command.txt`.
+- `wire`: `transcript.jsonl` (every line in both directions, with a timestamp and direction), `agent.stderr.log` (the agent's log, each line prefixed with milliseconds since `acpwire` started), `acpwire.stderr.log` (the driver's own messages, such as a journey syntax error), `summary.json`, `result.txt` (the step lines and `exit=`), `journey.jsonl` and `command.txt`. A line on the agent's stdout that is not a JSON-RPC message fails the run.
 - `client`: `stdout.txt`, `stderr.txt`, `stdin.txt`, `result.txt` (`exit=` and duration) and `command.txt`.
 - `build.env`: the source state and Go version that the binaries came from.
 
@@ -87,7 +87,7 @@ Proof standards:
 "$V" cleanup
 ```
 
-`cleanup` stops only the processes that this run recorded, and their direct children. It never kills by process name. Then it deletes `work/` (binaries and process list) and keeps `evidence/`. It prints the evidence path. A run that was cleaned up cannot be driven again: launch a new one.
+`cleanup` stops only the processes that this run recorded, and their direct children. It checks each process's start time first, so a reused PID is left alone. It never kills by process name. Then it deletes `work/` (binaries and process list) and keeps `evidence/`. It prints the evidence path. A run that was cleaned up cannot be driven again: launch a new one.
 
 After cleanup, confirm that the proof is still there, for example with `ls "$ACP_VERIFY_RUN/evidence"`.
 

@@ -96,3 +96,96 @@ func waitEnqueuedNotifications(t *testing.T, c *Connection, n uint64) {
 		time.Sleep(time.Millisecond)
 	}
 }
+
+// A cancel marker lives only while a request that arrived before its cancel
+// is in flight.
+func TestAgentSideConnection_SessionCancelMarkersArePruned(t *testing.T) {
+	promptStarted := make(chan struct{})
+	releasePrompt := make(chan struct{})
+	var releasePromptOnce sync.Once
+	agent := agentFuncs{
+		PromptFunc: func(context.Context, PromptRequest) (PromptResponse, error) {
+			close(promptStarted)
+			<-releasePrompt
+			return PromptResponse{StopReason: StopReasonEndTurn}, nil
+		},
+	}
+	reader, writer := io.Pipe()
+	output := newInboundBarrierTestWire()
+	t.Cleanup(func() {
+		releasePromptOnce.Do(func() { close(releasePrompt) })
+		_ = writer.Close()
+	})
+	conn := NewAgentSideConnection(agent, output, reader)
+	conn.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	send := func(lines ...string) {
+		t.Helper()
+		if _, err := io.WriteString(writer, strings.Join(lines, "\n")+"\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	markers := func() int {
+		conn.mu.Lock()
+		defer conn.mu.Unlock()
+		return len(conn.sessionCancelledAt)
+	}
+	cancelFor := func(sessionID string) string {
+		return `{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"` + sessionID + `"}}`
+	}
+
+	send(cancelFor("idle-1"), cancelFor("idle-2"))
+	waitCompletedNotifications(t, conn.conn, 2)
+	if got := markers(); got != 0 {
+		t.Fatalf("markers with no request in flight = %d, want 0", got)
+	}
+
+	send(`{"jsonrpc":"2.0","id":1,"method":"session/prompt","params":{"sessionId":"s","prompt":[{"type":"text","text":"hi"}]}}`)
+	<-promptStarted
+	send(cancelFor("other"))
+	waitCompletedNotifications(t, conn.conn, 3)
+	if got := markers(); got != 1 {
+		t.Fatalf("markers while an earlier prompt is in flight = %d, want 1", got)
+	}
+
+	releasePromptOnce.Do(func() { close(releasePrompt) })
+	waitNoInflightRequests(t, conn.conn)
+	send(cancelFor("idle-3"))
+	waitCompletedNotifications(t, conn.conn, 4)
+	if got := markers(); got != 0 {
+		t.Fatalf("markers after the prompt returned = %d, want 0", got)
+	}
+}
+
+// waitCompletedNotifications waits until the handlers of n notifications of c
+// have returned.
+func waitCompletedNotifications(t *testing.T, c *Connection, n uint64) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		c.notifyMu.Lock()
+		got := c.completedNotificationSeq
+		c.notifyMu.Unlock()
+		if got >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("completed %d notifications, want %d", got, n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// waitNoInflightRequests waits until no request from the peer is in flight on c.
+func waitNoInflightRequests(t *testing.T, c *Connection) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, ok := c.oldestInflightWatermark(); !ok {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("requests still in flight")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}

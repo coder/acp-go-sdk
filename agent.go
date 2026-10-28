@@ -16,8 +16,8 @@ type AgentSideConnection struct {
 	sessionCancels map[string]context.CancelFunc
 	// sessionCancelledAt holds, per session, the sequence number of the last
 	// session/cancel. A prompt that arrived before that cancel and registers
-	// after it is cancelled at once. The next prompt that arrives after the
-	// cancel drops the entry.
+	// after it is cancelled at once. pruneCancelMarkers drops an entry once no
+	// request from the peer that arrived before its cancel is in flight.
 	sessionCancelledAt map[string]uint64
 }
 
@@ -52,6 +52,7 @@ func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string
 	if seq, ok := a.conn.notificationSeq(ctx); ok {
 		a.sessionCancelledAt[sessionID] = seq
 	}
+	a.pruneCancelMarkers()
 }
 
 // registerPrompt makes cancel the cancel func of the prompt for sessionID
@@ -64,18 +65,22 @@ func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID stri
 		prev()
 	}
 	a.sessionCancels[sessionID] = cancel
-	cancelledAt, ok := a.sessionCancelledAt[sessionID]
-	if !ok {
-		return
+	if cancelledAt, ok := a.sessionCancelledAt[sessionID]; ok {
+		if watermark, ok := a.conn.requestWatermark(ctx); ok && cancelledAt > watermark {
+			cancel()
+		}
 	}
-	watermark, ok := a.conn.requestWatermark(ctx)
-	if !ok {
-		return
+	a.pruneCancelMarkers()
+}
+
+// pruneCancelMarkers drops each entry of sessionCancelledAt that no request in
+// flight can match. Only a prompt that arrived before the cancel matches it.
+// The caller holds a.mu.
+func (a *AgentSideConnection) pruneCancelMarkers() {
+	oldest, ok := a.conn.oldestInflightWatermark()
+	for sessionID, cancelledAt := range a.sessionCancelledAt {
+		if !ok || oldest >= cancelledAt {
+			delete(a.sessionCancelledAt, sessionID)
+		}
 	}
-	if cancelledAt > watermark {
-		cancel()
-		return
-	}
-	// The cancel arrived before this prompt, so no later prompt needs it.
-	delete(a.sessionCancelledAt, sessionID)
 }

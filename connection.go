@@ -101,6 +101,7 @@ type Connection struct {
 	nextID               atomic.Uint64
 	pending              map[string]*pendingResponse
 	inflight             map[string]context.CancelCauseFunc
+	inflightWatermarks   map[uint64]int // requests in inflight, counted by watermark
 	pendingCancelRequest []string
 	cancelRequestSignal  chan struct{}
 
@@ -128,6 +129,10 @@ type Connection struct {
 	// invariant: completedNotificationSeq <= lastEnqueuedNotificationSeq.
 	lastEnqueuedNotificationSeq uint64
 	completedNotificationSeq    uint64
+	// peerWaits counts, per notification sequence number, the requests that
+	// were made with the ctx of that notification's running handler and still
+	// wait for the peer's response.
+	peerWaits map[uint64]int
 
 	// notificationQueue serializes notification processing to maintain order.
 	// It is bounded to keep memory usage predictable.
@@ -143,6 +148,8 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		handler:             handler,
 		pending:             make(map[string]*pendingResponse),
 		inflight:            make(map[string]context.CancelCauseFunc),
+		inflightWatermarks:  make(map[uint64]int),
+		peerWaits:           make(map[uint64]int),
 		cancelRequestSignal: make(chan struct{}, 1),
 		ctx:                 ctx,
 		cancel:              cancel,
@@ -443,6 +450,8 @@ func (c *Connection) receive() {
 				// Requests observe the notification queue as it stood when they arrived.
 				// Notifications already accepted onto the queue must finish before the
 				// handler starts, while later notifications must not delay the request.
+				// The handler also starts while the running notification handler waits
+				// for the peer, because the peer can need this answer first.
 				c.notifyMu.Lock()
 				watermark := c.lastEnqueuedNotificationSeq
 				c.notifyMu.Unlock()
@@ -457,6 +466,7 @@ func (c *Connection) receive() {
 
 				c.mu.Lock()
 				c.inflight[idKey] = cancel
+				c.inflightWatermarks[watermark]++
 				c.mu.Unlock()
 
 				m := msg
@@ -464,11 +474,14 @@ func (c *Connection) receive() {
 					defer func() {
 						c.mu.Lock()
 						delete(c.inflight, idKey)
+						if c.inflightWatermarks[watermark]--; c.inflightWatermarks[watermark] == 0 {
+							delete(c.inflightWatermarks, watermark)
+						}
 						c.mu.Unlock()
 
 						cancel(nil)
 					}()
-					if err := c.waitNotificationsUpTo(reqCtx, watermark); err != nil {
+					if err := c.waitNotifications(reqCtx, watermark, true); err != nil {
 						select {
 						case <-c.Done():
 							// Preserve the existing disconnect contract: start accepted request
@@ -728,7 +741,9 @@ func SendRequest[T any](c *Connection, ctx context.Context, method string, param
 		return result, NewInternalError(map[string]any{"error": err.Error()})
 	}
 
+	donePeerWait := c.startPeerWait(ctx)
 	resp, err := c.waitForResponse(ctx, pr, idKey)
+	donePeerWait()
 	if err != nil {
 		return result, err
 	}
@@ -859,6 +874,15 @@ func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, i
 }
 
 func (c *Connection) waitNotificationsUpTo(ctx context.Context, target uint64) error {
+	return c.waitNotifications(ctx, target, false)
+}
+
+// waitNotifications waits until the handlers of the notifications up to
+// target have returned. With stopAtPeerWait, it also returns while the running
+// notification handler waits for a response from the peer: the request from
+// the peer that waits here can be the one that the peer must get an answer to
+// before it answers the handler.
+func (c *Connection) waitNotifications(ctx context.Context, target uint64, stopAtPeerWait bool) error {
 	if target == 0 {
 		return nil
 	}
@@ -890,7 +914,7 @@ func (c *Connection) waitNotificationsUpTo(ctx context.Context, target uint64) e
 		c.notifyMu.Unlock()
 	}()
 
-	for c.completedNotificationSeq < target {
+	for c.completedNotificationSeq < target && !(stopAtPeerWait && c.peerWaits[c.completedNotificationSeq+1] > 0) {
 		if c.completedNotificationSeq > c.lastEnqueuedNotificationSeq {
 			panic("completed notification sequence exceeded enqueued notification sequence while waiting")
 		}
@@ -921,6 +945,47 @@ func (c *Connection) waitNotificationsUpTo(ctx context.Context, target uint64) e
 		c.notifyCond.Wait()
 	}
 	return nil
+}
+
+// startPeerWait records that a request made with ctx waits for the peer's
+// response, if ctx belongs to the running notification handler. The returned
+// func ends the record.
+func (c *Connection) startPeerWait(ctx context.Context) func() {
+	seq, ok := c.notificationSeq(ctx)
+	if !ok {
+		return func() {}
+	}
+	c.notifyMu.Lock()
+	defer c.notifyMu.Unlock()
+	if c.completedNotificationSeq >= seq {
+		// The handler has returned. Requests with its ctx get the full wait.
+		return func() {}
+	}
+	c.peerWaits[seq]++
+	c.notifyCond.Broadcast()
+	return func() {
+		c.notifyMu.Lock()
+		defer c.notifyMu.Unlock()
+		if c.peerWaits[seq] <= 0 {
+			panic("peer wait count went below zero")
+		}
+		if c.peerWaits[seq]--; c.peerWaits[seq] == 0 {
+			delete(c.peerWaits, seq)
+		}
+	}
+}
+
+// oldestInflightWatermark returns the smallest watermark of the requests from
+// the peer whose handlers have not returned. ok is false when there are none.
+func (c *Connection) oldestInflightWatermark() (oldest uint64, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for w := range c.inflightWatermarks {
+		if !ok || w < oldest {
+			oldest, ok = w, true
+		}
+	}
+	return oldest, ok
 }
 
 func (c *Connection) waitForNotificationDrain(target uint64, timeout time.Duration) {
@@ -986,7 +1051,9 @@ func (c *Connection) SendRequestNoResult(ctx context.Context, method string, par
 		return NewInternalError(map[string]any{"error": err.Error()})
 	}
 
+	donePeerWait := c.startPeerWait(ctx)
 	resp, err := c.waitForResponse(ctx, pr, idKey)
+	donePeerWait()
 	if err != nil {
 		return err
 	}

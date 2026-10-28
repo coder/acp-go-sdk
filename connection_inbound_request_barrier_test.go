@@ -288,3 +288,65 @@ func TestConnection_InboundRequestsCrossBarrierConcurrently(t *testing.T) {
 		}
 	}
 }
+
+// A notification handler makes a request, and the peer answers it only after
+// we answer the peer's own request. That request must not wait for the
+// handler, or both sides wait forever.
+func TestConnection_InboundRequestStartsWhileHandlerWaitsOnPeer(t *testing.T) {
+	handlerDone := make(chan error, 1)
+	var peer *inboundBarrierTestPeer
+	peer = newInboundBarrierTestPeer(t, func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		switch method {
+		case "notification":
+			_, err := SendRequest[map[string]bool](peer.connection, ctx, "_peer/ask", nil)
+			handlerDone <- err
+			return nil, nil
+		case "callback":
+			return map[string]bool{"ok": true}, nil
+		default:
+			return nil, NewMethodNotFound(method)
+		}
+	})
+
+	peer.notification(t, "notification", nil)
+	askID := peer.outboundRequestID(t, "_peer/ask")
+	peer.request(t, "callback", "callback")
+	if response := peer.response(t, "callback"); response["error"] != nil {
+		t.Fatalf("callback response error = %#v", response["error"])
+	}
+	peer.send(t, map[string]any{"jsonrpc": "2.0", "id": askID, "result": map[string]bool{"ok": true}})
+	select {
+	case err := <-handlerDone:
+		if err != nil {
+			t.Fatalf("nested request error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("notification handler did not get its response")
+	}
+}
+
+// outboundRequestID waits for our request with method and returns its id.
+func (p *inboundBarrierTestPeer) outboundRequestID(t *testing.T, method string) any {
+	t.Helper()
+	timeout := time.NewTimer(5 * time.Second)
+	defer timeout.Stop()
+	for {
+		select {
+		case b := <-p.wire.messages:
+			for _, line := range bytes.Split(bytes.TrimSpace(b), []byte{'\n'}) {
+				var message map[string]any
+				if err := json.Unmarshal(line, &message); err != nil {
+					t.Fatal(err)
+				}
+				if message["method"] == method && message["id"] != nil {
+					return message["id"]
+				}
+				if messageID, ok := message["id"].(string); ok {
+					p.pending[messageID] = message
+				}
+			}
+		case <-timeout.C:
+			t.Fatalf("request %q did not arrive", method)
+		}
+	}
+}

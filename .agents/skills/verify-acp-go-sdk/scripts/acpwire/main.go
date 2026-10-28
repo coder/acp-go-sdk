@@ -40,6 +40,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -67,6 +68,94 @@ type step struct {
 	Timeout     string                     `json:"timeout"`
 	Close       bool                       `json:"close"`
 	ExpectExit  *int                       `json:"expectExit"`
+}
+
+// actionFields lists, for each step action, the other fields that the
+// action reads. A step has exactly one action and no other fields.
+var actionFields = map[string][]string{
+	"send":        {"params", "save", "async", "expect", "timeout"},
+	"notify":      {"params"},
+	"await":       {"expect", "timeout"},
+	"respond":     {"result", "error"},
+	"waitFor":     {"where", "count", "timeout"},
+	"raw":         nil,
+	"stderrHas":   {"timeout"},
+	"stderrLacks": nil,
+	"sleep":       nil,
+	"close":       {"expectExit", "timeout"},
+}
+
+// checkStepShape rejects a step whose fields do not fit exactly one action,
+// so a mistyped journey line fails instead of silently skipping work.
+func checkStepShape(fields map[string]json.RawMessage) error {
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	action := ""
+	for _, k := range keys {
+		if _, ok := actionFields[k]; ok {
+			if action != "" {
+				return fmt.Errorf("step has two actions, %q and %q", action, k)
+			}
+			action = k
+		}
+	}
+	if action == "" {
+		return errors.New("step has no action")
+	}
+	allowed := map[string]bool{action: true, "step": true}
+	for _, f := range actionFields[action] {
+		allowed[f] = true
+	}
+	for _, k := range keys {
+		if !allowed[k] {
+			return fmt.Errorf("field %q does not apply to a %q step", k, action)
+		}
+	}
+	_, hasResult := fields["result"]
+	_, hasError := fields["error"]
+	if action == "respond" && hasResult == hasError {
+		return errors.New("a respond step needs exactly one of result and error")
+	}
+	if action == "close" && string(fields["close"]) != "true" {
+		return errors.New(`a close step needs "close":true`)
+	}
+	return nil
+}
+
+// validEnvelope reports whether msg is a JSON-RPC 2.0 request,
+// notification or response.
+func validEnvelope(msg map[string]any) bool {
+	if msg["jsonrpc"] != "2.0" {
+		return false
+	}
+	id, hasID := msg["id"]
+	switch id.(type) {
+	case string, float64, nil:
+	default:
+		return false
+	}
+	_, hasResult := msg["result"]
+	errObj, hasError := msg["error"]
+	if m, ok := msg["method"]; ok {
+		method, isString := m.(string)
+		return isString && method != "" && !hasResult && !hasError
+	}
+	if !hasID || hasResult == hasError {
+		return false
+	}
+	if hasError {
+		e, ok := errObj.(map[string]any)
+		if !ok {
+			return false
+		}
+		_, codeOK := e["code"].(float64)
+		_, msgOK := e["message"].(string)
+		return codeOK && msgOK
+	}
+	return true
 }
 
 type stepResult struct {
@@ -99,6 +188,7 @@ type driver struct {
 	stderrSB strings.Builder
 	exited   chan struct{}
 	badOut   []string // agent stdout that is not a JSON-RPC message, or a read error
+	errRead  string   // why the agent stderr reader stopped early
 	exitCode int
 	changed  chan struct{} // closed and replaced whenever state changes
 }
@@ -162,15 +252,23 @@ func readJourney(path string) ([]step, []int, error) {
 		if text == "" || strings.HasPrefix(text, "#") {
 			continue
 		}
+		var fields map[string]json.RawMessage
+		fd := json.NewDecoder(strings.NewReader(text))
+		if err := fd.Decode(&fields); err != nil {
+			return nil, nil, fmt.Errorf("%s:%d: %w", path, n, err)
+		}
+		var extra json.RawMessage
+		if err := fd.Decode(&extra); !errors.Is(err, io.EOF) {
+			return nil, nil, fmt.Errorf("%s:%d: content after the step object", path, n)
+		}
+		if err := checkStepShape(fields); err != nil {
+			return nil, nil, fmt.Errorf("%s:%d: %w", path, n, err)
+		}
 		var s step
 		dec := json.NewDecoder(strings.NewReader(text))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&s); err != nil {
 			return nil, nil, fmt.Errorf("%s:%d: %w", path, n, err)
-		}
-		var extra json.RawMessage
-		if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-			return nil, nil, fmt.Errorf("%s:%d: content after the step object", path, n)
 		}
 		for _, dur := range []string{s.Sleep, s.Timeout} {
 			if _, err := time.ParseDuration(dur); dur != "" && err != nil {
@@ -263,6 +361,9 @@ func run(agent string, args []string, steps []step, lines []int, out string, lim
 		results = append(results, stepResult{Step: "agent stdout is JSON-RPC", Pass: false,
 			Detail: fmt.Sprintf("%d bad line(s), first: %q", len(d.badOut), d.badOut[0])})
 	}
+	if d.errRead != "" {
+		results = append(results, stepResult{Step: "agent stderr read", Pass: false, Detail: d.errRead})
+	}
 	d.mu.Unlock()
 
 	summary := map[string]any{"agent": agent, "args": args, "results": results, "exitCode": d.exitCode, "notifications": len(d.notes)}
@@ -343,7 +444,7 @@ func (d *driver) readStdout(r io.Reader) {
 		}
 		d.record("agent->client", line)
 		var msg map[string]any
-		if err := json.Unmarshal([]byte(line), &msg); err != nil || msg["jsonrpc"] != "2.0" {
+		if err := json.Unmarshal([]byte(line), &msg); err != nil || !validEnvelope(msg) {
 			d.mu.Lock()
 			d.badOut = append(d.badOut, line)
 			d.mu.Unlock()
@@ -381,11 +482,18 @@ func (d *driver) readStdout(r io.Reader) {
 
 func (d *driver) readStderr(r io.Reader) {
 	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64<<10), 10<<20)
 	for sc.Scan() {
 		line := sc.Text()
 		d.mu.Lock()
 		fmt.Fprintf(d.stderr, "%d %s\n", time.Since(d.start).Milliseconds(), line)
 		d.stderrSB.WriteString(line + "\n")
+		d.mu.Unlock()
+		d.notify()
+	}
+	if err := sc.Err(); err != nil {
+		d.mu.Lock()
+		d.errRead = err.Error()
 		d.mu.Unlock()
 		d.notify()
 	}

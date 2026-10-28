@@ -286,15 +286,17 @@ for entry in "${run_list[@]}"; do
 	13) echo "  rule: one of the PROPERTIES in $cfg (TLC does not say which; /statechart names it)" ;;
 	esac
 	if [ "$got" != "$want" ]; then
-		if [ "$got" -gt 13 ]; then
-			echo "  TLC did not finish. Read the output: this is a model or setup error." >&2
-			broken=1
-		elif [ "$got" = 0 ]; then
+		case $got in
+		0)
 			echo "  $cfg passed, but it should reproduce the known finding. Update SKILL.md." >&2
 			failed=1
-		else
-			failed=1
-		fi
+			;;
+		11 | 12 | 13) failed=1 ;;
+		*)
+			echo "  TLC did not finish. Read the output: this is a model or setup error." >&2
+			broken=1
+			;;
+		esac
 	fi
 done
 

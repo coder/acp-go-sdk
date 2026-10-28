@@ -77,7 +77,7 @@ type Connection struct {
 	inboundCtx    context.Context
 	inboundCancel context.CancelCauseFunc
 
-	logger *slog.Logger
+	logger atomic.Pointer[slog.Logger]
 
 	notifyMu sync.Mutex
 	// notifyCond coordinates response-scoped waits for sequential notification processing.
@@ -122,11 +122,12 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 
 // SetLogger installs a logger used for internal connection diagnostics.
 // If unset, logs are written via the default logger.
-func (c *Connection) SetLogger(l *slog.Logger) { c.logger = l }
+// It is safe to call concurrently with connection activity.
+func (c *Connection) SetLogger(l *slog.Logger) { c.logger.Store(l) }
 
 func (c *Connection) loggerOrDefault() *slog.Logger {
-	if c.logger != nil {
-		return c.logger
+	if l := c.logger.Load(); l != nil {
+		return l
 	}
 	return slog.Default()
 }

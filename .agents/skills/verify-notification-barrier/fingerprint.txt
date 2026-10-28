@@ -1,0 +1,10 @@
+7d342460626e384ccb7f70b32111ae08cd94734efe30b6c620d59f65389b6fc1  func NewConnection(
+a9b6da4cecf63f2794ca4b87245aa78de02f2ae8c9885560256e1d31ee119d9a  func (c *Connection) receive(
+0f9f4ad97fc5d53a10eafcc363a6cb6c5088d1a73f36b767f9754439deaa82be  func (c *Connection) shutdownReceive(
+6821973eef44dd88e4ce8426b1371a1070729fea9af31f606cc57f380f3f25e5  func (c *Connection) processNotifications(
+1fa03624e3b6f7388c021973121524ad307ffa6a7a3b2670966a3484edea2842  func (c *Connection) handleResponse(
+5fedb46c0cfaf7487b828b8e540917d469604d0f189f7291968094d33ebffc69  func SendRequest[T any](c *Connection,
+f4c13b062e0fe6111d34daba5ab5cfc678efa3ecd65b94a670ac7ca98b3f60fd  func (c *Connection) SendRequestNoResult(
+b2c8f8f5df90031f3b244b8b997c11ace52b905c1ed69d0d15ecab8a2ee6a3e1  func (c *Connection) waitForResponse(
+93f9df5b89ab97bfb21015c789c803bb7f21b716d94c901d105493f04c9732ac  func (c *Connection) waitNotificationsUpTo(
+1c00e5099ec225c5a10e98041d61fce67907fa1efb40409db0d395b7d523ad80  func (c *Connection) waitForNotificationDrain(

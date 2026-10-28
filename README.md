@@ -118,6 +118,15 @@ if err := conn.NotifyExtension(ctx, "_example.com/progress", map[string]any{"pct
 }
 ```
 
+> Note: A request returns after the handlers of all notifications that arrived
+> before its response have returned. To make a request from a notification
+> handler, such as `SessionUpdate`, pass the handler's `ctx` or a ctx derived
+> from it. With any other ctx, the request waits for the handler that made it,
+> so it returns only when that ctx ends or the peer disconnects. A goroutine
+> that the handler starts with the handler's `ctx` also skips the wait for
+> later notifications while the handler runs: give it a ctx that does not
+> derive from the handler's `ctx` if it needs the full wait.
+
 #### Advertising extension support via `_meta`
 
 ACP uses the `_meta` field inside capability objects as the negotiation/advertising

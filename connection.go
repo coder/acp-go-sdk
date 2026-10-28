@@ -35,6 +35,15 @@ type queuedNotification struct {
 	msg *anyMessage
 }
 
+// handlingNotification is the ctx value that processNotifications gives each
+// notification handler.
+type handlingNotification struct {
+	conn *Connection
+	seq  uint64
+}
+
+type handlingNotificationKey struct{}
+
 type responseEnvelope struct {
 	msg                   anyMessage
 	notificationWatermark uint64
@@ -77,7 +86,10 @@ type Connection struct {
 	inboundCtx    context.Context
 	inboundCancel context.CancelCauseFunc
 
-	logger *slog.Logger
+	// logger is atomic because SetLogger may be called after NewConnection has
+	// already spawned the receive/processNotifications goroutines that read it
+	// via loggerOrDefault.
+	logger atomic.Pointer[slog.Logger]
 
 	notifyMu sync.Mutex
 	// notifyCond coordinates response-scoped waits for sequential notification processing.
@@ -122,11 +134,11 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 
 // SetLogger installs a logger used for internal connection diagnostics.
 // If unset, logs are written via the default logger.
-func (c *Connection) SetLogger(l *slog.Logger) { c.logger = l }
+func (c *Connection) SetLogger(l *slog.Logger) { c.logger.Store(l) }
 
 func (c *Connection) loggerOrDefault() *slog.Logger {
-	if c.logger != nil {
-		return c.logger
+	if l := c.logger.Load(); l != nil {
+		return l
 	}
 	return slog.Default()
 }
@@ -515,7 +527,8 @@ func (c *Connection) shutdownReceive(cause error) {
 // It terminates when notificationQueue is closed (e.g. on disconnect in receive()).
 func (c *Connection) processNotifications() {
 	for queued := range c.notificationQueue {
-		c.handleInbound(c.inboundCtx, queued.msg)
+		handlerCtx := context.WithValue(c.inboundCtx, handlingNotificationKey{}, handlingNotification{conn: c, seq: queued.seq})
+		c.handleInbound(handlerCtx, queued.msg)
 
 		c.notifyMu.Lock()
 		expectedSeq := c.completedNotificationSeq + 1
@@ -654,6 +667,17 @@ func (c *Connection) sendMessage(msg anyMessage) error {
 
 // SendRequest sends a JSON-RPC request and returns a typed result.
 // For methods that do not return a result, use SendRequestNoResult instead.
+//
+// SendRequest returns after the handlers of all notifications that arrived
+// before the response have returned. A notification handler that makes a
+// request on the same connection must pass its own ctx, or a ctx derived from
+// it. While the handler runs, such a request waits only for the notifications
+// before the handler's own. With any other ctx, such as context.Background(),
+// the request waits for the handler that made it, so it returns only when ctx
+// ends or the peer disconnects. The shorter wait applies to every goroutine that
+// uses the handler's ctx while the handler runs: a goroutine that the handler
+// starts and that needs the full wait must get a ctx that does not derive from
+// the handler's ctx.
 func SendRequest[T any](c *Connection, ctx context.Context, method string, params any) (T, error) {
 	var result T
 
@@ -816,6 +840,12 @@ func (c *Connection) waitNotificationsUpTo(ctx context.Context, target uint64) e
 	if target > c.lastEnqueuedNotificationSeq {
 		panic("response watermark exceeded last enqueued notification sequence")
 	}
+	// While the handler of notification h.seq runs, it can be the caller, on the
+	// goroutine that completes h.seq. A wait for h.seq or a later notification
+	// would then never end. After h.seq completes, its ctx gets the full wait.
+	if h, ok := ctx.Value(handlingNotificationKey{}).(handlingNotification); ok && h.conn == c && c.completedNotificationSeq < h.seq {
+		target = min(target, h.seq-1)
+	}
 
 	go func() {
 		select {
@@ -907,6 +937,7 @@ func (c *Connection) cleanupPending(idKey string) {
 }
 
 // SendRequestNoResult sends a JSON-RPC request that returns no result payload.
+// It waits for notification handlers as SendRequest does.
 func (c *Connection) SendRequestNoResult(ctx context.Context, method string, params any) error {
 	msg, idKey, err := c.prepareRequest(method, params)
 	if err != nil {

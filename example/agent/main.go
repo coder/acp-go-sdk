@@ -179,7 +179,7 @@ func (a *exampleAgent) Cancel(ctx context.Context, params acp.CancelNotification
 	return nil
 }
 
-func (a *exampleAgent) Prompt(_ context.Context, params acp.PromptRequest) (acp.PromptResponse, error) {
+func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (acp.PromptResponse, error) {
 	sid := string(params.SessionId)
 	a.mu.Lock()
 	s, ok := a.sessions[sid]
@@ -197,7 +197,7 @@ func (a *exampleAgent) Prompt(_ context.Context, params acp.PromptRequest) (acp.
 	} else {
 		a.mu.Unlock()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	a.mu.Lock()
 	s.cancel = cancel
 	a.mu.Unlock()

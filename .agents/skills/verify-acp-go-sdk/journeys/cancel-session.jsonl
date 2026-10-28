@@ -1,0 +1,10 @@
+# session/cancel during a turn. Feature: cancel.md
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}},"save":"init","expect":{"result.protocolVersion":1}}
+{"send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new"}
+{"send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"save":"turn","async":true}
+{"waitFor":"session/update","where":{"params.update.sessionUpdate":"tool_call"},"timeout":"10s"}
+{"notify":"session/cancel","params":{"sessionId":"{{new.result.sessionId}}"}}
+{"await":"turn","timeout":"3s","expect":{"result.stopReason":"cancelled"}}
+{"sleep":"1500ms"}
+{"close":true,"expectExit":0}

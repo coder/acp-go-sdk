@@ -71,6 +71,8 @@ check:
 test: $(GO_FILES)
 	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
 	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go build ./example/...
+	# ./... skips dot directories, so name the verification driver directly.
+	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./.agents/skills/verify-acp-go-sdk/scripts/acpwire/
 
 .PHONY: clean
 clean:

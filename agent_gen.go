@@ -296,12 +296,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		a.mu.Lock()
-		if cn, ok := a.sessionCancels[string(p.SessionId)]; ok {
-			cn()
-			delete(a.sessionCancels, string(p.SessionId))
-		}
-		a.mu.Unlock()
+		a.cancelPrompt(ctx, string(p.SessionId))
 		if err := a.agent.Cancel(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
@@ -411,12 +406,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		var reqCtx context.Context
 		var cancel context.CancelFunc
 		reqCtx, cancel = context.WithCancel(ctx)
-		a.mu.Lock()
-		if prev, ok := a.sessionCancels[string(p.SessionId)]; ok {
-			prev()
-		}
-		a.sessionCancels[string(p.SessionId)] = cancel
-		a.mu.Unlock()
+		a.registerPrompt(ctx, string(p.SessionId), cancel)
 		resp, err := a.agent.Prompt(reqCtx, p)
 		a.mu.Lock()
 		delete(a.sessionCancels, string(p.SessionId))

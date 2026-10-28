@@ -50,9 +50,12 @@ func (c *replClient) RequestPermission(ctx context.Context, params acp.RequestPe
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("\nChoose an option: ")
-		line, _ := reader.ReadString('\n')
+		line, err := reader.ReadString('\n')
 		line = strings.TrimSpace(line)
 		if line == "" {
+			if err != nil {
+				return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}}}, nil
+			}
 			continue
 		}
 		idx := -1
@@ -76,7 +79,11 @@ func (c *replClient) SessionUpdate(ctx context.Context, params acp.SessionNotifi
 	case u.ToolCall != nil:
 		fmt.Printf("\n🔧 %s (%s)\n", u.ToolCall.Title, u.ToolCall.Status)
 	case u.ToolCallUpdate != nil:
-		fmt.Printf("\n🔧 Tool call `%s` updated: %v\n\n", u.ToolCallUpdate.ToolCallId, u.ToolCallUpdate.Status)
+		status := ""
+		if u.ToolCallUpdate.Status != nil {
+			status = string(*u.ToolCallUpdate.Status)
+		}
+		fmt.Printf("\n🔧 Tool call `%s` updated: %s\n\n", u.ToolCallUpdate.ToolCallId, status)
 	case u.Plan != nil:
 		fmt.Println("[plan update]")
 	case u.AgentThoughtChunk != nil:

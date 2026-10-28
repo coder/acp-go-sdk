@@ -105,8 +105,6 @@ After cleanup, confirm that the proof is still there, for example with `ls "$ACP
 
 These are current failures. Each feature file says how its journey shows them. Do not weaken a journey to hide one.
 
-- The example client shows a tool call status as a pointer address, such as `0x29c44f7ab480`, not `completed` ([client-cli.md](features/client-cli.md)).
 - The example client can show the permission prompt before the tool call that it asks about, because the SDK runs incoming requests concurrently with the notification queue ([client-cli.md](features/client-cli.md)).
-- At end of input, the example client prints `Choose an option:` in a loop without end ([client-cli.md](features/client-cli.md)).
 
 To keep the map true as the app changes, use the pstack plugin's `maintain-verification-skill` skill. It is hidden from the default skill list, so load it by name.

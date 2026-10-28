@@ -409,6 +409,13 @@ func (c *Connection) receive() {
 			c.handleResponse(&msg)
 		case msg.Method != "":
 			if msg.ID != nil {
+				// Requests observe the notification queue as it stood when they arrived.
+				// Notifications already accepted onto the queue must finish before the
+				// handler starts, while later notifications must not delay the request.
+				c.notifyMu.Lock()
+				watermark := c.lastEnqueuedNotificationSeq
+				c.notifyMu.Unlock()
+
 				idKey, err := canonicalJSONRPCIDKey(*msg.ID)
 				if err != nil {
 					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", string(*msg.ID))
@@ -421,7 +428,7 @@ func (c *Connection) receive() {
 				c.mu.Unlock()
 
 				m := msg
-				go func(m *anyMessage, idKey string, reqCtx context.Context, cancel context.CancelCauseFunc) {
+				go func(m *anyMessage, idKey string, reqCtx context.Context, cancel context.CancelCauseFunc, watermark uint64) {
 					defer func() {
 						c.mu.Lock()
 						delete(c.inflight, idKey)
@@ -429,8 +436,22 @@ func (c *Connection) receive() {
 
 						cancel(nil)
 					}()
+					if err := c.waitNotificationsUpTo(reqCtx, watermark); err != nil {
+						select {
+						case <-c.Done():
+							// Preserve the existing disconnect contract: start accepted request
+							// handlers with a canceled context so they can run cleanup even when
+							// an earlier notification is still draining. The peer can no longer
+							// observe notification/request ordering after disconnect.
+							c.handleInbound(reqCtx, m)
+							return
+						default:
+						}
+						c.sendInboundRequestError(m, toReqErr(err))
+						return
+					}
 					c.handleInbound(reqCtx, m)
-				}(&m, idKey, reqCtx, cancel)
+				}(&m, idKey, reqCtx, cancel, watermark)
 				continue
 			}
 
@@ -617,6 +638,17 @@ func (c *Connection) handleInbound(ctx context.Context, req *anyMessage) {
 		}
 	}
 	_ = c.sendMessage(res)
+}
+
+func (c *Connection) sendInboundRequestError(req *anyMessage, err *RequestError) {
+	if req.ID == nil {
+		return
+	}
+	_ = c.sendMessage(anyMessage{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Error:   err,
+	})
 }
 
 func (c *Connection) sendMessage(msg anyMessage) error {

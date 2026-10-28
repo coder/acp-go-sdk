@@ -34,7 +34,11 @@ source_id() {
 
 need_run() {
 	[ -n "${ACP_VERIFY_RUN:-}" ] || die "ACP_VERIFY_RUN is not set. Run 'acp-verify launch' and export what it prints."
-	[ -f "$ACP_VERIFY_RUN/$MARKER" ] || die "$ACP_VERIFY_RUN was not made by acp-verify launch. Refusing to use it."
+	if [ ! -f "$ACP_VERIFY_RUN/$MARKER" ]; then
+		[ -d "$ACP_VERIFY_RUN/evidence" ] && [ ! -d "$ACP_VERIFY_RUN/work" ] &&
+			die "$ACP_VERIFY_RUN was cleaned up. Its evidence is kept. Run 'acp-verify launch' for a new run."
+		die "$ACP_VERIFY_RUN was not made by acp-verify launch. Refusing to use it."
+	fi
 	RUN=$ACP_VERIFY_RUN
 	WORK=$RUN/work
 	EVIDENCE=$RUN/evidence

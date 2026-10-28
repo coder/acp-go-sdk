@@ -34,4 +34,4 @@ Steps:
 
 - The example agent has no `HandleExtensionMethod`, so no example shows a successful extension call. The SDK tests in `acp_test.go` cover that path.
 - `stderrLacks` checks the log once, at that moment. Keep the `sleep` before it, or the check can run before the agent has read the notification.
-- The log format comes from `slog.Default()` in the example agent. Match the message text, not the timestamp.
+- Each log line starts with the milliseconds since `acpwire` started, then the agent's own `slog.Default()` timestamp. Match the message text, not the numbers.

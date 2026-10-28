@@ -5,9 +5,9 @@ description: Model-check the notification barrier in connection.go with TLA+ (TL
 
 # Verify the notification barrier
 
-`connection.go` has one reader goroutine, one goroutine that runs notification handlers in order, and any number of goroutines that wait in `SendRequest`. Four fixes already went into this code (#5, #8, #10, #30), and unit tests reach few of its interleavings. For example, `go test ./...` still passes when `SendRequestNoResult` stops waiting for earlier handlers, and `check.sh` fails on it. This skill checks every interleaving of a small model of that code with TLC.
+`connection.go` has one reader goroutine, one goroutine that runs notification handlers in order, and any number of goroutines that wait in `SendRequest`. Four fixes already went into this code (#5, #8, #10, #30), and unit tests reach few of its interleavings. For example, `go test ./...` still passes when `SendRequestNoResult` stops waiting for earlier handlers, when the wait loop stops checking for a disconnect, or when the drain loop stops checking its timeout. `check.sh` fails on all three. This skill checks every interleaving of a small model of that code with TLC.
 
-The model is a hand translation. `check.sh` reads nine facts from `connection.go` on every run and sets the model from them, so a change to one of those lines changes what TLC checks. Any other change inside a covered function makes `check.sh` report STALE until you review the model against the code.
+The model is a hand translation. `check.sh` reads eleven facts from `connection.go` on every run and sets the model from them, so a change to one of those lines changes what TLC checks. Any other change inside a covered function makes `check.sh` report STALE until you review the model against the code.
 
 ## What it proves
 
@@ -63,11 +63,11 @@ From the repository root:
 | Exit | Meaning | Next step |
 | --- | --- | --- |
 | 0 | Every config gave its expected result, and the covered functions match `fingerprint.txt`. | Done. |
-| 1 | A property failed that holds at the sync commit, or the known finding stopped reproducing. | Read the TLC output named in the summary. Then follow "Bug or model error". |
+| 1 | A property failed that holds at the sync commit, or the known finding stopped reproducing. | The `rule:` line under the row names a broken invariant. For a property, TLC does not say which one broke: `/statechart` names it. Then follow "Bug or model error". |
 | 2 | Setup error, or DRIFT: a line that the model depends on is gone or has a new form. | Install the missing tool, or update the model and `check.sh` for the new code shape. |
-| 3 | Every result was as expected, but covered functions changed since the sync commit. | Review the mapping below against the new code. Then follow "Update the verification". |
+| 3 | TLC found nothing, but covered functions changed since the sync commit. This is not a pass: TLC checked the old model, and a change outside the facts is invisible to it. | Follow "Update the verification" before you trust the result. |
 
-Read every TLC result with the `/statechart` skill. Give it `NotificationBarrier.tla`, the `<config>.effective.cfg` from the output folder and the view module `statechart-view.mjs` in this folder. Work in a scratch folder outside the repository. For a failure, its report tells the shortest path to the broken rule in plain words. For a pass on `chart.cfg` (one update, one request), it draws how a request waits for an earlier handler. The other configs pass with too many states for a chart, and the report then lists the rules that hold. If `/statechart` rejects the view module because its interface changed, rewrite the module from `/statechart`'s instructions.
+Read every TLC result with the `/statechart` skill. It is hidden from the default skill list, so load it by name. Its first run can install Java and TLC, which needs the network: its own instructions say how to use a TLC that you already have. Give it `NotificationBarrier.tla`, the `<config>.effective.cfg` from the output folder and the view module `statechart-view.mjs` in this folder. Work in a scratch folder outside the repository. For a failure, its report tells the shortest path to the broken rule in plain words. For a pass on `chart.cfg` (one update, one request), it draws how a request waits for an earlier handler. The other configs pass with too many states for a chart, and the report then lists the rules that hold. If `/statechart` rejects the view module because its interface changed, rewrite the module from `/statechart`'s instructions.
 
 ## Bug or model error
 
@@ -78,9 +78,9 @@ Read every TLC result with the `/statechart` skill. Give it `NotificationBarrier
 
 ## Update the verification
 
-When you change covered code on purpose:
+Do this after every change to covered code, on purpose or not, and always after exit 3:
 
-1. Edit the model from the code, not from the result. Keep one indivisible step of the code as one action: one critical section under `notifyMu`, one channel operation, or one `select`.
+1. Find each model action whose code changed, with the mapping table below. Edit the model from the code, not from the result. Keep one indivisible step of the code as one action: one critical section under `notifyMu`, one channel operation, or one `select`.
 2. If you change a fact that `check.sh` reads, update its extraction and the facts table below.
 3. Change a property only when the promise changed on purpose, and cite the doc comment, test or commit that says so.
 4. Rerun `check.sh`. Then break the new code the way the property guards against, such as removing a check or reordering a step, and confirm that `check.sh` exits 1. Drop the break.
@@ -106,10 +106,16 @@ Lines are at the sync commit.
 | `SendsRequest` | `SendRequest` 641, `SendRequestNoResult` 892: `c.sendMessage(msg)`. |
 | `GetsResponse`, `SeesCtxDone`, `CtxBranchChecksDone`, `SeesDisconnect`, `CleansUp` | `waitForResponse`, 743-773. |
 | `EntersBarrier` | `waitNotificationsUpTo`, 776-800, called at 650 and 901: return for target 0, else lock and start the ctx waker. |
-| `BarrierLoop`, `BarrierChecksDone`, `BarrierChecksCtxOrWaits`, `BarrierRelocks` | `waitNotificationsUpTo`, 802-831. `notifyCond.Wait()` releases the lock and sleeps in one step. |
+| `BarrierLoop` | `waitNotificationsUpTo`, 802-805: the loop condition `completedNotificationSeq < target`. |
+| `BarrierChecksDone` | `waitNotificationsUpTo`, 807-811: `select { case <-c.Done(): ... default: }`. |
+| `BarrierChecksCtxOrWaits` | `waitNotificationsUpTo`, 812-830: the `ctx.Done()` select, then `notifyCond.Wait()`, which releases the lock and sleeps in one step. |
+| `BarrierRelocks` | `waitNotificationsUpTo`, 830: `Wait()` returns after a broadcast and takes the lock again. |
 | `CtxWakerFires`, `CtxWakerStops` | `waitNotificationsUpTo`, 791-800: the goroutine that broadcasts on `ctx.Done()`. |
 | `ConnWatcherFires` | `NewConnection`, 114-119: the goroutine that broadcasts on `c.ctx.Done()`. |
-| `DrainStarts`, `DrainLoop`, `DrainChecksTimeoutOrWaits`, `DrainRelocks` | `waitForNotificationDrain`, 835-871. |
+| `DrainStarts` | `waitForNotificationDrain`, 836-861: return for target 0, else lock and start the timeout waker. |
+| `DrainLoop` | `waitForNotificationDrain`, 863-866: the loop condition. |
+| `DrainChecksTimeoutOrWaits` | `waitForNotificationDrain`, 867-870: `if ctx.Err() != nil { return }`, then `notifyCond.Wait()`. |
+| `DrainRelocks` | `waitForNotificationDrain`, 870: `Wait()` returns and takes the lock again. |
 | `DrainWakerFires`, `DrainWakerStops` | `waitForNotificationDrain`, 852-861: the goroutine that broadcasts on the timeout. |
 | `DrainTimerFires` | `context.WithTimeout`, 840, with `notificationQueueDrainTimeout` (5 s, line 18). |
 | `InboundCancel` | `shutdownReceive`, 490: `c.inboundCancel(cause)`. |
@@ -130,6 +136,8 @@ Each fact sets one model constant. The last column is the result of setting the 
 | `CtxWakerSpawned` | `waitNotificationsUpTo` 791-800 | `CancelReturnsCaller` in slow-handler.cfg |
 | `ConnDoneWaker` | `NewConnection` 114-119 | `DisconnectReturnsCaller` in slow-handler.cfg |
 | `DrainTimerWaker` | `waitForNotificationDrain` 852-861 | `ShutdownCompletes` in drain-timeout.cfg |
+| `WaitChecksDisconnect` | `waitNotificationsUpTo` 807-811: `case <-c.Done():` before the loop's `case <-ctx.Done():` | `DisconnectReturnsCaller` in slow-handler.cfg |
+| `DrainChecksTimeout` | `waitForNotificationDrain` 867: `if ctx.Err() != nil {` before `Wait()` | `ShutdownCompletes` in drain-timeout.cfg |
 
 `check.sh` also refuses to run (DRIFT, exit 2) when the code no longer has the shape that the model assumes: one `receive` goroutine, one `processNotifications` goroutine, handlers and responses handled inline, and a non-blocking queue send.
 
@@ -159,5 +167,5 @@ Not covered: JSON parsing, request ID canonicalization, `$/cancel_request` (`han
 
 - File: `connection.go`.
 - Functions: `NewConnection`, `receive`, `shutdownReceive`, `processNotifications`, `handleResponse`, `SendRequest`, `SendRequestNoResult`, `waitForResponse`, `waitNotificationsUpTo`, `waitForNotificationDrain`.
-- Sync commit: `0da7315c23b5e9c1023f701a64b2bb4969b61042`. The model was last confirmed to describe these functions at this commit.
+- Sync commit: `0da7315c23b5e9c1023f701a64b2bb4969b61042`. The model was last confirmed to describe these functions at this commit. The skill itself was added in a later commit, which did not change `connection.go`.
 - To see what changed since then: `git diff 0da7315c23b5e9c1023f701a64b2bb4969b61042 -- connection.go`. `check.sh` exit 3 names the changed functions.

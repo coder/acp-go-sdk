@@ -28,7 +28,9 @@ CONSTANTS
     ConnDoneWaker,            \* NewConnection starts the c.ctx.Done broadcaster
     DrainBeforeInboundCancel, \* shutdownReceive drains before inboundCancel
     DrainTimerWaker,          \* waitForNotificationDrain starts the timeout broadcaster
-    RollsBackOnOverflow       \* receive decrements lastEnqueuedNotificationSeq on overflow
+    RollsBackOnOverflow,      \* receive decrements lastEnqueuedNotificationSeq on overflow
+    WaitChecksDisconnect,     \* the waitNotificationsUpTo loop checks c.Done() first
+    DrainChecksTimeout        \* the waitForNotificationDrain loop checks ctx.Err()
 
 ASSUME WatermarkSource \in {"enqueued", "completed"}
 ASSUME NoteKinds \subseteq {"plain", "slow", "nested"}
@@ -381,7 +383,8 @@ BarrierLoop(r) ==
     /\ callerPc[r] = "loop"
     /\ IF completed >= resp[r]
        THEN /\ lock' = None /\ SetResult(r, "ok") /\ SetPc(r, "done")
-       ELSE /\ SetPc(r, "checkDone") /\ UNCHANGED <<lock, result>>
+       ELSE /\ SetPc(r, IF WaitChecksDisconnect THEN "checkDone" ELSE "checkCtx")
+            /\ UNCHANGED <<lock, result>>
     /\ CallerVars(r)
     /\ UNCHANGED <<sentReq, pending, waitSet, ch, resp, waker>>
 
@@ -502,7 +505,7 @@ DrainLoop ==
 DrainChecksTimeoutOrWaits ==
     /\ drainPc = "checkTimeout"
     /\ lock' = None
-    /\ IF timerFired
+    /\ IF timerFired /\ DrainChecksTimeout
        THEN /\ drainPc' = "cancel" /\ UNCHANGED waitSet
        ELSE /\ waitSet' = waitSet \cup {Drainer} /\ drainPc' = "waiting"
     /\ UNCHANGED <<inboundDone, drainWaker>>

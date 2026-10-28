@@ -27,7 +27,11 @@ export ACP_VERIFY_ROOT="${XUM_SCRATCH_DIR:-${TMPDIR:-/tmp}}/acp-verify"   # opti
 "$V" launch
 ```
 
-`launch` builds `acp-example-agent`, `acp-example-client` and `acpwire` from the current checkout into a new run folder. It needs only Go. It prints one line, `export ACP_VERIFY_RUN=<run folder>`: run that line in every shell that uses this run. Shell state does not carry over between tool calls, so put the export at the top of each command.
+`launch` builds `acp-example-agent`, `acp-example-client` and `acpwire` from the current checkout into a new run folder. It needs only Go. Its last line is `export ACP_VERIFY_RUN=<run folder>`. Shell state does not carry over between tool calls, so start every later command with both variables:
+
+```bash
+V=.agents/skills/verify-acp-go-sdk/scripts/acp-verify; export ACP_VERIFY_RUN=<run folder from launch>
+```
 
 The run is ready when `doctor` exits 0. Nothing else needs to start, migrate or seed: every drive starts a fresh agent.
 
@@ -39,7 +43,7 @@ Run it first, and again whenever a result looks wrong:
 "$V" doctor
 ```
 
-It reads the run folder and checks four things: the three binaries exist, they were built from the current checkout (HEAD plus a hash of uncommitted Go and skill changes), the agent starts and exits 0 when its input closes, and no process that this run started is still running. Exit 1 means a check failed. If the binaries are stale, run `launch` again and use the new run.
+It reads the run folder and checks four things: the three binaries exist, they were built from the current checkout, the agent starts and exits 0 when its input closes, and no process that this run started is still running. The checkout is shown as `<HEAD>+<hash>`, where the hash covers uncommitted changes to Go files and to this skill. `+e3b0c44298fc` (the hash of nothing) means no uncommitted changes. Exit 1 means a check failed. If the binaries are stale, run `launch` again and use the new run.
 
 ## Drive
 
@@ -65,7 +69,7 @@ The client reads its permission choice from stdin, so `client` gives it the keys
 
 Each drive writes `evidence/<label>/` in the run folder:
 
-- `wire`: `transcript.jsonl` (every line in both directions, with a timestamp and direction), `agent.stderr.log` (the agent's log), `summary.json`, `result.txt` (the step lines and `exit=`), `journey.jsonl` and `command.txt`.
+- `wire`: `transcript.jsonl` (every line in both directions, with a timestamp and direction), `agent.stderr.log` (the agent's log, each line prefixed with milliseconds since `acpwire` started), `summary.json`, `result.txt` (the step lines and `exit=`), `journey.jsonl` and `command.txt`.
 - `client`: `stdout.txt`, `stderr.txt`, `stdin.txt`, `result.txt` (`exit=` and duration) and `command.txt`.
 - `build.env`: the source state and Go version that the binaries came from.
 
@@ -107,4 +111,4 @@ These are current failures. Each feature file says how its journey shows them. D
 - At end of input, the example client prints `Choose an option:` in a loop without end ([client-cli.md](features/client-cli.md)).
 - A notification handler that makes a request on the same connection never gets its result. `verify-notification-barrier` proves it, and no example reaches it.
 
-To keep the map true as the app changes, use `/maintain-verification-skill`.
+To keep the map true as the app changes, use the pstack plugin's `maintain-verification-skill` skill. It is hidden from the default skill list, so load it by name.

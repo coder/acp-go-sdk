@@ -200,6 +200,19 @@ fi
 
 if has "$B_recv" "c.lastEnqueuedNotificationSeq--"; then RollsBackOnOverflow=TRUE; else RollsBackOnOverflow=FALSE; fi
 
+# loop_of BODY: the lines from the wait loop to the end of the function.
+loop_of() { sed -n "/for c.completedNotificationSeq < target {/,\$p" <<<"$1"; }
+L_wait=$(loop_of "$B_wait")
+l_cdone=$(line_of "$L_wait" "case <-c.Done():")
+l_cctx=$(line_of "$L_wait" "case <-ctx.Done():")
+[ -n "$l_cctx" ] || drift "the waitNotificationsUpTo loop no longer selects on ctx.Done()"
+if [ -n "$l_cdone" ] && [ "$l_cdone" -lt "$l_cctx" ]; then WaitChecksDisconnect=TRUE; else WaitChecksDisconnect=FALSE; fi
+L_drain=$(loop_of "$B_drain")
+l_err=$(line_of "$L_drain" "if ctx.Err() != nil {")
+l_dwait=$(line_of "$L_drain" "c.notifyCond.Wait()")
+[ -n "$l_dwait" ] || drift "the waitForNotificationDrain loop no longer waits on notifyCond"
+if [ -n "$l_err" ] && [ "$l_err" -lt "$l_dwait" ]; then DrainChecksTimeout=TRUE; else DrainChecksTimeout=FALSE; fi
+
 FACTS="CONSTANTS
     WaitsForBarrier = $WaitsForBarrier
     WatermarkSource = $WatermarkSource
@@ -209,7 +222,9 @@ FACTS="CONSTANTS
     ConnDoneWaker = $ConnDoneWaker
     DrainBeforeInboundCancel = $DrainBeforeInboundCancel
     DrainTimerWaker = $DrainTimerWaker
-    RollsBackOnOverflow = $RollsBackOnOverflow"
+    RollsBackOnOverflow = $RollsBackOnOverflow
+    WaitChecksDisconnect = $WaitChecksDisconnect
+    DrainChecksTimeout = $DrainChecksTimeout"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from connection.go:"
 sed -n '2,$p' "$OUT/facts.cfg"
@@ -265,6 +280,11 @@ for entry in "${run_list[@]}"; do
 	13) exp=liveness ;;
 	esac
 	printf '%-24s %-10s %-9s %s\n' "$cfg" "$exp" "$res" "$OUT/${cfg%.cfg}.out"
+	case $got in
+	11) echo "  rule: NoDeadlock" ;;
+	12) sed -n 's/^Error: Invariant \(.*\) is violated.*/  rule: \1/p' "$OUT/${cfg%.cfg}.out" | head -n 1 ;;
+	13) echo "  rule: one of the PROPERTIES in $cfg (TLC does not say which; /statechart names it)" ;;
+	esac
 	if [ "$got" != "$want" ]; then
 		if [ "$got" -gt 13 ]; then
 			echo "  TLC did not finish. Read the output: this is a model or setup error." >&2

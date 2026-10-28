@@ -5,7 +5,7 @@ This folder is the maintained source for verifying what users of the ACP Go SDK 
 ## Baseline preconditions
 
 - Run every command from the repository root, with `V=.agents/skills/verify-acp-go-sdk/scripts/acp-verify`.
-- Build a run with `"$V" launch` and export the `ACP_VERIFY_RUN` line that it prints.
+- Build a run with `"$V" launch` and export the `ACP_VERIFY_RUN` line that it prints. Set `V` and `ACP_VERIFY_RUN` again at the top of each later command, because shell state does not carry over between tool calls.
 - `"$V" doctor` exits 0, and its `binaries match the checkout` line names the commit under test.
 - Each drive starts its own example agent. No other state exists, so there is no seed data to restore.
 - Never drive a run folder that `launch` did not make. The helper refuses folders without its marker.
@@ -23,13 +23,7 @@ This folder is the maintained source for verifying what users of the ACP Go SDK 
 
 - A wire proof is `result.txt` (one PASS or FAIL line per step), `transcript.jsonl` and `agent.stderr.log`.
 - A CLI proof is `stdout.txt`, `stderr.txt`, the keys in `stdin.txt` and the exit code in `result.txt`.
-- Prove order from the transcript. This command prints what the agent sent, in order:
-
-```bash
-jq -r 'select(.dir=="agent->client") | .msg.params.update.sessionUpdate // .msg.method // ("response " + (.msg.id|tostring))' \
-  "$ACP_VERIFY_RUN/evidence/LABEL/transcript.jsonl" | paste -sd' '
-```
-
+- Prove order from the transcript. The feature files print what the agent sent, in order, with this `jq` filter on a label's `transcript.jsonl`: `select(.dir=="agent->client") | .msg.params.update.sessionUpdate // .msg.method // ("response " + (.msg.id|tostring))`. Each feature step gives the full command.
 - Record the feature file, sub-feature id and entry point with each artifact.
 - A step that fails is a failure, also when a gotcha predicts it. Report it with its evidence.
 - Report an entry point that you could not reach with the command that you tried and the missing precondition. Do not report it as verified through another entry point.

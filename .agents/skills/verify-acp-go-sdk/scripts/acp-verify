@@ -89,14 +89,17 @@ cmd_launch() {
 	mkdir -p "$BIN" "$EVIDENCE"
 	: >"$WORK/pids"
 	echo "$id" >"$RUN/$MARKER"
+	local before
+	before=$(source_id)
 	(
 		cd "$REPO"
 		go build -o "$BIN/acp-example-agent" ./example/agent
 		go build -o "$BIN/acp-example-client" ./example/client
 		go build -o "$BIN/acpwire" "$SKILL_DIR/scripts/acpwire/main.go"
 	) || die "build failed"
+	[ "$(source_id)" = "$before" ] || die "the checkout changed during the build. Run launch again."
 	{
-		echo "source=$(source_id)"
+		echo "source=$before"
 		echo "go=$(go version)"
 		echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	} >"$WORK/build.env"
@@ -121,7 +124,7 @@ cmd_doctor() {
 		ok=0
 	fi
 	if [ -x "$BIN/acp-example-agent" ]; then
-		if timeout 5 "$BIN/acp-example-agent" </dev/null >/dev/null 2>&1; then
+		if timeout --kill-after=2 5 "$BIN/acp-example-agent" </dev/null >/dev/null 2>&1; then
 			echo "ok    agent starts and exits 0 on end of input"
 		else
 			echo "FAIL  agent did not exit 0 within 5s on end of input"

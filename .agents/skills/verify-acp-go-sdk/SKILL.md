@@ -105,7 +105,6 @@ After cleanup, confirm that the proof is still there, for example with `ls "$ACP
 
 These are current failures. Each feature file says how its journey shows them. Do not weaken a journey to hide one.
 
-- `$/cancel_request` does not stop a turn of the example agent, because its `Prompt` ignores the request ctx ([cancel.md](features/cancel.md)).
 - The example client shows a tool call status as a pointer address, such as `0x29c44f7ab480`, not `completed` ([client-cli.md](features/client-cli.md)).
 - The example client can show the permission prompt before the tool call that it asks about, because the SDK runs incoming requests concurrently with the notification queue ([client-cli.md](features/client-cli.md)).
 - At end of input, the example client prints `Choose an option:` in a loop without end ([client-cli.md](features/client-cli.md)).

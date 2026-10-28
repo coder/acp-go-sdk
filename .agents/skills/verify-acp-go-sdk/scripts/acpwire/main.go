@@ -139,6 +139,13 @@ func validEnvelope(msg map[string]any) bool {
 	}
 	_, hasResult := msg["result"]
 	errObj, hasError := msg["error"]
+	if p, ok := msg["params"]; ok {
+		switch p.(type) {
+		case map[string]any, []any:
+		default:
+			return false
+		}
+	}
 	if m, ok := msg["method"]; ok {
 		method, isString := m.(string)
 		return isString && method != "" && !hasResult && !hasError
@@ -180,6 +187,7 @@ type driver struct {
 	stderr *os.File
 
 	mu       sync.Mutex
+	wmu      sync.Mutex // orders transcript records with the writes they describe
 	nextID   int
 	calls    map[string]*call // by request id
 	saved    map[string]*call // by save name
@@ -269,6 +277,12 @@ func readJourney(path string) ([]step, []int, error) {
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&s); err != nil {
 			return nil, nil, fmt.Errorf("%s:%d: %w", path, n, err)
+		}
+		if s.Async && s.Expect != nil {
+			return nil, nil, fmt.Errorf("%s:%d: an async send cannot expect; put expect on its await step", path, n)
+		}
+		if s.Count < 0 {
+			return nil, nil, fmt.Errorf("%s:%d: count must not be negative", path, n)
 		}
 		for _, dur := range []string{s.Sleep, s.Timeout} {
 			if _, err := time.ParseDuration(dur); dur != "" && err != nil {
@@ -429,6 +443,8 @@ func (d *driver) record(dir, line string) {
 }
 
 func (d *driver) write(line string) error {
+	d.wmu.Lock()
+	defer d.wmu.Unlock()
 	d.record("client->agent", line)
 	_, err := io.WriteString(d.stdin, line+"\n")
 	return err
@@ -703,8 +719,10 @@ func (d *driver) do(s step, runDeadline time.Time) (string, string, error) {
 		time.Sleep(dur)
 		return label("sleep " + s.Sleep), "", nil
 	case s.Close:
+		d.wmu.Lock()
 		_ = d.stdin.Close()
 		d.record("client->agent", "<EOF>")
+		d.wmu.Unlock()
 		select {
 		case <-d.exited:
 		case <-time.After(time.Until(deadline)):

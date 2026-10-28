@@ -33,12 +33,14 @@ TLA_SHA256=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 TLA_URL=https://github.com/tlaplus/tlaplus/releases/download/v$TLA_VERSION/tla2tools.jar
 
 # config:expected TLC exit code. 0 = pass, 13 = liveness violation.
-CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0)
+CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0
+	inbound-request.cfg:0 inbound-slow-handler.cfg:0 inbound-nested-peer.cfg:13)
 DEEP_CONFIGS=(deep-two-callers.cfg:0)
 
 COVERED=(
 	"func NewConnection("
 	"func (c *Connection) receive("
+	"func (c *Connection) handleCancelRequest("
 	"func (c *Connection) shutdownReceive("
 	"func (c *Connection) processNotifications("
 	"func (c *Connection) handleResponse("
@@ -207,6 +209,18 @@ fi
 
 if has "$B_recv" "c.lastEnqueuedNotificationSeq--"; then RollsBackOnOverflow=TRUE; else RollsBackOnOverflow=FALSE; fi
 
+# An inbound request goroutine waits for the notifications that receive()
+# had queued when the request arrived.
+if has "$B_recv" "if err := c.waitNotificationsUpTo(reqCtx, watermark); err != nil {"; then
+	has "$B_recv" "watermark := c.lastEnqueuedNotificationSeq" ||
+		drift "receive() waits for a watermark that it no longer reads from lastEnqueuedNotificationSeq"
+	InboundWaits=TRUE
+elif has "$B_recv" "waitNotificationsUpTo"; then
+	drift "receive() calls waitNotificationsUpTo in a new form"
+else
+	InboundWaits=FALSE
+fi
+
 # loop_of BODY: the lines from the wait loop to the end of the function.
 loop_of() { sed -n "/for c.completedNotificationSeq < target {/,\$p" <<<"$1"; }
 L_wait=$(loop_of "$B_wait")
@@ -251,7 +265,8 @@ FACTS="CONSTANTS
     RollsBackOnOverflow = $RollsBackOnOverflow
     WaitChecksDisconnect = $WaitChecksDisconnect
     DrainChecksTimeout = $DrainChecksTimeout
-    HandlerCtxCapsWait = $HandlerCtxCapsWait"
+    HandlerCtxCapsWait = $HandlerCtxCapsWait
+    InboundWaits = $InboundWaits"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from connection.go:"
 sed -n '2,$p' "$OUT/facts.cfg"

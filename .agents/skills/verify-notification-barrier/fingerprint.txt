@@ -1,5 +1,6 @@
 7d342460626e384ccb7f70b32111ae08cd94734efe30b6c620d59f65389b6fc1  func NewConnection(
-a9b6da4cecf63f2794ca4b87245aa78de02f2ae8c9885560256e1d31ee119d9a  func (c *Connection) receive(
+e2e21680f79537bc14fffc3b320fb7e4c5ea57aaa5b81f0c8e74dbdfa352db54  func (c *Connection) receive(
+b1d86e61dce5ca54db24e203d16d7f1912203d17d474e05c82240ea7ebe394e9  func (c *Connection) handleCancelRequest(
 0f9f4ad97fc5d53a10eafcc363a6cb6c5088d1a73f36b767f9754439deaa82be  func (c *Connection) shutdownReceive(
 6821973eef44dd88e4ce8426b1371a1070729fea9af31f606cc57f380f3f25e5  func (c *Connection) processNotifications(
 1fa03624e3b6f7388c021973121524ad307ffa6a7a3b2670966a3484edea2842  func (c *Connection) handleResponse(

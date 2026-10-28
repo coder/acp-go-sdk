@@ -101,6 +101,13 @@ const STEPS = {
   DrainRelocks: "the drain wakes up",
   InboundCancel: "handler ctx is canceled",
   DrainTimerFires: "5 s pass",
+  PeerSendsInReq: "the peer sends a request",
+  PeerCancelsInReq: "the peer cancels its request",
+  RecvRequest: "the reader starts the peer's request",
+  RecvCancel: "the reader cancels the peer's request",
+  InAfterBarrier: "the peer's request leaves the wait",
+  InChecksDone: "the peer's request checks for a disconnect",
+  InHandlerReturns: "the peer's request is answered",
   Rest: null,
 };
 

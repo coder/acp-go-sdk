@@ -103,8 +103,6 @@ After cleanup, confirm that the proof is still there, for example with `ls "$ACP
 
 ## Known defects that the map reports
 
-These are current failures. Each feature file says how its journey shows them. Do not weaken a journey to hide one.
-
-- The example client can show the permission prompt before the tool call that it asks about, because the SDK runs incoming requests concurrently with the notification queue ([client-cli.md](features/client-cli.md)).
+The map reports no known defects now. When a journey finds one, list it here with a link to its feature file, and say in that file how the journey shows it. Do not weaken a journey to hide one.
 
 To keep the map true as the app changes, use the pstack plugin's `maintain-verification-skill` skill. It is hidden from the default skill list, so load it by name.

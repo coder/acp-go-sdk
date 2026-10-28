@@ -57,6 +57,11 @@ If you're building a [Client](https://agentclientprotocol.com/protocol/overview#
   `acp.NewClientSideConnection(client, stdin, stdout)`.
 - Call `Initialize`, `NewSession`, and `Prompt` to run a turn and stream updates.
 
+Connections accept options for transport-level behavior. For example,
+`acp.WithMaxQueuedNotifications(n)` sets the per-connection capacity of the
+inbound notification queue, while leaving outbound notifications and requests
+unchanged. Values less than or equal to zero use the default capacity.
+
 Helper constructors are provided to reduce boilerplate when working with union types:
 
 - Content blocks: `acp.TextBlock`, `acp.ImageBlock`, `acp.AudioBlock`,

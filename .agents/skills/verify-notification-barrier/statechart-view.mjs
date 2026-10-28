@@ -108,6 +108,8 @@ const STEPS = {
   InAfterBarrier: "the peer's request leaves the wait",
   InChecksDone: "the peer's request checks for a disconnect",
   InHandlerReturns: "the peer's request is answered",
+  StartsPeerWait: "the handler's request counts as waiting on the peer",
+  EndsPeerWait: "the handler's request stops waiting on the peer",
   Rest: null,
 };
 

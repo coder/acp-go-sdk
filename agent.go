@@ -17,13 +17,20 @@ type AgentSideConnection struct {
 }
 
 // NewAgentSideConnection creates a new agent-side connection bound to the
-// provided Agent implementation.
-func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Reader) *AgentSideConnection {
+// provided Agent implementation. Optional ConnectionOption values configure
+// the underlying connection (e.g., WithMaxQueuedNotifications).
+func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *AgentSideConnection {
 	asc := &AgentSideConnection{}
 	asc.agent = agent
 	asc.sessionCancels = make(map[string]context.CancelFunc)
-	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput)
+	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput, opts...)
 	return asc
+}
+
+// DroppedNotifications reports how many inbound notifications the underlying
+// connection has dropped under OverflowDropNewest.
+func (c *AgentSideConnection) DroppedNotifications() uint64 {
+	return c.conn.DroppedNotifications()
 }
 
 // Done exposes a channel that closes when the peer disconnects.

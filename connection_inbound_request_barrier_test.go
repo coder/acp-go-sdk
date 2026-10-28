@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -348,5 +349,18 @@ func (p *inboundBarrierTestPeer) outboundRequestID(t *testing.T, method string) 
 		case <-timeout.C:
 			t.Fatalf("request %q did not arrive", method)
 		}
+	}
+}
+
+// A request whose ctx ends as its barrier clears gets the cancel error, and
+// its handler does not start.
+func TestConnection_InboundBarrierReportsCancelAsBarrierClears(t *testing.T) {
+	peer := newInboundBarrierTestPeer(t, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := peer.connection.waitInboundBarrier(ctx, 0)
+	var reqErr *RequestError
+	if !errors.As(err, &reqErr) || reqErr.Code != -32800 {
+		t.Fatalf("waitInboundBarrier error = %v, want code -32800", err)
 	}
 }

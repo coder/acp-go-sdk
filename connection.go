@@ -481,7 +481,7 @@ func (c *Connection) receive() {
 
 						cancel(nil)
 					}()
-					if err := c.waitNotifications(reqCtx, watermark, true); err != nil {
+					if err := c.waitInboundBarrier(reqCtx, watermark); err != nil {
 						select {
 						case <-c.Done():
 							// Preserve the existing disconnect contract: start accepted request
@@ -943,6 +943,20 @@ func (c *Connection) waitNotifications(ctx context.Context, target uint64, stopA
 		}
 
 		c.notifyCond.Wait()
+	}
+	return nil
+}
+
+// waitInboundBarrier waits until the handler of a request from the peer with
+// watermark can start. A $/cancel_request or a disconnect can end ctx just as
+// the barrier clears. It then returns the cancel error, as if ctx had ended the
+// wait.
+func (c *Connection) waitInboundBarrier(ctx context.Context, watermark uint64) error {
+	if err := c.waitNotifications(ctx, watermark, true); err != nil {
+		return err
+	}
+	if cause := context.Cause(ctx); cause != nil {
+		return toReqErr(cause)
 	}
 	return nil
 }

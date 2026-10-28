@@ -33,12 +33,14 @@ TLA_SHA256=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 TLA_URL=https://github.com/tlaplus/tlaplus/releases/download/v$TLA_VERSION/tla2tools.jar
 
 # config:expected TLC exit code. 0 = pass, 13 = liveness violation.
-CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0)
+CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0
+	inbound-request.cfg:0 inbound-slow-handler.cfg:0 inbound-nested.cfg:0 inbound-nested-peer.cfg:0)
 DEEP_CONFIGS=(deep-two-callers.cfg:0)
 
 COVERED=(
 	"func NewConnection("
 	"func (c *Connection) receive("
+	"func (c *Connection) handleCancelRequest("
 	"func (c *Connection) shutdownReceive("
 	"func (c *Connection) processNotifications("
 	"func (c *Connection) handleResponse("
@@ -46,6 +48,14 @@ COVERED=(
 	"func (c *Connection) SendRequestNoResult("
 	"func (c *Connection) waitForResponse("
 	"func (c *Connection) waitNotificationsUpTo("
+	"func (c *Connection) waitNotifications("
+	"func (c *Connection) startPeerWait("
+	"func (c *Connection) waitInboundBarrier("
+	"func (c *Connection) notificationSeq("
+	"func (c *Connection) handleInbound("
+	"func (c *Connection) sendInboundRequestError("
+	"func (c *Connection) cleanupPending("
+	"func (c *Connection) Done("
 	"func (c *Connection) waitForNotificationDrain("
 )
 
@@ -119,7 +129,10 @@ B_proc=$(need_body "func (c *Connection) processNotifications(")
 B_resp=$(need_body "func (c *Connection) handleResponse(")
 B_send=$(need_body "func SendRequest[T any](c *Connection,")
 B_sendnr=$(need_body "func (c *Connection) SendRequestNoResult(")
-B_wait=$(need_body "func (c *Connection) waitNotificationsUpTo(")
+B_upto=$(need_body "func (c *Connection) waitNotificationsUpTo(")
+B_wait=$(need_body "func (c *Connection) waitNotifications(")
+B_peer=$(need_body "func (c *Connection) startPeerWait(")
+B_inb=$(need_body "func (c *Connection) waitInboundBarrier(")
 B_drain=$(need_body "func (c *Connection) waitForNotificationDrain(")
 
 # Shape the model assumes. A change here needs a new model, not a flag.
@@ -141,6 +154,23 @@ has "$B_recv" "c.handleResponse(&msg)" || drift "receive() no longer calls handl
 has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, msg: &m}:" ||
 	drift "receive() no longer queues notifications with a non-blocking send"
 has "$B_recv" "c.lastEnqueuedNotificationSeq++" || drift "receive() no longer numbers notifications"
+
+has "$B_upto" "return c.waitNotifications(ctx, target, false)" ||
+	drift "waitNotificationsUpTo is no longer waitNotifications(ctx, target, false)"
+
+# The wait loop, with or without the release while the running handler waits
+# on the peer.
+FOR_PLAIN="for c.completedNotificationSeq < target {"
+FOR_PEER="for c.completedNotificationSeq < target && !(stopAtPeerWait && c.peerWaits[c.completedNotificationSeq+1] > 0) {"
+if has "$B_wait" "$FOR_PEER"; then
+	FOR_WAIT=$FOR_PEER
+	LoopStopsAtPeerWait=TRUE
+elif has "$B_wait" "$FOR_PLAIN"; then
+	FOR_WAIT=$FOR_PLAIN
+	LoopStopsAtPeerWait=FALSE
+else
+	drift "waitNotifications no longer loops on completedNotificationSeq < target"
+fi
 
 WAIT_CALL="if err := c.waitNotificationsUpTo(ctx, resp.notificationWatermark); err != nil {"
 barrier_fact() {
@@ -175,7 +205,7 @@ if [ -n "$l_bc" ] && [ "$l_bc" -gt "$l_complete" ]; then WorkerBroadcasts=TRUE; 
 # A broadcaster goroutine started before the wait loop.
 waker_fact() {
 	local go_l bc_l for_l
-	for_l=$(line_of "$1" "for c.completedNotificationSeq < target {")
+	for_l=$(line_of "$1" "$3")
 	[ -n "$for_l" ] || drift "$2 no longer loops on completedNotificationSeq < target"
 	go_l=$(line_of "$1" "go func() {")
 	bc_l=$(line_of "$1" "c.notifyCond.Broadcast()")
@@ -185,8 +215,8 @@ waker_fact() {
 		echo FALSE
 	fi
 }
-CtxWakerSpawned=$(waker_fact "$B_wait" waitNotificationsUpTo)
-DrainTimerWaker=$(waker_fact "$B_drain" waitForNotificationDrain)
+CtxWakerSpawned=$(waker_fact "$B_wait" waitNotifications "$FOR_WAIT")
+DrainTimerWaker=$(waker_fact "$B_drain" waitForNotificationDrain "$FOR_PLAIN")
 
 l_done=$(line_of "$B_new" "<-c.ctx.Done()")
 l_newbc=$(line_of "$B_new" "c.notifyCond.Broadcast()")
@@ -207,12 +237,83 @@ fi
 
 if has "$B_recv" "c.lastEnqueuedNotificationSeq--"; then RollsBackOnOverflow=TRUE; else RollsBackOnOverflow=FALSE; fi
 
+# An inbound request goroutine waits for the notifications that receive()
+# had queued when the request arrived.
+# With stopAtPeerWait, it also starts while the running notification
+# handler waits on the peer. waitInboundBarrier then turns an ended ctx into
+# the cancel error.
+IN_BARRIER="if err := c.waitInboundBarrier(reqCtx, watermark); err != nil {"
+INB_WAIT="if err := c.waitNotifications(ctx, watermark, true); err != nil {"
+INB_WAIT_FULL="if err := c.waitNotifications(ctx, watermark, false); err != nil {"
+INB_CAUSE="if cause := context.Cause(ctx); cause != nil {"
+PostWaitChecksCtx=FALSE
+if has "$B_recv" "$IN_BARRIER"; then
+	InboundWaits=TRUE
+	if has "$B_inb" "$INB_WAIT"; then
+		in_stop=TRUE
+		l_iw=$(line_of "$B_inb" "$INB_WAIT")
+	elif has "$B_inb" "$INB_WAIT_FULL"; then
+		in_stop=FALSE
+		l_iw=$(line_of "$B_inb" "$INB_WAIT_FULL")
+	else
+		drift "waitInboundBarrier calls waitNotifications in a new form"
+	fi
+	l_cause=$(line_of "$B_inb" "$INB_CAUSE")
+	if [ -n "$l_cause" ] && [ "$l_cause" -gt "$l_iw" ]; then PostWaitChecksCtx=TRUE; fi
+elif has "$B_recv" "if err := c.waitNotifications(reqCtx, watermark, true); err != nil {"; then
+	InboundWaits=TRUE
+	in_stop=TRUE
+elif has "$B_recv" "if err := c.waitNotifications(reqCtx, watermark, false); err != nil {" ||
+	has "$B_recv" "if err := c.waitNotificationsUpTo(reqCtx, watermark); err != nil {"; then
+	InboundWaits=TRUE
+	in_stop=FALSE
+elif has "$B_recv" "waitNotifications" || has "$B_recv" "waitInboundBarrier"; then
+	drift "receive() waits for earlier notifications in a new form"
+else
+	InboundWaits=FALSE
+	in_stop=FALSE
+fi
+if [ "$InboundWaits" = TRUE ]; then
+	has "$B_recv" "watermark := c.lastEnqueuedNotificationSeq" ||
+		drift "receive() waits for a watermark that it no longer reads from lastEnqueuedNotificationSeq"
+fi
+if [ "$in_stop" = TRUE ] && [ "$LoopStopsAtPeerWait" = TRUE ]; then
+	InboundStopsAtPeerWait=TRUE
+else
+	InboundStopsAtPeerWait=FALSE
+fi
+
+# startPeerWait around waitForResponse, in both request functions.
+has "$B_peer" "seq, ok := c.notificationSeq(ctx)" ||
+	drift "startPeerWait no longer finds the running handler with notificationSeq(ctx)"
+peer_call_fact() {
+	local start_l wfr_l done_l starts=FALSE ends=FALSE
+	start_l=$(line_of "$1" "donePeerWait := c.startPeerWait(ctx)")
+	wfr_l=$(line_of "$1" "resp, err := c.waitForResponse(ctx, pr, idKey)")
+	done_l=$(line_of "$1" "donePeerWait()")
+	[ -n "$wfr_l" ] || drift "$2 no longer calls waitForResponse(ctx, pr, idKey)"
+	if [ -n "$start_l" ] && [ "$start_l" -lt "$wfr_l" ]; then starts=TRUE; fi
+	if [ -n "$done_l" ] && [ "$done_l" -gt "$wfr_l" ]; then ends=TRUE; fi
+	echo "$starts $ends"
+}
+read -r s1 e1 <<<"$(peer_call_fact "$B_send" SendRequest)"
+read -r s2 e2 <<<"$(peer_call_fact "$B_sendnr" SendRequestNoResult)"
+l_inc=$(line_of "$B_peer" "c.peerWaits[seq]++")
+l_pbc=$(line_of "$B_peer" "c.notifyCond.Broadcast()")
+if [ -n "$l_inc" ] && [ "$s1" = TRUE ] && [ "$s2" = TRUE ]; then PeerWaitCounts=TRUE; else PeerWaitCounts=FALSE; fi
+if [ -n "$l_pbc" ] && { [ -z "$l_inc" ] || [ "$l_pbc" -gt "$l_inc" ]; }; then PeerWaitBroadcasts=TRUE; else PeerWaitBroadcasts=FALSE; fi
+if has "$B_peer" "if c.peerWaits[seq]--; c.peerWaits[seq] == 0 {" && [ "$e1" = TRUE ] && [ "$e2" = TRUE ]; then
+	PeerWaitEnds=TRUE
+else
+	PeerWaitEnds=FALSE
+fi
+
 # loop_of BODY: the lines from the wait loop to the end of the function.
-loop_of() { sed -n "/for c.completedNotificationSeq < target {/,\$p" <<<"$1"; }
+loop_of() { sed -n "/for c.completedNotificationSeq < target/,\$p" <<<"$1"; }
 L_wait=$(loop_of "$B_wait")
 l_cdone=$(line_of "$L_wait" "case <-c.Done():")
 l_cctx=$(line_of "$L_wait" "case <-ctx.Done():")
-[ -n "$l_cctx" ] || drift "the waitNotificationsUpTo loop no longer selects on ctx.Done()"
+[ -n "$l_cctx" ] || drift "the waitNotifications loop no longer selects on ctx.Done()"
 if [ -n "$l_cdone" ] && [ "$l_cdone" -lt "$l_cctx" ]; then WaitChecksDisconnect=TRUE; else WaitChecksDisconnect=FALSE; fi
 L_drain=$(loop_of "$B_drain")
 l_err=$(line_of "$L_drain" "if ctx.Err() != nil {")
@@ -225,11 +326,11 @@ if [ -n "$l_err" ] && [ "$l_err" -lt "$l_dwait" ]; then DrainChecksTimeout=TRUE;
 CAP_IF="if h, ok := ctx.Value(handlingNotificationKey{}).(handlingNotification); ok && h.conn == c && c.completedNotificationSeq < h.seq {"
 l_capif=$(line_of "$B_wait" "$CAP_IF")
 l_cap=$(line_of "$B_wait" "target = min(target, h.seq-1)")
-l_for=$(line_of "$B_wait" "for c.completedNotificationSeq < target {")
+l_for=$(line_of "$B_wait" "$FOR_WAIT")
 if [ -n "$l_capif" ] && [ -n "$l_cap" ] && [ "$l_cap" = $((l_capif + 1)) ] && [ "$l_cap" -lt "$l_for" ]; then
 	caps=TRUE
 elif has "$B_wait" "handlingNotification"; then
-	drift "waitNotificationsUpTo reads the handler ctx in a new form"
+	drift "waitNotifications reads the handler ctx in a new form"
 else
 	caps=FALSE
 fi
@@ -251,7 +352,13 @@ FACTS="CONSTANTS
     RollsBackOnOverflow = $RollsBackOnOverflow
     WaitChecksDisconnect = $WaitChecksDisconnect
     DrainChecksTimeout = $DrainChecksTimeout
-    HandlerCtxCapsWait = $HandlerCtxCapsWait"
+    HandlerCtxCapsWait = $HandlerCtxCapsWait
+    InboundWaits = $InboundWaits
+    InboundStopsAtPeerWait = $InboundStopsAtPeerWait
+    PeerWaitCounts = $PeerWaitCounts
+    PeerWaitBroadcasts = $PeerWaitBroadcasts
+    PeerWaitEnds = $PeerWaitEnds
+    PostWaitChecksCtx = $PostWaitChecksCtx"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from connection.go:"
 sed -n '2,$p' "$OUT/facts.cfg"

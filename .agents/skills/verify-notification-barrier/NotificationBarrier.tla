@@ -19,6 +19,9 @@ CONSTANTS
     PeerCanClose,       \* the peer can close its stream (EOF)
     CtxCanCancel,       \* the app can cancel a caller's ctx
     DrainTimeoutFires,  \* the 5 s notificationQueueDrainTimeout can fire
+    InReqs,             \* requests the peer sends us, each run in its own goroutine
+    PeerCanCancelReq,   \* the peer can send $/cancel_request for an inbound request
+    PeerNeedsInboundAnswer, \* the peer answers the nested request only after every inbound request is answered
     \* Facts read from connection.go by check.sh:
     WaitsForBarrier,          \* SendRequest and SendRequestNoResult call waitNotificationsUpTo
     WatermarkSource,          \* "enqueued" or "completed": the counter handleResponse records
@@ -31,7 +34,13 @@ CONSTANTS
     RollsBackOnOverflow,      \* receive decrements lastEnqueuedNotificationSeq on overflow
     WaitChecksDisconnect,     \* the waitNotificationsUpTo loop checks c.Done() first
     DrainChecksTimeout,       \* the waitForNotificationDrain loop checks ctx.Err()
-    HandlerCtxCapsWait        \* waitNotificationsUpTo caps the target for a running handler's ctx
+    HandlerCtxCapsWait,       \* waitNotificationsUpTo caps the target for a running handler's ctx
+    InboundWaits,             \* an inbound request goroutine calls waitNotifications(reqCtx, watermark, ...)
+    InboundStopsAtPeerWait,   \* ... with stopAtPeerWait, and the wait loop checks peerWaits[completed+1]
+    PeerWaitCounts,           \* startPeerWait increments peerWaits[seq] for the running handler's ctx
+    PeerWaitBroadcasts,       \* startPeerWait broadcasts on notifyCond after the increment
+    PeerWaitEnds,             \* donePeerWait decrements peerWaits[seq] after waitForResponse
+    PostWaitChecksCtx         \* waitInboundBarrier returns the cancel error when ctx ended as the wait cleared
 
 ASSUME WatermarkSource \in {"enqueued", "completed"}
 ASSUME NoteKinds \subseteq {"plain", "slow", "nested"}
@@ -41,7 +50,9 @@ Drainer == "drainer"  \* the drain goroutine as a cond waiter
 None    == "none"
 Empty   == -1         \* an empty pendingResponse.ch
 
-Reqs == AppCallers \cup (IF "nested" \in NoteKinds THEN {Nested} ELSE {})
+Reqs == AppCallers \cup (IF "nested" \in NoteKinds THEN {Nested} ELSE {}) \cup InReqs
+
+ASSUME InReqs \cap (AppCallers \cup {Nested, Drainer, None}) = {}
 
 VARIABLES
     \* the peer and the wire (peer to us, in order)
@@ -60,14 +71,28 @@ VARIABLES
     \* the goroutine that shutdownReceive starts
     drainPc, timerFired,
     \* history for the properties (not in the code)
-    received, handled, readBefore, respRead, result, finalIds, nestedFrom
+    received, handled, readBefore, respRead, result, finalIds, nestedFrom,
+    \* inbound requests: the peer's side, c.inflight, the request goroutine,
+    \* and how its handler started (history)
+    inSent, cancelSent, inflight, inPc, inStart,
+    \* c.peerWaits (the seqs with a count above 0), the seq that the nested
+    \* request recorded, and whether a request from the peer left its wait by
+    \* the code's rule (history)
+    peerWaiting, peerSeq, inOkAtExit,
+    \* what the post-wait check in waitInboundBarrier saw (history)
+    inCheckSaw
 
 vars == <<wire, notesSent, nestedSent, respSent, eofSent, sentReq,
           recvPc, recvTmp, lastEnq, completed, queue, qClosed, final,
           connDone, inboundDone, lock, waitSet, workerPc, cur,
           callerPc, pending, ch, resp, ctxCanceled, waker,
           connWatcher, drainWaker, drainPc, timerFired,
-          received, handled, readBefore, respRead, result, finalIds, nestedFrom>>
+          received, handled, readBefore, respRead, result, finalIds, nestedFrom,
+          inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit,
+          inCheckSaw>>
+
+inVars == <<inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit,
+            inCheckSaw>>
 
 peerVars   == <<wire, notesSent, nestedSent, respSent, eofSent>>
 historyVars == <<received, handled, readBefore, respRead, result, finalIds, nestedFrom>>
@@ -75,8 +100,12 @@ historyVars == <<received, handled, readBefore, respRead, result, finalIds, nest
 Range(s) == {s[i] : i \in DOMAIN s}
 HandledSet == Range(handled)
 
-\* The ctx that a caller passes. A handler gets c.inboundCtx.
-CtxDone(r) == IF r = Nested THEN inboundDone ELSE ctxCanceled[r]
+\* The ctx that a caller passes. A handler gets c.inboundCtx. An inbound
+\* request's reqCtx is context.WithCancelCause(c.ctx): $/cancel_request or a
+\* disconnect ends it.
+CtxDone(r) == IF r = Nested THEN inboundDone
+              ELSE IF r \in InReqs THEN ctxCanceled[r] \/ connDone
+              ELSE ctxCanceled[r]
 
 \* notifyCond.Broadcast(): every waiter wakes and must take notifyMu again.
 Broadcast ==
@@ -101,6 +130,10 @@ Init ==
     /\ received = <<>> /\ handled = <<>>
     /\ readBefore = [r \in Reqs |-> {}] /\ respRead = [r \in Reqs |-> FALSE]
     /\ result = [r \in Reqs |-> "none"] /\ finalIds = {} /\ nestedFrom = 0
+    /\ inSent = {} /\ cancelSent = {} /\ inflight = {}
+    /\ inPc = [q \in InReqs |-> "none"] /\ inStart = [q \in InReqs |-> "none"]
+    /\ peerWaiting = {} /\ peerSeq = 0 /\ inOkAtExit = [q \in InReqs |-> FALSE]
+    /\ inCheckSaw = [q \in InReqs |-> "none"]
 
 -----------------------------------------------------------------------------
 (* The peer writes to the wire. It has no fairness: it can stop at any time. *)
@@ -115,15 +148,19 @@ PeerSendsNote(k) ==
                    queue, qClosed, final, connDone, inboundDone, lock, waitSet,
                    workerPc, cur, callerPc, pending, ch, resp, ctxCanceled, waker,
                    connWatcher, drainWaker, drainPc, timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 PeerResponds(r) ==
     /\ ~eofSent /\ r \in sentReq \ respSent
+    /\ (r = Nested /\ PeerNeedsInboundAnswer) =>
+          \A q \in InReqs : inPc[q] \in {"replied", "errReplied"}
     /\ respSent' = respSent \cup {r}
     /\ wire' = Append(wire, Msg("resp", 0, "none", r))
     /\ UNCHANGED <<notesSent, nestedSent, eofSent, sentReq, recvPc, recvTmp, lastEnq,
                    completed, queue, qClosed, final, connDone, inboundDone, lock,
                    waitSet, workerPc, cur, callerPc, pending, ch, resp, ctxCanceled,
                    waker, connWatcher, drainWaker, drainPc, timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 PeerCloses ==
     /\ PeerCanClose /\ ~eofSent
@@ -133,6 +170,7 @@ PeerCloses ==
                    completed, queue, qClosed, final, connDone, inboundDone, lock,
                    waitSet, workerPc, cur, callerPc, pending, ch, resp, ctxCanceled,
                    waker, connWatcher, drainWaker, drainPc, timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 -----------------------------------------------------------------------------
 (* receive(): one goroutine reads the wire in order. *)
@@ -157,6 +195,7 @@ RecvNotification ==
                    callerPc, pending, ch, resp, ctxCanceled, waker, connWatcher,
                    drainWaker, drainPc, timerFired, handled, readBefore, respRead,
                    result, finalIds, nestedFrom>>
+    /\ UNCHANGED inVars
 
 \* handleResponse: take c.pending[id] under c.mu, then read the watermark
 \* under notifyMu. A response with no pending entry is dropped.
@@ -177,6 +216,7 @@ RecvResponse ==
                    queue, qClosed, final, connDone, inboundDone, lock, waitSet, workerPc,
                    cur, callerPc, ch, resp, ctxCanceled, waker, connWatcher, drainWaker,
                    drainPc, timerFired, received, handled, result, finalIds, nestedFrom>>
+    /\ UNCHANGED inVars
 
 \* handleResponse: pr.ch <- responseEnvelope{...}. The channel has room for one.
 RecvDeliver ==
@@ -187,6 +227,7 @@ RecvDeliver ==
                    connDone, inboundDone, lock, waitSet, workerPc, cur, callerPc,
                    pending, resp, ctxCanceled, waker, connWatcher, drainWaker, drainPc,
                    timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 \* receive: scanner.Scan() returns false, then shutdownReceive(cause).
 RecvEOF ==
@@ -197,6 +238,7 @@ RecvEOF ==
                    completed, queue, qClosed, final, connDone, inboundDone, lock,
                    waitSet, workerPc, cur, callerPc, pending, ch, resp, ctxCanceled,
                    waker, connWatcher, drainWaker, drainPc, timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 \* shutdownReceive: c.cancel(cause), so c.Done() closes.
 ShutdownCancel ==
@@ -207,6 +249,7 @@ ShutdownCancel ==
                    inboundDone, lock, waitSet, workerPc, cur, callerPc, pending, ch,
                    resp, ctxCanceled, waker, connWatcher, drainWaker, drainPc,
                    timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 \* shutdownReceive: close(c.notificationQueue), read finalEnqueuedSeq under
 \* notifyMu, start the drain goroutine. Only receive() writes
@@ -222,6 +265,7 @@ ShutdownClose ==
                    inboundDone, lock, waitSet, workerPc, cur, callerPc, pending, ch,
                    resp, ctxCanceled, waker, connWatcher, drainWaker, timerFired,
                    received, handled, readBefore, respRead, result, nestedFrom>>
+    /\ UNCHANGED inVars
 
 -----------------------------------------------------------------------------
 (* processNotifications(): one goroutine handles notifications in order. *)
@@ -236,6 +280,7 @@ WorkerDequeue ==
                    connDone, inboundDone, lock, waitSet, callerPc, pending, ch, resp,
                    ctxCanceled, waker, connWatcher, drainWaker, drainPc, timerFired,
                    historyVars>>
+    /\ UNCHANGED inVars
 
 \* The range loop ends: the queue is closed and empty.
 WorkerExit ==
@@ -245,6 +290,7 @@ WorkerExit ==
                    final, connDone, inboundDone, lock, waitSet, cur, callerPc, pending,
                    ch, resp, ctxCanceled, waker, connWatcher, drainWaker, drainPc,
                    timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 AfterHandler == IF CompletesAfterHandler THEN "complete" ELSE "dequeue"
 
@@ -252,7 +298,7 @@ HandlerReturnsVars ==
     UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
                 final, connDone, inboundDone, lock, waitSet, cur, callerPc, pending, ch,
                 resp, ctxCanceled, waker, connWatcher, drainWaker, drainPc, timerFired,
-                received, readBefore, respRead, result, finalIds, nestedFrom>>
+                received, readBefore, respRead, result, finalIds, nestedFrom, inVars>>
 
 \* handleInbound returns for a handler that finishes promptly.
 PlainHandlerReturns ==
@@ -282,6 +328,7 @@ NestedHandlerCalls ==
                    final, connDone, inboundDone, lock, waitSet, cur, ch, resp,
                    ctxCanceled, waker, connWatcher, drainWaker, drainPc, timerFired,
                    received, handled, readBefore, respRead, result, finalIds>>
+    /\ UNCHANGED inVars
 
 NestedHandlerReturns ==
     /\ workerPc = "nestedCall" /\ callerPc[Nested] = "done"
@@ -298,15 +345,36 @@ WorkerComplete ==
     /\ UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, queue, qClosed, final,
                    connDone, inboundDone, lock, cur, pending, ch, resp, ctxCanceled,
                    waker, connWatcher, drainWaker, timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 -----------------------------------------------------------------------------
 (* SendRequest / SendRequestNoResult, one per caller r. *)
 
-CallerVars(r) ==
+CallerCore(r) ==
     UNCHANGED <<peerVars, recvPc, recvTmp, lastEnq, completed, queue, qClosed, final,
                 connDone, inboundDone, workerPc, cur, ctxCanceled, connWatcher,
                 drainWaker, drainPc, timerFired, received, handled, readBefore,
                 respRead, finalIds, nestedFrom>>
+
+CallerVars(r) == CallerCore(r) /\ UNCHANGED inVars
+
+\* The window between startPeerWait and donePeerWait of the nested request.
+PeerWaitPcs == {"waitResp", "ctxBranch", "cleanupDisc", "cleanupCancel", "endPeerOk", "endPeerErr"}
+
+\* The handler that runs now waits on the peer's response to its request.
+RunningWaitsOnPeer ==
+    /\ Nested \in Reqs /\ workerPc = "nestedCall"
+    /\ callerPc[Nested] \in PeerWaitPcs
+
+\* The code's rule for a request from the peer to leave its wait: the
+\* handlers of the notifications read before it have returned, or the
+\* running handler waits on the peer.
+ExitOk(q) == readBefore[q] \subseteq HandledSet \/ RunningWaitsOnPeer
+
+\* Record ExitOk for a request from the peer that leaves its wait now.
+RecordExit(r) ==
+    /\ inOkAtExit' = IF r \in InReqs THEN [inOkAtExit EXCEPT ![r] = ExitOk(r)] ELSE inOkAtExit
+    /\ UNCHANGED <<inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inCheckSaw>>
 
 SetPc(r, pc) == callerPc' = [callerPc EXCEPT ![r] = pc]
 SetResult(r, v) == result' = [result EXCEPT ![r] = v]
@@ -324,16 +392,49 @@ AppCalls(r) ==
 SendsRequest(r) ==
     /\ callerPc[r] = "registered"
     /\ sentReq' = sentReq \cup {r}
-    /\ SetPc(r, "waitResp")
+    /\ SetPc(r, IF r = Nested THEN "startPeer" ELSE "waitResp")
     /\ CallerVars(r)
     /\ UNCHANGED <<pending, lock, waitSet, ch, resp, waker, result>>
+
+\* startPeerWait(ctx) before waitForResponse, under notifyMu. Only the nested
+\* request has the ctx of a running handler, so for app callers it is a no-op
+\* and the model skips it. peerWaits[seq]++, then Broadcast.
+StartsPeerWait ==
+    /\ Nested \in Reqs /\ callerPc[Nested] = "startPeer" /\ lock = None
+    /\ IF PeerWaitCounts /\ completed < cur.seq
+       THEN /\ peerWaiting' = peerWaiting \cup {cur.seq} /\ peerSeq' = cur.seq
+            /\ IF PeerWaitBroadcasts
+               THEN /\ callerPc' = [r \in Reqs |-> IF r = Nested THEN "waitResp"
+                                                    ELSE IF r \in waitSet THEN "relock"
+                                                    ELSE callerPc[r]]
+                    /\ drainPc' = IF Drainer \in waitSet THEN "relock" ELSE drainPc
+                    /\ waitSet' = {}
+               ELSE /\ SetPc(Nested, "waitResp") /\ UNCHANGED <<drainPc, waitSet>>
+       ELSE /\ SetPc(Nested, "waitResp")
+            /\ UNCHANGED <<peerWaiting, peerSeq, drainPc, waitSet>>
+    /\ UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
+                   final, connDone, inboundDone, lock, workerPc, cur, pending, ch, resp,
+                   ctxCanceled, waker, connWatcher, drainWaker, timerFired, historyVars,
+                   inSent, cancelSent, inflight, inPc, inStart, inOkAtExit, inCheckSaw>>
+
+\* donePeerWait() after waitForResponse returns: peerWaits[seq]-- under
+\* notifyMu. A request that recorded nothing gets a no-op func.
+EndsPeerWait ==
+    /\ Nested \in Reqs /\ callerPc[Nested] \in {"endPeerOk", "endPeerErr"}
+    /\ peerSeq # 0 => lock = None
+    /\ peerWaiting' = IF PeerWaitEnds /\ peerSeq # 0 THEN peerWaiting \ {peerSeq} ELSE peerWaiting
+    /\ peerSeq' = 0
+    /\ SetPc(Nested, IF callerPc[Nested] = "endPeerOk" THEN "barrier" ELSE "done")
+    /\ CallerCore(Nested)
+    /\ UNCHANGED <<sentReq, pending, lock, waitSet, ch, resp, waker, result,
+                   inSent, cancelSent, inflight, inPc, inStart, inOkAtExit, inCheckSaw>>
 
 \* waitForResponse: case resp := <-pr.ch
 GetsResponse(r) ==
     /\ callerPc[r] = "waitResp" /\ ch[r] # Empty
     /\ resp' = [resp EXCEPT ![r] = ch[r]]
     /\ ch' = [ch EXCEPT ![r] = Empty]
-    /\ SetPc(r, "barrier")
+    /\ SetPc(r, IF r = Nested THEN "endPeerOk" ELSE "barrier")
     /\ CallerVars(r)
     /\ UNCHANGED <<sentReq, pending, lock, waitSet, waker, result>>
 
@@ -363,7 +464,7 @@ CleansUp(r) ==
     /\ callerPc[r] \in {"cleanupDisc", "cleanupCancel"}
     /\ pending' = pending \ {r}
     /\ SetResult(r, IF callerPc[r] = "cleanupDisc" THEN "disconnected" ELSE "cancelled")
-    /\ SetPc(r, "done")
+    /\ SetPc(r, IF r = Nested THEN "endPeerErr" ELSE "done")
     /\ CallerVars(r)
     /\ UNCHANGED <<sentReq, lock, waitSet, ch, resp, waker>>
 
@@ -385,21 +486,31 @@ EntersBarrier(r) ==
     /\ IF ~WaitsForBarrier \/ resp[r] = 0
        THEN /\ SetResult(r, "ok") /\ SetPc(r, "done")
             /\ UNCHANGED <<lock, waker, resp>>
+            /\ RecordExit(r)
        ELSE /\ lock = None /\ lock' = r
             /\ resp' = [resp EXCEPT ![r] = CappedTarget(r)]
             /\ waker' = [waker EXCEPT ![r] = IF CtxWakerSpawned THEN "armed" ELSE "off"]
             /\ SetPc(r, "loop") /\ UNCHANGED result
-    /\ CallerVars(r)
+            /\ UNCHANGED inVars
+    /\ CallerCore(r)
     /\ UNCHANGED <<sentReq, pending, waitSet, ch>>
 
-\* for c.completedNotificationSeq < target { ... } (holds notifyMu)
+\* A request from the peer also leaves its wait while the running handler,
+\* the one of notification completed + 1, has a request that waits on the
+\* peer: !(stopAtPeerWait && c.peerWaits[c.completedNotificationSeq+1] > 0).
+StopsAtPeerWait(r) ==
+    r \in InReqs /\ InboundStopsAtPeerWait /\ (completed + 1) \in peerWaiting
+
+\* for c.completedNotificationSeq < target && !(...) { ... } (holds notifyMu)
 BarrierLoop(r) ==
     /\ callerPc[r] = "loop"
-    /\ IF completed >= resp[r]
+    /\ IF completed >= resp[r] \/ StopsAtPeerWait(r)
        THEN /\ lock' = None /\ SetResult(r, "ok") /\ SetPc(r, "done")
+            /\ RecordExit(r)
        ELSE /\ SetPc(r, IF WaitChecksDisconnect THEN "checkDone" ELSE "checkCtx")
             /\ UNCHANGED <<lock, result>>
-    /\ CallerVars(r)
+            /\ UNCHANGED inVars
+    /\ CallerCore(r)
     /\ UNCHANGED <<sentReq, pending, waitSet, ch, resp, waker>>
 
 \* select { case <-c.Done(): return peerDisconnectedErr; default: }
@@ -441,6 +552,7 @@ AppCancelsCtx(r) ==
                    final, connDone, inboundDone, lock, waitSet, workerPc, cur, callerPc,
                    pending, ch, resp, waker, connWatcher, drainWaker, drainPc,
                    timerFired, historyVars>>
+    /\ UNCHANGED inVars
 
 -----------------------------------------------------------------------------
 (* Goroutines that wake cond waiters. *)
@@ -448,7 +560,7 @@ AppCancelsCtx(r) ==
 BroadcasterVars ==
     UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
                 final, connDone, inboundDone, lock, workerPc, cur, pending, ch, resp,
-                ctxCanceled, timerFired, historyVars>>
+                ctxCanceled, timerFired, historyVars, inVars>>
 
 \* waitNotificationsUpTo's goroutine: case <-ctx.Done(), then Broadcast
 \* under notifyMu.
@@ -495,7 +607,7 @@ DrainWakerStops ==
 DrainVars ==
     UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
                 final, connDone, workerPc, cur, callerPc, pending, ch, resp,
-                ctxCanceled, waker, connWatcher, timerFired, historyVars>>
+                ctxCanceled, waker, connWatcher, timerFired, historyVars, inVars>>
 
 DrainStarts ==
     /\ drainPc = "start"
@@ -547,6 +659,118 @@ DrainTimerFires ==
                    final, connDone, inboundDone, lock, waitSet, workerPc, cur, callerPc,
                    pending, ch, resp, ctxCanceled, waker, connWatcher, drainWaker,
                    drainPc, historyVars>>
+    /\ UNCHANGED inVars
+
+-----------------------------------------------------------------------------
+(* Requests from the peer. receive() snapshots the watermark and starts one *)
+(* goroutine per request. The goroutine waits with waitNotificationsUpTo, *)
+(* modeled by the caller barrier actions above with q as the caller.      *)
+
+\* The peer writes a request. No fairness.
+PeerSendsInReq(q) ==
+    /\ ~eofSent /\ q \notin inSent
+    /\ inSent' = inSent \cup {q}
+    /\ wire' = Append(wire, Msg("req", 0, "none", q))
+    /\ UNCHANGED <<notesSent, nestedSent, respSent, eofSent, sentReq, recvPc, recvTmp,
+                   lastEnq, completed, queue, qClosed, final, connDone, inboundDone, lock,
+                   waitSet, workerPc, cur, callerPc, pending, ch, resp, ctxCanceled,
+                   waker, connWatcher, drainWaker, drainPc, timerFired, historyVars,
+                   cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit,
+                   inCheckSaw>>
+
+\* The peer writes $/cancel_request for a request that it sent. No fairness.
+PeerCancelsInReq(q) ==
+    /\ PeerCanCancelReq /\ ~eofSent /\ q \in inSent \ cancelSent
+    /\ cancelSent' = cancelSent \cup {q}
+    /\ wire' = Append(wire, Msg("cancel", 0, "none", q))
+    /\ UNCHANGED <<notesSent, nestedSent, respSent, eofSent, sentReq, recvPc, recvTmp,
+                   lastEnq, completed, queue, qClosed, final, connDone, inboundDone, lock,
+                   waitSet, workerPc, cur, callerPc, pending, ch, resp, ctxCanceled,
+                   waker, connWatcher, drainWaker, drainPc, timerFired, historyVars,
+                   inSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit,
+                   inCheckSaw>>
+
+\* receive: watermark := c.lastEnqueuedNotificationSeq under notifyMu, then
+\* c.inflight[idKey] = cancel under c.mu, then go func(...). Only receive()
+\* writes lastEnqueuedNotificationSeq and reads $/cancel_request, so one step
+\* loses no interleaving. The goroutine starts at the barrier.
+RecvRequest ==
+    /\ recvPc = "read" /\ wire # <<>> /\ Head(wire).t = "req" /\ lock = None
+    /\ LET q == Head(wire).r IN
+       /\ resp' = [resp EXCEPT ![q] = IF InboundWaits THEN lastEnq ELSE 0]
+       /\ readBefore' = [readBefore EXCEPT ![q] = Range(received)]
+       /\ callerPc' = [callerPc EXCEPT ![q] = "barrier"]
+       /\ inflight' = inflight \cup {q}
+       /\ inPc' = [inPc EXCEPT ![q] = "waitBarrier"]
+    /\ wire' = Tail(wire)
+    /\ UNCHANGED <<notesSent, nestedSent, respSent, eofSent, sentReq, recvPc, recvTmp,
+                   lastEnq, completed, queue, qClosed, final, connDone, inboundDone, lock,
+                   waitSet, workerPc, cur, pending, ch, ctxCanceled, waker, connWatcher,
+                   drainWaker, drainPc, timerFired, received, handled, respRead, result,
+                   finalIds, nestedFrom, inSent, cancelSent, inStart, peerWaiting, peerSeq,
+                   inOkAtExit, inCheckSaw>>
+
+\* receive -> handleCancelRequest: cancel := c.inflight[idKey] under c.mu,
+\* then cancel(context.Canceled). A request that already left c.inflight is
+\* ignored.
+RecvCancel ==
+    /\ recvPc = "read" /\ wire # <<>> /\ Head(wire).t = "cancel"
+    /\ LET q == Head(wire).r IN
+       ctxCanceled' = IF q \in inflight THEN [ctxCanceled EXCEPT ![q] = TRUE] ELSE ctxCanceled
+    /\ wire' = Tail(wire)
+    /\ UNCHANGED <<notesSent, nestedSent, respSent, eofSent, sentReq, recvPc, recvTmp,
+                   lastEnq, completed, queue, qClosed, final, connDone, inboundDone, lock,
+                   waitSet, workerPc, cur, callerPc, pending, ch, resp, waker,
+                   connWatcher, drainWaker, drainPc, timerFired, historyVars, inVars>>
+
+InVarsBut(q) ==
+    UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
+                final, connDone, inboundDone, lock, waitSet, workerPc, cur, callerPc,
+                pending, ch, resp, ctxCanceled, waker, connWatcher, drainWaker, drainPc,
+                timerFired, historyVars, inSent, cancelSent, peerWaiting, peerSeq, inOkAtExit>>
+
+\* if err := c.waitInboundBarrier(reqCtx, watermark); err != nil { ... }
+\* waitInboundBarrier returns the wait's error, else the cancel error when
+\* reqCtx has ended (context.Cause), else nil. A nil error starts the handler.
+InAfterBarrier(q) ==
+    /\ inPc[q] = "waitBarrier" /\ callerPc[q] = "done"
+    /\ inPc' = [inPc EXCEPT ![q] = IF result[q] = "ok" /\ ~(PostWaitChecksCtx /\ CtxDone(q))
+                                    THEN "start" ELSE "checkDone"]
+    /\ inCheckSaw' = [inCheckSaw EXCEPT ![q] = IF CtxDone(q) THEN "ended" ELSE "live"]
+    /\ UNCHANGED <<inflight, inStart>>
+    /\ InVarsBut(q)
+
+\* c.handleInbound(reqCtx, m) after waitInboundBarrier returned nil. A
+\* $/cancel_request or EndsPeerWait can run between the two steps.
+InHandlerStarts(q) ==
+    /\ inPc[q] = "start"
+    /\ inPc' = [inPc EXCEPT ![q] = "handler"]
+    /\ inStart' = [inStart EXCEPT ![q] = "live"]
+    /\ UNCHANGED <<inflight, inCheckSaw>>
+    /\ InVarsBut(q)
+
+\* select { case <-c.Done(): c.handleInbound(reqCtx, m); default: }, else
+\* c.sendInboundRequestError(m, toReqErr(err)). The deferred delete from
+\* c.inflight follows the reply; the model folds it into the reply step.
+InChecksDone(q) ==
+    /\ inPc[q] = "checkDone"
+    /\ IF connDone
+       THEN /\ inPc' = [inPc EXCEPT ![q] = "handler"]
+            /\ inStart' = [inStart EXCEPT ![q] = "disconnected"]
+            /\ UNCHANGED inflight
+       ELSE /\ inPc' = [inPc EXCEPT ![q] = "errReplied"]
+            /\ inflight' = inflight \ {q}
+            /\ UNCHANGED inStart
+    /\ UNCHANGED inCheckSaw
+    /\ InVarsBut(q)
+
+\* The request handler returns promptly and handleInbound sends the reply.
+InHandlerReturns(q) ==
+    /\ inPc[q] = "handler"
+    /\ inPc' = [inPc EXCEPT ![q] = "replied"]
+    /\ inflight' = inflight \ {q}
+    /\ UNCHANGED <<inStart, inCheckSaw>>
+    /\ InVarsBut(q)
 
 -----------------------------------------------------------------------------
 
@@ -558,6 +782,7 @@ AtRest ==
     /\ queue = <<>> /\ workerPc \in {"dequeue", "exited"}
     /\ \A r \in Reqs : callerPc[r] \in {"idle", "done"}
     /\ drainPc \in {"off", "done"}
+    /\ \A q \in InReqs : inPc[q] \in {"none", "replied", "errReplied"}
 
 Rest == AtRest /\ UNCHANGED vars
 
@@ -569,6 +794,9 @@ SDKStep ==
     \/ ConnWatcherFires \/ DrainWakerFires \/ DrainWakerStops
     \/ DrainStarts \/ DrainLoop \/ DrainChecksTimeoutOrWaits \/ DrainRelocks
     \/ InboundCancel
+    \/ RecvRequest \/ RecvCancel \/ StartsPeerWait \/ EndsPeerWait
+    \/ \E q \in InReqs : InAfterBarrier(q) \/ InHandlerStarts(q) \/ InChecksDone(q)
+                         \/ InHandlerReturns(q)
     \/ \E r \in Reqs :
           \/ SendsRequest(r) \/ GetsResponse(r) \/ SeesCtxDone(r)
           \/ CtxBranchChecksDone(r) \/ SeesDisconnect(r) \/ CleansUp(r)
@@ -580,6 +808,7 @@ EnvStep ==
     \/ \E k \in NoteKinds : PeerSendsNote(k)
     \/ \E r \in Reqs : PeerResponds(r)
     \/ PeerCloses
+    \/ \E q \in InReqs : PeerSendsInReq(q) \/ PeerCancelsInReq(q)
     \/ \E r \in AppCallers : AppCalls(r) \/ AppCancelsCtx(r)
     \/ SlowHandlerReturns
     \/ DrainTimerFires
@@ -597,6 +826,11 @@ Fairness ==
     /\ WF_vars(ConnWatcherFires) /\ WF_vars(DrainWakerFires) /\ WF_vars(DrainWakerStops)
     /\ WF_vars(DrainStarts) /\ WF_vars(DrainLoop) /\ WF_vars(DrainChecksTimeoutOrWaits)
     /\ WF_vars(DrainRelocks) /\ WF_vars(InboundCancel)
+    /\ WF_vars(RecvRequest) /\ WF_vars(RecvCancel)
+    /\ WF_vars(StartsPeerWait) /\ WF_vars(EndsPeerWait)
+    /\ \A q \in InReqs :
+          /\ WF_vars(InAfterBarrier(q)) /\ WF_vars(InHandlerStarts(q))
+          /\ WF_vars(InChecksDone(q)) /\ WF_vars(InHandlerReturns(q))
     /\ \A r \in Reqs :
           /\ WF_vars(SendsRequest(r)) /\ WF_vars(GetsResponse(r))
           /\ WF_vars(SeesCtxDone(r)) /\ WF_vars(CtxBranchChecksDone(r))
@@ -630,7 +864,7 @@ Promised(r) ==
 \* that it promises has returned. (Prompt() returns after every
 \* session/update of the turn is handled.)
 BarrierHolds ==
-    \A r \in Reqs : result[r] = "ok" => Promised(r) \subseteq HandledSet
+    \A r \in Reqs \ InReqs : result[r] = "ok" => Promised(r) \subseteq HandledSet
 
 \* After a disconnect, handlers of notifications that were already read keep
 \* a live ctx until they return, or until the 5 s drain timeout.
@@ -654,5 +888,43 @@ DisconnectReturnsCaller == \A r \in Reqs : [](Started(r) /\ connDone => <>Return
 
 \* After a disconnect, handler contexts end in the end.
 ShutdownCompletes == [](connDone => <>inboundDone)
+
+\* When a request from the peer leaves its wait with no error, the handler
+\* of every notification read before the request has returned (the
+\* permission prompt prints after its tool call), or the running handler
+\* waits on the peer's response, because the peer can need this answer
+\* first. This is a promise about the end of the wait: the handler starts
+\* later, after that peer wait can have ended.
+InboundHandlerAfterNotes ==
+    \A q \in InReqs : result[q] = "ok" => inOkAtExit[q]
+
+\* The same for every handler start, also after a disconnect. It fails by
+\* design: after a disconnect the handler starts with a canceled ctx, while
+\* an earlier handler can still run.
+InboundHandlerAfterNotesEvenOnDisconnect ==
+    \A q \in InReqs : inStart[q] # "none" => inOkAtExit[q]
+
+\* waitNotificationsUpTo panics when its target exceeds
+\* lastEnqueuedNotificationSeq, or when completed exceeds it.
+NoWatermarkPanic ==
+    /\ completed <= lastEnq
+    /\ \A r \in Reqs : callerPc[r] \in {"loop", "checkDone", "checkCtx", "waiting", "relock"}
+                         => resp[r] <= lastEnq
+
+\* Once read, an inbound request's handler starts, unless the peer canceled
+\* it first, when earlier handlers return.
+InboundHandlerStarts ==
+    \A q \in InReqs : [](inPc[q] # "none" => <>(inStart[q] # "none" \/ ctxCanceled[q]))
+
+\* A request from the peer whose ctx has ended when waitInboundBarrier
+\* checks it does not start its handler as usual. A $/cancel_request gets
+\* the cancel error. Only a disconnect starts the handler, with the ended
+\* ctx. A cancel that lands after the check can still meet a running handler.
+CancelBeforeCheckSkipsHandler ==
+    \A q \in InReqs : inCheckSaw[q] = "ended" => inStart[q] \in {"none", "disconnected"}
+
+\* Every inbound request gets one reply: the handler's, or the cancel error.
+InboundRequestAnswered ==
+    \A q \in InReqs : [](inPc[q] # "none" => <>(inPc[q] \in {"replied", "errReplied"}))
 
 =============================================================================

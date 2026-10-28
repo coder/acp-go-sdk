@@ -7,8 +7,8 @@
 # Exit codes:
 #   0  every config gave its expected result and the covered code matches
 #      fingerprint.txt
-#   1  a property failed that should hold, or the known finding no longer
-#      reproduces: read the TLC output named in the summary
+#   1  a property failed that should hold, or a config that should fail
+#      passed: read the TLC output named in the summary
 #   2  setup or drift error: a tool is missing, or check.sh cannot find a
 #      line of connection.go that the model depends on
 #   3  every result was as expected, but covered functions changed since
@@ -33,7 +33,7 @@ TLA_SHA256=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 TLA_URL=https://github.com/tlaplus/tlaplus/releases/download/v$TLA_VERSION/tla2tools.jar
 
 # config:expected TLC exit code. 0 = pass, 13 = liveness violation.
-CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:13)
+CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0)
 DEEP_CONFIGS=(deep-two-callers.cfg:0)
 
 COVERED=(
@@ -89,7 +89,7 @@ fingerprint() {
 if [ "${1:-}" = "--update-fingerprint" ]; then
 	fingerprint >"$SKILL_DIR/fingerprint.txt"
 	echo "wrote $SKILL_DIR/fingerprint.txt"
-	echo "Now set the sync commit in SKILL.md to: $(git -C "$REPO" rev-parse HEAD)"
+	echo "Commit it with the model change. That commit becomes the sync commit."
 	exit 0
 fi
 
@@ -126,8 +126,15 @@ B_drain=$(need_body "func (c *Connection) waitForNotificationDrain(")
 [ "$(count "$B_new" "go c.receive()")" = 1 ] || drift "NewConnection must start receive() once"
 [ "$(count "$B_new" "go c.processNotifications()")" = 1 ] ||
 	drift "NewConnection must start one processNotifications() worker"
-has "$B_proc" "c.handleInbound(c.inboundCtx, queued.msg)" ||
-	drift "processNotifications no longer calls handleInbound(c.inboundCtx, queued.msg)"
+# Handlers get c.inboundCtx, or handlerCtx, which adds the notification to it.
+HANDLER_CTX="handlerCtx := context.WithValue(c.inboundCtx, handlingNotificationKey{}, handlingNotification{conn: c, seq: queued.seq})"
+if has "$B_proc" "c.handleInbound(handlerCtx, queued.msg)" && has "$B_proc" "$HANDLER_CTX"; then
+	HANDLE_CALL="c.handleInbound(handlerCtx, queued.msg)"
+elif has "$B_proc" "c.handleInbound(c.inboundCtx, queued.msg)"; then
+	HANDLE_CALL="c.handleInbound(c.inboundCtx, queued.msg)"
+else
+	drift "processNotifications no longer calls handleInbound with c.inboundCtx or handlerCtx"
+fi
 ! has "$B_proc" "go c.handleInbound" || drift "processNotifications runs handlers concurrently"
 has "$B_recv" "c.handleResponse(&msg)" || drift "receive() no longer calls handleResponse(&msg)"
 ! has "$B_recv" "go c.handleResponse" || drift "receive() handles responses concurrently"
@@ -157,7 +164,7 @@ else
 	drift "handleResponse sets the watermark in a new way"
 fi
 
-l_handle=$(line_of "$B_proc" "c.handleInbound(c.inboundCtx, queued.msg)")
+l_handle=$(line_of "$B_proc" "$HANDLE_CALL")
 l_complete=$(line_of "$B_proc" "c.completedNotificationSeq = queued.seq")
 [ -n "$l_complete" ] || drift "processNotifications no longer sets completedNotificationSeq = queued.seq"
 if [ "$l_handle" -lt "$l_complete" ]; then CompletesAfterHandler=TRUE; else CompletesAfterHandler=FALSE; fi
@@ -213,6 +220,25 @@ l_dwait=$(line_of "$L_drain" "c.notifyCond.Wait()")
 [ -n "$l_dwait" ] || drift "the waitForNotificationDrain loop no longer waits on notifyCond"
 if [ -n "$l_err" ] && [ "$l_err" -lt "$l_dwait" ]; then DrainChecksTimeout=TRUE; else DrainChecksTimeout=FALSE; fi
 
+# The cap needs both halves: the handler ctx names the notification, and the
+# wait lowers its target for that ctx before the loop.
+CAP_IF="if h, ok := ctx.Value(handlingNotificationKey{}).(handlingNotification); ok && h.conn == c && c.completedNotificationSeq < h.seq {"
+l_capif=$(line_of "$B_wait" "$CAP_IF")
+l_cap=$(line_of "$B_wait" "target = min(target, h.seq-1)")
+l_for=$(line_of "$B_wait" "for c.completedNotificationSeq < target {")
+if [ -n "$l_capif" ] && [ -n "$l_cap" ] && [ "$l_cap" = $((l_capif + 1)) ] && [ "$l_cap" -lt "$l_for" ]; then
+	caps=TRUE
+elif has "$B_wait" "handlingNotification"; then
+	drift "waitNotificationsUpTo reads the handler ctx in a new form"
+else
+	caps=FALSE
+fi
+if [ "$caps" = TRUE ] && [ "$HANDLE_CALL" = "c.handleInbound(handlerCtx, queued.msg)" ]; then
+	HandlerCtxCapsWait=TRUE
+else
+	HandlerCtxCapsWait=FALSE
+fi
+
 FACTS="CONSTANTS
     WaitsForBarrier = $WaitsForBarrier
     WatermarkSource = $WatermarkSource
@@ -224,7 +250,8 @@ FACTS="CONSTANTS
     DrainTimerWaker = $DrainTimerWaker
     RollsBackOnOverflow = $RollsBackOnOverflow
     WaitChecksDisconnect = $WaitChecksDisconnect
-    DrainChecksTimeout = $DrainChecksTimeout"
+    DrainChecksTimeout = $DrainChecksTimeout
+    HandlerCtxCapsWait = $HandlerCtxCapsWait"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from connection.go:"
 sed -n '2,$p' "$OUT/facts.cfg"
@@ -288,7 +315,7 @@ for entry in "${run_list[@]}"; do
 	if [ "$got" != "$want" ]; then
 		case $got in
 		0)
-			echo "  $cfg passed, but it should reproduce the known finding. Update SKILL.md." >&2
+			echo "  $cfg passed, but it should fail. Update SKILL.md and its expected result." >&2
 			failed=1
 			;;
 		11 | 12 | 13) failed=1 ;;

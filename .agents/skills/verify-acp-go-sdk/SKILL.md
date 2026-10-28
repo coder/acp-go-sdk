@@ -105,8 +105,6 @@ After cleanup, confirm that the proof is still there, for example with `ls "$ACP
 
 These are current failures. Each feature file says how its journey shows them. Do not weaken a journey to hide one.
 
-- `$/cancel_request` does not stop a turn of the example agent, because its `Prompt` ignores the request ctx ([cancel.md](features/cancel.md)).
 - The example client can show the permission prompt before the tool call that it asks about, because the SDK runs incoming requests concurrently with the notification queue ([client-cli.md](features/client-cli.md)).
-- A notification handler that makes a request on the same connection never gets its result. `verify-notification-barrier` proves it, and no example reaches it.
 
 To keep the map true as the app changes, use the pstack plugin's `maintain-verification-skill` skill. It is hidden from the default skill list, so load it by name.

@@ -30,7 +30,8 @@ CONSTANTS
     DrainTimerWaker,          \* waitForNotificationDrain starts the timeout broadcaster
     RollsBackOnOverflow,      \* receive decrements lastEnqueuedNotificationSeq on overflow
     WaitChecksDisconnect,     \* the waitNotificationsUpTo loop checks c.Done() first
-    DrainChecksTimeout        \* the waitForNotificationDrain loop checks ctx.Err()
+    DrainChecksTimeout,       \* the waitForNotificationDrain loop checks ctx.Err()
+    HandlerCtxCapsWait        \* waitNotificationsUpTo caps the target for a running handler's ctx
 
 ASSUME WatermarkSource \in {"enqueued", "completed"}
 ASSUME NoteKinds \subseteq {"plain", "slow", "nested"}
@@ -59,17 +60,17 @@ VARIABLES
     \* the goroutine that shutdownReceive starts
     drainPc, timerFired,
     \* history for the properties (not in the code)
-    received, handled, readBefore, respRead, result, finalIds
+    received, handled, readBefore, respRead, result, finalIds, nestedFrom
 
 vars == <<wire, notesSent, nestedSent, respSent, eofSent, sentReq,
           recvPc, recvTmp, lastEnq, completed, queue, qClosed, final,
           connDone, inboundDone, lock, waitSet, workerPc, cur,
           callerPc, pending, ch, resp, ctxCanceled, waker,
           connWatcher, drainWaker, drainPc, timerFired,
-          received, handled, readBefore, respRead, result, finalIds>>
+          received, handled, readBefore, respRead, result, finalIds, nestedFrom>>
 
 peerVars   == <<wire, notesSent, nestedSent, respSent, eofSent>>
-historyVars == <<received, handled, readBefore, respRead, result, finalIds>>
+historyVars == <<received, handled, readBefore, respRead, result, finalIds, nestedFrom>>
 
 Range(s) == {s[i] : i \in DOMAIN s}
 HandledSet == Range(handled)
@@ -99,7 +100,7 @@ Init ==
     /\ drainWaker = "off" /\ drainPc = "off" /\ timerFired = FALSE
     /\ received = <<>> /\ handled = <<>>
     /\ readBefore = [r \in Reqs |-> {}] /\ respRead = [r \in Reqs |-> FALSE]
-    /\ result = [r \in Reqs |-> "none"] /\ finalIds = {}
+    /\ result = [r \in Reqs |-> "none"] /\ finalIds = {} /\ nestedFrom = 0
 
 -----------------------------------------------------------------------------
 (* The peer writes to the wire. It has no fairness: it can stop at any time. *)
@@ -155,7 +156,7 @@ RecvNotification ==
                    qClosed, final, connDone, inboundDone, lock, waitSet, workerPc, cur,
                    callerPc, pending, ch, resp, ctxCanceled, waker, connWatcher,
                    drainWaker, drainPc, timerFired, handled, readBefore, respRead,
-                   result, finalIds>>
+                   result, finalIds, nestedFrom>>
 
 \* handleResponse: take c.pending[id] under c.mu, then read the watermark
 \* under notifyMu. A response with no pending entry is dropped.
@@ -175,7 +176,7 @@ RecvResponse ==
     /\ UNCHANGED <<notesSent, nestedSent, respSent, eofSent, sentReq, lastEnq, completed,
                    queue, qClosed, final, connDone, inboundDone, lock, waitSet, workerPc,
                    cur, callerPc, ch, resp, ctxCanceled, waker, connWatcher, drainWaker,
-                   drainPc, timerFired, received, handled, result, finalIds>>
+                   drainPc, timerFired, received, handled, result, finalIds, nestedFrom>>
 
 \* handleResponse: pr.ch <- responseEnvelope{...}. The channel has room for one.
 RecvDeliver ==
@@ -220,7 +221,7 @@ ShutdownClose ==
     /\ UNCHANGED <<peerVars, sentReq, recvTmp, lastEnq, completed, queue, connDone,
                    inboundDone, lock, waitSet, workerPc, cur, callerPc, pending, ch,
                    resp, ctxCanceled, waker, connWatcher, drainWaker, timerFired,
-                   received, handled, readBefore, respRead, result>>
+                   received, handled, readBefore, respRead, result, nestedFrom>>
 
 -----------------------------------------------------------------------------
 (* processNotifications(): one goroutine handles notifications in order. *)
@@ -251,7 +252,7 @@ HandlerReturnsVars ==
     UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
                 final, connDone, inboundDone, lock, waitSet, cur, callerPc, pending, ch,
                 resp, ctxCanceled, waker, connWatcher, drainWaker, drainPc, timerFired,
-                received, readBefore, respRead, result, finalIds>>
+                received, readBefore, respRead, result, finalIds, nestedFrom>>
 
 \* handleInbound returns for a handler that finishes promptly.
 PlainHandlerReturns ==
@@ -268,18 +269,19 @@ SlowHandlerReturns ==
     /\ workerPc' = AfterHandler
     /\ HandlerReturnsVars
 
-\* A handler that calls SendRequest on the same connection with its ctx
-\* (c.inboundCtx), for example a SessionUpdate handler that calls
-\* CallExtension. The call runs on this goroutine.
+\* A handler that calls SendRequest on the same connection with its handler
+\* ctx (derived from c.inboundCtx), for example a SessionUpdate handler that
+\* calls CallExtension. The call runs on this goroutine.
 NestedHandlerCalls ==
     /\ workerPc = "handle" /\ cur.kind = Nested /\ callerPc[Nested] = "idle"
     /\ callerPc' = [callerPc EXCEPT ![Nested] = "registered"]
     /\ pending' = pending \cup {Nested}
     /\ workerPc' = "nestedCall"
+    /\ nestedFrom' = cur.id
     /\ UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
                    final, connDone, inboundDone, lock, waitSet, cur, ch, resp,
                    ctxCanceled, waker, connWatcher, drainWaker, drainPc, timerFired,
-                   historyVars>>
+                   received, handled, readBefore, respRead, result, finalIds>>
 
 NestedHandlerReturns ==
     /\ workerPc = "nestedCall" /\ callerPc[Nested] = "done"
@@ -304,7 +306,7 @@ CallerVars(r) ==
     UNCHANGED <<peerVars, recvPc, recvTmp, lastEnq, completed, queue, qClosed, final,
                 connDone, inboundDone, workerPc, cur, ctxCanceled, connWatcher,
                 drainWaker, drainPc, timerFired, received, handled, readBefore,
-                respRead, finalIds>>
+                respRead, finalIds, nestedFrom>>
 
 SetPc(r, pc) == callerPc' = [callerPc EXCEPT ![r] = pc]
 SetResult(r, v) == result' = [result EXCEPT ![r] = v]
@@ -365,18 +367,30 @@ CleansUp(r) ==
     /\ CallerVars(r)
     /\ UNCHANGED <<sentReq, lock, waitSet, ch, resp, waker>>
 
+Min(a, b) == IF a < b THEN a ELSE b
+
+\* The target after the cap in waitNotificationsUpTo. Only the request from
+\* the nested handler carries the ctx of a running handler, the one of
+\* notification cur.seq.
+CappedTarget(r) ==
+    IF HandlerCtxCapsWait /\ r = Nested /\ completed < cur.seq
+    THEN Min(resp[r], cur.seq - 1)
+    ELSE resp[r]
+
 \* waitNotificationsUpTo(ctx, watermark): target 0 returns at once.
-\* Otherwise take notifyMu and start the ctx.Done broadcaster.
+\* Otherwise take notifyMu, cap the target, and start the ctx.Done
+\* broadcaster. From here on resp[r] is the target.
 EntersBarrier(r) ==
     /\ callerPc[r] = "barrier"
     /\ IF ~WaitsForBarrier \/ resp[r] = 0
        THEN /\ SetResult(r, "ok") /\ SetPc(r, "done")
-            /\ UNCHANGED <<lock, waker>>
+            /\ UNCHANGED <<lock, waker, resp>>
        ELSE /\ lock = None /\ lock' = r
+            /\ resp' = [resp EXCEPT ![r] = CappedTarget(r)]
             /\ waker' = [waker EXCEPT ![r] = IF CtxWakerSpawned THEN "armed" ELSE "off"]
             /\ SetPc(r, "loop") /\ UNCHANGED result
     /\ CallerVars(r)
-    /\ UNCHANGED <<sentReq, pending, waitSet, ch, resp>>
+    /\ UNCHANGED <<sentReq, pending, waitSet, ch>>
 
 \* for c.completedNotificationSeq < target { ... } (holds notifyMu)
 BarrierLoop(r) ==
@@ -597,14 +611,26 @@ Spec == Init /\ [][Next]_vars /\ Fairness
 \* drain-timeout.cfg: the 5 s timer always fires in the end.
 TimerSpec == Spec /\ WF_vars(DrainTimerFires)
 
+\* nested-handler.cfg: the peer answers the handler's request in the end, or
+\* closes. Without this, a request that waits for that handler waits on the
+\* peer, as it waits on a slow handler.
+NestedSpec == Spec /\ WF_vars(PeerResponds(Nested))
+
 -----------------------------------------------------------------------------
 (* Properties. Each says one thing that a user of the SDK relies on. *)
 
+\* The notifications whose handlers a request waits for: those read before
+\* its response. A request made by a handler with its own ctx cannot wait for
+\* that handler, so it waits only for the notifications read before the
+\* handler's own (the SendRequest doc comment). Ids follow the read order.
+Promised(r) ==
+    IF r = Nested THEN {i \in readBefore[r] : i < nestedFrom} ELSE readBefore[r]
+
 \* When SendRequest returns a response, the handler of every notification
-\* that the peer sent before that response has returned. (Prompt() returns
-\* after every session/update of the turn is handled.)
+\* that it promises has returned. (Prompt() returns after every
+\* session/update of the turn is handled.)
 BarrierHolds ==
-    \A r \in Reqs : result[r] = "ok" => readBefore[r] \subseteq HandledSet
+    \A r \in Reqs : result[r] = "ok" => Promised(r) \subseteq HandledSet
 
 \* After a disconnect, handlers of notifications that were already read keep
 \* a live ctx until they return, or until the 5 s drain timeout.

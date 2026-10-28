@@ -1,0 +1,14 @@
+# Error replies, extension methods, malformed input, end of input. Feature: errors-and-extensions.md
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}},"save":"init","expect":{"result.protocolVersion":1}}
+{"step":"unknown method","send":"foo/bar","params":{},"expect":{"error.code":-32601}}
+{"step":"extension request without a handler","send":"_example.com/hello","params":{"name":"world"},"expect":{"error.code":-32601}}
+{"step":"extension notification is ignored","notify":"_example.com/progress","params":{"pct":50}}
+{"sleep":"200ms"}
+{"stderrLacks":"failed to handle notification"}
+{"step":"unknown notification is logged","notify":"foo/notify","params":{}}
+{"stderrHas":"failed to handle notification","timeout":"2s"}
+{"step":"invalid params","send":"session/new","params":{"mcpServers":[]},"expect":{"error.code":-32602,"error.data.error":"cwd is required"}}
+{"step":"malformed line","raw":"{not json"}
+{"stderrHas":"failed to parse incoming message","timeout":"2s"}
+{"step":"connection still works","send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new"}
+{"close":true,"expectExit":0}

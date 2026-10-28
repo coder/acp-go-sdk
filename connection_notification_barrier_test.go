@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sync"
@@ -257,6 +258,40 @@ func TestSendRequest_DoesNotWaitForPostResponseNotification(t *testing.T) {
 			t.Fatalf("post-response notification send failed: %v", err)
 		}
 	default:
+	}
+}
+
+func TestSendRequest_FromNotificationHandlerReturns(t *testing.T) {
+	var clientConn *ClientSideConnection
+	results := make(chan error, 2)
+	client := &clientFuncs{
+		SessionUpdateFunc: func(ctx context.Context, _ SessionNotification) error {
+			_, err := clientConn.CallExtension(ctx, "_test/ping", map[string]any{})
+			results <- err
+			return nil
+		},
+	}
+	agent := agentFuncs{
+		HandleExtensionMethodFunc: func(context.Context, string, json.RawMessage) (any, error) {
+			return map[string]any{"pong": true}, nil
+		},
+	}
+
+	createdClientConn, agentConn := newNotificationBarrierTestPair(t, client, agent)
+	clientConn = createdClientConn
+
+	for seq := 1; seq <= 2; seq++ {
+		if err := agentConn.SessionUpdate(context.Background(), testSessionUpdate("nested", seq)); err != nil {
+			t.Fatalf("SessionUpdate %d returned error: %v", seq, err)
+		}
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatalf("CallExtension from session/update handler %d returned error: %v", seq, err)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("CallExtension from session/update handler %d did not return", seq)
+		}
 	}
 }
 

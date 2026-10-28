@@ -136,7 +136,7 @@ Each fact sets one model constant. The last column is the result of setting the 
 - Mutexes, channels and `sync.Cond` act as the Go documentation says. `Wait` has no spurious wakeups.
 - A request from a handler uses that handler's ctx. The model has one connection, and it does not model a ctx that another connection's handler passes in, a ctx that outlives its handler, or a request from a handler with an unrelated ctx. `TestSendRequest_WithOtherHandlerCtxWaitsForPreResponseNotification` covers the first two. Both keep the full wait. The `SendRequest` doc comment says that the third waits for the handler that made it.
 
-Not covered: JSON parsing, request ID canonicalization, `$/cancel_request` (`handleCancelRequest`, `sendCancelRequests`), write errors from `sendMessage`, the inbound request goroutines (they appear only as callers), and the generated handlers in `agent_gen.go` and `client_gen.go`, such as the `sessionCancels` map. A pass covers the model within these bounds, not the whole SDK.
+Not covered: a goroutine other than the handler that makes a request with a running handler's ctx (the code caps its wait too, by design, and the `SendRequest` doc comment says so), JSON parsing, request ID canonicalization, `$/cancel_request` (`handleCancelRequest`, `sendCancelRequests`), write errors from `sendMessage`, the inbound request goroutines (they appear only as callers), and the generated handlers in `agent_gen.go` and `client_gen.go`, such as the `sessionCancels` map. A pass covers the model within these bounds, not the whole SDK.
 
 ## Files
 

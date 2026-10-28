@@ -642,7 +642,10 @@ func (c *Connection) sendMessage(msg anyMessage) error {
 // it. While the handler runs, such a request waits only for the notifications
 // before the handler's own. With any other ctx, such as context.Background(),
 // the request waits for the handler that made it, so it returns only when ctx
-// ends or the peer disconnects.
+// ends or the peer disconnects. The shorter wait applies to every goroutine that
+// uses the handler's ctx while the handler runs: a goroutine that the handler
+// starts and that needs the full wait must get a ctx that does not derive from
+// the handler's ctx.
 func SendRequest[T any](c *Connection, ctx context.Context, method string, params any) (T, error) {
 	var result T
 

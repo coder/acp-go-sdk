@@ -44,6 +44,37 @@ type handlingNotification struct {
 
 type handlingNotificationKey struct{}
 
+// handlingRequest is the ctx value that receive gives each handler of a
+// request from the peer. watermark is the sequence number of the last
+// notification that arrived before the request.
+type handlingRequest struct {
+	conn      *Connection
+	watermark uint64
+}
+
+type handlingRequestKey struct{}
+
+// notificationSeq returns the sequence number of the notification from c
+// whose handler runs with ctx.
+func (c *Connection) notificationSeq(ctx context.Context) (uint64, bool) {
+	h, ok := ctx.Value(handlingNotificationKey{}).(handlingNotification)
+	if !ok || h.conn != c {
+		return 0, false
+	}
+	return h.seq, true
+}
+
+// requestWatermark returns the watermark of the request from c whose handler
+// runs with ctx. A notification with a greater sequence number arrived after
+// the request.
+func (c *Connection) requestWatermark(ctx context.Context) (uint64, bool) {
+	h, ok := ctx.Value(handlingRequestKey{}).(handlingRequest)
+	if !ok || h.conn != c {
+		return 0, false
+	}
+	return h.watermark, true
+}
+
 type responseEnvelope struct {
 	msg                   anyMessage
 	notificationWatermark uint64
@@ -422,6 +453,7 @@ func (c *Connection) receive() {
 					idKey = string(*msg.ID)
 				}
 				reqCtx, cancel := context.WithCancelCause(c.ctx)
+				reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, watermark: watermark})
 
 				c.mu.Lock()
 				c.inflight[idKey] = cancel

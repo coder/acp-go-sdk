@@ -14,6 +14,11 @@ type AgentSideConnection struct {
 
 	mu             sync.Mutex
 	sessionCancels map[string]context.CancelFunc
+	// sessionCancelledAt holds, per session, the sequence number of the last
+	// session/cancel. A prompt that arrived before that cancel and registers
+	// after it is cancelled at once. The next prompt that arrives after the
+	// cancel drops the entry.
+	sessionCancelledAt map[string]uint64
 }
 
 // NewAgentSideConnection creates a new agent-side connection bound to the
@@ -22,6 +27,7 @@ func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Read
 	asc := &AgentSideConnection{}
 	asc.agent = agent
 	asc.sessionCancels = make(map[string]context.CancelFunc)
+	asc.sessionCancelledAt = make(map[string]uint64)
 	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput)
 	return asc
 }
@@ -31,3 +37,45 @@ func (c *AgentSideConnection) Done() <-chan struct{} { return c.conn.Done() }
 
 // SetLogger directs connection diagnostics to the provided logger.
 func (c *AgentSideConnection) SetLogger(l *slog.Logger) { c.conn.SetLogger(l) }
+
+// cancelPrompt handles a session/cancel for sessionID that runs with ctx. It
+// cancels the prompt that has registered for the session, and records where
+// the cancel arrived, for a prompt that arrived before it but has not
+// registered yet.
+func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if cn, ok := a.sessionCancels[sessionID]; ok {
+		cn()
+		delete(a.sessionCancels, sessionID)
+	}
+	if seq, ok := a.conn.notificationSeq(ctx); ok {
+		a.sessionCancelledAt[sessionID] = seq
+	}
+}
+
+// registerPrompt makes cancel the cancel func of the prompt for sessionID
+// whose handler runs with ctx. If a session/cancel that arrived after the
+// prompt has already run, registerPrompt calls cancel at once.
+func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID string, cancel context.CancelFunc) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if prev, ok := a.sessionCancels[sessionID]; ok {
+		prev()
+	}
+	a.sessionCancels[sessionID] = cancel
+	cancelledAt, ok := a.sessionCancelledAt[sessionID]
+	if !ok {
+		return
+	}
+	watermark, ok := a.conn.requestWatermark(ctx)
+	if !ok {
+		return
+	}
+	if cancelledAt > watermark {
+		cancel()
+		return
+	}
+	// The cancel arrived before this prompt, so no later prompt needs it.
+	delete(a.sessionCancelledAt, sessionID)
+}

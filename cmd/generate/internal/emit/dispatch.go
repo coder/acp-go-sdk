@@ -39,12 +39,7 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 				caseBody = append(
 					caseBody,
 					// cancel active prompt context if present
-					Id("a").Dot("mu").Dot("Lock").Call(),
-					If(List(Id("cn"), Id("ok")).Op(":=").Id("a").Dot("sessionCancels").Index(Id("string").Call(Id("p").Dot("SessionId"))), Id("ok")).Block(
-						Id("cn").Call(),
-						Id("delete").Call(Id("a").Dot("sessionCancels"), Id("string").Call(Id("p").Dot("SessionId"))),
-					),
-					Id("a").Dot("mu").Dot("Unlock").Call(),
+					Id("a").Dot("cancelPrompt").Call(Id("ctx"), Id("string").Call(Id("p").Dot("SessionId"))),
 				)
 			}
 			callName := ir.DispatchMethodNameForNotification(k, mi.Notif)
@@ -68,10 +63,7 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 					caseBody,
 					Var().Id("reqCtx").Qual("context", "Context"), Var().Id("cancel").Qual("context", "CancelFunc"),
 					List(Id("reqCtx"), Id("cancel")).Op("=").Qual("context", "WithCancel").Call(Id("ctx")),
-					Id("a").Dot("mu").Dot("Lock").Call(),
-					If(List(Id("prev"), Id("ok")).Op(":=").Id("a").Dot("sessionCancels").Index(Id("string").Call(Id("p").Dot("SessionId"))), Id("ok")).Block(Id("prev").Call()),
-					Id("a").Dot("sessionCancels").Index(Id("string").Call(Id("p").Dot("SessionId"))).Op("=").Id("cancel"),
-					Id("a").Dot("mu").Dot("Unlock").Call(),
+					Id("a").Dot("registerPrompt").Call(Id("ctx"), Id("string").Call(Id("p").Dot("SessionId")), Id("cancel")),
 				)
 				// Call agent.Prompt(reqCtx, p)
 				caseBody = append(

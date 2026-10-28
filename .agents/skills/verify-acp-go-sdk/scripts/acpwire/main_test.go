@@ -62,6 +62,8 @@ func TestReadJourney_RejectsBadSteps(t *testing.T) {
 		{"respond with both", `{"respond":"m","result":{},"error":{}}`, "exactly one of result and error"},
 		{"close false", `{"close":false}`, `"close":true`},
 		{"unknown field", `{"sned":"x"}`, "no action"},
+		{"expect on an async send", `{"send":"m","async":true,"expect":{"result.ok":true}}`, "async send cannot expect"},
+		{"negative count", `{"waitFor":"m","count":-1}`, "must not be negative"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -77,7 +79,7 @@ func TestReadJourney_AcceptsEveryAction(t *testing.T) {
 	steps, lines, err := readJourney(writeJourney(t,
 		"# comment",
 		`{"respond":"session/request_permission","result":{"outcome":{"outcome":"cancelled"}}}`,
-		`{"send":"initialize","params":{},"save":"init","async":true,"expect":{"result.ok":true},"timeout":"2s"}`,
+		`{"send":"initialize","params":{},"save":"init","async":true,"timeout":"2s"}`,
 		`{"await":"init","expect":{"result.ok":true}}`,
 		`{"notify":"session/cancel","params":{}}`,
 		`{"waitFor":"session/update","where":{"params.x":1},"count":2}`,
@@ -112,6 +114,8 @@ func TestValidEnvelope(t *testing.T) {
 		{`{"jsonrpc":"2.0","method":"m","result":{}}`, false},
 		{`{"jsonrpc":"2.0","id":{},"result":{}}`, false},
 		{`{"jsonrpc":"1.0","id":1,"result":{}}`, false},
+		{`{"jsonrpc":"2.0","method":"m","params":1}`, false},
+		{`{"jsonrpc":"2.0","id":1,"method":"m","params":[1]}`, true},
 	}
 	for _, tt := range tests {
 		var msg map[string]any

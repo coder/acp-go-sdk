@@ -1191,7 +1191,9 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 							if vi.discValue != "" {
 								sw.Case(Lit(vi.discValue)).Block(
 									Var().Id("v").Id(vi.typeName),
-									If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
+									If(List(Id("verr")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")), Id("verr").Op("!=").Nil()).Block(
+										Return(Id("newUnionDecodeError").Call(Lit(name), Id("disc"), Id("b"), Id("verr"))),
+									),
 									Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
 									Return(Nil()),
 								)
@@ -1210,7 +1212,9 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 							h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
 						}
 						h.If(Id("match")).Block(
-							If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
+							If(List(Id("verr")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")), Id("verr").Op("!=").Nil()).Block(
+								Return(Id("newUnionDecodeError").Call(Lit(name), Lit(vi.typeName), Id("b"), Id("verr"))),
+							),
 							Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
 							Return(Nil()),
 						)
@@ -1237,7 +1241,9 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 						}
 					})
 					h.If(Id("match")).Block(
-						If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
+						If(List(Id("verr")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")), Id("verr").Op("!=").Nil()).Block(
+							Return(Id("newUnionDecodeError").Call(Lit(name), Lit(vi.typeName), Id("b"), Id("verr"))),
+						),
 						Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
 						Return(Nil()),
 					)
@@ -1254,7 +1260,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				),
 			)
 		}
-		g.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
+		g.Return(Id("newUnionDecodeError").Call(Lit(name), Lit(""), Id("b"), Nil()))
 	})
 	// Marshal
 	f.Func().Params(Id("u").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {

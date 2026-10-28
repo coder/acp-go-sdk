@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // RequestError represents a JSON-RPC error response.
@@ -65,6 +66,52 @@ func NewRequestCancelled(data any) *RequestError {
 
 func NewAuthRequired(data any) *RequestError {
 	return &RequestError{Code: -32000, Message: "Authentication required", Data: data}
+}
+
+const maxUnionContextValueLength = 80
+
+// newUnionDecodeError builds an actionable error for a discriminated-union
+// UnmarshalJSON failure. It names the union type and the variant that was
+// attempted, wraps the underlying decode error (if any), and includes safe
+// structural context. Arbitrary payload values are omitted because these
+// errors are commonly logged and wire content may contain secrets.
+func newUnionDecodeError(unionType, variant string, payload []byte, cause error) error {
+	context := unionPayloadContext(payload)
+	if cause != nil {
+		return fmt.Errorf("%s: invalid variant payload for %q: %w (payload context: %s)",
+			unionType, variant, cause, context)
+	}
+	return fmt.Errorf("%s: no matching variant for union (payload context: %s)", unionType, context)
+}
+
+func unionPayloadContext(payload []byte) string {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return fmt.Sprintf("non-object JSON (%d bytes)", len(payload))
+	}
+
+	parts := []string{fmt.Sprintf("fields=%d", len(fields))}
+	for _, key := range []string{"sessionUpdate", "type", "outcome", "toolCallId"} {
+		raw, ok := fields[key]
+		if !ok {
+			continue
+		}
+		var value string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			parts = append(parts, key+"=<non-string>")
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%q", key, truncateUnionContextValue(value)))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func truncateUnionContextValue(value string) string {
+	runes := []rune(value)
+	if len(runes) <= maxUnionContextValueLength {
+		return value
+	}
+	return string(runes[:maxUnionContextValueLength]) + "..."
 }
 
 // toReqErr coerces arbitrary errors into JSON-RPC RequestError.

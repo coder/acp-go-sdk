@@ -78,7 +78,9 @@ VARIABLES
     \* c.peerWaits (the seqs with a count above 0), the seq that the nested
     \* request recorded, and whether a request from the peer left its wait by
     \* the code's rule (history)
-    peerWaiting, peerSeq, inOkAtExit
+    peerWaiting, peerSeq, inOkAtExit,
+    \* what the post-wait check in waitInboundBarrier saw (history)
+    inCheckSaw
 
 vars == <<wire, notesSent, nestedSent, respSent, eofSent, sentReq,
           recvPc, recvTmp, lastEnq, completed, queue, qClosed, final,
@@ -86,9 +88,11 @@ vars == <<wire, notesSent, nestedSent, respSent, eofSent, sentReq,
           callerPc, pending, ch, resp, ctxCanceled, waker,
           connWatcher, drainWaker, drainPc, timerFired,
           received, handled, readBefore, respRead, result, finalIds, nestedFrom,
-          inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit>>
+          inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit,
+          inCheckSaw>>
 
-inVars == <<inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit>>
+inVars == <<inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit,
+            inCheckSaw>>
 
 peerVars   == <<wire, notesSent, nestedSent, respSent, eofSent>>
 historyVars == <<received, handled, readBefore, respRead, result, finalIds, nestedFrom>>
@@ -129,6 +133,7 @@ Init ==
     /\ inSent = {} /\ cancelSent = {} /\ inflight = {}
     /\ inPc = [q \in InReqs |-> "none"] /\ inStart = [q \in InReqs |-> "none"]
     /\ peerWaiting = {} /\ peerSeq = 0 /\ inOkAtExit = [q \in InReqs |-> FALSE]
+    /\ inCheckSaw = [q \in InReqs |-> "none"]
 
 -----------------------------------------------------------------------------
 (* The peer writes to the wire. It has no fairness: it can stop at any time. *)
@@ -369,7 +374,7 @@ ExitOk(q) == readBefore[q] \subseteq HandledSet \/ RunningWaitsOnPeer
 \* Record ExitOk for a request from the peer that leaves its wait now.
 RecordExit(r) ==
     /\ inOkAtExit' = IF r \in InReqs THEN [inOkAtExit EXCEPT ![r] = ExitOk(r)] ELSE inOkAtExit
-    /\ UNCHANGED <<inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq>>
+    /\ UNCHANGED <<inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inCheckSaw>>
 
 SetPc(r, pc) == callerPc' = [callerPc EXCEPT ![r] = pc]
 SetResult(r, v) == result' = [result EXCEPT ![r] = v]
@@ -410,7 +415,7 @@ StartsPeerWait ==
     /\ UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
                    final, connDone, inboundDone, lock, workerPc, cur, pending, ch, resp,
                    ctxCanceled, waker, connWatcher, drainWaker, timerFired, historyVars,
-                   inSent, cancelSent, inflight, inPc, inStart, inOkAtExit>>
+                   inSent, cancelSent, inflight, inPc, inStart, inOkAtExit, inCheckSaw>>
 
 \* donePeerWait() after waitForResponse returns: peerWaits[seq]-- under
 \* notifyMu. A request that recorded nothing gets a no-op func.
@@ -422,7 +427,7 @@ EndsPeerWait ==
     /\ SetPc(Nested, IF callerPc[Nested] = "endPeerOk" THEN "barrier" ELSE "done")
     /\ CallerCore(Nested)
     /\ UNCHANGED <<sentReq, pending, lock, waitSet, ch, resp, waker, result,
-                   inSent, cancelSent, inflight, inPc, inStart, inOkAtExit>>
+                   inSent, cancelSent, inflight, inPc, inStart, inOkAtExit, inCheckSaw>>
 
 \* waitForResponse: case resp := <-pr.ch
 GetsResponse(r) ==
@@ -670,7 +675,8 @@ PeerSendsInReq(q) ==
                    lastEnq, completed, queue, qClosed, final, connDone, inboundDone, lock,
                    waitSet, workerPc, cur, callerPc, pending, ch, resp, ctxCanceled,
                    waker, connWatcher, drainWaker, drainPc, timerFired, historyVars,
-                   cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit>>
+                   cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit,
+                   inCheckSaw>>
 
 \* The peer writes $/cancel_request for a request that it sent. No fairness.
 PeerCancelsInReq(q) ==
@@ -681,7 +687,8 @@ PeerCancelsInReq(q) ==
                    lastEnq, completed, queue, qClosed, final, connDone, inboundDone, lock,
                    waitSet, workerPc, cur, callerPc, pending, ch, resp, ctxCanceled,
                    waker, connWatcher, drainWaker, drainPc, timerFired, historyVars,
-                   inSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit>>
+                   inSent, inflight, inPc, inStart, peerWaiting, peerSeq, inOkAtExit,
+                   inCheckSaw>>
 
 \* receive: watermark := c.lastEnqueuedNotificationSeq under notifyMu, then
 \* c.inflight[idKey] = cancel under c.mu, then go func(...). Only receive()
@@ -701,7 +708,7 @@ RecvRequest ==
                    waitSet, workerPc, cur, pending, ch, ctxCanceled, waker, connWatcher,
                    drainWaker, drainPc, timerFired, received, handled, respRead, result,
                    finalIds, nestedFrom, inSent, cancelSent, inStart, peerWaiting, peerSeq,
-                   inOkAtExit>>
+                   inOkAtExit, inCheckSaw>>
 
 \* receive -> handleCancelRequest: cancel := c.inflight[idKey] under c.mu,
 \* then cancel(context.Canceled). A request that already left c.inflight is
@@ -727,12 +734,19 @@ InVarsBut(q) ==
 \* reqCtx has ended (context.Cause), else nil. A nil error starts the handler.
 InAfterBarrier(q) ==
     /\ inPc[q] = "waitBarrier" /\ callerPc[q] = "done"
-    /\ IF result[q] = "ok" /\ ~(PostWaitChecksCtx /\ CtxDone(q))
-       THEN /\ inPc' = [inPc EXCEPT ![q] = "handler"]
-            /\ inStart' = [inStart EXCEPT ![q] = "live"]
-       ELSE /\ inPc' = [inPc EXCEPT ![q] = "checkDone"]
-            /\ UNCHANGED inStart
-    /\ UNCHANGED inflight
+    /\ inPc' = [inPc EXCEPT ![q] = IF result[q] = "ok" /\ ~(PostWaitChecksCtx /\ CtxDone(q))
+                                    THEN "start" ELSE "checkDone"]
+    /\ inCheckSaw' = [inCheckSaw EXCEPT ![q] = IF CtxDone(q) THEN "ended" ELSE "live"]
+    /\ UNCHANGED <<inflight, inStart>>
+    /\ InVarsBut(q)
+
+\* c.handleInbound(reqCtx, m) after waitInboundBarrier returned nil. A
+\* $/cancel_request or EndsPeerWait can run between the two steps.
+InHandlerStarts(q) ==
+    /\ inPc[q] = "start"
+    /\ inPc' = [inPc EXCEPT ![q] = "handler"]
+    /\ inStart' = [inStart EXCEPT ![q] = "live"]
+    /\ UNCHANGED <<inflight, inCheckSaw>>
     /\ InVarsBut(q)
 
 \* select { case <-c.Done(): c.handleInbound(reqCtx, m); default: }, else
@@ -747,6 +761,7 @@ InChecksDone(q) ==
        ELSE /\ inPc' = [inPc EXCEPT ![q] = "errReplied"]
             /\ inflight' = inflight \ {q}
             /\ UNCHANGED inStart
+    /\ UNCHANGED inCheckSaw
     /\ InVarsBut(q)
 
 \* The request handler returns promptly and handleInbound sends the reply.
@@ -754,7 +769,7 @@ InHandlerReturns(q) ==
     /\ inPc[q] = "handler"
     /\ inPc' = [inPc EXCEPT ![q] = "replied"]
     /\ inflight' = inflight \ {q}
-    /\ UNCHANGED inStart
+    /\ UNCHANGED <<inStart, inCheckSaw>>
     /\ InVarsBut(q)
 
 -----------------------------------------------------------------------------
@@ -780,7 +795,8 @@ SDKStep ==
     \/ DrainStarts \/ DrainLoop \/ DrainChecksTimeoutOrWaits \/ DrainRelocks
     \/ InboundCancel
     \/ RecvRequest \/ RecvCancel \/ StartsPeerWait \/ EndsPeerWait
-    \/ \E q \in InReqs : InAfterBarrier(q) \/ InChecksDone(q) \/ InHandlerReturns(q)
+    \/ \E q \in InReqs : InAfterBarrier(q) \/ InHandlerStarts(q) \/ InChecksDone(q)
+                         \/ InHandlerReturns(q)
     \/ \E r \in Reqs :
           \/ SendsRequest(r) \/ GetsResponse(r) \/ SeesCtxDone(r)
           \/ CtxBranchChecksDone(r) \/ SeesDisconnect(r) \/ CleansUp(r)
@@ -813,7 +829,8 @@ Fairness ==
     /\ WF_vars(RecvRequest) /\ WF_vars(RecvCancel)
     /\ WF_vars(StartsPeerWait) /\ WF_vars(EndsPeerWait)
     /\ \A q \in InReqs :
-          WF_vars(InAfterBarrier(q)) /\ WF_vars(InChecksDone(q)) /\ WF_vars(InHandlerReturns(q))
+          /\ WF_vars(InAfterBarrier(q)) /\ WF_vars(InHandlerStarts(q))
+          /\ WF_vars(InChecksDone(q)) /\ WF_vars(InHandlerReturns(q))
     /\ \A r \in Reqs :
           /\ WF_vars(SendsRequest(r)) /\ WF_vars(GetsResponse(r))
           /\ WF_vars(SeesCtxDone(r)) /\ WF_vars(CtxBranchChecksDone(r))
@@ -872,17 +889,18 @@ DisconnectReturnsCaller == \A r \in Reqs : [](Started(r) /\ connDone => <>Return
 \* After a disconnect, handler contexts end in the end.
 ShutdownCompletes == [](connDone => <>inboundDone)
 
-\* An inbound request handler that starts while the connection is up starts
-\* only after the handler of every notification read before the request
-\* has returned (the permission prompt prints after its tool call), or while
-\* the running handler waits on the peer's response, because the peer can
-\* need this answer first.
+\* When a request from the peer leaves its wait with no error, the handler
+\* of every notification read before the request has returned (the
+\* permission prompt prints after its tool call), or the running handler
+\* waits on the peer's response, because the peer can need this answer
+\* first. This is a promise about the end of the wait: the handler starts
+\* later, after that peer wait can have ended.
 InboundHandlerAfterNotes ==
-    \A q \in InReqs : inStart[q] = "live" => inOkAtExit[q]
+    \A q \in InReqs : result[q] = "ok" => inOkAtExit[q]
 
-\* The same without the disconnect exception. It fails by design: after a
-\* disconnect the handler starts with a canceled ctx, while an earlier
-\* handler can still run.
+\* The same for every handler start, also after a disconnect. It fails by
+\* design: after a disconnect the handler starts with a canceled ctx, while
+\* an earlier handler can still run.
 InboundHandlerAfterNotesEvenOnDisconnect ==
     \A q \in InReqs : inStart[q] # "none" => inOkAtExit[q]
 
@@ -898,11 +916,12 @@ NoWatermarkPanic ==
 InboundHandlerStarts ==
     \A q \in InReqs : [](inPc[q] # "none" => <>(inStart[q] # "none" \/ ctxCanceled[q]))
 
-\* A handler of a request from the peer that starts as usual starts with a
-\* live ctx. A $/cancel_request that lands before the start, also one that
-\* lands as the wait clears, gets the cancel error instead.
-LiveStartHasLiveCtx ==
-    [][\A q \in InReqs : inStart[q] = "none" /\ inStart'[q] = "live" => ~CtxDone(q)]_vars
+\* A request from the peer whose ctx has ended when waitInboundBarrier
+\* checks it does not start its handler as usual. A $/cancel_request gets
+\* the cancel error. Only a disconnect starts the handler, with the ended
+\* ctx. A cancel that lands after the check can still meet a running handler.
+CancelBeforeCheckSkipsHandler ==
+    \A q \in InReqs : inCheckSaw[q] = "ended" => inStart[q] \in {"none", "disconnected"}
 
 \* Every inbound request gets one reply: the handler's, or the cancel error.
 InboundRequestAnswered ==

@@ -51,6 +51,11 @@ COVERED=(
 	"func (c *Connection) waitNotifications("
 	"func (c *Connection) startPeerWait("
 	"func (c *Connection) waitInboundBarrier("
+	"func (c *Connection) notificationSeq("
+	"func (c *Connection) handleInbound("
+	"func (c *Connection) sendInboundRequestError("
+	"func (c *Connection) cleanupPending("
+	"func (c *Connection) Done("
 	"func (c *Connection) waitForNotificationDrain("
 )
 

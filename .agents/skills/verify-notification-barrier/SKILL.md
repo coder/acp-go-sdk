@@ -20,8 +20,8 @@ Each property is one promise to SDK users. The config names show where TLC check
 | `ResponseReturnsCaller` | Once the response is read, the caller returns. It needs no disconnect, no ctx cancel and no timeout. This includes a request that a notification handler makes on the same connection with its own ctx. The configs that check it have only handlers that return in the end, so nested-handler.cfg assumes that the peer answers the handler's request in the end. | A request hangs although its answer arrived. When a handler's request hangs, the client also handles no later notification until the peer exits (`TestSendRequest_FromNotificationHandlerReturns`). | barrier, deep, nested-handler, inbound-nested |
 | `CancelReturnsCaller` | A canceled ctx makes the caller return, also while a handler that it waits for never finishes. For a request from the peer, `$/cancel_request` is the cancel. | Cancel does not stop a stuck request. | slow-handler, inbound-slow-handler |
 | `DisconnectReturnsCaller` | A disconnect makes the caller return at once, also while a handler that it waits for never finishes. | Callers hang after the peer exits. | slow-handler, inbound-slow-handler |
-| `InboundHandlerAfterNotes` | While the connection is up, the handler of a request from the peer starts only after the handler of every notification read before that request has returned, or while the handler that runs now waits on the peer's response to a request that it made with its ctx. The peer can need our answer before it sends that response. | The client shows the permission prompt before the tool call that it asks about. | inbound-* |
-| `LiveStartHasLiveCtx` | The handler of a request from the peer that starts while the connection is up starts with a live ctx. A `$/cancel_request` that lands before then, also one that lands as the wait clears, gets the cancel error. | A cancelled request still runs its handler. | inbound-request |
+| `InboundHandlerAfterNotes` | When a request from the peer leaves its wait with no error while the connection is up, the handler of every notification read before that request has returned, or the handler that runs at that moment waits on the peer's response to a request that it made with its ctx. The peer can need our answer before it sends that response. The promise is about the end of the wait. The handler starts later, and by then that peer wait can have ended. | The client shows the permission prompt before the tool call that it asks about. | inbound-* |
+| `CancelBeforeCheckSkipsHandler` | A request from the peer whose ctx has ended when `waitInboundBarrier` checks it does not start its handler as usual. After a `$/cancel_request`, it gets the cancel error. Only a disconnect starts the handler, with the ended ctx. A cancel that lands after the check can still meet a running handler. | A cancelled request still runs its handler, and the peer gets a result for a request that it cancelled. | inbound-request |
 | `NoWatermarkPanic` | No wait target exceeds `lastEnqueuedNotificationSeq`, so the panics in `waitNotifications` cannot fire. | The SDK panics. | inbound-* |
 | `InboundHandlerStarts` | The handler of a request from the peer starts when the earlier handlers return, unless the peer canceled the request first. | A request from the peer hangs. | inbound-request |
 | `InboundRequestAnswered` | Every request from the peer gets one reply: the handler's result or the cancel error. This includes a request that the peer must get an answer to before it answers the running handler's request. | The peer waits forever. When the running handler waits on the peer, the handler, the peer's request and every later notification hang. | inbound-request, inbound-nested, inbound-nested-peer |
@@ -38,7 +38,7 @@ A request from the peer leaves its wait early while the running handler waits on
 2. The peer sends its own request, and answers step 1 only after our reply. `receive` reads watermark 1 and starts the request goroutine.
 3. `waitNotifications(ctx, 1, true)` returns, because `c.peerWaits[completedNotificationSeq+1]` is 1. The handler runs and replies, and the peer answers step 1.
 
-Without step 3, the handler and the peer's request wait for each other until the peer closes the stream. The early start also skips the notifications between the running one and the watermark, and it can come after the response arrived but before `donePeerWait` runs. The rule in the code allows both.
+Without step 3, the handler and the peer's request wait for each other until the peer closes the stream. The early start also skips the notifications between the running one and the watermark, and the wait can end after the response arrived but before `donePeerWait` runs. The handler starts in a later step, so it can start after the peer wait ended, while the earlier handler still runs. The rule in the code allows all three.
 
 ## When to run it
 
@@ -54,7 +54,7 @@ From the repository root:
 
 - It needs Java 11 or newer, `curl`, `sha256sum` and `awk`.
 - The first run downloads `tla2tools.jar` 1.7.4 into `${ACP_TLA_CACHE:-${XDG_CACHE_HOME:-~/.cache}/acp-go-sdk-tla}` and checks its sha256 on every run. To use a copy that you already have, set `TLA2TOOLS_JAR`. To pick a JVM, set `JAVA`. The default heap is 4 GB: set `TLC_HEAP` to change it.
-- It took 11 minutes on a busy shared host, most of it in `inbound-nested.cfg` and `nested-handler.cfg`. `--deep` adds `deep-two-callers.cfg`: two app goroutines call at once, which takes about 15 more minutes (1,127,364 states at the sync commit).
+- It took 7 to 11 minutes on a busy shared host, most of it in `inbound-nested.cfg` and `nested-handler.cfg`. `--deep` adds `deep-two-callers.cfg`: two app goroutines call at once, which takes about 15 more minutes (1,127,364 states at the sync commit).
 - `--out` keeps each config's TLC output, the effective config (`<config>.effective.cfg`, the static config plus the facts) and `facts.cfg`. Without `--out`, the script makes a temporary folder and prints its path.
 
 ## Read the result
@@ -103,9 +103,9 @@ Lines are at the sync commit.
 | `WorkerComplete` | `processNotifications`, 578-590: `completedNotificationSeq = queued.seq` and `Broadcast` under `notifyMu`. |
 | `AppCalls` | `SendRequest` 729-737, `SendRequestNoResult` 1053-1061: register `c.pending[idKey]`. The app decides when, so no fairness. |
 | `SendsRequest` | `SendRequest` 739, `SendRequestNoResult` 1063: `c.sendMessage(msg)`. |
-| `StartsPeerWait` | `SendRequest` 744 and `SendRequestNoResult` 1068: `startPeerWait(ctx)`, 967-990. For the ctx of the running handler (`notificationSeq`, 968), `c.peerWaits[seq]++` (978) and `Broadcast` (979) under `notifyMu`. Only the nested request has such a ctx, so app callers skip this step. |
+| `StartsPeerWait` | `SendRequest` 744 and `SendRequestNoResult` 1068: `startPeerWait(ctx)`, 967-990. For the ctx of this connection's running handler (`notificationSeq`, 59-65, called at 968), `c.peerWaits[seq]++` (978) and `Broadcast` (979) under `notifyMu`. Only the nested request has such a ctx, so app callers skip this step. |
 | `EndsPeerWait` | `SendRequest` 746 and `SendRequestNoResult` 1070: `donePeerWait()` after `waitForResponse` returns, which decrements `c.peerWaits[seq]` under `notifyMu` (980-989). A request that recorded nothing gets a no-op func. |
-| `GetsResponse`, `SeesCtxDone`, `CtxBranchChecksDone`, `SeesDisconnect`, `CleansUp` | `waitForResponse`, 843-874. |
+| `GetsResponse`, `SeesCtxDone`, `CtxBranchChecksDone`, `SeesDisconnect`, `CleansUp` | `waitForResponse`, 843-874. `CleansUp` is `cleanupPending` (1044-1048). The disconnect checks read `c.Done()` (1121-1123). |
 | `EntersBarrier` | `waitNotifications`, 885-915. `waitNotificationsUpTo` (876-878, called at 750 and 1074) calls it with `stopAtPeerWait` false, and `waitInboundBarrier` (955) with true. Return for target 0, else lock, cap the target at `h.seq-1` for the ctx of this connection's running handler (899-904, `CappedTarget`), and start the ctx waker. |
 | `BarrierLoop` | `waitNotifications`, 917: the loop condition `completedNotificationSeq < target`, and with `stopAtPeerWait` also `!(c.peerWaits[c.completedNotificationSeq+1] > 0)` (`StopsAtPeerWait`). |
 | `BarrierChecksDone` | `waitNotifications`, 922-926: `select { case <-c.Done(): ... default: }`. |
@@ -124,8 +124,9 @@ Lines are at the sync commit.
 | `PeerSendsInReq`, `PeerCancelsInReq` | The peer writes a request or a `$/cancel_request` for it. No fairness. With `PeerNeedsInboundAnswer`, the peer answers the nested request only after our reply to its request. |
 | `RecvRequest` | `receive`, 449-500: the watermark under `notifyMu` (455-457), `c.inflight[idKey] = cancel` under `c.mu` (467-470), then `go func`. The goroutine runs the caller actions above, from `EntersBarrier`, with its `reqCtx`. `reqCtx` derives from `c.ctx`, so a disconnect cancels it, and it carries no `handlingNotification`, so the cap does not apply. |
 | `RecvCancel` | `receive`, 440-443, and `handleCancelRequest`, 620-645: look up `c.inflight[idKey]` under `c.mu`, then `cancel(context.Canceled)`. |
-| `InAfterBarrier` | `receive`, 484 and 498, and `waitInboundBarrier`, 954-962: the wait's error, else the cancel error when `context.Cause(ctx)` is set (958), else nil. A nil error starts `c.handleInbound(reqCtx, m)`. |
-| `InChecksDone` | `receive`, 485-496: `select { case <-c.Done(): c.handleInbound(reqCtx, m) ... default: }`, else `c.sendInboundRequestError(m, toReqErr(err))`. The deferred `delete(c.inflight, idKey)` (474-483) runs after the reply. The model folds it into the reply step. |
+| `InAfterBarrier` | `receive`, 484, and `waitInboundBarrier`, 954-962: the wait's error, else the cancel error when `context.Cause(ctx)` is set (958), else nil. |
+| `InChecksDone` | `receive`, 485-496: `select { case <-c.Done(): c.handleInbound(reqCtx, m) ... default: }`, else `c.sendInboundRequestError(m, toReqErr(err))` (688-697). The deferred `delete(c.inflight, idKey)` (474-483) runs after the reply. The model folds it into the reply step. |
+| `InHandlerStarts` | `receive`, 498: `c.handleInbound(reqCtx, m)` after a nil error. A `$/cancel_request` or `EndsPeerWait` can run between `InAfterBarrier` and this step. |
 | `InHandlerReturns` | `handleInbound`, 647-686: the request handler returns and the reply goes out. The model gives request handlers fairness. |
 
 ## Facts that check.sh reads
@@ -150,7 +151,7 @@ Each fact sets one model constant. The last column is the result of setting the 
 | `PeerWaitCounts` | `startPeerWait` 978: `c.peerWaits[seq]++`, with `startPeerWait(ctx)` before `waitForResponse` in `SendRequest` (744) and `SendRequestNoResult` (1068) | `InboundRequestAnswered` in inbound-nested-peer.cfg |
 | `PeerWaitBroadcasts` | `startPeerWait` 979: `Broadcast` after the count | `InboundRequestAnswered` in inbound-nested-peer.cfg: a request that already sleeps never sees the count |
 | `PeerWaitEnds` | `startPeerWait` 986: the decrement, with `donePeerWait()` after `waitForResponse` (746, 1070) | `InboundHandlerAfterNotes` in inbound-nested.cfg: a request starts after the handler's request returned, while the handler still runs |
-| `PostWaitChecksCtx` | `waitInboundBarrier` 958: `if cause := context.Cause(ctx); cause != nil {` after the wait | `LiveStartHasLiveCtx` in inbound-request.cfg: a `$/cancel_request` that lands as the wait clears still runs the handler |
+| `PostWaitChecksCtx` | `waitInboundBarrier` 958: `if cause := context.Cause(ctx); cause != nil {` after the wait | `CancelBeforeCheckSkipsHandler` in inbound-request.cfg: a `$/cancel_request` that lands as the wait clears still runs the handler |
 | `HandlerCtxCapsWait` | `processNotifications` 575-576 passes `handlerCtx`, and `waitNotifications` 902-903 sets `target = min(target, h.seq-1)` before the loop | `ResponseReturnsCaller` in nested-handler.cfg: a handler's request on the same connection never returns, and the client handles no later notification |
 
 `check.sh` also refuses to run (DRIFT, exit 2) when the code no longer has the shape that the model assumes: one `receive` goroutine, one `processNotifications` goroutine, handlers that get `c.inboundCtx` or a `handlerCtx` made from it, handlers and responses handled inline, and a non-blocking queue send. A new form of the cap in `waitNotifications`, a `waitNotificationsUpTo` that is not `waitNotifications(ctx, target, false)`, and a `startPeerWait` that does not find the running handler with `notificationSeq(ctx)` are DRIFT too.
@@ -162,17 +163,17 @@ Each fact sets one model constant. The last column is the result of setting the 
 - drain-timeout.cfg: as slow-handler, and the timeout fires in the end, 83,448 states.
 - nested-handler.cfg: 2 notifications, one of them with a handler that calls a request with its ctx. The peer answers that request in the end, or closes (`NestedSpec`). 183,065 states.
 - deep-two-callers.cfg (`--deep`): 2 notifications, two app callers, 1,127,364 states.
-- inbound-request.cfg: 2 notifications, one request from the peer, `$/cancel_request` and EOF allowed, no app caller, 18,819 states.
-- inbound-slow-handler.cfg: as inbound-request, with plain and slow handlers, 49,156 states.
-- inbound-nested.cfg: 2 notifications, plain and nested handlers, one request from the peer, a peer that answers the nested request in the end (`NestedSpec`), 94,294 states.
-- inbound-nested-peer.cfg: 1 notification with a nested handler, one request from the peer, and a peer that answers the nested request only after our reply (`NestedSpec`), 5,037 states.
+- inbound-request.cfg: 2 notifications, one request from the peer, `$/cancel_request` and EOF allowed, no app caller, 19,895 states.
+- inbound-slow-handler.cfg: as inbound-request, with plain and slow handlers, 51,756 states.
+- inbound-nested.cfg: 2 notifications, plain and nested handlers, one request from the peer, a peer that answers the nested request in the end (`NestedSpec`), 102,633 states.
+- inbound-nested-peer.cfg: 1 notification with a nested handler, one request from the peer, and a peer that answers the nested request only after our reply (`NestedSpec`), 5,386 states.
 - The real queue holds 1024 notifications. The model uses 2, and overflow takes the same code path.
 - Time is not modeled. "5 s" means "in the end", and fairness gives each goroutine its turn.
 - Mutexes, channels and `sync.Cond` act as the Go documentation says. `Wait` has no spurious wakeups.
 - A nested handler makes one request. Only that request counts in `c.peerWaits`.
 - A request from a handler uses that handler's ctx. The model has one connection, and it does not model a ctx that another connection's handler passes in, a ctx that outlives its handler, or a request from a handler with an unrelated ctx. `TestSendRequest_WithOtherHandlerCtxWaitsForPreResponseNotification` covers the first two. Both keep the full wait. The `SendRequest` doc comment says that the third waits for the handler that made it.
 
-Not covered: a goroutine other than the handler that makes a request with a running handler's ctx (the code caps its wait too, by design, and the `SendRequest` doc comment says so), JSON parsing, request ID canonicalization, the `$/cancel_request` that we send (`sendCancelRequests`), write errors from `sendMessage`, a request id that the peer reuses while its first request is still in `c.inflight`, a request handler that itself calls a request (app callers stand for it), the in-flight watermark counter (`inflightWatermarks`, `oldestInflightWatermark`) and the `handlingRequest` ctx value, and the generated handlers in `agent_gen.go` and `client_gen.go`, such as the `sessionCancels` map and the session/cancel markers in `agent.go`. A pass covers the model within these bounds, not the whole SDK.
+Not covered: a goroutine other than the handler that makes a request with a running handler's ctx (the code caps its wait too, by design, and the `SendRequest` doc comment says so), JSON parsing, request ID canonicalization (`canonicalJSONRPCIDKey`), request IDs (`prepareRequest`), the error that `toReqErr` in `errors.go` builds, the `$/cancel_request` that we send (`sendCancelRequests`), `sendMessage` (the model takes every write as done, and write errors are not modeled), a request id that the peer reuses while its first request is still in `c.inflight`, a request handler that itself calls a request (app callers stand for it), the in-flight watermark counter (`inflightWatermarks`, `oldestInflightWatermark`) and the `handlingRequest` ctx value, and the generated handlers in `agent_gen.go` and `client_gen.go`, such as the `sessionCancels` map and the session/cancel markers in `agent.go`. A pass covers the model within these bounds, not the whole SDK.
 
 ## Files
 
@@ -186,6 +187,6 @@ Not covered: a goroutine other than the handler that makes a request with a runn
 ## Coverage record
 
 - File: `connection.go`.
-- Functions: `NewConnection`, `receive`, `handleCancelRequest`, `shutdownReceive`, `processNotifications`, `handleResponse`, `SendRequest`, `SendRequestNoResult`, `waitForResponse`, `waitNotificationsUpTo`, `waitNotifications`, `waitInboundBarrier`, `startPeerWait`, `waitForNotificationDrain`.
+- Functions: `NewConnection`, `receive`, `handleCancelRequest`, `shutdownReceive`, `processNotifications`, `handleResponse`, `SendRequest`, `SendRequestNoResult`, `waitForResponse`, `waitNotificationsUpTo`, `waitNotifications`, `waitInboundBarrier`, `startPeerWait`, `waitForNotificationDrain`, and the helpers that the model relies on: `notificationSeq`, `handleInbound`, `sendInboundRequestError`, `cleanupPending` and `Done`.
 - Sync commit: the last commit that changed `fingerprint.txt`, which `git log -1 --format=%H -- .agents/skills/verify-notification-barrier/fingerprint.txt` prints. The model was last confirmed to describe these functions at that commit, and the line numbers in this file are at that commit. A squash merge keeps the rule true, because the merged commit changes `fingerprint.txt` too.
 - To see what changed since then: `git diff "$(git log -1 --format=%H -- .agents/skills/verify-notification-barrier/fingerprint.txt)" -- connection.go`. `check.sh` exit 3 names the changed functions.

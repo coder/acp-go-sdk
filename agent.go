@@ -55,6 +55,11 @@ func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string
 	a.pruneCancelMarkers()
 }
 
+// maxCancelMarkers bounds sessionCancelledAt while a long request is in
+// flight. Only the peer that sends the cancels can push a marker out, and a
+// lost marker only loses that peer's own cancel.
+const maxCancelMarkers = 1024
+
 // registerPrompt makes cancel the cancel func of the prompt for sessionID
 // whose handler runs with ctx. If a session/cancel that arrived after the
 // prompt has already run, registerPrompt calls cancel at once.
@@ -75,12 +80,24 @@ func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID stri
 
 // pruneCancelMarkers drops each entry of sessionCancelledAt that no request in
 // flight can match. Only a prompt that arrived before the cancel matches it.
-// The caller holds a.mu.
+// Above maxCancelMarkers entries, it drops the oldest cancels first. The caller
+// holds a.mu.
 func (a *AgentSideConnection) pruneCancelMarkers() {
 	oldest, ok := a.conn.oldestInflightWatermark()
 	for sessionID, cancelledAt := range a.sessionCancelledAt {
 		if !ok || oldest >= cancelledAt {
 			delete(a.sessionCancelledAt, sessionID)
 		}
+	}
+	for len(a.sessionCancelledAt) > maxCancelMarkers {
+		var oldestID string
+		var oldestSeq uint64
+		found := false
+		for sessionID, cancelledAt := range a.sessionCancelledAt {
+			if !found || cancelledAt < oldestSeq {
+				oldestID, oldestSeq, found = sessionID, cancelledAt, true
+			}
+		}
+		delete(a.sessionCancelledAt, oldestID)
 	}
 }

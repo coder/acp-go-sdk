@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -147,10 +148,29 @@ func TestAgentSideConnection_SessionCancelMarkersArePruned(t *testing.T) {
 		t.Fatalf("markers while an earlier prompt is in flight = %d, want 1", got)
 	}
 
+	sent := uint64(3)
+	for sent < 3+maxCancelMarkers+10 {
+		var batch []string
+		for i := 0; i < 100; i++ {
+			batch = append(batch, cancelFor("flood-"+strconv.FormatUint(sent, 10)))
+			sent++
+		}
+		send(batch...)
+		waitCompletedNotifications(t, conn.conn, sent)
+	}
+	conn.mu.Lock()
+	got := len(conn.sessionCancelledAt)
+	_, newestKept := conn.sessionCancelledAt["flood-"+strconv.FormatUint(sent-1, 10)]
+	_, oldestKept := conn.sessionCancelledAt["other"]
+	conn.mu.Unlock()
+	if got != maxCancelMarkers || !newestKept || oldestKept {
+		t.Fatalf("after a flood: markers = %d (want %d), newest kept = %v, oldest kept = %v", got, maxCancelMarkers, newestKept, oldestKept)
+	}
+
 	releasePromptOnce.Do(func() { close(releasePrompt) })
 	waitNoInflightRequests(t, conn.conn)
 	send(cancelFor("idle-3"))
-	waitCompletedNotifications(t, conn.conn, 4)
+	waitCompletedNotifications(t, conn.conn, sent+1)
 	if got := markers(); got != 0 {
 		t.Fatalf("markers after the prompt returned = %d, want 0", got)
 	}

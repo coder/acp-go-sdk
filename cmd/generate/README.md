@@ -22,7 +22,7 @@ After the generator, that target runs `gofumpt -w .` over the whole repository a
 - `meta.unstable.json` and `schema.unstable.json` must both exist or both be absent. A mismatch panics [main.go:main]
 - When the unstable inputs exist, `load.MergeStableAndUnstable` replaces the stable meta and schema with the merged result before any emit step [main.go:main]
 - The emit order is `WriteConstantsJen`, `WriteTypesJen`, `WriteDispatchJen`, then `WriteHelpersJen`. The code comment says helpers come after types so they can reference generated structs [main.go:main]
-- Every read, merge, or emit error panics [main.go:main]
+- A bad command-line flag makes `flag.Parse` print the error and exit with status 2 (`flag.ExitOnError`). After parsing, every read, merge, or emit error panics [main.go:main]
 
 ## Side Effects
 
@@ -31,7 +31,7 @@ After the generator, that target runs `gofumpt -w .` over the whole repository a
 - Creates the output directory and any missing parents with `os.MkdirAll` and mode `0o755` (before umask). An existing directory keeps its permissions [main.go:main]
 - Reads the meta, schema, and unstable files through `load.ReadMeta`, `load.ReadSchema`, `load.ReadMetaUnstable`, and `load.ReadSchemaUnstable` [main.go:main]
 - Overwrites `constants_gen.go`, `types_gen.go`, `agent_gen.go`, `client_gen.go`, and `helpers_gen.go` in the output directory through the `emit` writers [main.go:main]
-- Ends the process with a panic on any error [main.go:main]
+- Ends the process with exit status 2 on a flag parse error, and with a panic on any later error [main.go:main]
 
 ## Verification
 

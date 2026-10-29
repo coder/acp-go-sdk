@@ -23,10 +23,10 @@ The package imports only `sort`, `strings`, and the sibling `load` and `util` pa
 
 - A group key is `side + "|" + wire method`, for example `agent|session/new` [ir.go:key]
 - Definitions without `XMethod` or `XSide` are skipped. A definition name ending in `Request`, `Response`, or `Notification` sets `Req`, `Resp`, or `Notif` of its group [ir.go:BuildMethodGroups]
-- The meta fallback adds a group only when the schema produced none for that wire method, and only when `Req` or `Notif` ends up non-empty. Agent `session/cancel` gets `Notif` `CancelNotification`, client `session/update` gets `Notif` `SessionNotification`, and other methods use type names that `inferTypeBaseFromMethodKey` derives and that exist in the schema [ir.go:BuildMethodGroups, inferTypeBaseFromMethodKey]
+- The meta fallback adds a group only when the schema produced none for that side and wire method (the `side|wire` key), and only when `Req` or `Notif` ends up non-empty. Agent `session/cancel` gets `Notif` `CancelNotification`, client `session/update` gets `Notif` `SessionNotification`, and other methods use type names that `inferTypeBaseFromMethodKey` derives and that exist in the schema [ir.go:BuildMethodGroups, inferTypeBaseFromMethodKey]
 - `BuildMethodGroups` never sets `MethodKey`, so it stays empty in the returned groups [ir.go:BuildMethodGroups]
 - Every group gets `Binding` from `classifyBinding` and `DocsIgnored` from `isDocsIgnoredMethod` after all groups exist [ir.go:BuildMethodGroups]
-- Agent `session/load` binds to `BindAgentLoader`. Other unstable methods bind to `BindAgentExperimental` or `BindClientExperimental`. All remaining methods bind to `BindAgent` or `BindClient` [ir.go:classifyBinding]
+- Agent `session/load` binds to `BindAgentLoader`. Other unstable methods bind to `BindAgentExperimental` or `BindClientExperimental`. Other agent-side methods bind to `BindAgent` and other client-side methods to `BindClient`. A group with any other side, such as `both`, gets `BindUnknown` [ir.go:classifyBinding]
 - `BuildMethodGroups` never assigns `BindClientTerminal` [ir.go:classifyBinding]
 - A method is unstable when its `Req`, `Resp`, or `Notif` name starts with `Unstable`, or when one of those definitions has a description that contains `unstable` (case-insensitive) [ir.go:isUnstableMethod]
 - A method is docs-ignored when its `Req`, `Resp`, or `Notif` definition has `DocsIgnore` set [ir.go:isDocsIgnoredMethod]

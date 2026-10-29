@@ -4,7 +4,7 @@
 
 Package `load` reads the generator inputs from the schema directory into minimal Go structs: `meta.json`, `schema.json`, and the optional `meta.unstable.json` and `schema.unstable.json`.
 `Definition` models only the JSON Schema fields the generator uses, and it accepts boolean schemas.
-`MergeStableAndUnstable` builds a new combined `Meta` and `Schema` from the stable and unstable inputs. It adds the unstable-only methods and `Unstable`-prefixed copies of their types and of the new or changed definitions those types reach. It also replaces changed definitions that stable methods reach with their unstable versions, under the same names.
+`MergeStableAndUnstable` builds a new combined `Meta` and `Schema` from the stable and unstable inputs. It adds the unstable-only methods and `Unstable`-prefixed copies of their types and of the new or changed definitions those types reach. It also writes the unstable version, under the same name, of each definition that stable methods reach through unstable `$ref`s and that is new or differs from stable.
 
 ## Interface
 
@@ -25,12 +25,12 @@ Package `load` reads the generator inputs from the schema directory into minimal
 - `Definition.UnmarshalJSON` resets a boolean schema (`true` or `false`) to the zero `Definition` and records the value in the unexported `boolSchema` field [load.go:Definition.UnmarshalJSON]
 - `MergeStableAndUnstable` returns an error when any of its four arguments is nil [merge.go:MergeStableAndUnstable]
 - It returns an error when the stable and unstable meta versions differ and both are nonzero [merge.go:MergeStableAndUnstable]
-- An unstable method whose wire name already exists in the stable meta is skipped, so stable method mappings stay unchanged. A method key that maps to two different wire names returns an error. Empty wire names are ignored [merge.go:mergeUnstableOnlyMethods, addWireMethods]
+- An unstable method whose wire name already exists in the stable meta is skipped, so stable method mappings stay unchanged. When the unstable wire name is not a stable one, a method key that already maps to a different wire name returns an error. Empty wire names are ignored [merge.go:mergeUnstableOnlyMethods, addWireMethods]
 - Request, Response, and Notification definitions of unstable-only methods are copied when they have both `x-method` and `x-side`. A definition without `x-side` is copied only when another copied root reaches it. Reachable definitions that are new or differ from stable are copied too, and a fixpoint loop also copies any reachable definition that refers to a copied one [merge.go:buildUnstableDuplicateSet]
-- Copies are named `"Unstable" + name`, and their `$ref` values are rewritten to the prefixed names. The merge fails if a prefixed name already exists in the combined defs [merge.go:MergeStableAndUnstable, rewriteDefinitionRefs]
+- Copies are named `"Unstable" + name`. In a copy, only `$ref` values whose targets are also copied are rewritten to the prefixed names. A reference to a definition that stays unprefixed (for example one identical to its stable counterpart) keeps pointing at that definition. The merge fails if a prefixed name already exists in the combined defs [merge.go:MergeStableAndUnstable, rewriteDefinitionRefs]
 - A copy whose `XMethod` names a stable wire method has `XMethod` and `XSide` cleared [merge.go:MergeStableAndUnstable]
-- Definitions reachable from stable Request, Response, and Notification roots that differ in the unstable schema replace the stable entry in the combined schema with a deep copy of the unstable version. Their missing `$ref` targets are then copied from the unstable schema [merge.go:promoteChangedSharedDefs, ensureRefsAvailable]
-- The merge does not change either input. Unstable definitions are deep-copied before refs are rewritten [merge.go:MergeStableAndUnstable, deepCopyDefinition]
+- Definitions reachable through unstable `$ref`s from stable Request, Response, and Notification roots that are new or differ in the unstable schema are written into the combined schema under the same name, as copies of the unstable version. Their missing `$ref` targets are then copied from the unstable schema [merge.go:promoteChangedSharedDefs, ensureRefsAvailable]
+- The merge does not change either input. Unstable definitions are copied as a tree (properties, items, and sub-schemas) before refs are rewritten. The `Type`, `Const`, `Default`, and `Enum` element values stay shared with the input [merge.go:MergeStableAndUnstable, deepCopyDefinition]
 - An empty method map in the stable meta stays nil in the combined meta only when the matching unstable map is empty too. A non-empty unstable map makes `mergeUnstableOnlyMethods` allocate the combined map even when it adds no method [merge.go:cloneStringMap, mergeUnstableOnlyMethods]
 
 ## Side Effects

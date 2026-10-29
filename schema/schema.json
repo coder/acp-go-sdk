@@ -287,6 +287,14 @@
                 {
                   "allOf": [
                     {
+                      "$ref": "#/$defs/DeleteSessionResponse"
+                    }
+                  ],
+                  "title": "DeleteSessionResponse"
+                },
+                {
+                  "allOf": [
+                    {
                       "$ref": "#/$defs/ResumeSessionResponse"
                     }
                   ],
@@ -727,6 +735,15 @@
                 {
                   "allOf": [
                     {
+                      "$ref": "#/$defs/DeleteSessionRequest"
+                    }
+                  ],
+                  "description": "Deletes an existing session from `session/list`.\n\nThis method is only available if the agent advertises the `sessionCapabilities.delete` capability.",
+                  "title": "DeleteSessionRequest"
+                },
+                {
+                  "allOf": [
+                    {
                       "$ref": "#/$defs/ResumeSessionRequest"
                     }
                   ],
@@ -1075,9 +1092,36 @@
             }
           ],
           "description": "A single item of content"
+        },
+        "messageId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MessageId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A unique identifier for the message this chunk belongs to.\n\nAll chunks belonging to the same message share the same `messageId`.\nA change in `messageId` indicates a new message has started."
         }
       },
       "required": ["content"],
+      "type": "object"
+    },
+    "Cost": {
+      "description": "Cost information for a session.",
+      "properties": {
+        "amount": {
+          "description": "Total cumulative cost for session.",
+          "format": "double",
+          "type": "number"
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (e.g., \"USD\", \"EUR\").",
+          "type": "string"
+        }
+      },
+      "required": ["amount", "currency"],
       "type": "object"
     },
     "CreateTerminalRequest": {
@@ -1167,6 +1211,41 @@
       },
       "required": ["currentModeId"],
       "type": "object"
+    },
+    "DeleteSessionRequest": {
+      "description": "Request parameters for deleting an existing session from `session/list`.\n\nOnly available if the Agent supports the `sessionCapabilities.delete` capability.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "sessionId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            }
+          ],
+          "description": "The ID of the session to delete."
+        }
+      },
+      "required": ["sessionId"],
+      "type": "object",
+      "x-method": "session/delete",
+      "x-side": "agent"
+    },
+    "DeleteSessionResponse": {
+      "description": "Response from deleting a session.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object",
+      "x-method": "session/delete",
+      "x-side": "agent"
     },
     "Diff": {
       "description": "A diff representing file modifications.\n\nShows changes to files in a format suitable for display in the client UI.\n\nSee protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)",
@@ -1915,6 +1994,10 @@
       "required": ["name", "command", "args", "env"],
       "type": "object"
     },
+    "MessageId": {
+      "description": "Unique identifier for a message within a session.",
+      "type": "string"
+    },
     "NewSessionRequest": {
       "description": "Request parameters for creating a new session.\n\nSee protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)",
       "properties": {
@@ -2618,6 +2701,18 @@
           "description": "Whether the agent supports `session/close`.",
           "x-deserialize-default-on-error": true
         },
+        "delete": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionDeleteCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the agent supports `session/delete`.\n\nOptional. Omitted or `null` both mean the agent does not advertise support.\nSupplying `{}` means the agent supports deleting sessions from `session/list`.",
+          "x-deserialize-default-on-error": true
+        },
         "list": {
           "anyOf": [
             {
@@ -2856,6 +2951,17 @@
     "SessionConfigValueId": {
       "description": "Unique identifier for a session configuration option value.",
       "type": "string"
+    },
+    "SessionDeleteCapabilities": {
+      "description": "Capabilities for the `session/delete` method.\n\nSupplying `{}` means the agent supports deleting sessions from `session/list`.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object"
     },
     "SessionId": {
       "description": "A unique identifier for a conversation session between a client and agent.\n\nSessions maintain their own context, conversation history, and state,\nallowing multiple independent interactions with the same agent.\n\nSee protocol docs: [Session ID](https://agentclientprotocol.com/protocol/session-setup#session-id)",
@@ -3187,6 +3293,22 @@
           "properties": {
             "sessionUpdate": {
               "const": "session_info_update",
+              "type": "string"
+            }
+          },
+          "required": ["sessionUpdate"],
+          "type": "object"
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/UsageUpdate"
+            }
+          ],
+          "description": "Context window and cost update for the session.",
+          "properties": {
+            "sessionUpdate": {
+              "const": "usage_update",
               "type": "string"
             }
           },
@@ -3783,6 +3905,42 @@
         }
       },
       "required": ["hint"],
+      "type": "object"
+    },
+    "UsageUpdate": {
+      "description": "Context window and cost update for a session.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Cost"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Cumulative session cost (optional).",
+          "x-deserialize-default-on-error": true
+        },
+        "size": {
+          "description": "Total context window size in tokens.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "used": {
+          "description": "Tokens currently in context.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["used", "size"],
       "type": "object"
     },
     "WaitForTerminalExitRequest": {

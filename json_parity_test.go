@@ -111,6 +111,55 @@ func TestJSONGolden_ContentBlocks(t *testing.T) {
 	))
 }
 
+func TestJSON_ContentBlockPreservesCommonFields(t *testing.T) {
+	t.Parallel()
+
+	blocks := map[string]ContentBlock{
+		"text":          TextBlock("hello"),
+		"image":         ImageBlock("image-data", "image/png"),
+		"audio":         AudioBlock("audio-data", "audio/wav"),
+		"resource_link": ResourceLinkBlock("notes", "file:///notes.md"),
+		"resource": ResourceBlock(EmbeddedResourceResource{TextResourceContents: &TextResourceContents{
+			Uri: "file:///notes.md", Text: "hello",
+		}}),
+	}
+
+	for name, block := range blocks {
+		t.Run(name, func(t *testing.T) {
+			meta := map[string]any{"example.com/value": "kept"}
+			annotations := &Annotations{Audience: []Role{RoleAssistant}}
+			switch {
+			case block.Text != nil:
+				block.Text.Meta, block.Text.Annotations = meta, annotations
+			case block.Image != nil:
+				block.Image.Meta, block.Image.Annotations = meta, annotations
+			case block.Audio != nil:
+				block.Audio.Meta, block.Audio.Annotations = meta, annotations
+			case block.ResourceLink != nil:
+				block.ResourceLink.Meta, block.ResourceLink.Annotations = meta, annotations
+			case block.Resource != nil:
+				block.Resource.Meta, block.Resource.Annotations = meta, annotations
+			}
+
+			encoded, err := json.Marshal(block)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(encoded, &got); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got["_meta"], meta) {
+				t.Fatalf("_meta = %#v, want %#v", got["_meta"], meta)
+			}
+			wantAnnotations := map[string]any{"audience": []any{"assistant"}}
+			if !reflect.DeepEqual(got["annotations"], wantAnnotations) {
+				t.Fatalf("annotations = %#v, want %#v", got["annotations"], wantAnnotations)
+			}
+		})
+	}
+}
+
 func TestJSONGolden_ToolCallContent(t *testing.T) {
 	t.Parallel()
 	t.Run("tool_content_content_text", runGolden(

@@ -1281,37 +1281,41 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 					}
 					// Special shaping for ContentBlock variants to preserve exact wire JSON
 					if name == "ContentBlock" {
+						preserveCommonFields := func(b *Group) {
+							for _, field := range []string{"_meta", "annotations"} {
+								b.If(List(Id("value"), Id("ok")).Op(":=").Id("m").Index(Lit(field)), Id("ok")).Block(
+									Id("nm").Index(Lit(field)).Op("=").Id("value"),
+								)
+							}
+						}
 						switch vi.discValue {
 						case "text":
-							gg.Block(
-								Var().Id("nm").Map(String()).Any(),
-								Id("nm").Op("=").Make(Map(String()).Any()),
-								Id("nm").Index(Lit("type")).Op("=").Lit("text"),
-								Id("nm").Index(Lit("text")).Op("=").Id("m").Index(Lit("text")),
-								Return(Qual("encoding/json", "Marshal").Call(Id("nm"))),
-							)
+							gg.Var().Id("nm").Map(String()).Any()
+							gg.Id("nm").Op("=").Make(Map(String()).Any())
+							gg.Id("nm").Index(Lit("type")).Op("=").Lit("text")
+							gg.Id("nm").Index(Lit("text")).Op("=").Id("m").Index(Lit("text"))
+							preserveCommonFields(gg)
+							gg.Return(Qual("encoding/json", "Marshal").Call(Id("nm")))
 						case "image":
-							gg.Block(
-								Var().Id("nm").Map(String()).Any(),
-								Id("nm").Op("=").Make(Map(String()).Any()),
-								Id("nm").Index(Lit("type")).Op("=").Lit("image"),
-								Id("nm").Index(Lit("data")).Op("=").Id("m").Index(Lit("data")),
-								Id("nm").Index(Lit("mimeType")).Op("=").Id("m").Index(Lit("mimeType")),
-								// Only include uri if present; do not emit null
-								If(List(Id("_v"), Id("_ok")).Op(":=").Id("m").Index(Lit("uri")), Id("_ok")).Block(
-									Id("nm").Index(Lit("uri")).Op("=").Id("_v"),
-								),
-								Return(Qual("encoding/json", "Marshal").Call(Id("nm"))),
+							gg.Var().Id("nm").Map(String()).Any()
+							gg.Id("nm").Op("=").Make(Map(String()).Any())
+							gg.Id("nm").Index(Lit("type")).Op("=").Lit("image")
+							gg.Id("nm").Index(Lit("data")).Op("=").Id("m").Index(Lit("data"))
+							gg.Id("nm").Index(Lit("mimeType")).Op("=").Id("m").Index(Lit("mimeType"))
+							preserveCommonFields(gg)
+							// Only include uri if present; do not emit null
+							gg.If(List(Id("_v"), Id("_ok")).Op(":=").Id("m").Index(Lit("uri")), Id("_ok")).Block(
+								Id("nm").Index(Lit("uri")).Op("=").Id("_v"),
 							)
+							gg.Return(Qual("encoding/json", "Marshal").Call(Id("nm")))
 						case "audio":
-							gg.Block(
-								Var().Id("nm").Map(String()).Any(),
-								Id("nm").Op("=").Make(Map(String()).Any()),
-								Id("nm").Index(Lit("type")).Op("=").Lit("audio"),
-								Id("nm").Index(Lit("data")).Op("=").Id("m").Index(Lit("data")),
-								Id("nm").Index(Lit("mimeType")).Op("=").Id("m").Index(Lit("mimeType")),
-								Return(Qual("encoding/json", "Marshal").Call(Id("nm"))),
-							)
+							gg.Var().Id("nm").Map(String()).Any()
+							gg.Id("nm").Op("=").Make(Map(String()).Any())
+							gg.Id("nm").Index(Lit("type")).Op("=").Lit("audio")
+							gg.Id("nm").Index(Lit("data")).Op("=").Id("m").Index(Lit("data"))
+							gg.Id("nm").Index(Lit("mimeType")).Op("=").Id("m").Index(Lit("mimeType"))
+							preserveCommonFields(gg)
+							gg.Return(Qual("encoding/json", "Marshal").Call(Id("nm")))
 						case "resource_link":
 							gg.BlockFunc(func(b *Group) {
 								b.Var().Id("nm").Map(String()).Any()
@@ -1319,6 +1323,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 								b.Id("nm").Index(Lit("type")).Op("=").Lit("resource_link")
 								b.Id("nm").Index(Lit("name")).Op("=").Id("m").Index(Lit("name"))
 								b.Id("nm").Index(Lit("uri")).Op("=").Id("m").Index(Lit("uri"))
+								preserveCommonFields(b)
 								// Only include optional keys if present
 								b.If(List(Id("v1"), Id("ok1")).Op(":=").Id("m").Index(Lit("description")), Id("ok1")).Block(
 									Id("nm").Index(Lit("description")).Op("=").Id("v1"),
@@ -1335,13 +1340,12 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 								b.Return(Qual("encoding/json", "Marshal").Call(Id("nm")))
 							})
 						case "resource":
-							gg.Block(
-								Var().Id("nm").Map(String()).Any(),
-								Id("nm").Op("=").Make(Map(String()).Any()),
-								Id("nm").Index(Lit("type")).Op("=").Lit("resource"),
-								Id("nm").Index(Lit("resource")).Op("=").Id("m").Index(Lit("resource")),
-								Return(Qual("encoding/json", "Marshal").Call(Id("nm"))),
-							)
+							gg.Var().Id("nm").Map(String()).Any()
+							gg.Id("nm").Op("=").Make(Map(String()).Any())
+							gg.Id("nm").Index(Lit("type")).Op("=").Lit("resource")
+							gg.Id("nm").Index(Lit("resource")).Op("=").Id("m").Index(Lit("resource"))
+							preserveCommonFields(gg)
+							gg.Return(Qual("encoding/json", "Marshal").Call(Id("nm")))
 						}
 					}
 					// default: remarshal possibly with injected discriminant

@@ -27,8 +27,8 @@ After the generator, that target runs `gofumpt -w .` over the whole repository a
 ## Side Effects
 
 - Parses command-line flags with `flag.Parse` [main.go:main]
-- Reads the working directory with `os.Getwd` and calls `os.Stat` on `schema/meta.json` and `schema/schema.json` in each ancestor [main.go:findRepoRoot, hasSchema, fileExists]
-- Creates the output directory with `os.MkdirAll` and mode `0o755` [main.go:main]
+- Reads the working directory with `os.Getwd`. In each ancestor it calls `os.Stat` on `schema/meta.json`, and on `schema/schema.json` only when `schema/meta.json` exists [main.go:findRepoRoot, hasSchema, fileExists]
+- Creates the output directory and any missing parents with `os.MkdirAll` and mode `0o755` (before umask). An existing directory keeps its permissions [main.go:main]
 - Reads the meta, schema, and unstable files through `load.ReadMeta`, `load.ReadSchema`, `load.ReadMetaUnstable`, and `load.ReadSchemaUnstable` [main.go:main]
 - Overwrites `constants_gen.go`, `types_gen.go`, `agent_gen.go`, `client_gen.go`, and `helpers_gen.go` in the output directory through the `emit` writers [main.go:main]
 - Ends the process with a panic on any error [main.go:main]

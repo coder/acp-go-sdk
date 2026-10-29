@@ -110,6 +110,98 @@ func TestWriteHelpersJen_SkipsPhantomVariant(t *testing.T) {
 	}
 }
 
+// PickNotification sorts before PickRequest, so WriteTypesJen registers the
+// nested type PickItem (for its inline "item" property) before it names the
+// PickRequest variants. The "item" variant then cannot take PickItem and gets
+// another name. WriteHelpersJen must build that same type.
+const nestedNameCollisionSchema = `{"$defs": {
+  "PickNotification": {"type": "object", "properties": {
+    "item": {"type": "object", "properties": {"note": {"type": "string"}}}}},
+  "PickRequest": {"oneOf": [
+    {"title": "item", "type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+    {"title": "other", "type": "object", "required": ["count"], "properties": {"count": {"type": "integer"}}}
+  ]}
+}}`
+
+func TestWriteHelpersJen_UsesUnionVariantTypes(t *testing.T) {
+	types, helpers := emitUnionFiles(t, nestedNameCollisionSchema)
+
+	// union struct name -> field name -> type that the pointer field points to
+	fields := map[string]map[string]string{}
+	for _, d := range parseGo(t, "types_gen.go", types).Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			st, ok := ts.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			for _, fl := range st.Fields.List {
+				star, ok := fl.Type.(*ast.StarExpr)
+				if !ok {
+					continue
+				}
+				elem, ok := star.X.(*ast.Ident)
+				if !ok {
+					continue
+				}
+				for _, n := range fl.Names {
+					if fields[ts.Name.Name] == nil {
+						fields[ts.Name.Name] = map[string]string{}
+					}
+					fields[ts.Name.Name][n.Name] = elem.Name
+				}
+			}
+		}
+	}
+	if len(fields["PickRequest"]) != 2 {
+		t.Fatalf("PickRequest pointer fields = %v, want 2", fields["PickRequest"])
+	}
+
+	checked := 0
+	ast.Inspect(parseGo(t, "helpers_gen.go", helpers), func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		union, ok := lit.Type.(*ast.Ident)
+		if !ok || fields[union.Name] == nil {
+			return true
+		}
+		for _, e := range lit.Elts {
+			kv, ok := e.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			key, _ := kv.Key.(*ast.Ident)
+			addr, _ := kv.Value.(*ast.UnaryExpr)
+			if key == nil || addr == nil {
+				continue
+			}
+			inner, _ := addr.X.(*ast.CompositeLit)
+			if inner == nil {
+				continue
+			}
+			got, _ := inner.Type.(*ast.Ident)
+			want := fields[union.Name][key.Name]
+			if got == nil || got.Name != want {
+				t.Errorf("helpers_gen.go sets %s.%s to &%v{...}, but the field has type *%s", union.Name, key.Name, got, want)
+			}
+			checked++
+		}
+		return true
+	})
+	if checked != 2 {
+		t.Errorf("checked %d union constructor fields, want 2", checked)
+	}
+}
+
 func parseGo(t *testing.T, name, src string) *ast.File {
 	t.Helper()
 	f, err := parser.ParseFile(token.NewFileSet(), name, src, 0)

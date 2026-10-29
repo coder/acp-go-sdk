@@ -7,6 +7,8 @@
 #   acp-verify doctor                      read-only: is this run worth driving?
 #   acp-verify wire JOURNEY LABEL          drive the example agent with acpwire
 #   acp-verify client LABEL INPUT          run the example client CLI with INPUT on stdin
+#   acp-verify client-default LABEL INPUT  run `go run ./example/client` with INPUT, then list
+#                                          every process that it started and that is still running
 #   acp-verify cleanup                     stop this run's processes, delete work/, keep evidence/
 #
 # Environment:
@@ -195,6 +197,81 @@ cmd_client() {
 	return "$rc"
 }
 
+# tagged TAG: the pid and command of each process that carries
+# ACP_VERIFY_TAG=TAG in its environment. A child inherits the tag, also through
+# `go run`, so this finds every process that a tagged command started and
+# nothing that another user or another run started.
+tagged() {
+	local env pid
+	for env in /proc/[0-9]*/environ; do
+		grep -qzxF "ACP_VERIFY_TAG=$1" "$env" 2>/dev/null || continue
+		pid=${env#/proc/}
+		pid=${pid%/environ}
+		printf '%s %s\n' "$pid" "$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null)"
+	done
+}
+
+cmd_client_default() {
+	need_run
+	local label=${1:?label}
+	local input=${2?input for stdin, such as '1\n'}
+	local out=$EVIDENCE/$label
+	[ -d /proc/self ] || die "client-default needs /proc to find the processes that the client started"
+	mkdir -p "$out"
+	printf '%b' "$input" >"$out/stdin.txt"
+	local tag
+	tag=$(basename "$RUN")-$label-$$
+	echo "cd $REPO && ACP_VERIFY_TAG=$tag go run ./example/client <stdin.txt" >"$out/command.txt"
+	local start end client_rc rc
+	start=$(date +%s%N)
+	cd "$REPO"
+	# go run compiles the client and then the agent, so the time limit is
+	# longer than for client.
+	set +e
+	tracked env "ACP_VERIFY_TAG=$tag" timeout --kill-after=5 "${ACP_VERIFY_TIMEOUT:-120}" \
+		go run ./example/client <"$out/stdin.txt" 2>"$out/stderr.txt" |
+		head -c 1048576 >"$out/stdout.txt"
+	client_rc=${PIPESTATUS[0]}
+	set -e
+	end=$(date +%s%N)
+	# The client kills only the `go run` that started the agent. The agent
+	# binary exits when it reads end of input, so give it 3 s. Every sleep
+	# is followed by a new check.
+	local left pid
+	left=$(tagged "$tag")
+	for _ in $(seq 1 10); do
+		[ -z "$left" ] && break
+		sleep 0.3
+		left=$(tagged "$tag")
+	done
+	printf '%s' "$left" >"$out/leftover.txt"
+	rc=$client_rc
+	if [ -n "$left" ]; then
+		[ "$rc" = 0 ] && rc=1
+		# Record each one, so that doctor reports it and cleanup stops it.
+		while read -r pid _; do
+			printf '%s\t%s\t%s\n' "$pid" "$(start_of "$pid")" "leftover of $label" >>"$WORK/pids"
+		done <<<"$left"
+	fi
+	{
+		echo "exit=$rc client_exit=$client_rc ms=$(((end - start) / 1000000))"
+		case $client_rc in
+		124) echo "TIMEOUT: the client ran longer than ${ACP_VERIFY_TIMEOUT:-120}s" ;;
+		141) echo "OUTPUT CAP: the client wrote more than 1 MiB" ;;
+		esac
+		if [ -n "$left" ]; then
+			echo "LEFTOVER: still running 3 s after the client exited:"
+			echo "$left"
+		else
+			echo "leftover=none"
+		fi
+	} >"$out/result.txt"
+	cat "$out/stdout.txt"
+	tail -n +2 "$out/result.txt"
+	echo "--- exit=$rc, evidence $out"
+	return "$rc"
+}
+
 cmd_cleanup() {
 	need_run
 	local pid start cmd
@@ -225,9 +302,13 @@ client)
 	shift
 	cmd_client "$@"
 	;;
+client-default)
+	shift
+	cmd_client_default "$@"
+	;;
 cleanup) cmd_cleanup ;;
 *)
-	sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 	exit 2
 	;;
 esac

@@ -65,7 +65,7 @@ Drive the example client, as a developer at a terminal would:
 
 The client reads its permission choice from stdin, so `client` gives it the keys from a file. It stops the client after `ACP_VERIFY_TIMEOUT` seconds (default 60, exit 124) or after 1 MiB of output (exit 141).
 
-To run the client the way the README does, with `go run` and its default agent, use `client-default` with the same arguments. It builds from the checkout itself, so its limit is 120 s by default. After the client exits, it lists every process that the client started and that still runs, and it exits 1 when one is left. It needs `/proc`, so it runs on Linux only.
+To run the client the way the README does, with `go run` and its default agent, use `client-default` with the same arguments. It builds from the checkout itself, so its limit is 120 s by default. After the client exits, it lists every process that the client started and that still runs, and it exits 1 when one is left. It records each one in the run, so `doctor` reports it and `cleanup` stops it. It needs `/proc`, so it runs on Linux only.
 
 ## Evidence
 

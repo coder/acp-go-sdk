@@ -68,7 +68,7 @@ func ToolDiffContent(path string, newText string, oldText ...string) ToolCallCon
 // ToolTerminalRef constructs a terminal reference tool-call content.
 func ToolTerminalRef(terminalID string) ToolCallContent {
 	return ToolCallContent{Terminal: &ToolCallContentTerminal{
-		TerminalId: terminalID,
+		TerminalId: TerminalId(terminalID),
 		Type:       "terminal",
 	}}
 }

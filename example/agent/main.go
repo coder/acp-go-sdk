@@ -131,9 +131,9 @@ func (a *exampleAgent) UnstableSetProvider(ctx context.Context, params acp.Unsta
 	return acp.UnstableSetProviderResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersSet)
 }
 
-// UnstableDeleteSession implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDeleteSession(ctx context.Context, params acp.UnstableDeleteSessionRequest) (acp.UnstableDeleteSessionResponse, error) {
-	return acp.UnstableDeleteSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionDelete)
+// DeleteSession implements acp.Agent.
+func (a *exampleAgent) DeleteSession(ctx context.Context, params acp.DeleteSessionRequest) (acp.DeleteSessionResponse, error) {
+	return acp.DeleteSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionDelete)
 }
 
 // CloseSession implements acp.Agent.

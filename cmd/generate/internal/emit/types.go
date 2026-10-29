@@ -893,6 +893,41 @@ func jenTypeForOptional(d *load.Definition) Code {
 	return jenTypeFor(d)
 }
 
+// sortedPropertyKeys returns the keys of props in sorted order.
+func sortedPropertyKeys(props map[string]*load.Definition) []string {
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// firstConstPropertyKey returns the first property of v, in sorted key order,
+// that has a const value, or "" if none has one. emitUnion and WriteHelpersJen
+// both use it to find a fallback discriminator, so they pick the same key on
+// every run.
+func firstConstPropertyKey(v *load.Definition) string {
+	for _, k := range sortedPropertyKeys(v.Properties) {
+		if pd := v.Properties[k]; pd != nil && pd.Const != nil {
+			return k
+		}
+	}
+	return ""
+}
+
+// isPhantomVariant reports whether the expanded union variant v has no $ref
+// (ref), no properties, no null type, and no title. emitUnion emits no type for
+// such a variant, so WriteHelpersJen must emit no constructor for it.
+// Title-only variants such as ExtMethodRequest are not phantom.
+func isPhantomVariant(v *load.Definition, ref string) bool {
+	isNull := false
+	if s, ok := v.Type.(string); ok && s == "null" {
+		isNull = true
+	}
+	return len(v.Properties) == 0 && ref == "" && !isNull && v.Title == ""
+}
+
 // emitAvailableCommandInputJen generates a concrete variant type for anyOf and a thin union wrapper
 // that supports JSON unmarshal by probing object shape. Currently the schema defines one variant
 // (title: UnstructuredCommandInput) with a required 'hint' field.
@@ -922,13 +957,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			if v == nil {
 				continue
 			}
-			v = expandAllOf(schema, v)
-			for k, pd := range v.Properties {
-				if pd != nil && pd.Const != nil {
-					discKey = k
-					break
-				}
-			}
+			discKey = firstConstPropertyKey(expandAllOf(schema, v))
 			if discKey != "" {
 				break
 			}
@@ -1050,13 +1079,14 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 		}
 		// Skip phantom variants that have neither $ref nor object shape nor null nor title
 		// (but allow title-only variants like ExtMethodRequest to generate as empty structs)
-		if !isObj && ref == "" && !isNull && v.Title == "" {
+		if isPhantomVariant(v, ref) {
 			continue
 		}
-		// collect const properties (e.g., type, outcome)
+		// collect const properties (e.g., type, outcome), in sorted key order so
+		// that the MarshalJSON injections do not depend on map iteration order
 		consts := [][2]string{}
-		for pk, pd := range v.Properties {
-			if pd != nil && pd.Const != nil {
+		for _, pk := range sortedPropertyKeys(v.Properties) {
+			if pd := v.Properties[pk]; pd != nil && pd.Const != nil {
 				if s, ok := pd.Const.(string); ok {
 					consts = append(consts, [2]string{pk, s})
 				}

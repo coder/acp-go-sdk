@@ -67,13 +67,7 @@ func WriteHelpersJen(outDir string, schema *load.Schema, _ *load.Meta) error {
 				if v == nil {
 					continue
 				}
-				expanded := expandAllOf(schema, v)
-				for k, pd := range expanded.Properties {
-					if pd != nil && pd.Const != nil {
-						discKey = k
-						break
-					}
-				}
+				discKey = firstConstPropertyKey(expandAllOf(schema, v))
 				if discKey != "" {
 					break
 				}
@@ -122,6 +116,11 @@ func WriteHelpersJen(outDir string, schema *load.Schema, _ *load.Meta) error {
 				}
 			}
 			tname = util.ToExportedField(tname)
+			// emitUnion emits no type for a phantom variant. It skips the variant
+			// after registering its name, so skip it at the same point here.
+			if isPhantomVariant(v, ref) {
+				continue
+			}
 
 			// Derive field name with same priority as types emitter
 			fieldName := ""

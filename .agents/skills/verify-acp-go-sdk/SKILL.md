@@ -65,12 +65,14 @@ Drive the example client, as a developer at a terminal would:
 
 The client reads its permission choice from stdin, so `client` gives it the keys from a file. It stops the client after `ACP_VERIFY_TIMEOUT` seconds (default 60, exit 124) or after 1 MiB of output (exit 141).
 
+To run the client the way the README does, with `go run` and its default agent, use `client-default` with the same arguments. It builds from the checkout itself, so its limit is 120 s by default. After the client exits, it lists every process that the client started and that still runs, and it exits 1 when one is left. It needs `/proc`, so it runs on Linux only.
+
 ## Evidence
 
 Each drive writes `evidence/<label>/` in the run folder:
 
 - `wire`: `transcript.jsonl` (every line in both directions, with a timestamp and direction), `agent.stderr.log` (the agent's log, each line prefixed with milliseconds since `acpwire` started), `acpwire.stderr.log` (the driver's own messages, such as a journey syntax error), `summary.json`, `result.txt` (the step lines and `exit=`), `journey.jsonl` and `command.txt`. A line on the agent's stdout that is not a JSON-RPC message fails the run.
-- `client`: `stdout.txt`, `stderr.txt`, `stdin.txt`, `result.txt` (`exit=` and duration) and `command.txt`.
+- `client`: `stdout.txt`, `stderr.txt`, `stdin.txt`, `result.txt` (`exit=` and duration) and `command.txt`. `client-default` adds `leftover.txt` and a `leftover=none` or `LEFTOVER:` line in `result.txt`.
 - `build.env`: the source state and Go version that the binaries came from.
 
 Proof standards:
@@ -95,7 +97,7 @@ After cleanup, confirm that the proof is still there, for example with `ls "$ACP
 
 | Helper | Invocation | Purpose |
 | --- | --- | --- |
-| `scripts/acp-verify` | `"$V" launch`, `doctor`, `wire JOURNEY LABEL`, `client LABEL KEYS`, `cleanup` | Run lifecycle, process tracking, evidence layout. |
+| `scripts/acp-verify` | `"$V" launch`, `doctor`, `wire JOURNEY LABEL`, `client LABEL KEYS`, `client-default LABEL KEYS`, `cleanup` | Run lifecycle, process tracking, evidence layout. |
 | `scripts/acpwire/main.go` | Built by `launch`. Directly: `"$ACP_VERIFY_RUN/work/bin/acpwire" -agent BIN -journey FILE -out DIR` | Plays an ACP client against any stdio agent binary. Go standard library only. |
 | `journeys/*.jsonl` | `"$V" wire NAME.jsonl LABEL` | The scripted editor sessions that the feature files use. |
 

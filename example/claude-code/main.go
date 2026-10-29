@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -20,6 +21,9 @@ import (
 
 type replClient struct {
 	autoApprove bool
+	// input carries the lines of os.Stdin. The REPL loop and permission
+	// prompts both read from it, so neither one buffers lines the other needs.
+	input <-chan string
 }
 
 var _ acp.Client = (*replClient)(nil)
@@ -47,13 +51,12 @@ func (c *replClient) RequestPermission(ctx context.Context, params acp.RequestPe
 	for i, opt := range params.Options {
 		fmt.Printf("   %d. %s (%s)\n", i+1, opt.Name, opt.Kind)
 	}
-	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("\nChoose an option: ")
-		line, err := reader.ReadString('\n')
+		line, ok := <-c.input
 		line = strings.TrimSpace(line)
 		if line == "" {
-			if err != nil {
+			if !ok {
 				return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}}}, nil
 			}
 			continue
@@ -193,7 +196,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := &replClient{autoApprove: *yolo}
+	input := readLines(os.Stdin)
+	client := &replClient{autoApprove: *yolo, input: input}
 	conn := acp.NewClientSideConnection(client, stdin, stdout)
 	conn.SetLogger(slog.Default())
 
@@ -235,13 +239,13 @@ func main() {
 	fmt.Printf("📝 Created session: %s\n", newSess.SessionId)
 
 	fmt.Println("Type a message and press Enter to send. Commands: :cancel, :exit")
-	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("> ")
-		if !scanner.Scan() {
+		line, ok := <-input
+		if !ok {
 			break
 		}
-		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -272,6 +276,20 @@ func main() {
 	}
 
 	_ = cmd.Process.Kill()
+}
+
+// readLines reads r line by line on one goroutine and sends each line on the
+// returned channel. It closes the channel at EOF or on a read error.
+func readLines(r io.Reader) <-chan string {
+	lines := make(chan string)
+	go func() {
+		defer close(lines)
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+	return lines
 }
 
 func mustCwd() string {

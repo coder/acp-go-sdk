@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -15,7 +16,11 @@ import (
 	"github.com/coder/acp-go-sdk"
 )
 
-type exampleClient struct{}
+type exampleClient struct {
+	// input carries the lines of os.Stdin. Every permission prompt reads from
+	// it, so no prompt buffers lines that a later prompt needs.
+	input <-chan string
+}
 
 var _ acp.Client = (*exampleClient)(nil)
 
@@ -29,13 +34,12 @@ func (e *exampleClient) RequestPermission(ctx context.Context, params acp.Reques
 	for i, opt := range params.Options {
 		fmt.Printf("   %d. %s (%s)\n", i+1, opt.Name, opt.Kind)
 	}
-	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("\nChoose an option: ")
-		line, err := reader.ReadString('\n')
+		line, ok := <-e.input
 		line = strings.TrimSpace(line)
 		if line == "" {
-			if err != nil {
+			if !ok {
 				return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}}}, nil
 			}
 			continue
@@ -200,7 +204,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := &exampleClient{}
+	client := &exampleClient{input: readLines(os.Stdin)}
 	conn := acp.NewClientSideConnection(client, stdin, stdout)
 	conn.SetLogger(slog.Default())
 
@@ -265,6 +269,20 @@ func main() {
 	}
 
 	_ = cmd.Process.Kill()
+}
+
+// readLines reads r line by line on one goroutine and sends each line on the
+// returned channel. It closes the channel at EOF or on a read error.
+func readLines(r io.Reader) <-chan string {
+	lines := make(chan string)
+	go func() {
+		defer close(lines)
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+	return lines
 }
 
 func mustCwd() string {

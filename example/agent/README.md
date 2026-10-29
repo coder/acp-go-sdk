@@ -23,7 +23,7 @@
 ## Invariants
 
 - `Prompt` returns the error `session <id> not found` when the session ID is not in the sessions map [main.go:Prompt]
-- `Prompt` calls the previous turn's cancel func before it starts a new turn [main.go:Prompt]
+- `Prompt` calls the cancel func that it finds in `s.cancel` before it starts a new turn. It reads `s.cancel` and stores the new func in separate critical sections, so two concurrent `Prompt` calls on one session can both find it empty and neither cancels the other. The SDK still cancels the earlier prompt of a session when a later one registers [main.go:Prompt] [../../agent.go:registerPrompt]
 - `Prompt` maps any turn error that occurs after the turn context ends to `StopReasonCancelled` with a nil error [main.go:Prompt]
 - `Prompt` stores the current turn's cancel func in `s.cancel` before the turn runs, and clears it only after a successful turn. On the error and cancelled paths, `s.cancel` still holds the current turn's func [main.go:Prompt]
 - `Cancel` returns nil for unknown sessions and calls the cancel func only when it is set. It reads `s.cancel` after it releases `a.mu` [main.go:Cancel]

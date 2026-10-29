@@ -305,8 +305,8 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 			Title:      acp.Ptr("Modifying critical configuration file"),
 			Kind:       acp.Ptr(acp.ToolKindEdit),
 			Status:     acp.Ptr(acp.ToolCallStatusPending),
-			Locations:  []acp.ToolCallLocation{{Path: "/home/user/project/config.json"}},
-			RawInput:   map[string]any{"path": "/home/user/project/config.json", "content": "{\"database\": {\"host\": \"new-host\"}}"},
+			Locations:  []acp.ToolCallLocation{{Path: "/project/config.json"}},
+			RawInput:   map[string]any{"path": "/project/config.json", "content": "{\"database\": {\"host\": \"new-host\"}}"},
 		},
 		Options: []acp.PermissionOption{
 			{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow this change", OptionId: acp.PermissionOptionId("allow")},

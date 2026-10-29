@@ -418,9 +418,9 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 		}
 
 		// validators for selected types
-		// Note: oneOf union wrappers get a generic Validate emitted in emitUnion,
+		// Note: union wrappers get a generic Validate emitted in emitUnion,
 		// so skip emitValidateJen for types that already have a union Validate.
-		hasUnionValidate := len(def.OneOf) > 0 && !isStringConstUnion(def)
+		hasUnionValidate := (len(def.OneOf) > 0 || len(def.AnyOf) > 0) && !isStringConstUnion(def) && !isOpenStringEnum(def)
 		if !hasUnionValidate && (strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification") || name == "ToolCallUpdate") {
 			emitValidateJen(f, name, def)
 		}
@@ -1355,18 +1355,22 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 	})
 	f.Line()
 
-	// Generic validator for oneOf unions: exactly one variant must be set
-	if exactlyOne {
-		f.Func().Params(Id("u").Op("*").Id(name)).Id("Validate").Params().Params(Error()).BlockFunc(func(g *Group) {
-			g.Var().Id("count").Int()
-			for _, vi := range variants {
-				g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).Block(Id("count").Op("++"))
-			}
+	// oneOf requires exactly one variant, anyOf at least one.
+	f.Func().Params(Id("u").Op("*").Id(name)).Id("Validate").Params().Params(Error()).BlockFunc(func(g *Group) {
+		g.Var().Id("count").Int()
+		for _, vi := range variants {
+			g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).Block(Id("count").Op("++"))
+		}
+		if exactlyOne {
 			g.If(Id("count").Op("!=").Lit(1)).Block(
 				Return(Qual("errors", "New").Call(Lit(name + " must have exactly one variant set"))),
 			)
-			g.Return(Nil())
-		})
-		f.Line()
-	}
+		} else {
+			g.If(Id("count").Op("<").Lit(1)).Block(
+				Return(Qual("errors", "New").Call(Lit(name + " must have at least one variant set"))),
+			)
+		}
+		g.Return(Nil())
+	})
+	f.Line()
 }

@@ -11,7 +11,7 @@
 - `exampleClient` methods that satisfy `acp.Client`: `RequestPermission` [main.go:RequestPermission], `SessionUpdate` [main.go:SessionUpdate], `WriteTextFile` [main.go:WriteTextFile], `ReadTextFile` [main.go:ReadTextFile], `CreateTerminal` [main.go:CreateTerminal], `TerminalOutput` [main.go:TerminalOutput], `ReleaseTerminal` [main.go:ReleaseTerminal], `WaitForTerminalExit` [main.go:WaitForTerminalExit], `KillTerminal` [main.go:KillTerminal].
 - CLI: with at least one argument, `os.Args[1]` is the agent program and `os.Args[2:]` are its arguments [main.go:main].
 - CLI: with no arguments, the client runs `go run <clientDir>/../agent`, where `clientDir` is the directory of `main.go` from `runtime.Caller(0)` [main.go:main]. This is the [example agent](https://github.com/coder/acp-go-sdk/blob/main/example/agent/main.go).
-- Environment variables: none are read [main.go:main].
+- Environment variables: this file reads none. `exec.CommandContext` looks up `go`, or an agent command without a path separator, through `PATH`, and the child inherits the full environment [main.go:main].
 - `Initialize` request: `ProtocolVersion` is `acp.ProtocolVersionNumber`, `Fs.ReadTextFile` and `Fs.WriteTextFile` are `true`, and `Terminal` is `true` [main.go:main].
 - `NewSession` request: `Cwd` is the process working directory from `mustCwd`, and `McpServers` is empty [main.go:main][main.go:mustCwd].
 - `Prompt` request: one text block, `"Hello, agent!"` [main.go:main].
@@ -20,7 +20,7 @@
 ## Invariants
 
 - `ReadTextFile` and `WriteTextFile` return an error when the path is not absolute [main.go:ReadTextFile][main.go:WriteTextFile].
-- `WriteTextFile` creates the parent directory with mode `0o755`, then writes the file with mode `0o644` [main.go:WriteTextFile].
+- `WriteTextFile` creates missing parent directories with mode `0o755`, then writes the file with `os.WriteFile`: a new file gets mode `0o644`, and an existing file is truncated and keeps its permissions (modes before umask) [main.go:WriteTextFile].
 - `ReadTextFile` treats `Line` as a 1-based start line, clamped to the number of lines. It applies `Limit` as a line count only when `Limit` is greater than 0 [main.go:ReadTextFile].
 - `RequestPermission` asks again until the user enters a valid 1-based option number, and prints `Invalid option. Please try again.` for other input [main.go:RequestPermission].
 - `RequestPermission` returns a `Cancelled` outcome when stdin ends before a valid option number is entered [main.go:RequestPermission].
@@ -41,7 +41,7 @@
 - Process termination: `os.Exit(1)` on the error paths listed under Invariants [main.go:main].
 - Network: none directly. Protocol traffic goes over the child's stdio [main.go:main].
 - Context: `main` creates a cancellable context and cancels it with `defer` [main.go:main].
-- Goroutines: only the stdin reader that `readLines` starts. Locks and global mutable state: none in this package [main.go:readLines].
+- Goroutines: this file starts one, the stdin reader in `readLines`. `acp.NewClientSideConnection` starts the connection's own goroutines (four, plus one per inbound request, see the root README). Locks and global mutable state: none in this file [main.go:readLines] [main.go:main].
 
 ## Verification
 

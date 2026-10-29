@@ -12,7 +12,7 @@ This directory holds one `package main` program, `main.go`. It starts the Gemini
 - Flag `-sandbox` (bool): passes `--sandbox` to Gemini [main.go:-sandbox]
 - Flag `-yolo` (bool): auto-approves permission prompts [main.go:-yolo]
 - Flag `-debug` (bool): passes `--debug` to Gemini [main.go:-debug]
-- REPL commands: `:exit` and `:quit` end the program, `:cancel` sends `session/cancel`, any other non-empty line is sent as a text prompt [main.go:main]
+- REPL commands, read only between prompts: `:exit` and `:quit` end the program, `:cancel` sends `session/cancel`, and any other non-empty line is sent as a text prompt. During a turn the loop is blocked in `conn.Prompt`, so `:cancel` cannot stop the running turn, and a line typed at a permission prompt goes to that prompt [main.go:main]
 - Unexported type `replClient` (fields `autoApprove` and `input`, the channel of stdin lines), checked at compile time by `var _ acp.Client = (*replClient)(nil)` [main.go:replClient]
 - `replClient` methods: `RequestPermission`, `SessionUpdate`, `WriteTextFile`, `ReadTextFile`, `CreateTerminal`, `TerminalOutput`, `ReleaseTerminal`, `WaitForTerminalExit`, `KillTerminal` [main.go:replClient]
 - Unexported helper `mustCwd` returns the working directory, or `.` on error [main.go:mustCwd]
@@ -34,11 +34,11 @@ This directory holds one `package main` program, `main.go`. It starts the Gemini
 
 ## Side Effects
 
-- Starts the Gemini CLI with `exec.CommandContext`, pipes its stdin and stdout to the ACP connection, and connects its stderr to `os.Stderr` [main.go:main]
+- Starts the Gemini CLI with `exec.CommandContext` (looked up through `PATH` unless `-gemini` names a path, and with the full environment), pipes its stdin and stdout to the ACP connection, and connects its stderr to `os.Stderr` [main.go:main]
 - Reads user input from `os.Stdin` on one goroutine (`readLines`). The REPL loop and the interactive permission prompts both take lines from its channel, so a permission answer typed or piped after a prompt reaches the permission prompt [main.go:readLines, main.go:main, main.go:RequestPermission]
 - Prints connection status, permission prompts, agent message and thought chunks, a `[user_message_chunk]` notice, tool call and plan notices, and file and terminal calls to stdout [main.go:main, main.go:SessionUpdate, main.go:RequestPermission]
 - Prints pipe, start, `initialize`, `session/new`, and prompt errors to stderr [main.go:main]
-- `WriteTextFile` creates the parent directory with `os.MkdirAll` (mode `0755`) and writes the file with `os.WriteFile` (mode `0644`) [main.go:WriteTextFile]
+- `WriteTextFile` creates missing parent directories with `os.MkdirAll` (mode `0755`) and writes the file with `os.WriteFile`: a new file gets mode `0644`, and an existing file is truncated and keeps its permissions (modes before umask) [main.go:WriteTextFile]
 - `ReadTextFile` reads the file with `os.ReadFile` [main.go:ReadTextFile]
 - Terminal methods only print their parameters and return stub values (`CreateTerminal` returns terminal ID `term-1`). They start no process [main.go:CreateTerminal, main.go:TerminalOutput, main.go:ReleaseTerminal, main.go:WaitForTerminalExit, main.go:KillTerminal]
 - Sets the connection logger to `slog.Default()` [main.go:main]

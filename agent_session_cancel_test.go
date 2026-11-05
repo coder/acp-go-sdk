@@ -459,3 +459,47 @@ func TestAgentSideConnection_NewerPromptWinsWhicheverRegistersFirst(t *testing.T
 		}
 	}
 }
+
+// overlapping-prompts.cfg, NewerPromptSurvives and CancelSparesLaterPrompts:
+// the client sends a prompt, a session/cancel and a second prompt in one
+// write. The second prompt can register before the first. The first prompt
+// ends, and the second keeps a live ctx.
+func TestAgentSideConnection_PromptAfterCancelSurvivesLateOlderRegister(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		var conn *AgentSideConnection
+		olderDone := make(chan struct{})
+		checkNow := make(chan struct{})
+		olderCanceled := make(chan bool, 1)
+		newerCanceled := make(chan bool, 1)
+		conn, peer := newCancelPeer(t, agentFuncs{
+			PromptFunc: func(ctx context.Context, p PromptRequest) (PromptResponse, error) {
+				if cancelTestPromptText(p) == "older" {
+					select {
+					case <-ctx.Done():
+						olderCanceled <- true
+					case <-time.After(2 * time.Second):
+						olderCanceled <- false
+					}
+					close(olderDone)
+					return PromptResponse{StopReason: StopReasonCancelled}, nil
+				}
+				select {
+				case <-checkNow:
+				case <-time.After(5 * time.Second):
+				}
+				newerCanceled <- ctx.Err() != nil
+				return PromptResponse{StopReason: StopReasonEndTurn}, nil
+			},
+		})
+		peer.send(cancelTestPromptLine(1, "older"), sessionCancelLine, cancelTestPromptLine(2, "newer"))
+		if !<-olderCanceled {
+			t.Fatalf("run %d: the prompt sent before the cancel kept running", i)
+		}
+		waitCancelTest(t, olderDone, "the older prompt to return")
+		waitCompletedNotifications(t, conn.conn, 1)
+		close(checkNow)
+		if <-newerCanceled {
+			t.Fatalf("run %d: the prompt sent after the cancel was canceled", i)
+		}
+	}
+}

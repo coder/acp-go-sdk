@@ -7,7 +7,7 @@ description: Model-check session/cancel handling in AgentSideConnection with TLA
 
 `session/cancel` is a notification, so it runs on the `processNotifications` goroutine. Each `session/prompt` runs on its own request goroutine. Either one can reach `a.mu` first. `cancelPrompt` cancels the prompt that has registered, and records a marker for a prompt that arrived before the cancel but registers later. `pruneCancelMarkers` drops a marker once no request that arrived before it is in flight. Unit tests reach a few of these orders (`agent_session_cancel_test.go`). This skill checks every order of a small model of that code with TLC.
 
-The model is a hand translation. `check.sh` reads four facts from the code on every run and sets the model from them, so a change to one of those lines changes what TLC checks. It refuses to run (DRIFT) when a line that the model depends on has a new form. Any other change inside covered code makes it report STALE until you review the model against the code.
+The model is a hand translation. `check.sh` reads seven facts from the code on every run and sets the model from them, so a change to one of those lines changes what TLC checks. It refuses to run (DRIFT) when a line that the model depends on has a new form. Any other change inside covered code makes it report STALE until you review the model against the code.
 
 ## What it proves
 
@@ -29,7 +29,7 @@ None. Every config passes. The model found four bugs, and each one now has a reg
 | Overlapping prompts lose the cancel (#83). The cleanup of an older prompt deleted a newer prompt's entry, so a later cancel found nothing. | overlapping-prompts | `TestAgentSideConnection_OverlappingPromptsKeepCancel` | `CleanupChecksOwner` |
 | A notification handler waits on the client, and the barrier starts a prompt sent after a queued cancel. The cancel then cancels it (#72 item 1). | peer-wait-later-prompt | `TestAgentSideConnection_SessionCancelSparesPromptReleasedByPeerWait` | `CancelSkipsLaterPrompt` |
 | The same release, when the agent's `Cancel` calls the client. | cancel-waits-later-prompt | `TestAgentSideConnection_SessionCancelSparesPromptReleasedByCancelWait` | `CancelSkipsLaterPrompt` |
-| Two prompts of one session sent back to back: the newer handler often registered first, and the older one then canceled it and ran on (284 of 300 runs before the fix). | overlapping-prompts | `TestAgentSideConnection_NewerPromptWinsWhicheverRegistersFirst` | `RegisterKeepsNewer` |
+| Two prompts of one session sent back to back: the newer handler often registered first, and the older one then canceled it and ran on (284 of 300 runs before the fix). | overlapping-prompts | `TestAgentSideConnection_NewerPromptWinsWhicheverRegistersFirst`, and with a cancel between the prompts `TestAgentSideConnection_PromptAfterCancelSurvivesLateOlderRegister` | `RegisterKeepsNewer` |
 
 When `check.sh` finds a new break, record it here with its config, its replay and the harm until a fix lands.
 

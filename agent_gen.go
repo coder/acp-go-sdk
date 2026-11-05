@@ -406,11 +406,9 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		var reqCtx context.Context
 		var cancel context.CancelFunc
 		reqCtx, cancel = context.WithCancel(ctx)
-		a.registerPrompt(ctx, string(p.SessionId), cancel)
+		donePrompt := a.registerPrompt(ctx, string(p.SessionId), cancel)
 		resp, err := a.agent.Prompt(reqCtx, p)
-		a.mu.Lock()
-		delete(a.sessionCancels, string(p.SessionId))
-		a.mu.Unlock()
+		donePrompt()
 		if err != nil {
 			return nil, toReqErr(err)
 		}

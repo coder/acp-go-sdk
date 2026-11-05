@@ -63,16 +63,13 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 					caseBody,
 					Var().Id("reqCtx").Qual("context", "Context"), Var().Id("cancel").Qual("context", "CancelFunc"),
 					List(Id("reqCtx"), Id("cancel")).Op("=").Qual("context", "WithCancel").Call(Id("ctx")),
-					Id("a").Dot("registerPrompt").Call(Id("ctx"), Id("string").Call(Id("p").Dot("SessionId")), Id("cancel")),
+					Id("donePrompt").Op(":=").Id("a").Dot("registerPrompt").Call(Id("ctx"), Id("string").Call(Id("p").Dot("SessionId")), Id("cancel")),
 				)
 				// Call agent.Prompt(reqCtx, p)
 				caseBody = append(
 					caseBody,
 					List(Id("resp"), Id("err")).Op(":=").Id(recv).Dot(methodName).Call(Id("reqCtx"), Id("p")),
-					// cleanup entry after return
-					Id("a").Dot("mu").Dot("Lock").Call(),
-					Id("delete").Call(Id("a").Dot("sessionCancels"), Id("string").Call(Id("p").Dot("SessionId"))),
-					Id("a").Dot("mu").Dot("Unlock").Call(),
+					Id("donePrompt").Call(),
 					If(Id("err").Op("!=").Nil()).Block(jRetToReqErr()),
 					Return(Id("resp"), Nil()),
 				)

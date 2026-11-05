@@ -140,7 +140,7 @@ B_drain=$(need_body "func (c *Connection) waitForNotificationDrain(")
 [ "$(count "$B_new" "go c.processNotifications()")" = 1 ] ||
 	drift "NewConnection must start one processNotifications() worker"
 # Handlers get c.inboundCtx, or handlerCtx, which adds the notification to it.
-HANDLER_CTX="handlerCtx := context.WithValue(c.inboundCtx, handlingNotificationKey{}, handlingNotification{conn: c, seq: queued.seq})"
+HANDLER_CTX="handlerCtx := context.WithValue(c.inboundCtx, handlingNotificationKey{}, handlingNotification{conn: c, seq: queued.seq, arrival: queued.arrival})"
 if has "$B_proc" "c.handleInbound(handlerCtx, queued.msg)" && has "$B_proc" "$HANDLER_CTX"; then
 	HANDLE_CALL="c.handleInbound(handlerCtx, queued.msg)"
 elif has "$B_proc" "c.handleInbound(c.inboundCtx, queued.msg)"; then
@@ -151,7 +151,7 @@ fi
 ! has "$B_proc" "go c.handleInbound" || drift "processNotifications runs handlers concurrently"
 has "$B_recv" "c.handleResponse(&msg)" || drift "receive() no longer calls handleResponse(&msg)"
 ! has "$B_recv" "go c.handleResponse" || drift "receive() handles responses concurrently"
-has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, msg: &m}:" ||
+has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m}:" ||
 	drift "receive() no longer queues notifications with a non-blocking send"
 has "$B_recv" "c.lastEnqueuedNotificationSeq++" || drift "receive() no longer numbers notifications"
 

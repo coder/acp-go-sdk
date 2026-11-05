@@ -202,7 +202,7 @@ func waitNoInflightRequests(t *testing.T, c *Connection) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, ok := c.oldestInflightWatermark(); !ok {
+		if _, ok := c.oldestInflightArrival(); !ok {
 			return
 		}
 		if time.Now().After(deadline) {
@@ -567,7 +567,7 @@ func TestAgentSideConnection_LateOlderPromptKeepsNewerCancellable(t *testing.T) 
 		t.Fatal("the older prompt's register canceled the newer prompt")
 	}
 
-	cancelCtx := context.WithValue(context.Background(), handlingNotificationKey{}, handlingNotification{conn: c, seq: 1})
+	cancelCtx := context.WithValue(context.Background(), handlingNotificationKey{}, handlingNotification{conn: c, seq: 1, arrival: 3})
 	conn.cancelPrompt(cancelCtx, "s")
 	if newerCtx.Err() == nil {
 		t.Fatal("a session/cancel sent after the newer prompt did not cancel it")
@@ -618,6 +618,74 @@ func TestAgentSideConnection_ArrivalStateDrains(t *testing.T) {
 	conn.mu.Unlock()
 	if arrivals != 0 || newest != 0 {
 		t.Fatalf("after the prompts returned: %d in-flight arrivals and %d sessionNewest entries, want 0 and 0", arrivals, newest)
+	}
+}
+
+// A session/cancel that a client sends as a request, with an id, is ordered
+// against prompts by arrival, like the notification: it cancels a prompt sent
+// before it and spares one sent after it.
+func TestAgentSideConnection_SessionCancelRequestIsOrdered(t *testing.T) {
+	const cancelRequestLine = `{"jsonrpc":"2.0","id":9,"method":"session/cancel","params":{"sessionId":"s"}}`
+	tests := []struct {
+		name         string
+		lines        []string
+		wantCanceled bool
+	}{
+		{name: "prompt then cancel request", lines: []string{cancelTestPromptLine(1, "p"), cancelRequestLine}, wantCanceled: true},
+		{name: "cancel request then prompt", lines: []string{cancelRequestLine, cancelTestPromptLine(1, "p")}, wantCanceled: false},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			for i := 0; i < 20; i++ {
+				checkNow := make(chan struct{})
+				canceled := make(chan bool, 1)
+				_, peer := newCancelPeer(t, agentFuncs{
+					CancelFunc: func(context.Context, CancelNotification) error { return nil },
+					PromptFunc: func(ctx context.Context, _ PromptRequest) (PromptResponse, error) {
+						select {
+						case <-checkNow:
+						case <-ctx.Done():
+						case <-time.After(5 * time.Second):
+						}
+						canceled <- ctx.Err() != nil
+						return PromptResponse{StopReason: StopReasonEndTurn}, nil
+					},
+				})
+				peer.send(tt.lines...)
+				peer.await("the cancel request's response", func(m anyMessage) bool {
+					return m.ID != nil && string(*m.ID) == "9"
+				})
+				close(checkNow)
+				if got := <-canceled; got != tt.wantCanceled {
+					t.Fatalf("run %d: prompt ctx canceled = %v, want %v", i, got, tt.wantCanceled)
+				}
+			}
+		})
+	}
+}
+
+// Two session/cancel requests of one session run on their own goroutines, so
+// the later one can run first. The older one must not lower the marker: a
+// prompt sent between them still registers as canceled.
+func TestAgentSideConnection_OlderCancelRequestKeepsLaterMarker(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	reqCtx := func(arrival uint64) context.Context {
+		return context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})
+	}
+	c.mu.Lock()
+	for _, a := range []uint64{2, 4, 5} {
+		c.inflightArrivals[a] = struct{}{}
+	}
+	c.mu.Unlock()
+	conn.cancelPrompt(reqCtx(5), "s")
+	conn.cancelPrompt(reqCtx(2), "s")
+
+	promptCtx, cancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(4), "s", cancel)()
+	if promptCtx.Err() == nil {
+		t.Fatal("a prompt sent before a session/cancel request kept a live ctx after an older cancel ran last")
 	}
 }
 

@@ -13,10 +13,11 @@ EXTENDS Naturals, Sequences, FiniteSets
 CONSTANTS
     Script,
     \* Facts that check.sh reads from the code.
-    MarkerCancelsWhen,      \* registerPrompt: "gt" (cancelledAt > watermark), "ge", or "never"
-    CancelRecordsMarker,    \* cancelPrompt stores sessionCancelledAt[sessionID] = seq
+    MarkerCancelsWhen,      \* registerPrompt: "gt" (cancelledAt > arrival), "ge", or "never"
+    CancelRecordsMarker,    \* cancelPrompt stores sessionCancelledAt[sessionID] = arrival
+    MarkerKeepsLatest,      \* cancelPrompt stores it only when it is later than the stored one
     PruneDropsWhen,         \* pruneCancelMarkers: "ge" (oldest >= cancelledAt), "gt", or "always"
-    CancelSkipsLaterPrompt, \* cancelPrompt leaves a registered prompt with watermark >= the cancel's seq
+    CancelSkipsLaterPrompt, \* cancelPrompt leaves a registered prompt that arrived after the cancel
     CleanupChecksOwner,     \* the prompt cleanup deletes the session's entry only while it is its own
     NewestDropsWhen,        \* the sessionNewest prune: "ge" (oldest arrival >= newest) or "always"
     KeepNewerBy,            \* registerPrompt cancels an older prompt at once: "newest" (sessionNewest), "prev" (only the registered entry), or "never"
@@ -24,12 +25,13 @@ CONSTANTS
 
 ASSUME MarkerCancelsWhen \in {"gt", "ge", "never"}
 ASSUME PruneDropsWhen \in {"ge", "gt", "always"}
-ASSUME CancelRecordsMarker \in BOOLEAN /\ InboundStopsAtPeerWait \in BOOLEAN
+ASSUME CancelRecordsMarker \in BOOLEAN /\ InboundStopsAtPeerWait \in BOOLEAN /\ MarkerKeepsLatest \in BOOLEAN
 ASSUME CancelSkipsLaterPrompt \in BOOLEAN /\ CleanupChecksOwner \in BOOLEAN
 ASSUME KeepNewerBy \in {"newest", "prev", "never"} /\ NewestDropsWhen \in {"ge", "always"}
 
 \* One message from the client. k is "prompt", "cancel", "cancelpeer" (a
-\* session/cancel whose a.agent.Cancel calls the client with its ctx) or
+\* session/cancel whose a.agent.Cancel calls the client with its ctx),
+\* "cancelreq" (a session/cancel sent as a request, with an id) or
 \* "peernote" (an extension notification whose handler calls the client with
 \* its ctx). s is the session. after > 0: the client sends it only once it has
 \* the response to the prompt at that index.
@@ -39,11 +41,13 @@ N == Len(Script)
 Idx == 1..N
 Prompts == {i \in Idx : Script[i].k = "prompt"}
 Cancels == {i \in Idx : Script[i].k \in {"cancel", "cancelpeer"}}
+CancelReqs == {i \in Idx : Script[i].k = "cancelreq"}
+Requests == Prompts \cup CancelReqs
 PeerNotes == {i \in Idx : Script[i].k = "peernote"}
-Sessions == {Script[i].s : i \in Prompts \cup Cancels}
+Sessions == {Script[i].s : i \in Prompts \cup Cancels \cup CancelReqs}
 None == 0
 
-ASSUME \A i \in Idx : Script[i].k \in {"prompt", "cancel", "cancelpeer", "peernote"}
+ASSUME \A i \in Idx : Script[i].k \in {"prompt", "cancel", "cancelpeer", "cancelreq", "peernote"}
 ASSUME \A i \in Idx : Script[i].after = 0 \/ (Script[i].after \in Prompts /\ Script[i].after < i)
 
 VARIABLES
@@ -56,52 +60,65 @@ VARIABLES
     procCur,        \* the notification whose handler runs, None if none
     procPc,         \* "idle", "peer" (handler waits on the client) or "complete"
     peerWaits,      \* the seqs with c.peerWaits[seq] > 0
-    pc,             \* each prompt's goroutine
-    wm,             \* each prompt's watermark (handlingRequest.watermark)
+    pc,             \* each request's goroutine (prompts and cancel requests)
+    wm,             \* each request's barrier watermark in receive
     canceled,       \* each prompt's reqCtx (the WithCancel in agent_gen.go) was canceled
     wrong,          \* prompts canceled by a session/cancel that arrived before them
     replaced,       \* prompts canceled by registerPrompt for a prompt that arrived before them
     sessionCancels, \* a.sessionCancels: session -> prompt, None if absent
-    markers,        \* a.sessionCancelledAt: session -> seq, 0 if absent
+    markers,        \* a.sessionCancelledAt: session -> arrival (cancel index), 0 if absent
     newest,         \* a.sessionNewest: session -> arrival (prompt index), 0 if absent
-    handled         \* cancels whose cancelPrompt has run
+    handled         \* cancels (notifications and requests) whose cancelPrompt has run
 
 vars == <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc, peerWaits,
           pc, wm, canceled, wrong, replaced, sessionCancels, markers, newest, handled>>
 
 PromptPcs == {"unread", "recv", "wait", "passed", "running", "cleanup", "respond", "exit", "done"}
 
-\* receive adds the prompt to c.inflight and c.inflightWatermarks before it
+\* Every message that receive dispatches gets the next arrival number
+\* (c.inboundMessages), so a message's index in the script is its arrival.
+\* receive adds a request to c.inflight and c.inflightArrivals before it
 \* starts the goroutine. The goroutine's defer removes it.
 Inflight(p) == pc[p] \in {"wait", "passed", "running", "cleanup", "respond", "exit"}
 Responded(p) == pc[p] \in {"exit", "done"}
 
-Min(S) == CHOOSE x \in S : \A y \in S : x <= y
-
 \* pruneCancelMarkers, with the in-flight requests of this state. The code
-\* reads oldestInflightWatermark under c.mu, not a.mu, so the set can change
+\* reads oldestInflightArrival under c.mu, not a.mu, so the set can change
 \* between that read and the deletes. One step is still exact: a request that
-\* receive adds later has a watermark at or above every recorded seq, and a
-\* request that leaves can only drop more markers on a later prune.
+\* receive adds later has an arrival above every recorded one, and a request
+\* that leaves can only drop more entries on a later prune.
 Prune(m) ==
-    LET inf == {p \in Prompts : Inflight(p)}
-        Drops(at) ==
-            \/ inf = {}
+    LET Drops(at) ==
             \/ PruneDropsWhen = "always"
-            \/ PruneDropsWhen = "ge" /\ Min({wm[p] : p \in inf}) >= at
-            \/ PruneDropsWhen = "gt" /\ Min({wm[p] : p \in inf}) > at
+            \/ PruneDropsWhen = "ge" /\ ~\E q \in Requests : Inflight(q) /\ q < at
+            \/ PruneDropsWhen = "gt" /\ ~\E q \in Requests : Inflight(q) /\ q <= at
     IN [s \in Sessions |-> IF m[s] # 0 /\ Drops(m[s]) THEN 0 ELSE m[s]]
 
-\* The sessionNewest half of pruneCancelMarkers, with oldestInflightArrival.
-\* Prompts arrive in index order, so a prompt's index is its arrival.
+\* The sessionNewest half of pruneCancelMarkers.
 PruneNewest(n) ==
     [s \in Sessions |->
-        IF n[s] # 0 /\ (NewestDropsWhen = "always" \/ ~\E q \in Prompts : Inflight(q) /\ q < n[s])
+        IF n[s] # 0 /\ (NewestDropsWhen = "always" \/ ~\E q \in Requests : Inflight(q) /\ q < n[s])
         THEN 0 ELSE n[s]]
 
-MarkerFires(at, w) ==
-    \/ MarkerCancelsWhen = "gt" /\ at > w
-    \/ MarkerCancelsWhen = "ge" /\ at >= w
+MarkerFires(at, p) ==
+    \/ MarkerCancelsWhen = "gt" /\ at > p
+    \/ MarkerCancelsWhen = "ge" /\ at >= p
+
+\* cancelPrompt for the session/cancel at index c, under a.mu: cancel and
+\* delete a.sessionCancels[s] unless that prompt arrived after the cancel,
+\* record the marker, prune.
+DoCancel(c) ==
+    LET s == Script[c].s
+        t == sessionCancels[s]
+        fire == t # None /\ (IF CancelSkipsLaterPrompt THEN t < c ELSE TRUE)
+        m == IF CancelRecordsMarker /\ (~MarkerKeepsLatest \/ c > markers[s])
+             THEN [markers EXCEPT ![s] = c] ELSE markers
+    IN /\ canceled' = IF fire THEN [canceled EXCEPT ![t] = TRUE] ELSE canceled
+       /\ wrong' = IF fire /\ c < t THEN wrong \cup {t} ELSE wrong
+       /\ sessionCancels' = IF fire THEN [sessionCancels EXCEPT ![s] = None] ELSE sessionCancels
+       /\ markers' = Prune(m)
+       /\ newest' = PruneNewest(newest)
+       /\ handled' = handled \cup {c}
 
 Init ==
     /\ read = 0
@@ -113,8 +130,8 @@ Init ==
     /\ procCur = None
     /\ procPc = "idle"
     /\ peerWaits = {}
-    /\ pc = [p \in Prompts |-> "unread"]
-    /\ wm = [p \in Prompts |-> 0]
+    /\ pc = [p \in Requests |-> "unread"]
+    /\ wm = [p \in Requests |-> 0]
     /\ canceled = [p \in Prompts |-> FALSE]
     /\ wrong = {}
     /\ replaced = {}
@@ -130,7 +147,7 @@ CanRead(i) ==
 
 \* receive reads a request: watermark := c.lastEnqueuedNotificationSeq.
 ReceivePrompt ==
-    \E i \in Prompts :
+    \E i \in Requests :
         /\ CanRead(i)
         /\ read' = i
         /\ recvPc' = "inflight"
@@ -139,7 +156,7 @@ ReceivePrompt ==
         /\ UNCHANGED <<lastEnq, completed, queue, seq, procCur, procPc, peerWaits,
                        canceled, wrong, replaced, sessionCancels, markers, newest, handled>>
 
-\* receive, under c.mu: c.inflight[idKey] = cancel, c.inflightWatermarks[watermark]++,
+\* receive, under c.mu: c.inflight[idKey] = cancel, c.inflightArrivals[arrival],
 \* then go func(...).
 ReceiveAddsInflight ==
     /\ recvPc = "inflight"
@@ -159,9 +176,7 @@ ReceiveNotification ==
         /\ UNCHANGED <<recvPc, completed, procCur, procPc, peerWaits, pc, wm,
                        canceled, wrong, replaced, sessionCancels, markers, newest, handled>>
 
-\* processNotifications takes a session/cancel. Its handler runs cancelPrompt
-\* under a.mu: cancel and delete a.sessionCancels[s] unless that prompt came
-\* after the cancel, record the marker, prune.
+\* processNotifications takes a session/cancel. Its handler runs cancelPrompt.
 \* Then a.agent.Cancel runs with the handler's ctx. For "cancelpeer" it calls
 \* the client, and startPeerWait counts c.peerWaits[seq].
 RunCancel ==
@@ -169,23 +184,23 @@ RunCancel ==
     /\ queue # <<>>
     /\ Head(queue) \in Cancels
     /\ LET c == Head(queue)
-           s == Script[c].s
-           q == seq[c]
-           t == sessionCancels[s]
-           fire == t # None /\ (IF CancelSkipsLaterPrompt THEN wm[t] < q ELSE TRUE)
-           m == IF CancelRecordsMarker THEN [markers EXCEPT ![s] = q] ELSE markers
-       IN /\ canceled' = IF fire THEN [canceled EXCEPT ![t] = TRUE] ELSE canceled
-          /\ wrong' = IF fire /\ q <= wm[t] THEN wrong \cup {t} ELSE wrong
-          /\ sessionCancels' = IF fire THEN [sessionCancels EXCEPT ![s] = None] ELSE sessionCancels
-          /\ markers' = Prune(m)
-          /\ newest' = PruneNewest(newest)
-          /\ handled' = handled \cup {c}
+       IN /\ DoCancel(c)
           /\ procCur' = c
           /\ IF Script[c].k = "cancelpeer"
-             THEN procPc' = "peer" /\ peerWaits' = peerWaits \cup {q}
+             THEN procPc' = "peer" /\ peerWaits' = peerWaits \cup {seq[c]}
              ELSE procPc' = "complete" /\ peerWaits' = peerWaits
           /\ queue' = Tail(queue)
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, seq, pc, wm, replaced>>
+
+\* A session/cancel sent as a request runs the same case on its own request
+\* goroutine, after the barrier, and then sends its response.
+RunCancelReq(r) ==
+    /\ pc[r] = "passed"
+    /\ r \in CancelReqs
+    /\ DoCancel(r)
+    /\ pc' = [pc EXCEPT ![r] = "respond"]
+    /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
+                   peerWaits, wm, replaced>>
 
 \* processNotifications takes the extension notification. Its handler calls
 \* the client with its ctx: startPeerWait counts c.peerWaits[seq].
@@ -231,14 +246,15 @@ PassBarrier(p) ==
 \* prune.
 Register(p) ==
     /\ pc[p] = "passed"
+    /\ p \in Prompts
     /\ LET s == Script[p].s
            prev == sessionCancels[s]
            \* Prompts arrive in index order, so a greater index arrived
-           \* later (requestArrival).
+           \* later (messageArrival).
            keepPrev == CASE KeepNewerBy = "newest" -> newest[s] > p
                        [] KeepNewerBy = "prev" -> prev # None /\ prev > p
                        [] OTHER -> FALSE
-           hit == markers[s] # 0 /\ MarkerFires(markers[s], wm[p])
+           hit == markers[s] # 0 /\ MarkerFires(markers[s], p)
        IN IF keepPrev
           THEN /\ canceled' = [canceled EXCEPT ![p] = TRUE]
                /\ UNCHANGED <<wrong, replaced, sessionCancels, markers, newest>>
@@ -246,7 +262,7 @@ Register(p) ==
                                   \/ canceled[q]
                                   \/ q = prev
                                   \/ q = p /\ hit]
-               /\ wrong' = IF hit /\ markers[s] <= wm[p] THEN wrong \cup {p} ELSE wrong
+               /\ wrong' = IF hit /\ markers[s] < p THEN wrong \cup {p} ELSE wrong
                /\ replaced' = IF prev # None /\ prev > p THEN replaced \cup {prev} ELSE replaced
                /\ sessionCancels' = [sessionCancels EXCEPT ![s] = p]
                /\ markers' = Prune(markers)
@@ -294,7 +310,7 @@ Finished ==
     /\ recvPc = "idle"
     /\ queue = <<>>
     /\ procCur = None
-    /\ \A p \in Prompts : pc[p] = "done"
+    /\ \A p \in Requests : pc[p] = "done"
 
 \* The client has sent everything and every handler returned.
 AllDone == Finished /\ UNCHANGED vars
@@ -307,9 +323,10 @@ Next ==
     \/ StartPeerNote
     \/ ClientAnswers
     \/ CompleteNotification
-    \/ \E p \in Prompts :
+    \/ \E p \in Requests :
           \/ PassBarrier(p)
           \/ Register(p)
+          \/ RunCancelReq(p)
           \/ PromptReturns(p)
           \/ Cleanup(p)
           \/ Respond(p)
@@ -324,12 +341,12 @@ TypeOK ==
     /\ recvPc \in {"idle", "inflight"}
     /\ procPc \in {"idle", "peer", "complete"}
     /\ completed <= lastEnq
-    /\ pc \in [Prompts -> PromptPcs]
+    /\ pc \in [Requests -> PromptPcs]
     /\ canceled \in [Prompts -> BOOLEAN]
     /\ wrong \subseteq Prompts
     /\ replaced \subseteq Prompts
     /\ sessionCancels \in [Sessions -> Prompts \cup {None}]
-    /\ handled \subseteq Cancels
+    /\ handled \subseteq Cancels \cup CancelReqs
 
 \* A session/cancel cancels every prompt of its session that the client sent
 \* before it, whichever handler runs first: once the cancel has run, a prompt
@@ -337,7 +354,7 @@ TypeOK ==
 CancelReachesEarlierPrompts ==
     \A p \in Prompts :
         (/\ pc[p] = "running"
-         /\ \E c \in handled : Script[c].s = Script[p].s /\ seq[c] > wm[p])
+         /\ \E c \in handled : Script[c].s = Script[p].s /\ c > p)
         => canceled[p]
 
 \* A session/cancel never cancels a prompt that the client sent after it.
@@ -411,6 +428,18 @@ PeerWaitEarlierPrompt ==
 \* behind the first cancel (#72 item 1, second trigger).
 CancelWaitsThenPrompt ==
     << Msg("cancelpeer", "a", 0),
+       Msg("cancel", "a", 0),
+       Msg("prompt", "a", 0) >>
+
+\* session/cancel sent as a request, before and after prompts, with a
+\* handler that waits on the client so the barrier can release requests early,
+\* and a notification cancel among them.
+CancelRequests ==
+    << Msg("prompt", "a", 0),
+       Msg("cancelreq", "a", 0),
+       Msg("peernote", "-", 0),
+       Msg("prompt", "a", 0),
+       Msg("cancelreq", "a", 0),
        Msg("cancel", "a", 0),
        Msg("prompt", "a", 0) >>
 

@@ -620,3 +620,22 @@ func TestAgentSideConnection_ArrivalStateDrains(t *testing.T) {
 		t.Fatalf("after the prompts returned: %d in-flight arrivals and %d sessionNewest entries, want 0 and 0", arrivals, newest)
 	}
 }
+
+// A prompt with no older request in flight leaves no sessionNewest entry
+// behind: no later register can arrive before it.
+func TestAgentSideConnection_SessionNewestDropsWithNoOlderRequest(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	c.mu.Lock()
+	c.inflightArrivals[2] = struct{}{}
+	c.mu.Unlock()
+	ctx := context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: 2})
+	_, cancel := context.WithCancel(context.Background())
+	conn.registerPrompt(ctx, "s", cancel)
+	conn.mu.Lock()
+	left := len(conn.sessionNewest)
+	conn.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("sessionNewest keeps %d entries while no older request is in flight", left)
+	}
+}

@@ -13,11 +13,11 @@ EXTENDS Naturals, Sequences, FiniteSets
 CONSTANTS
     Script,
     \* Facts that check.sh reads from the code.
-    MarkerCancelsWhen,      \* registerPrompt: "gt" (cancelledAt > watermark), "ge", or "never"
+    MarkerCancelsWhen,      \* registerPrompt: "gt" (cancelledAt > arrival), "ge", or "never"
     CancelRecordsMarker,    \* cancelPrompt stores sessionCancelledAt[sessionID] = arrival
     MarkerKeepsLatest,      \* cancelPrompt stores it only when it is later than the stored one
     PruneDropsWhen,         \* pruneCancelMarkers: "ge" (oldest >= cancelledAt), "gt", or "always"
-    CancelSkipsLaterPrompt, \* cancelPrompt leaves a registered prompt with watermark >= the cancel's seq
+    CancelSkipsLaterPrompt, \* cancelPrompt leaves a registered prompt that arrived after the cancel
     CleanupChecksOwner,     \* the prompt cleanup deletes the session's entry only while it is its own
     NewestDropsWhen,        \* the sessionNewest prune: "ge" (oldest arrival >= newest) or "always"
     KeepNewerBy,            \* registerPrompt cancels an older prompt at once: "newest" (sessionNewest), "prev" (only the registered entry), or "never"
@@ -250,7 +250,7 @@ Register(p) ==
     /\ LET s == Script[p].s
            prev == sessionCancels[s]
            \* Prompts arrive in index order, so a greater index arrived
-           \* later (requestArrival).
+           \* later (messageArrival).
            keepPrev == CASE KeepNewerBy = "newest" -> newest[s] > p
                        [] KeepNewerBy = "prev" -> prev # None /\ prev > p
                        [] OTHER -> FALSE
@@ -432,13 +432,15 @@ CancelWaitsThenPrompt ==
        Msg("prompt", "a", 0) >>
 
 \* session/cancel sent as a request, before and after prompts, with a
-\* handler that waits on the client so the barrier can release requests early.
+\* handler that waits on the client so the barrier can release requests early,
+\* and a notification cancel among them.
 CancelRequests ==
     << Msg("prompt", "a", 0),
        Msg("cancelreq", "a", 0),
        Msg("peernote", "-", 0),
        Msg("prompt", "a", 0),
        Msg("cancelreq", "a", 0),
+       Msg("cancel", "a", 0),
        Msg("prompt", "a", 0) >>
 
 \* A prompt and a cancel right after it, for a /statechart chart (chart.cfg).

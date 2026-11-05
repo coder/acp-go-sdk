@@ -38,7 +38,7 @@ When `check.sh` finds a new break, record it here with its config, its replay an
 
 ## When to run it
 
-Run it when `git diff` touches covered code (see the coverage record at the end), or when your change writes `a.sessionCancels`, `a.sessionCancelledAt`, `c.inflightWatermarks`, the `handlingRequest` or `handlingNotification` ctx values, or `c.peerWaits`. Run it once before your change, so that you know the starting result, and once after it. A change to the barrier itself also needs `verify-notification-barrier`.
+Run it when `git diff` touches covered code (see the coverage record at the end), or when your change writes `a.sessionCancels`, `a.sessionCancelledAt`, `a.sessionNewest`, `c.inboundMessages`, `c.inflightArrivals`, the `handlingRequest` or `handlingNotification` ctx values, or `c.peerWaits`. Run it once before your change, so that you know the starting result, and once after it. A change to the barrier itself also needs `verify-notification-barrier`.
 
 ## Run
 
@@ -107,7 +107,7 @@ The code column cites functions and the line that each step depends on. `check.s
 | `PromptReturns` | `a.agent.Prompt(reqCtx, p)` returns |
 | `Cleanup` | `donePrompt()`, the func that `registerPrompt` returned: under `a.mu`, `if a.sessionCancels[sessionID] == pc` then `delete` |
 | `Respond` | `handleInbound`: `c.handler(ctx, req.Method, req.Params)`, then `c.sendMessage(res)` |
-| `Exit` | `receive`: the request goroutine's defer removes the request from `c.inflight`, `c.inflightWatermarks` and `c.inflightArrivals` |
+| `Exit` | `receive`: the request goroutine's defer removes the request from `c.inflight` and `c.inflightArrivals` |
 | `Prune`, `PruneNewest` | `pruneCancelMarkers`: the markers and `sessionNewest` against `oldestInflightArrival`, then `dropOldestAbove` for each map |
 
 `agent_gen.go` comes from `WriteDispatchJen` in `cmd/generate/internal/emit/dispatch.go`, which writes the `cancelPrompt` call, the `donePrompt := a.registerPrompt(...)` line and the `donePrompt()` call. Change the emitter and regenerate. Do not edit `agent_gen.go` by hand.
@@ -133,7 +133,7 @@ The code column cites functions and the line that each step depends on. `check.s
 - two-sessions.cfg: two sessions with two prompts each, one at a time per session, cancels interleaved, and no handler that calls the client, 19,011 states.
 - peer-wait-earlier-prompt.cfg: two notification handlers and two `Cancel` calls that wait on the client, with prompts sent before and after the cancels, 19,673 states.
 - overlapping-prompts.cfg: three prompts of one session in flight at once, two cancels, and a notification handler that waits on the client, 10,302 states.
-- cancel-requests.cfg: prompts and `session/cancel` requests of one session, with a notification handler that waits on the client, so the barrier can release requests early and two cancel requests run at once, 75,290 states.
+- cancel-requests.cfg: prompts, two `session/cancel` requests and one `session/cancel` notification of one session, with a notification handler that waits on the client, so the barrier can release requests early and the two cancel requests run at once, 134,169 states.
 - peer-wait-later-prompt.cfg: a handler that waits on the client, a cancel, then a prompt, 53 states.
 - cancel-waits-later-prompt.cfg: a cancel whose `Cancel` waits on the client, a second cancel, then a prompt, 53 states.
 - A handler calls the client only where the script says so (`peernote`, `cancelpeer`).
@@ -146,7 +146,6 @@ Not covered, with what a user sees when it goes wrong:
 - `$/cancel_request`: a canceled request still runs. `verify-notification-barrier` checks it (`CancelBeforeCheckSkipsHandler`).
 - Disconnect: a prompt keeps running after the client exits. `verify-notification-barrier` checks that handlers get a canceled ctx.
 - What `a.agent.Cancel` does other than call the client: the agent's own cancel logic is the agent's code.
-
 - The request ID that `receive` puts in `c.inflight`.
 
 A pass covers the model within these bounds, not the whole SDK.

@@ -14,7 +14,7 @@ type AgentSideConnection struct {
 
 	mu             sync.Mutex
 	sessionCancels map[string]*promptCancel
-	// sessionCancelledAt holds, per session, the sequence number of the last
+	// sessionCancelledAt holds, per session, the arrival number of the last
 	// session/cancel. A prompt that arrived before that cancel and registers
 	// after it is cancelled at once. pruneCancelMarkers drops an entry once no
 	// request from the peer that arrived before its cancel is in flight.
@@ -48,10 +48,10 @@ func (c *AgentSideConnection) SetLogger(l *slog.Logger) { c.conn.SetLogger(l) }
 // promptCancel is the entry of a running prompt in sessionCancels.
 type promptCancel struct {
 	cancel context.CancelFunc
-	// watermark is the requestWatermark of the prompt, when known. A
-	// session/cancel with a seq at or below it arrived after the prompt.
-	watermark    uint64
-	hasWatermark bool
+	// arrival is the messageArrival of the prompt, when known. A
+	// session/cancel with a smaller arrival arrived before the prompt.
+	arrival    uint64
+	hasArrival bool
 }
 
 // cancelPrompt handles a session/cancel for sessionID that runs with ctx. It
@@ -61,13 +61,13 @@ type promptCancel struct {
 func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	seq, hasSeq := a.conn.notificationSeq(ctx)
-	if pc, ok := a.sessionCancels[sessionID]; ok && !(hasSeq && pc.hasWatermark && pc.watermark >= seq) {
+	arrival, hasArrival := a.conn.messageArrival(ctx)
+	if pc, ok := a.sessionCancels[sessionID]; ok && !(hasArrival && pc.hasArrival && pc.arrival > arrival) {
 		pc.cancel()
 		delete(a.sessionCancels, sessionID)
 	}
-	if hasSeq {
-		a.sessionCancelledAt[sessionID] = seq
+	if hasArrival && arrival > a.sessionCancelledAt[sessionID] {
+		a.sessionCancelledAt[sessionID] = arrival
 	}
 	a.pruneCancelMarkers()
 }
@@ -90,8 +90,7 @@ const maxCancelMarkers = 1024
 func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID string, cancel context.CancelFunc) (done func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	watermark, hasWatermark := a.conn.requestWatermark(ctx)
-	arrival, hasArrival := a.conn.requestArrival(ctx)
+	arrival, hasArrival := a.conn.messageArrival(ctx)
 	if newest, ok := a.sessionNewest[sessionID]; ok && hasArrival && newest > arrival {
 		cancel()
 		return func() {}
@@ -99,13 +98,13 @@ func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID stri
 	if hasArrival {
 		a.sessionNewest[sessionID] = arrival
 	}
-	pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark}
+	pc := &promptCancel{cancel: cancel, arrival: arrival, hasArrival: hasArrival}
 	if prev, ok := a.sessionCancels[sessionID]; ok {
 		prev.cancel()
 	}
 	a.sessionCancels[sessionID] = pc
 	if cancelledAt, ok := a.sessionCancelledAt[sessionID]; ok {
-		if hasWatermark && cancelledAt > watermark {
+		if hasArrival && cancelledAt > arrival {
 			cancel()
 		}
 	}
@@ -124,15 +123,14 @@ func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID stri
 // cancel, or before the newest prompt, matches it. Above maxCancelMarkers
 // entries in a map, it drops the oldest entries first. The caller holds a.mu.
 func (a *AgentSideConnection) pruneCancelMarkers() {
-	oldest, ok := a.conn.oldestInflightWatermark()
+	oldest, ok := a.conn.oldestInflightArrival()
 	for sessionID, cancelledAt := range a.sessionCancelledAt {
 		if !ok || oldest >= cancelledAt {
 			delete(a.sessionCancelledAt, sessionID)
 		}
 	}
-	oldestArrival, ok := a.conn.oldestInflightArrival()
 	for sessionID, newest := range a.sessionNewest {
-		if !ok || oldestArrival >= newest {
+		if !ok || oldest >= newest {
 			delete(a.sessionNewest, sessionID)
 		}
 	}

@@ -1,6 +1,6 @@
 ---
 name: verify-acp-go-sdk
-description: Drive the ACP Go SDK through its example agent and example client the way an editor and a developer use them, and capture proof (JSON-RPC transcripts over stdio, CLI output, exit codes, agent logs). Use when a change to connection.go, agent or client code, generated handlers or the examples must be shown to work for a real prompt turn, cancel, error reply or CLI run, or when you reproduce a bug report against real binaries. For the notification barrier's interleavings, use verify-notification-barrier instead.
+description: Drive the ACP Go SDK through its example agent and example client the way an editor and a developer use them, and capture proof (JSON-RPC transcripts over stdio, CLI output, exit codes, agent logs). Use when a change to connection.go, agent or client code, generated handlers or the examples must be shown to work for a real prompt turn, cancel, error reply or CLI run, or when you reproduce a bug report against real binaries. For the notification barrier's interleavings, use verify-notification-barrier instead. For the order of session/cancel and session/prompt handlers, use verify-session-cancel.
 ---
 
 # Verify the ACP Go SDK by driving it

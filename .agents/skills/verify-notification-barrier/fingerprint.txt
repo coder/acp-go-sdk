@@ -1,8 +1,8 @@
-1b76b1315306a0e22bd61177e38349864a167100dcbcfbf60d6c96a8160d2c4e  func NewConnection(
-762a5aae76ce72b65bd8654b200004cb7647831050280dd5e2f687c71fbaf058  func (c *Connection) receive(
+01459d869a7672d0a24247f7f1deb0de227e8629bb499105dec10f1fe4addcdf  func NewConnection(
+38229af7e3a6b7f96db6c72cb6214ed87c0542948cd6c7202c15c2e0037cbdbc  func (c *Connection) receive(
 b1d86e61dce5ca54db24e203d16d7f1912203d17d474e05c82240ea7ebe394e9  func (c *Connection) handleCancelRequest(
 0f9f4ad97fc5d53a10eafcc363a6cb6c5088d1a73f36b767f9754439deaa82be  func (c *Connection) shutdownReceive(
-6821973eef44dd88e4ce8426b1371a1070729fea9af31f606cc57f380f3f25e5  func (c *Connection) processNotifications(
+cc9723bca064980c6103e00bb3e95765fe9c5ce1b96261ed33020deeef24a018  func (c *Connection) processNotifications(
 1fa03624e3b6f7388c021973121524ad307ffa6a7a3b2670966a3484edea2842  func (c *Connection) handleResponse(
 f41b53dbc152eb541c95aa128abbfc4e7afd92aab9d43feb8399264baefe8566  func SendRequest[T any](c *Connection,
 5501eee3e4b0a557960ff811976f34bf02ba901b634addab228c0577e119f6cb  func (c *Connection) SendRequestNoResult(

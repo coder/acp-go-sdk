@@ -16,11 +16,14 @@ CONSTANTS
     MarkerCancelsWhen,      \* registerPrompt: "gt" (cancelledAt > watermark), "ge", or "never"
     CancelRecordsMarker,    \* cancelPrompt stores sessionCancelledAt[sessionID] = seq
     PruneDropsWhen,         \* pruneCancelMarkers: "ge" (oldest >= cancelledAt), "gt", or "always"
+    CancelSkipsLaterPrompt, \* cancelPrompt leaves a registered prompt with watermark >= the cancel's seq
+    CleanupChecksOwner,     \* the prompt cleanup deletes the session's entry only while it is its own
     InboundStopsAtPeerWait  \* waitInboundBarrier also ends while the running handler waits on the peer
 
 ASSUME MarkerCancelsWhen \in {"gt", "ge", "never"}
 ASSUME PruneDropsWhen \in {"ge", "gt", "always"}
 ASSUME CancelRecordsMarker \in BOOLEAN /\ InboundStopsAtPeerWait \in BOOLEAN
+ASSUME CancelSkipsLaterPrompt \in BOOLEAN /\ CleanupChecksOwner \in BOOLEAN
 
 \* One message from the client. k is "prompt", "cancel", "cancelpeer" (a
 \* session/cancel whose a.agent.Cancel calls the client with its ctx) or
@@ -143,7 +146,8 @@ ReceiveNotification ==
                        canceled, wrong, sessionCancels, markers, handled>>
 
 \* processNotifications takes a session/cancel. Its handler runs cancelPrompt
-\* under a.mu: cancel and delete a.sessionCancels[s], record the marker, prune.
+\* under a.mu: cancel and delete a.sessionCancels[s] unless that prompt came
+\* after the cancel, record the marker, prune.
 \* Then a.agent.Cancel runs with the handler's ctx. For "cancelpeer" it calls
 \* the client, and startPeerWait counts c.peerWaits[seq].
 RunCancel ==
@@ -154,10 +158,11 @@ RunCancel ==
            s == Script[c].s
            q == seq[c]
            t == sessionCancels[s]
+           fire == t # None /\ (IF CancelSkipsLaterPrompt THEN wm[t] < q ELSE TRUE)
            m == IF CancelRecordsMarker THEN [markers EXCEPT ![s] = q] ELSE markers
-       IN /\ canceled' = IF t # None THEN [canceled EXCEPT ![t] = TRUE] ELSE canceled
-          /\ wrong' = IF t # None /\ q <= wm[t] THEN wrong \cup {t} ELSE wrong
-          /\ sessionCancels' = [sessionCancels EXCEPT ![s] = None]
+       IN /\ canceled' = IF fire THEN [canceled EXCEPT ![t] = TRUE] ELSE canceled
+          /\ wrong' = IF fire /\ q <= wm[t] THEN wrong \cup {t} ELSE wrong
+          /\ sessionCancels' = IF fire THEN [sessionCancels EXCEPT ![s] = None] ELSE sessionCancels
           /\ markers' = Prune(m)
           /\ handled' = handled \cup {c}
           /\ procCur' = c
@@ -232,11 +237,15 @@ PromptReturns(p) ==
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
                    peerWaits, wm, canceled, wrong, sessionCancels, markers, handled>>
 
-\* The session/prompt case: delete(a.sessionCancels, sessionId) under a.mu,
-\* whichever prompt the entry belongs to.
+\* The session/prompt case calls the func that registerPrompt returned. Under
+\* a.mu it deletes a.sessionCancels[sessionId], only while the entry is this
+\* prompt's when CleanupChecksOwner.
 Cleanup(p) ==
     /\ pc[p] = "cleanup"
-    /\ sessionCancels' = [sessionCancels EXCEPT ![Script[p].s] = None]
+    /\ sessionCancels' =
+           IF CleanupChecksOwner /\ sessionCancels[Script[p].s] # p
+           THEN sessionCancels
+           ELSE [sessionCancels EXCEPT ![Script[p].s] = None]
     /\ pc' = [pc EXCEPT ![p] = "respond"]
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
                    peerWaits, wm, canceled, wrong, markers, handled>>
@@ -372,9 +381,14 @@ PromptThenCancel ==
     << Msg("prompt", "a", 0),
        Msg("cancel", "a", 0) >>
 
-\* Two prompts of one session in flight at once, then a cancel (#83).
+\* Prompts of one session in flight at once, with cancels between them (#83).
+\* A notification handler waits on the client, so the barrier can release a
+\* later prompt early.
 OverlappingPrompts ==
     << Msg("prompt", "a", 0),
+       Msg("prompt", "a", 0),
+       Msg("cancel", "a", 0),
+       Msg("peernote", "-", 0),
        Msg("prompt", "a", 0),
        Msg("cancel", "a", 0) >>
 =============================================================================

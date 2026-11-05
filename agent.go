@@ -13,7 +13,7 @@ type AgentSideConnection struct {
 	agent Agent
 
 	mu             sync.Mutex
-	sessionCancels map[string]context.CancelFunc
+	sessionCancels map[string]*promptCancel
 	// sessionCancelledAt holds, per session, the sequence number of the last
 	// session/cancel. A prompt that arrived before that cancel and registers
 	// after it is cancelled at once. pruneCancelMarkers drops an entry once no
@@ -26,7 +26,7 @@ type AgentSideConnection struct {
 func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Reader) *AgentSideConnection {
 	asc := &AgentSideConnection{}
 	asc.agent = agent
-	asc.sessionCancels = make(map[string]context.CancelFunc)
+	asc.sessionCancels = make(map[string]*promptCancel)
 	asc.sessionCancelledAt = make(map[string]uint64)
 	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput)
 	return asc
@@ -38,18 +38,28 @@ func (c *AgentSideConnection) Done() <-chan struct{} { return c.conn.Done() }
 // SetLogger directs connection diagnostics to the provided logger.
 func (c *AgentSideConnection) SetLogger(l *slog.Logger) { c.conn.SetLogger(l) }
 
+// promptCancel is the entry of a running prompt in sessionCancels.
+type promptCancel struct {
+	cancel context.CancelFunc
+	// watermark is the requestWatermark of the prompt, when known. A
+	// session/cancel with a seq at or below it arrived after the prompt.
+	watermark    uint64
+	hasWatermark bool
+}
+
 // cancelPrompt handles a session/cancel for sessionID that runs with ctx. It
-// cancels the prompt that has registered for the session, and records where
-// the cancel arrived, for a prompt that arrived before it but has not
-// registered yet.
+// cancels the prompt that has registered for the session, unless that prompt
+// arrived after the cancel, and records where the cancel arrived, for a prompt
+// that arrived before it but has not registered yet.
 func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if cn, ok := a.sessionCancels[sessionID]; ok {
-		cn()
+	seq, hasSeq := a.conn.notificationSeq(ctx)
+	if pc, ok := a.sessionCancels[sessionID]; ok && !(hasSeq && pc.hasWatermark && pc.watermark >= seq) {
+		pc.cancel()
 		delete(a.sessionCancels, sessionID)
 	}
-	if seq, ok := a.conn.notificationSeq(ctx); ok {
+	if hasSeq {
 		a.sessionCancelledAt[sessionID] = seq
 	}
 	a.pruneCancelMarkers()
@@ -62,20 +72,32 @@ const maxCancelMarkers = 1024
 
 // registerPrompt makes cancel the cancel func of the prompt for sessionID
 // whose handler runs with ctx. If a session/cancel that arrived after the
-// prompt has already run, registerPrompt calls cancel at once.
-func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID string, cancel context.CancelFunc) {
+// prompt has already run, registerPrompt calls cancel at once. The prompt
+// handler calls the returned func when the prompt returns. It removes the
+// entry only while the entry is still this prompt's, so a newer prompt of the
+// session stays cancellable.
+func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID string, cancel context.CancelFunc) (done func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if prev, ok := a.sessionCancels[sessionID]; ok {
-		prev()
+		prev.cancel()
 	}
-	a.sessionCancels[sessionID] = cancel
+	watermark, hasWatermark := a.conn.requestWatermark(ctx)
+	pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark}
+	a.sessionCancels[sessionID] = pc
 	if cancelledAt, ok := a.sessionCancelledAt[sessionID]; ok {
-		if watermark, ok := a.conn.requestWatermark(ctx); ok && cancelledAt > watermark {
+		if hasWatermark && cancelledAt > watermark {
 			cancel()
 		}
 	}
 	a.pruneCancelMarkers()
+	return func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.sessionCancels[sessionID] == pc {
+			delete(a.sessionCancels, sessionID)
+		}
+	}
 }
 
 // pruneCancelMarkers drops each entry of sessionCancelledAt that no request in

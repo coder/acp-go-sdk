@@ -339,6 +339,9 @@ func TestAgentSideConnection_OverlappingPromptsKeepCancel(t *testing.T) {
 func TestAgentSideConnection_SessionCancelSparesPromptReleasedByPeerWait(t *testing.T) {
 	var conn *AgentSideConnection
 	started := make(chan struct{})
+	// checkNow closes once the cancel handlers have returned, so the prompt
+	// reads its ctx after any cancel that could reach it.
+	checkNow := make(chan struct{})
 	canceled := make(chan bool, 1)
 	conn, peer := newCancelPeer(t, agentFuncs{
 		HandleExtensionMethodFunc: func(ctx context.Context, method string, _ json.RawMessage) (any, error) {
@@ -351,11 +354,10 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByPeerWait(t *test
 		PromptFunc: func(ctx context.Context, _ PromptRequest) (PromptResponse, error) {
 			close(started)
 			select {
-			case <-ctx.Done():
-				canceled <- true
-			case <-time.After(time.Second):
-				canceled <- false
+			case <-checkNow:
+			case <-time.After(5 * time.Second):
 			}
+			canceled <- ctx.Err() != nil
 			return PromptResponse{StopReason: StopReasonEndTurn}, nil
 		},
 	})
@@ -365,6 +367,8 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByPeerWait(t *test
 	peer.send(sessionCancelLine, cancelTestPromptLine(1, "after the cancel"))
 	waitCancelTest(t, started, "the prompt to start")
 	peer.send(`{"jsonrpc":"2.0","id":` + string(*ask.ID) + `,"result":{}}`)
+	waitCompletedNotifications(t, conn.conn, 2)
+	close(checkNow)
 	if <-canceled {
 		t.Fatal("session/cancel canceled a prompt that the client sent after it")
 	}
@@ -385,6 +389,9 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByCancelWait(t *te
 	var conn *AgentSideConnection
 	cancels := 0
 	started := make(chan struct{})
+	// checkNow closes once the cancel handlers have returned, so the prompt
+	// reads its ctx after any cancel that could reach it.
+	checkNow := make(chan struct{})
 	canceled := make(chan bool, 1)
 	conn, peer := newCancelPeer(t, agentFuncs{
 		CancelFunc: func(ctx context.Context, _ CancelNotification) error {
@@ -398,11 +405,10 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByCancelWait(t *te
 		PromptFunc: func(ctx context.Context, _ PromptRequest) (PromptResponse, error) {
 			close(started)
 			select {
-			case <-ctx.Done():
-				canceled <- true
-			case <-time.After(time.Second):
-				canceled <- false
+			case <-checkNow:
+			case <-time.After(5 * time.Second):
 			}
+			canceled <- ctx.Err() != nil
 			return PromptResponse{StopReason: StopReasonEndTurn}, nil
 		},
 	})
@@ -412,7 +418,44 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByCancelWait(t *te
 	peer.send(sessionCancelLine, cancelTestPromptLine(1, "after the cancels"))
 	waitCancelTest(t, started, "the prompt to start")
 	peer.send(`{"jsonrpc":"2.0","id":` + string(*ask.ID) + `,"result":{}}`)
+	waitCompletedNotifications(t, conn.conn, 2)
+	close(checkNow)
 	if <-canceled {
 		t.Fatal("session/cancel canceled a prompt that the client sent after it")
+	}
+}
+
+// overlapping-prompts.cfg, NewerPromptSurvives: the client sends two prompts
+// of one session back to back. Their handlers can register in either order.
+// The older prompt's ctx ends, and the newer prompt keeps a live ctx.
+func TestAgentSideConnection_NewerPromptWinsWhicheverRegistersFirst(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		olderDone := make(chan struct{})
+		olderCanceled := make(chan bool, 1)
+		newerCanceled := make(chan bool, 1)
+		_, peer := newCancelPeer(t, agentFuncs{
+			PromptFunc: func(ctx context.Context, p PromptRequest) (PromptResponse, error) {
+				if cancelTestPromptText(p) == "older" {
+					select {
+					case <-ctx.Done():
+						olderCanceled <- true
+					case <-time.After(2 * time.Second):
+						olderCanceled <- false
+					}
+					close(olderDone)
+					return PromptResponse{StopReason: StopReasonCancelled}, nil
+				}
+				waitCancelTest(t, olderDone, "the older prompt to return")
+				newerCanceled <- ctx.Err() != nil
+				return PromptResponse{StopReason: StopReasonEndTurn}, nil
+			},
+		})
+		peer.send(cancelTestPromptLine(1, "older"), cancelTestPromptLine(2, "newer"))
+		if !<-olderCanceled {
+			t.Fatalf("run %d: the older prompt kept running after a newer prompt of its session arrived", i)
+		}
+		if <-newerCanceled {
+			t.Fatalf("run %d: the newer prompt was canceled by the older one", i)
+		}
 	}
 }

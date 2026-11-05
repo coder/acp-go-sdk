@@ -398,7 +398,7 @@ for entry in "${run_list[@]}"; do
 	# A non-zero TLC exit is a result, not an error: "|| got=$?" keeps the
 	# ERR trap from firing.
 	got=0
-	(cd "$work" && "$JAVA" -XX:+UseParallelGC "-Xmx${TLC_HEAP:-4g}" -cp "$JAR" tlc2.TLC \
+	(cd "$work" && "$JAVA" -XX:+UseParallelGC "-Djava.io.tmpdir=$work" "-Xmx${TLC_HEAP:-4g}" -cp "$JAR" tlc2.TLC \
 		-workers 1 -cleanup -metadir "$work/meta" -config "$cfg" "$SPEC.tla") >"$OUT/${cfg%.cfg}.out" 2>&1 || got=$?
 	cp "$work/$cfg" "$OUT/${cfg%.cfg}.effective.cfg"
 	rm -rf "$work"

@@ -45,6 +45,8 @@ type promptCancel struct {
 	// session/cancel with a seq at or below it arrived after the prompt.
 	watermark    uint64
 	hasWatermark bool
+	// arrival is the requestArrival of the prompt, valid with hasWatermark.
+	arrival uint64
 }
 
 // cancelPrompt handles a session/cancel for sessionID that runs with ctx. It
@@ -71,19 +73,27 @@ func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string
 const maxCancelMarkers = 1024
 
 // registerPrompt makes cancel the cancel func of the prompt for sessionID
-// whose handler runs with ctx. If a session/cancel that arrived after the
-// prompt has already run, registerPrompt calls cancel at once. The prompt
+// whose handler runs with ctx, and cancels the prompt of the session that it
+// replaces. When a prompt of the session that arrived later has registered
+// first, that prompt stays and registerPrompt calls cancel at once. If a
+// session/cancel that arrived after the prompt has already run, registerPrompt
+// also calls cancel at once. The prompt
 // handler calls the returned func when the prompt returns. It removes the
 // entry only while the entry is still this prompt's, so a newer prompt of the
 // session stays cancellable.
 func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID string, cancel context.CancelFunc) (done func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	watermark, hasWatermark := a.conn.requestWatermark(ctx)
+	arrival, _ := a.conn.requestArrival(ctx)
+	pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark, arrival: arrival}
 	if prev, ok := a.sessionCancels[sessionID]; ok {
+		if hasWatermark && prev.hasWatermark && prev.arrival > arrival {
+			cancel()
+			return func() {}
+		}
 		prev.cancel()
 	}
-	watermark, hasWatermark := a.conn.requestWatermark(ctx)
-	pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark}
 	a.sessionCancels[sessionID] = pc
 	if cancelledAt, ok := a.sessionCancelledAt[sessionID]; ok {
 		if hasWatermark && cancelledAt > watermark {

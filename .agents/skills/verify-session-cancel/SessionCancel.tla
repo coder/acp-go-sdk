@@ -18,12 +18,13 @@ CONSTANTS
     PruneDropsWhen,         \* pruneCancelMarkers: "ge" (oldest >= cancelledAt), "gt", or "always"
     CancelSkipsLaterPrompt, \* cancelPrompt leaves a registered prompt with watermark >= the cancel's seq
     CleanupChecksOwner,     \* the prompt cleanup deletes the session's entry only while it is its own
+    RegisterKeepsNewer,     \* registerPrompt keeps a registered prompt that arrived later, and cancels the new one
     InboundStopsAtPeerWait  \* waitInboundBarrier also ends while the running handler waits on the peer
 
 ASSUME MarkerCancelsWhen \in {"gt", "ge", "never"}
 ASSUME PruneDropsWhen \in {"ge", "gt", "always"}
 ASSUME CancelRecordsMarker \in BOOLEAN /\ InboundStopsAtPeerWait \in BOOLEAN
-ASSUME CancelSkipsLaterPrompt \in BOOLEAN /\ CleanupChecksOwner \in BOOLEAN
+ASSUME CancelSkipsLaterPrompt \in BOOLEAN /\ CleanupChecksOwner \in BOOLEAN /\ RegisterKeepsNewer \in BOOLEAN
 
 \* One message from the client. k is "prompt", "cancel", "cancelpeer" (a
 \* session/cancel whose a.agent.Cancel calls the client with its ctx) or
@@ -57,12 +58,13 @@ VARIABLES
     wm,             \* each prompt's watermark (handlingRequest.watermark)
     canceled,       \* each prompt's reqCtx (the WithCancel in agent_gen.go) was canceled
     wrong,          \* prompts canceled by a session/cancel that arrived before them
+    replaced,       \* prompts canceled by registerPrompt for a prompt that arrived before them
     sessionCancels, \* a.sessionCancels: session -> prompt, None if absent
     markers,        \* a.sessionCancelledAt: session -> seq, 0 if absent
     handled         \* cancels whose cancelPrompt has run
 
 vars == <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc, peerWaits,
-          pc, wm, canceled, wrong, sessionCancels, markers, handled>>
+          pc, wm, canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 PromptPcs == {"unread", "recv", "wait", "passed", "running", "cleanup", "respond", "exit", "done"}
 
@@ -105,6 +107,7 @@ Init ==
     /\ wm = [p \in Prompts |-> 0]
     /\ canceled = [p \in Prompts |-> FALSE]
     /\ wrong = {}
+    /\ replaced = {}
     /\ sessionCancels = [s \in Sessions |-> None]
     /\ markers = [s \in Sessions |-> 0]
     /\ handled = {}
@@ -123,7 +126,7 @@ ReceivePrompt ==
         /\ wm' = [wm EXCEPT ![i] = lastEnq]
         /\ pc' = [pc EXCEPT ![i] = "recv"]
         /\ UNCHANGED <<lastEnq, completed, queue, seq, procCur, procPc, peerWaits,
-                       canceled, wrong, sessionCancels, markers, handled>>
+                       canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 \* receive, under c.mu: c.inflight[idKey] = cancel, c.inflightWatermarks[watermark]++,
 \* then go func(...).
@@ -132,7 +135,7 @@ ReceiveAddsInflight ==
     /\ recvPc' = "idle"
     /\ pc' = [pc EXCEPT ![read] = "wait"]
     /\ UNCHANGED <<read, lastEnq, completed, queue, seq, procCur, procPc, peerWaits,
-                   wm, canceled, wrong, sessionCancels, markers, handled>>
+                   wm, canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 \* receive queues a notification under notifyMu.
 ReceiveNotification ==
@@ -143,7 +146,7 @@ ReceiveNotification ==
         /\ seq' = [seq EXCEPT ![i] = lastEnq + 1]
         /\ queue' = Append(queue, i)
         /\ UNCHANGED <<recvPc, completed, procCur, procPc, peerWaits, pc, wm,
-                       canceled, wrong, sessionCancels, markers, handled>>
+                       canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 \* processNotifications takes a session/cancel. Its handler runs cancelPrompt
 \* under a.mu: cancel and delete a.sessionCancels[s] unless that prompt came
@@ -170,7 +173,7 @@ RunCancel ==
              THEN procPc' = "peer" /\ peerWaits' = peerWaits \cup {q}
              ELSE procPc' = "complete" /\ peerWaits' = peerWaits
           /\ queue' = Tail(queue)
-    /\ UNCHANGED <<read, recvPc, lastEnq, completed, seq, pc, wm>>
+    /\ UNCHANGED <<read, recvPc, lastEnq, completed, seq, pc, wm, replaced>>
 
 \* processNotifications takes the extension notification. Its handler calls
 \* the client with its ctx: startPeerWait counts c.peerWaits[seq].
@@ -182,7 +185,7 @@ StartPeerNote ==
     /\ procPc' = "peer"
     /\ peerWaits' = peerWaits \cup {seq[Head(queue)]}
     /\ queue' = Tail(queue)
-    /\ UNCHANGED <<read, recvPc, lastEnq, completed, seq, pc, wm, canceled, wrong,
+    /\ UNCHANGED <<read, recvPc, lastEnq, completed, seq, pc, wm, canceled, wrong, replaced,
                    sessionCancels, markers, handled>>
 
 \* The client answers the handler's request: donePeerWait.
@@ -191,7 +194,7 @@ ClientAnswers ==
     /\ procPc' = "complete"
     /\ peerWaits' = peerWaits \ {seq[procCur]}
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, pc, wm,
-                   canceled, wrong, sessionCancels, markers, handled>>
+                   canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 \* The handler returns: completedNotificationSeq = queued.seq under notifyMu.
 CompleteNotification ==
@@ -200,7 +203,7 @@ CompleteNotification ==
     /\ procCur' = None
     /\ procPc' = "idle"
     /\ UNCHANGED <<read, recvPc, lastEnq, queue, seq, peerWaits, pc, wm, canceled,
-                   wrong, sessionCancels, markers, handled>>
+                   wrong, replaced, sessionCancels, markers, handled>>
 
 \* waitInboundBarrier: waitNotifications(ctx, watermark, true) returns.
 PassBarrier(p) ==
@@ -209,7 +212,7 @@ PassBarrier(p) ==
        \/ InboundStopsAtPeerWait /\ (completed + 1) \in peerWaits
     /\ pc' = [pc EXCEPT ![p] = "passed"]
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
-                   peerWaits, wm, canceled, wrong, sessionCancels, markers, handled>>
+                   peerWaits, wm, canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 \* The session/prompt case calls registerPrompt under a.mu: cancel the
 \* previous prompt, store this one, cancel it if a later cancel already ran,
@@ -218,14 +221,21 @@ Register(p) ==
     /\ pc[p] = "passed"
     /\ LET s == Script[p].s
            prev == sessionCancels[s]
+           \* Prompts arrive in index order, so prev > p means that prev
+           \* arrived later (requestArrival).
+           keepPrev == RegisterKeepsNewer /\ prev # None /\ prev > p
            hit == markers[s] # 0 /\ MarkerFires(markers[s], wm[p])
-       IN /\ canceled' = [q \in Prompts |->
-                             \/ canceled[q]
-                             \/ q = prev
-                             \/ q = p /\ hit]
-          /\ wrong' = IF hit /\ markers[s] <= wm[p] THEN wrong \cup {p} ELSE wrong
-          /\ sessionCancels' = [sessionCancels EXCEPT ![s] = p]
-          /\ markers' = Prune(markers)
+       IN IF keepPrev
+          THEN /\ canceled' = [canceled EXCEPT ![p] = TRUE]
+               /\ UNCHANGED <<wrong, replaced, replaced, sessionCancels, markers>>
+          ELSE /\ canceled' = [q \in Prompts |->
+                                  \/ canceled[q]
+                                  \/ q = prev
+                                  \/ q = p /\ hit]
+               /\ wrong' = IF hit /\ markers[s] <= wm[p] THEN wrong \cup {p} ELSE wrong
+               /\ replaced' = IF prev # None /\ prev > p THEN replaced \cup {prev} ELSE replaced
+               /\ sessionCancels' = [sessionCancels EXCEPT ![s] = p]
+               /\ markers' = Prune(markers)
     /\ pc' = [pc EXCEPT ![p] = "running"]
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
                    peerWaits, wm, handled>>
@@ -235,7 +245,7 @@ PromptReturns(p) ==
     /\ pc[p] = "running"
     /\ pc' = [pc EXCEPT ![p] = "cleanup"]
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
-                   peerWaits, wm, canceled, wrong, sessionCancels, markers, handled>>
+                   peerWaits, wm, canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 \* The session/prompt case calls the func that registerPrompt returned. Under
 \* a.mu it deletes a.sessionCancels[sessionId], only while the entry is this
@@ -248,21 +258,21 @@ Cleanup(p) ==
            ELSE [sessionCancels EXCEPT ![Script[p].s] = None]
     /\ pc' = [pc EXCEPT ![p] = "respond"]
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
-                   peerWaits, wm, canceled, wrong, markers, handled>>
+                   peerWaits, wm, canceled, wrong, replaced, markers, handled>>
 
 \* handleInbound sends the response.
 Respond(p) ==
     /\ pc[p] = "respond"
     /\ pc' = [pc EXCEPT ![p] = "exit"]
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
-                   peerWaits, wm, canceled, wrong, sessionCancels, markers, handled>>
+                   peerWaits, wm, canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 \* The goroutine's defer removes the request from c.inflight under c.mu.
 Exit(p) ==
     /\ pc[p] = "exit"
     /\ pc' = [pc EXCEPT ![p] = "done"]
     /\ UNCHANGED <<read, recvPc, lastEnq, completed, queue, seq, procCur, procPc,
-                   peerWaits, wm, canceled, wrong, sessionCancels, markers, handled>>
+                   peerWaits, wm, canceled, wrong, replaced, sessionCancels, markers, handled>>
 
 Finished ==
     /\ read = N
@@ -302,6 +312,7 @@ TypeOK ==
     /\ pc \in [Prompts -> PromptPcs]
     /\ canceled \in [Prompts -> BOOLEAN]
     /\ wrong \subseteq Prompts
+    /\ replaced \subseteq Prompts
     /\ sessionCancels \in [Sessions -> Prompts \cup {None}]
     /\ handled \subseteq Cancels
 
@@ -318,6 +329,10 @@ CancelReachesEarlierPrompts ==
 \* Only cancels by cancelPrompt and by the marker count. registerPrompt's
 \* cancel of the prompt that it replaces is not a session/cancel.
 CancelSparesLaterPrompts == wrong = {}
+
+\* When two prompts of one session overlap, registerPrompt never cancels the
+\* one that the client sent later for the one that it sent first.
+NewerPromptSurvives == replaced = {}
 
 -----------------------------------------------------------------------------
 \* Scripts. Each config picks one with Script <- ...

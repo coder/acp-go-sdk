@@ -46,10 +46,12 @@ type handlingNotificationKey struct{}
 
 // handlingRequest is the ctx value that receive gives each handler of a
 // request from the peer. watermark is the sequence number of the last
-// notification that arrived before the request.
+// notification that arrived before the request. arrival numbers the requests
+// from the peer in the order that receive read them.
 type handlingRequest struct {
 	conn      *Connection
 	watermark uint64
+	arrival   uint64
 }
 
 type handlingRequestKey struct{}
@@ -73,6 +75,16 @@ func (c *Connection) requestWatermark(ctx context.Context) (uint64, bool) {
 		return 0, false
 	}
 	return h.watermark, true
+}
+
+// requestArrival returns the arrival number of the request from c whose
+// handler runs with ctx. A request with a greater number arrived after it.
+func (c *Connection) requestArrival(ctx context.Context) (uint64, bool) {
+	h, ok := ctx.Value(handlingRequestKey{}).(handlingRequest)
+	if !ok || h.conn != c {
+		return 0, false
+	}
+	return h.arrival, true
 }
 
 type responseEnvelope struct {
@@ -102,6 +114,7 @@ type Connection struct {
 	pending              map[string]*pendingResponse
 	inflight             map[string]context.CancelCauseFunc
 	inflightWatermarks   map[uint64]int // requests in inflight, counted by watermark
+	inboundRequests      uint64         // requests that receive has read; only receive touches it
 	pendingCancelRequest []string
 	cancelRequestSignal  chan struct{}
 
@@ -462,7 +475,8 @@ func (c *Connection) receive() {
 					idKey = string(*msg.ID)
 				}
 				reqCtx, cancel := context.WithCancelCause(c.ctx)
-				reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, watermark: watermark})
+				c.inboundRequests++
+				reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, watermark: watermark, arrival: c.inboundRequests})
 
 				c.mu.Lock()
 				c.inflight[idKey] = cancel

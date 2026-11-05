@@ -103,7 +103,7 @@ The code column cites functions and the line that each step depends on. `check.s
 | `StartPeerNote`, `ClientAnswers` | a handler that calls `CallExtension` (or any request) with its ctx, through `handleWithExtensions`: `SendRequest` or `SendRequestNoResult` calls `startPeerWait`, which counts `c.peerWaits[seq]++`, and its returned func ends the count |
 | `CompleteNotification` | `processNotifications`: `c.completedNotificationSeq = queued.seq` |
 | `PassBarrier` | `waitInboundBarrier`: `c.waitNotifications(ctx, watermark, true)`, whose loop also ends while `c.peerWaits[c.completedNotificationSeq+1] > 0` |
-| `Register` | the `AgentMethodSessionPrompt` case calls `registerPrompt`. It reads the prompt's `messageArrival`. When `a.sessionNewest[sessionID]` names a later arrival, it calls `cancel()` and returns. Otherwise it records `a.sessionNewest[sessionID] = arrival`, stores `pc := &promptCancel{...}` after `prev.cancel()`, checks the marker (`cancelledAt > arrival`), and prunes. |
+| `Register` | the `AgentMethodSessionPrompt` case calls `registerPrompt`. It reads the prompt's `messageArrival`. When `a.sessionNewest[sessionID]` names a later arrival, it calls `cancel()` and returns. Otherwise it records `a.sessionNewest[sessionID] = arrival`, builds `pc := &promptCancel{...}`, calls `prev.cancel()`, stores `a.sessionCancels[sessionID] = pc`, checks the marker (`cancelledAt > arrival`), and prunes. |
 | `PromptReturns` | `a.agent.Prompt(reqCtx, p)` returns |
 | `Cleanup` | `donePrompt()`, the func that `registerPrompt` returned: under `a.mu`, `if a.sessionCancels[sessionID] == pc` then `delete` |
 | `Respond` | `handleInbound`: `c.handler(ctx, req.Method, req.Params)`, then `c.sendMessage(res)` |

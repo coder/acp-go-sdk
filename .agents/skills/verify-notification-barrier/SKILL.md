@@ -99,7 +99,7 @@ Lines are at the sync commit.
 | `ShutdownCancel` | `shutdownReceive`, 553: `c.cancel(cause)`. |
 | `ShutdownClose` | `shutdownReceive`, 558-573: close the queue, read `finalEnqueuedSeq`, start the drain goroutine. One action, because only `receive` writes `lastEnqueuedNotificationSeq`. |
 | `WorkerDequeue`, `WorkerExit` | `processNotifications`, 581: `for queued := range c.notificationQueue`. |
-| `PlainHandlerReturns`, `SlowHandlerReturns`, `NestedHandlerCalls`, `NestedHandlerReturns` | `processNotifications`, 537-538: `c.handleInbound(handlerCtx, queued.msg)` runs the user's handler. `handlerCtx` is `c.inboundCtx` with a `handlingNotification` value that names this connection and `queued.seq`. Plain handlers return promptly (fair). Slow handlers return after any time (no fairness). A nested handler calls `SendRequest` on this goroutine with `handlerCtx`. |
+| `PlainHandlerReturns`, `SlowHandlerReturns`, `NestedHandlerCalls`, `NestedHandlerReturns` | `processNotifications`, 582-583: `c.handleInbound(handlerCtx, queued.msg)` runs the user's handler. `handlerCtx` is `c.inboundCtx` with a `handlingNotification` value that names this connection and `queued.seq`. Plain handlers return promptly (fair). Slow handlers return after any time (no fairness). A nested handler calls `SendRequest` on this goroutine with `handlerCtx`. |
 | `WorkerComplete` | `processNotifications`, 585-597: `completedNotificationSeq = queued.seq` and `Broadcast` under `notifyMu`. |
 | `AppCalls` | `SendRequest` 736-744, `SendRequestNoResult` 1061-1069: register `c.pending[idKey]`. The app decides when, so no fairness. |
 | `SendsRequest` | `SendRequest` 746, `SendRequestNoResult` 1071: `c.sendMessage(msg)`. |

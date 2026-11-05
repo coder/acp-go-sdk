@@ -15,6 +15,10 @@ const promptLabel = (pc, canceled) => {
       return "starting";
     case "running":
       return canceled ? "running, ctx canceled" : "running";
+    case "cleanup":
+      return canceled ? "returned, ctx was canceled, entry not cleaned up" : "returned, entry not cleaned up";
+    case "respond":
+      return canceled ? "returned, ctx was canceled, response not sent" : "returned, response not sent";
     default:
       return canceled ? "answered, ctx was canceled" : "answered";
   }

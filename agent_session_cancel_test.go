@@ -339,6 +339,9 @@ func TestAgentSideConnection_OverlappingPromptsKeepCancel(t *testing.T) {
 func TestAgentSideConnection_SessionCancelSparesPromptReleasedByPeerWait(t *testing.T) {
 	var conn *AgentSideConnection
 	started := make(chan struct{})
+	// checkNow closes once the cancel handlers have returned, so the prompt
+	// reads its ctx after any cancel that could reach it.
+	checkNow := make(chan struct{})
 	canceled := make(chan bool, 1)
 	conn, peer := newCancelPeer(t, agentFuncs{
 		HandleExtensionMethodFunc: func(ctx context.Context, method string, _ json.RawMessage) (any, error) {
@@ -351,11 +354,10 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByPeerWait(t *test
 		PromptFunc: func(ctx context.Context, _ PromptRequest) (PromptResponse, error) {
 			close(started)
 			select {
-			case <-ctx.Done():
-				canceled <- true
-			case <-time.After(time.Second):
-				canceled <- false
+			case <-checkNow:
+			case <-time.After(5 * time.Second):
 			}
+			canceled <- ctx.Err() != nil
 			return PromptResponse{StopReason: StopReasonEndTurn}, nil
 		},
 	})
@@ -365,6 +367,8 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByPeerWait(t *test
 	peer.send(sessionCancelLine, cancelTestPromptLine(1, "after the cancel"))
 	waitCancelTest(t, started, "the prompt to start")
 	peer.send(`{"jsonrpc":"2.0","id":` + string(*ask.ID) + `,"result":{}}`)
+	waitCompletedNotifications(t, conn.conn, 2)
+	close(checkNow)
 	if <-canceled {
 		t.Fatal("session/cancel canceled a prompt that the client sent after it")
 	}
@@ -385,6 +389,9 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByCancelWait(t *te
 	var conn *AgentSideConnection
 	cancels := 0
 	started := make(chan struct{})
+	// checkNow closes once the cancel handlers have returned, so the prompt
+	// reads its ctx after any cancel that could reach it.
+	checkNow := make(chan struct{})
 	canceled := make(chan bool, 1)
 	conn, peer := newCancelPeer(t, agentFuncs{
 		CancelFunc: func(ctx context.Context, _ CancelNotification) error {
@@ -398,11 +405,10 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByCancelWait(t *te
 		PromptFunc: func(ctx context.Context, _ PromptRequest) (PromptResponse, error) {
 			close(started)
 			select {
-			case <-ctx.Done():
-				canceled <- true
-			case <-time.After(time.Second):
-				canceled <- false
+			case <-checkNow:
+			case <-time.After(5 * time.Second):
 			}
+			canceled <- ctx.Err() != nil
 			return PromptResponse{StopReason: StopReasonEndTurn}, nil
 		},
 	})
@@ -412,7 +418,224 @@ func TestAgentSideConnection_SessionCancelSparesPromptReleasedByCancelWait(t *te
 	peer.send(sessionCancelLine, cancelTestPromptLine(1, "after the cancels"))
 	waitCancelTest(t, started, "the prompt to start")
 	peer.send(`{"jsonrpc":"2.0","id":` + string(*ask.ID) + `,"result":{}}`)
+	waitCompletedNotifications(t, conn.conn, 2)
+	close(checkNow)
 	if <-canceled {
 		t.Fatal("session/cancel canceled a prompt that the client sent after it")
+	}
+}
+
+// overlapping-prompts.cfg, NewerPromptSurvives: the client sends two prompts
+// of one session back to back. Their handlers can register in either order.
+// The older prompt's ctx ends, and the newer prompt keeps a live ctx.
+func TestAgentSideConnection_NewerPromptWinsWhicheverRegistersFirst(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		olderDone := make(chan struct{})
+		olderCanceled := make(chan bool, 1)
+		newerCanceled := make(chan bool, 1)
+		_, peer := newCancelPeer(t, agentFuncs{
+			PromptFunc: func(ctx context.Context, p PromptRequest) (PromptResponse, error) {
+				if cancelTestPromptText(p) == "older" {
+					select {
+					case <-ctx.Done():
+						olderCanceled <- true
+					case <-time.After(2 * time.Second):
+						olderCanceled <- false
+					}
+					close(olderDone)
+					return PromptResponse{StopReason: StopReasonCancelled}, nil
+				}
+				waitCancelTest(t, olderDone, "the older prompt to return")
+				newerCanceled <- ctx.Err() != nil
+				return PromptResponse{StopReason: StopReasonEndTurn}, nil
+			},
+		})
+		peer.send(cancelTestPromptLine(1, "older"), cancelTestPromptLine(2, "newer"))
+		if !<-olderCanceled {
+			t.Fatalf("run %d: the older prompt kept running after a newer prompt of its session arrived", i)
+		}
+		if <-newerCanceled {
+			t.Fatalf("run %d: the newer prompt was canceled by the older one", i)
+		}
+	}
+}
+
+// overlapping-prompts.cfg, NewerPromptSurvives and CancelSparesLaterPrompts:
+// the client sends a prompt, a session/cancel and a second prompt in one
+// write. The second prompt can register before the first. The first prompt
+// ends, and the second keeps a live ctx.
+func TestAgentSideConnection_PromptAfterCancelSurvivesLateOlderRegister(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		var conn *AgentSideConnection
+		olderDone := make(chan struct{})
+		checkNow := make(chan struct{})
+		olderCanceled := make(chan bool, 1)
+		newerCanceled := make(chan bool, 1)
+		conn, peer := newCancelPeer(t, agentFuncs{
+			PromptFunc: func(ctx context.Context, p PromptRequest) (PromptResponse, error) {
+				if cancelTestPromptText(p) == "older" {
+					select {
+					case <-ctx.Done():
+						olderCanceled <- true
+					case <-time.After(2 * time.Second):
+						olderCanceled <- false
+					}
+					close(olderDone)
+					return PromptResponse{StopReason: StopReasonCancelled}, nil
+				}
+				select {
+				case <-checkNow:
+				case <-time.After(5 * time.Second):
+				}
+				newerCanceled <- ctx.Err() != nil
+				return PromptResponse{StopReason: StopReasonEndTurn}, nil
+			},
+		})
+		peer.send(cancelTestPromptLine(1, "older"), sessionCancelLine, cancelTestPromptLine(2, "newer"))
+		if !<-olderCanceled {
+			t.Fatalf("run %d: the prompt sent before the cancel kept running", i)
+		}
+		waitCancelTest(t, olderDone, "the older prompt to return")
+		waitCompletedNotifications(t, conn.conn, 1)
+		close(checkNow)
+		if <-newerCanceled {
+			t.Fatalf("run %d: the prompt sent after the cancel was canceled", i)
+		}
+	}
+}
+
+// overlapping-prompts.cfg, OlderPromptEnds: the newer prompt of a session
+// registers and returns before the older one registers. The older prompt's
+// ctx ends at once. No black-box path can stall the older handler that long,
+// so the test sets the in-flight state that receive records.
+func TestAgentSideConnection_OlderPromptEndsAfterNewerReturned(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	reqCtx := func(arrival uint64) context.Context {
+		return context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})
+	}
+	c.mu.Lock()
+	c.inflightArrivals[1] = struct{}{}
+	c.inflightArrivals[2] = struct{}{}
+	c.mu.Unlock()
+
+	newerCtx, newerCancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(2), "s", newerCancel)()
+	c.mu.Lock()
+	delete(c.inflightArrivals, 2)
+	c.mu.Unlock()
+
+	olderCtx, olderCancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(1), "s", olderCancel)()
+	if olderCtx.Err() == nil {
+		t.Fatal("the older prompt registered after the newer one returned and kept a live ctx")
+	}
+	if newerCtx.Err() != nil {
+		t.Fatal("the newer prompt was canceled")
+	}
+
+	c.mu.Lock()
+	delete(c.inflightArrivals, 1)
+	c.mu.Unlock()
+	conn.mu.Lock()
+	conn.pruneCancelMarkers()
+	left := len(conn.sessionNewest)
+	conn.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("sessionNewest keeps %d entries with no request in flight", left)
+	}
+}
+
+// An older prompt that registers after a newer one leaves the newer prompt's
+// entry, so a later session/cancel still reaches the newer prompt.
+func TestAgentSideConnection_LateOlderPromptKeepsNewerCancellable(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	c.mu.Lock()
+	c.inflightArrivals[1] = struct{}{}
+	c.inflightArrivals[2] = struct{}{}
+	c.mu.Unlock()
+	reqCtx := func(arrival uint64) context.Context {
+		return context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})
+	}
+
+	newerCtx, newerCancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(2), "s", newerCancel)
+	_, olderCancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(1), "s", olderCancel)
+	if newerCtx.Err() != nil {
+		t.Fatal("the older prompt's register canceled the newer prompt")
+	}
+
+	cancelCtx := context.WithValue(context.Background(), handlingNotificationKey{}, handlingNotification{conn: c, seq: 1})
+	conn.cancelPrompt(cancelCtx, "s")
+	if newerCtx.Err() == nil {
+		t.Fatal("a session/cancel sent after the newer prompt did not cancel it")
+	}
+}
+
+// sessionNewest holds at most maxCancelMarkers entries while an old request
+// stays in flight.
+func TestAgentSideConnection_SessionNewestIsCapped(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	c.mu.Lock()
+	c.inflightArrivals[1] = struct{}{}
+	c.mu.Unlock()
+	for i := uint64(2); i < 2+maxCancelMarkers+10; i++ {
+		ctx := context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: i})
+		_, cancel := context.WithCancel(context.Background())
+		conn.registerPrompt(ctx, "s-"+strconv.FormatUint(i, 10), cancel)()
+	}
+	conn.mu.Lock()
+	got := len(conn.sessionNewest)
+	conn.mu.Unlock()
+	if got != maxCancelMarkers {
+		t.Fatalf("sessionNewest holds %d entries, want %d", got, maxCancelMarkers)
+	}
+}
+
+// After the prompts of a connection return, no in-flight arrival and no
+// sessionNewest entry is left.
+func TestAgentSideConnection_ArrivalStateDrains(t *testing.T) {
+	conn, peer := newCancelPeer(t, agentFuncs{
+		PromptFunc: func(context.Context, PromptRequest) (PromptResponse, error) {
+			return PromptResponse{StopReason: StopReasonEndTurn}, nil
+		},
+	})
+	peer.send(cancelTestPromptLine(1, "a"), cancelTestPromptLine(2, "b"))
+	for i := 0; i < 2; i++ {
+		peer.await("a prompt response", func(m anyMessage) bool { return m.ID != nil && m.Method == "" })
+	}
+	waitNoInflightRequests(t, conn.conn)
+	c := conn.conn
+	c.mu.Lock()
+	arrivals := len(c.inflightArrivals)
+	c.mu.Unlock()
+	conn.mu.Lock()
+	conn.pruneCancelMarkers()
+	newest := len(conn.sessionNewest)
+	conn.mu.Unlock()
+	if arrivals != 0 || newest != 0 {
+		t.Fatalf("after the prompts returned: %d in-flight arrivals and %d sessionNewest entries, want 0 and 0", arrivals, newest)
+	}
+}
+
+// A prompt with no older request in flight leaves no sessionNewest entry
+// behind: no later register can arrive before it.
+func TestAgentSideConnection_SessionNewestDropsWithNoOlderRequest(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	c.mu.Lock()
+	c.inflightArrivals[2] = struct{}{}
+	c.mu.Unlock()
+	ctx := context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: 2})
+	_, cancel := context.WithCancel(context.Background())
+	conn.registerPrompt(ctx, "s", cancel)
+	conn.mu.Lock()
+	left := len(conn.sessionNewest)
+	conn.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("sessionNewest keeps %d entries while no older request is in flight", left)
 	}
 }

@@ -19,6 +19,12 @@ type AgentSideConnection struct {
 	// after it is cancelled at once. pruneCancelMarkers drops an entry once no
 	// request from the peer that arrived before its cancel is in flight.
 	sessionCancelledAt map[string]uint64
+	// sessionNewest holds, per session, the arrival number of the newest
+	// prompt that has registered. A prompt that arrived before it and
+	// registers later is cancelled at once, even after the newer prompt
+	// returned. pruneCancelMarkers drops an entry once no request from the
+	// peer that arrived before it is in flight.
+	sessionNewest map[string]uint64
 }
 
 // NewAgentSideConnection creates a new agent-side connection bound to the
@@ -28,6 +34,7 @@ func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Read
 	asc.agent = agent
 	asc.sessionCancels = make(map[string]*promptCancel)
 	asc.sessionCancelledAt = make(map[string]uint64)
+	asc.sessionNewest = make(map[string]uint64)
 	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput)
 	return asc
 }
@@ -65,25 +72,37 @@ func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string
 	a.pruneCancelMarkers()
 }
 
-// maxCancelMarkers bounds sessionCancelledAt while a long request is in
-// flight. Only the peer that sends the cancels can push a marker out, and a
-// lost marker only loses that peer's own cancel.
+// maxCancelMarkers bounds sessionCancelledAt and sessionNewest while a long
+// request is in flight. Only the peer that sends the cancels and prompts can
+// push an entry out, and a lost entry only loses that peer's own cancel or
+// prompt order.
 const maxCancelMarkers = 1024
 
 // registerPrompt makes cancel the cancel func of the prompt for sessionID
-// whose handler runs with ctx. If a session/cancel that arrived after the
-// prompt has already run, registerPrompt calls cancel at once. The prompt
-// handler calls the returned func when the prompt returns. It removes the
-// entry only while the entry is still this prompt's, so a newer prompt of the
-// session stays cancellable.
+// whose handler runs with ctx, and cancels the prompt of the session that it
+// replaces. When a prompt of the session that arrived later has already
+// registered, even one that has returned, registerPrompt calls cancel at once
+// and leaves the session's entry alone. If a session/cancel that arrived
+// after the prompt has already run, registerPrompt also calls cancel at once.
+// The prompt handler calls the returned func when the prompt returns. It
+// removes the entry only while the entry is still this prompt's, so a newer
+// prompt of the session stays cancellable.
 func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID string, cancel context.CancelFunc) (done func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	watermark, hasWatermark := a.conn.requestWatermark(ctx)
+	arrival, hasArrival := a.conn.requestArrival(ctx)
+	if newest, ok := a.sessionNewest[sessionID]; ok && hasArrival && newest > arrival {
+		cancel()
+		return func() {}
+	}
+	if hasArrival {
+		a.sessionNewest[sessionID] = arrival
+	}
+	pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark}
 	if prev, ok := a.sessionCancels[sessionID]; ok {
 		prev.cancel()
 	}
-	watermark, hasWatermark := a.conn.requestWatermark(ctx)
-	pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark}
 	a.sessionCancels[sessionID] = pc
 	if cancelledAt, ok := a.sessionCancelledAt[sessionID]; ok {
 		if hasWatermark && cancelledAt > watermark {
@@ -100,10 +119,10 @@ func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID stri
 	}
 }
 
-// pruneCancelMarkers drops each entry of sessionCancelledAt that no request in
-// flight can match. Only a prompt that arrived before the cancel matches it.
-// Above maxCancelMarkers entries, it drops the oldest cancels first. The caller
-// holds a.mu.
+// pruneCancelMarkers drops each entry of sessionCancelledAt and sessionNewest
+// that no request in flight can match. Only a prompt that arrived before the
+// cancel, or before the newest prompt, matches it. Above maxCancelMarkers
+// entries in a map, it drops the oldest entries first. The caller holds a.mu.
 func (a *AgentSideConnection) pruneCancelMarkers() {
 	oldest, ok := a.conn.oldestInflightWatermark()
 	for sessionID, cancelledAt := range a.sessionCancelledAt {
@@ -111,15 +130,28 @@ func (a *AgentSideConnection) pruneCancelMarkers() {
 			delete(a.sessionCancelledAt, sessionID)
 		}
 	}
-	for len(a.sessionCancelledAt) > maxCancelMarkers {
+	oldestArrival, ok := a.conn.oldestInflightArrival()
+	for sessionID, newest := range a.sessionNewest {
+		if !ok || oldestArrival >= newest {
+			delete(a.sessionNewest, sessionID)
+		}
+	}
+	dropOldestAbove(a.sessionCancelledAt, maxCancelMarkers)
+	dropOldestAbove(a.sessionNewest, maxCancelMarkers)
+}
+
+// dropOldestAbove deletes the entries with the smallest values from m until it
+// holds at most limit entries.
+func dropOldestAbove(m map[string]uint64, limit int) {
+	for len(m) > limit {
 		var oldestID string
-		var oldestSeq uint64
+		var oldestValue uint64
 		found := false
-		for sessionID, cancelledAt := range a.sessionCancelledAt {
-			if !found || cancelledAt < oldestSeq {
-				oldestID, oldestSeq, found = sessionID, cancelledAt, true
+		for id, v := range m {
+			if !found || v < oldestValue {
+				oldestID, oldestValue, found = id, v, true
 			}
 		}
-		delete(a.sessionCancelledAt, oldestID)
+		delete(m, oldestID)
 	}
 }

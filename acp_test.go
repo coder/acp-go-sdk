@@ -409,6 +409,7 @@ func TestAgentDispatch_AllowsPartialUnstableMethodImplementation(t *testing.T) {
 	conn := &AgentSideConnection{
 		agent:          agent,
 		sessionCancels: make(map[string]*promptCancel),
+		sessionNewest:  make(map[string]uint64),
 	}
 
 	params, err := json.Marshal(UnstableForkSessionRequest{Cwd: "/tmp", SessionId: "source-session"})

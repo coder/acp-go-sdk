@@ -137,7 +137,7 @@ The code column cites functions and the line that each step depends on. `check.s
 - A handler calls the client only where the script says so (`peernote`, `cancelpeer`).
 - The client sends each script in order. The agent can return from `Prompt` at any step, canceled or not.
 - Only prompts are requests in the model. Other requests in flight only keep markers longer.
-- The model has fewer than `maxCancelMarkers` (1024) entries in `sessionCancelledAt` and `sessionNewest`, so `dropOldestAbove` never runs. A lost entry there loses only that peer's own cancel or prompt order, as the comment on `maxCancelMarkers` says. `TestAgentSideConnection_SessionCancelMarkersArePruned` covers the cap.
+- The model has fewer than `maxCancelMarkers` (1024) entries in `sessionCancelledAt` and `sessionNewest`, so `dropOldestAbove` never runs. A lost entry there loses only that peer's own cancel or prompt order, as the comment on `maxCancelMarkers` says. `TestAgentSideConnection_SessionCancelMarkersArePruned` and `TestAgentSideConnection_SessionNewestIsCapped` cover the caps.
 
 Not covered, with what a user sees when it goes wrong:
 

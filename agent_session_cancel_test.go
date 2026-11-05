@@ -545,3 +545,78 @@ func TestAgentSideConnection_OlderPromptEndsAfterNewerReturned(t *testing.T) {
 		t.Fatalf("sessionNewest keeps %d entries with no request in flight", left)
 	}
 }
+
+// An older prompt that registers after a newer one leaves the newer prompt's
+// entry, so a later session/cancel still reaches the newer prompt.
+func TestAgentSideConnection_LateOlderPromptKeepsNewerCancellable(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	c.mu.Lock()
+	c.inflightArrivals[1] = struct{}{}
+	c.inflightArrivals[2] = struct{}{}
+	c.mu.Unlock()
+	reqCtx := func(arrival uint64) context.Context {
+		return context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})
+	}
+
+	newerCtx, newerCancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(2), "s", newerCancel)
+	_, olderCancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(1), "s", olderCancel)
+	if newerCtx.Err() != nil {
+		t.Fatal("the older prompt's register canceled the newer prompt")
+	}
+
+	cancelCtx := context.WithValue(context.Background(), handlingNotificationKey{}, handlingNotification{conn: c, seq: 1})
+	conn.cancelPrompt(cancelCtx, "s")
+	if newerCtx.Err() == nil {
+		t.Fatal("a session/cancel sent after the newer prompt did not cancel it")
+	}
+}
+
+// sessionNewest holds at most maxCancelMarkers entries while an old request
+// stays in flight.
+func TestAgentSideConnection_SessionNewestIsCapped(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	c.mu.Lock()
+	c.inflightArrivals[1] = struct{}{}
+	c.mu.Unlock()
+	for i := uint64(2); i < 2+maxCancelMarkers+10; i++ {
+		ctx := context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: i})
+		_, cancel := context.WithCancel(context.Background())
+		conn.registerPrompt(ctx, "s-"+strconv.FormatUint(i, 10), cancel)()
+	}
+	conn.mu.Lock()
+	got := len(conn.sessionNewest)
+	conn.mu.Unlock()
+	if got != maxCancelMarkers {
+		t.Fatalf("sessionNewest holds %d entries, want %d", got, maxCancelMarkers)
+	}
+}
+
+// After the prompts of a connection return, no in-flight arrival and no
+// sessionNewest entry is left.
+func TestAgentSideConnection_ArrivalStateDrains(t *testing.T) {
+	conn, peer := newCancelPeer(t, agentFuncs{
+		PromptFunc: func(context.Context, PromptRequest) (PromptResponse, error) {
+			return PromptResponse{StopReason: StopReasonEndTurn}, nil
+		},
+	})
+	peer.send(cancelTestPromptLine(1, "a"), cancelTestPromptLine(2, "b"))
+	for i := 0; i < 2; i++ {
+		peer.await("a prompt response", func(m anyMessage) bool { return m.ID != nil && m.Method == "" })
+	}
+	waitNoInflightRequests(t, conn.conn)
+	c := conn.conn
+	c.mu.Lock()
+	arrivals := len(c.inflightArrivals)
+	c.mu.Unlock()
+	conn.mu.Lock()
+	conn.pruneCancelMarkers()
+	newest := len(conn.sessionNewest)
+	conn.mu.Unlock()
+	if arrivals != 0 || newest != 0 {
+		t.Fatalf("after the prompts returned: %d in-flight arrivals and %d sessionNewest entries, want 0 and 0", arrivals, newest)
+	}
+}

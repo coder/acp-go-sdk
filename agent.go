@@ -82,12 +82,11 @@ const maxCancelMarkers = 1024
 // whose handler runs with ctx, and cancels the prompt of the session that it
 // replaces. When a prompt of the session that arrived later has already
 // registered, even one that has returned, registerPrompt calls cancel at once
-// and leaves the session's entry alone. If a
-// session/cancel that arrived after the prompt has already run, registerPrompt
-// also calls cancel at once. The prompt
-// handler calls the returned func when the prompt returns. It removes the
-// entry only while the entry is still this prompt's, so a newer prompt of the
-// session stays cancellable.
+// and leaves the session's entry alone. If a session/cancel that arrived
+// after the prompt has already run, registerPrompt also calls cancel at once.
+// The prompt handler calls the returned func when the prompt returns. It
+// removes the entry only while the entry is still this prompt's, so a newer
+// prompt of the session stays cancellable.
 func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID string, cancel context.CancelFunc) (done func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

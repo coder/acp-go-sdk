@@ -140,6 +140,16 @@ type Connection struct {
 }
 
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
+	c := newConnection(handler, peerInput, peerOutput)
+	c.start()
+	return c
+}
+
+// newConnection builds a Connection without starting it. Callers whose
+// handler reads the connection back, as AgentSideConnection and
+// ClientSideConnection do, store it before calling start so the first
+// inbound message cannot see it half set.
+func newConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
@@ -158,6 +168,11 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		notificationQueue:   make(chan queuedNotification, defaultMaxQueuedNotifications),
 	}
 	c.notifyCond = sync.NewCond(&c.notifyMu)
+	return c
+}
+
+// start runs the goroutines that read from and write to the peer.
+func (c *Connection) start() {
 	go func() {
 		<-c.ctx.Done()
 		c.notifyMu.Lock()
@@ -167,7 +182,6 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 	go c.sendCancelRequests()
 	go c.receive()
 	go c.processNotifications()
-	return c
 }
 
 // SetLogger installs a logger used for internal connection diagnostics.

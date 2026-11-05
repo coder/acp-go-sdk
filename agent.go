@@ -28,7 +28,8 @@ func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Read
 	asc.agent = agent
 	asc.sessionCancels = make(map[string]context.CancelFunc)
 	asc.sessionCancelledAt = make(map[string]uint64)
-	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput)
+	asc.conn = newConnection(asc.handleWithExtensions, peerInput, peerOutput)
+	asc.conn.start()
 	return asc
 }
 

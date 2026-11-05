@@ -136,7 +136,7 @@ type agentFuncs struct {
 	UnstableDisableProviderFunc   func(context.Context, UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error)
 	UnstableListProvidersFunc     func(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
 	UnstableSetProviderFunc       func(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
-	UnstableDeleteSessionFunc     func(context.Context, UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error)
+	DeleteSessionFunc             func(context.Context, DeleteSessionRequest) (DeleteSessionResponse, error)
 	UnstableForkSessionFunc       func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
@@ -337,11 +337,11 @@ func (a agentFuncs) UnstableSetProvider(ctx context.Context, params UnstableSetP
 	return UnstableSetProviderResponse{}, nil
 }
 
-func (a agentFuncs) UnstableDeleteSession(ctx context.Context, params UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error) {
-	if a.UnstableDeleteSessionFunc != nil {
-		return a.UnstableDeleteSessionFunc(ctx, params)
+func (a agentFuncs) DeleteSession(ctx context.Context, params DeleteSessionRequest) (DeleteSessionResponse, error) {
+	if a.DeleteSessionFunc != nil {
+		return a.DeleteSessionFunc(ctx, params)
 	}
-	return UnstableDeleteSessionResponse{}, nil
+	return DeleteSessionResponse{}, nil
 }
 
 func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
@@ -397,6 +397,10 @@ func (a *forkOnlyUnstableAgent) ResumeSession(context.Context, ResumeSessionRequ
 
 func (a *forkOnlyUnstableAgent) SetSessionConfigOption(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
 	return SetSessionConfigOptionResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) DeleteSession(context.Context, DeleteSessionRequest) (DeleteSessionResponse, error) {
+	return DeleteSessionResponse{}, nil
 }
 
 func (a *forkOnlyUnstableAgent) UnstableForkSession(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
@@ -1262,6 +1266,10 @@ func (agentNoExtensions) Logout(ctx context.Context, params LogoutRequest) (Logo
 
 func (agentNoExtensions) CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error) {
 	return CloseSessionResponse{}, nil
+}
+
+func (agentNoExtensions) DeleteSession(ctx context.Context, params DeleteSessionRequest) (DeleteSessionResponse, error) {
+	return DeleteSessionResponse{}, nil
 }
 
 func (agentNoExtensions) NewSession(ctx context.Context, params NewSessionRequest) (NewSessionResponse, error) {

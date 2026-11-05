@@ -11,14 +11,14 @@ version: README.md schema/meta.json schema/schema.json schema/meta.unstable.json
 	echo $(ACP_VERSION) > $@
 
 schema/meta.json: schema/version
-	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/meta.json
+	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/schema-v$(ACP_VERSION)/meta.json
 
 schema/schema.json: schema/version
-	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/schema.json
+	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/schema-v$(ACP_VERSION)/schema.json
 
 schema/meta.unstable.json: schema/version
 	@set -e; \
-		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/meta.unstable.json; \
+		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/schema-v$(ACP_VERSION)/meta.unstable.json; \
 		tmp=$@.tmp; \
 		status=$$(curl -sS -L -o "$$tmp" -w '%{http_code}' "$$url") || { rm -f "$$tmp"; exit 1; }; \
 		if [ "$$status" = "200" ]; then \
@@ -34,7 +34,7 @@ schema/meta.unstable.json: schema/version
 
 schema/schema.unstable.json: schema/version
 	@set -e; \
-		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/schema.unstable.json; \
+		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/schema-v$(ACP_VERSION)/schema.unstable.json; \
 		tmp=$@.tmp; \
 		status=$$(curl -sS -L -o "$$tmp" -w '%{http_code}' "$$url") || { rm -f "$$tmp"; exit 1; }; \
 		if [ "$$status" = "200" ]; then \

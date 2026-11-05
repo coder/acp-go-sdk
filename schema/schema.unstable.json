@@ -1917,6 +1917,10 @@
         "message": {
           "description": "A human-readable message describing what input is needed.",
           "type": "string"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/SessionId",
+          "description": "The session this elicitation is tied to."
         }
       },
       "required": ["message"],

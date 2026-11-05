@@ -6782,6 +6782,8 @@ type UnstableCreateElicitationForm struct {
 	Mode    string `json:"mode"`
 	// A JSON Schema describing the form fields to present to the user.
 	RequestedSchema UnstableElicitationSchema `json:"requestedSchema"`
+	// The session this elicitation is tied to.
+	SessionId SessionId `json:"sessionId,omitempty"`
 }
 
 // URL-based elicitation where the client directs the user to a URL.
@@ -6797,6 +6799,8 @@ type UnstableCreateElicitationUrl struct {
 	// A human-readable message describing what input is needed.
 	Message string `json:"message"`
 	Mode    string `json:"mode"`
+	// The session this elicitation is tied to.
+	SessionId SessionId `json:"sessionId,omitempty"`
 	// The URL to direct the user to.
 	Url string `json:"url"`
 }

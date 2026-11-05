@@ -38,9 +38,9 @@ CONFIGS=(
 	one-prompt-at-a-time.cfg:pass
 	two-sessions.cfg:pass
 	peer-wait-earlier-prompt.cfg:pass
-	overlapping-prompts.cfg:CancelReachesEarlierPrompts
-	peer-wait-later-prompt.cfg:CancelSparesLaterPrompts
-	cancel-waits-later-prompt.cfg:CancelSparesLaterPrompts
+	overlapping-prompts.cfg:pass
+	peer-wait-later-prompt.cfg:pass
+	cancel-waits-later-prompt.cfg:pass
 )
 
 # file|start of the block. A block runs from its first line to the closing
@@ -166,24 +166,25 @@ B_peer=$(need connection.go "func (c *Connection) startPeerWait(")
 B_old=$(need connection.go "func (c *Connection) oldestInflightWatermark(")
 
 # Shapes the model assumes. A change here needs a model change, not a fact.
-in_order "$B_cancel" "a.mu.Lock()" "if cn, ok := a.sessionCancels[sessionID]; ok {" "cn()" \
-	"delete(a.sessionCancels, sessionID)" "a.pruneCancelMarkers()" ||
+in_order "$B_cancel" "a.mu.Lock()" "seq, hasSeq := a.conn.notificationSeq(ctx)" "if pc, ok := a.sessionCancels[sessionID]; ok" \
+	"pc.cancel()" "delete(a.sessionCancels, sessionID)" "a.pruneCancelMarkers()" ||
 	drift "cancelPrompt no longer cancels and deletes a.sessionCancels[sessionID] under a.mu, then prunes (RunCancel)"
-in_order "$B_reg" "a.mu.Lock()" "if prev, ok := a.sessionCancels[sessionID]; ok {" "prev()" \
-	"a.sessionCancels[sessionID] = cancel" "a.pruneCancelMarkers()" ||
-	drift "registerPrompt no longer cancels the previous prompt, stores cancel under a.mu, then prunes (Register)"
+in_order "$B_reg" "a.mu.Lock()" "if prev, ok := a.sessionCancels[sessionID]; ok {" "prev.cancel()" \
+	"watermark, hasWatermark := a.conn.requestWatermark(ctx)" \
+	"pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark}" \
+	"a.sessionCancels[sessionID] = pc" "a.pruneCancelMarkers()" ||
+	drift "registerPrompt no longer cancels the previous prompt, stores its cancel and watermark under a.mu, then prunes (Register)"
 in_order "$B_prune" "oldest, ok := a.conn.oldestInflightWatermark()" "for sessionID, cancelledAt := range a.sessionCancelledAt {" ||
 	drift "pruneCancelMarkers no longer scans the markers against oldestInflightWatermark (Prune)"
 in_order "$B_old" "for w := range c.inflightWatermarks {" "if !ok || w < oldest {" ||
 	drift "oldestInflightWatermark no longer returns the smallest in-flight watermark (Prune)"
 in_order "$B_ccase" "a.cancelPrompt(ctx, string(p.SessionId))" "a.agent.Cancel(ctx, p)" ||
 	drift "the session/cancel case no longer calls cancelPrompt before Cancel (RunCancel)"
-in_order "$B_pcase" "reqCtx, cancel = context.WithCancel(ctx)" "a.registerPrompt(ctx, string(p.SessionId), cancel)" \
-	"resp, err := a.agent.Prompt(reqCtx, p)" "a.mu.Lock()" "delete(a.sessionCancels, string(p.SessionId))" ||
-	drift "the session/prompt case changed its register, Prompt or cleanup steps (Register, PromptReturns, Cleanup; see #83)"
-l_del=$(line_of "$B_pcase" "delete(a.sessionCancels, string(p.SessionId))")
-[ "$(line_at "$B_pcase" $((l_del - 1)))" = "a.mu.Lock()" ] ||
-	drift "the session/prompt cleanup no longer deletes a.sessionCancels[sessionId] whichever prompt it holds (Cleanup; see #83)"
+in_order "$B_pcase" "reqCtx, cancel = context.WithCancel(ctx)" "donePrompt := a.registerPrompt(ctx, string(p.SessionId), cancel)" \
+	"resp, err := a.agent.Prompt(reqCtx, p)" "donePrompt()" ||
+	drift "the session/prompt case changed its register, Prompt or cleanup steps (Register, PromptReturns, Cleanup)"
+in_order "$B_reg" "return func() {" "a.mu.Lock()" "delete(a.sessionCancels, sessionID)" ||
+	drift "the func that registerPrompt returns no longer deletes the entry under a.mu (Cleanup)"
 has "$B_nseq" "ctx.Value(handlingNotificationKey{}).(handlingNotification)" ||
 	drift "notificationSeq no longer reads the handlingNotification ctx value"
 has "$B_rwm" "ctx.Value(handlingRequestKey{}).(handlingRequest)" ||
@@ -207,12 +208,12 @@ in_order "$B_recv" "c.lastEnqueuedNotificationSeq++" "case c.notificationQueue <
 	drift "receive no longer numbers and queues notifications (ReceiveNotification)"
 
 # MarkerCancelsWhen: registerPrompt cancels at once when a later cancel ran.
-if has "$B_reg" "ok && cancelledAt > watermark {"; then
+if has "$B_reg" "&& cancelledAt > watermark {"; then
 	MarkerCancelsWhen=gt
-	l_cmp=$(line_of "$B_reg" "ok && cancelledAt > watermark {")
-elif has "$B_reg" "ok && cancelledAt >= watermark {"; then
+	l_cmp=$(line_of "$B_reg" "&& cancelledAt > watermark {")
+elif has "$B_reg" "&& cancelledAt >= watermark {"; then
 	MarkerCancelsWhen=ge
-	l_cmp=$(line_of "$B_reg" "ok && cancelledAt >= watermark {")
+	l_cmp=$(line_of "$B_reg" "&& cancelledAt >= watermark {")
 elif ! has "$B_reg" "a.sessionCancelledAt[sessionID]"; then
 	MarkerCancelsWhen=never
 	l_cmp=""
@@ -225,7 +226,7 @@ if [ -n "$l_cmp" ]; then
 fi
 
 # CancelRecordsMarker: cancelPrompt stores the cancel's seq.
-l_seq=$(line_of "$B_cancel" "if seq, ok := a.conn.notificationSeq(ctx); ok {")
+l_seq=$(line_of "$B_cancel" "if hasSeq {")
 l_set=$(line_of "$B_cancel" "a.sessionCancelledAt[sessionID] = seq")
 if [ -n "$l_seq" ] && [ -n "$l_set" ] && [ "$l_set" = $((l_seq + 1)) ]; then
 	CancelRecordsMarker=TRUE
@@ -234,6 +235,23 @@ elif ! has "$B_cancel" "sessionCancelledAt[sessionID] ="; then
 else
 	drift "cancelPrompt stores sessionCancelledAt in a new form"
 fi
+
+# CancelSkipsLaterPrompt: cancelPrompt leaves a registered prompt that the
+# client sent after the cancel (#72 item 1).
+case "$(sed -n 's/^[[:space:]]*\(if pc, ok := a.sessionCancels\[sessionID\]; ok.*\)$/\1/p' <<<"$B_cancel" | head -n 1)" in
+"if pc, ok := a.sessionCancels[sessionID]; ok && !(hasSeq && pc.hasWatermark && pc.watermark >= seq) {") CancelSkipsLaterPrompt=TRUE ;;
+"if pc, ok := a.sessionCancels[sessionID]; ok {") CancelSkipsLaterPrompt=FALSE ;;
+*) drift "cancelPrompt guards its cancel in a new form" ;;
+esac
+
+# CleanupChecksOwner: the func that registerPrompt returns deletes the entry
+# only while it is still this prompt's (#83).
+l_rdel=$(line_of "$B_reg" "delete(a.sessionCancels, sessionID)")
+case "$(line_at "$B_reg" $((l_rdel - 1)))" in
+"if a.sessionCancels[sessionID] == pc {") CleanupChecksOwner=TRUE ;;
+"defer a.mu.Unlock()") CleanupChecksOwner=FALSE ;;
+*) drift "the func that registerPrompt returns guards its delete in a new form" ;;
+esac
 
 # PruneDropsWhen: the guard of the first delete in pruneCancelMarkers.
 l_pdel=$(line_of "$B_prune" "delete(a.sessionCancelledAt, sessionID)")
@@ -268,6 +286,8 @@ FACTS="CONSTANTS
     MarkerCancelsWhen = \"$MarkerCancelsWhen\"
     CancelRecordsMarker = $CancelRecordsMarker
     PruneDropsWhen = \"$PruneDropsWhen\"
+    CancelSkipsLaterPrompt = $CancelSkipsLaterPrompt
+    CleanupChecksOwner = $CleanupChecksOwner
     InboundStopsAtPeerWait = $InboundStopsAtPeerWait"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from the code:"

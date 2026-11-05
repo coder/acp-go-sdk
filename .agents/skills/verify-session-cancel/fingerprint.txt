@@ -1,9 +1,9 @@
-a5e69375137fa1dcf9cb0fc5b06e3c71c07e991aa9d996863658a4a6175ddc18  agent.go|func NewAgentSideConnection(
-b4daf41ae2f72628106d54111b896e31b787495160b28deda7df917c9533fdfc  agent.go|func (a *AgentSideConnection) cancelPrompt(
-ff59ed37022cd74a6cb49ca0448175a08eaa08431405c7732ad4c73412192049  agent.go|func (a *AgentSideConnection) registerPrompt(
+4559943194ad872d1381b718f13d913958bcc8922585f1f99cb01febb7b0decf  agent.go|func NewAgentSideConnection(
+0d8ca93442ba9e93ee30fc380b6fea99a8b0adfac2be2d123fa318477ff5d6be  agent.go|func (a *AgentSideConnection) cancelPrompt(
+458039a71ad19ce9ec231b1b9f891c7ae16bbcd58a59e611b876ed996d15d80c  agent.go|func (a *AgentSideConnection) registerPrompt(
 cc6a797994545bddde167c2aebcbe49ea57c13c9ca98a0e307306bb93523301e  agent.go|func (a *AgentSideConnection) pruneCancelMarkers(
 2b76eacc2216b296a7692be1e05152b2b628dc78f708bd9f262f4868755a6bd1  agent_gen.go|	case AgentMethodSessionCancel:
-765fb1c703d549fac2fc64ee6ef7261806cfe63010987a67274d4e2e7379c844  agent_gen.go|	case AgentMethodSessionPrompt:
+6bfe43ed3fcf17a8f59ed84fa5b2d2fc6eec61cc033a95b6f0d60a96eff9d0b5  agent_gen.go|	case AgentMethodSessionPrompt:
 e1a98e274064cc3555b3df46988c93d2b8b462ad7335675a71473a88f1716c23  extensions.go|func (a *AgentSideConnection) handleWithExtensions(
 1b76b1315306a0e22bd61177e38349864a167100dcbcfbf60d6c96a8160d2c4e  connection.go|func NewConnection(
 edb3eeb64a845734dc70d72f8447b16ffb70ec435787dba498a715d5a4008a45  connection.go|func (c *Connection) notificationSeq(

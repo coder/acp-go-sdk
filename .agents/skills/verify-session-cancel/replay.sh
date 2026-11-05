@@ -34,7 +34,7 @@ if [ "$rc" != 0 ] && [ "$breaks" = 0 ]; then
 	echo "replay.sh: go test failed without a test result. Log: $LOG" >&2
 	exit 2
 fi
-grep -E '^--- (PASS|FAIL): TestReplay_' "$LOG" | sed 's/^--- PASS:/holds: /; s/^--- FAIL:/breaks:/; s/ (.*)$//'
+grep -E '^--- (PASS|FAIL): TestReplay_' "$LOG" | sed 's/^--- PASS:/holds: /; s/^--- FAIL:/breaks:/; s/ (.*)$//' || true
 grep -E '^\s+zz_session_cancel_replay_test.go:[0-9]+: ' "$LOG" | sed 's/^\s*/  /' || true
 echo "$((holds + breaks)) replays: $holds hold, $breaks break a promise. Log: $LOG"
 [ "$breaks" = 0 ] || exit 1

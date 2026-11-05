@@ -1,0 +1,19 @@
+a5e69375137fa1dcf9cb0fc5b06e3c71c07e991aa9d996863658a4a6175ddc18  agent.go|func NewAgentSideConnection(
+b4daf41ae2f72628106d54111b896e31b787495160b28deda7df917c9533fdfc  agent.go|func (a *AgentSideConnection) cancelPrompt(
+ff59ed37022cd74a6cb49ca0448175a08eaa08431405c7732ad4c73412192049  agent.go|func (a *AgentSideConnection) registerPrompt(
+cc6a797994545bddde167c2aebcbe49ea57c13c9ca98a0e307306bb93523301e  agent.go|func (a *AgentSideConnection) pruneCancelMarkers(
+2b76eacc2216b296a7692be1e05152b2b628dc78f708bd9f262f4868755a6bd1  agent_gen.go|	case AgentMethodSessionCancel:
+765fb1c703d549fac2fc64ee6ef7261806cfe63010987a67274d4e2e7379c844  agent_gen.go|	case AgentMethodSessionPrompt:
+e1a98e274064cc3555b3df46988c93d2b8b462ad7335675a71473a88f1716c23  extensions.go|func (a *AgentSideConnection) handleWithExtensions(
+1b76b1315306a0e22bd61177e38349864a167100dcbcfbf60d6c96a8160d2c4e  connection.go|func NewConnection(
+edb3eeb64a845734dc70d72f8447b16ffb70ec435787dba498a715d5a4008a45  connection.go|func (c *Connection) notificationSeq(
+21085af1449926f12676533e6d448f68be1bbc0380794346ae159cc2870a6204  connection.go|func (c *Connection) requestWatermark(
+762a5aae76ce72b65bd8654b200004cb7647831050280dd5e2f687c71fbaf058  connection.go|func (c *Connection) receive(
+6821973eef44dd88e4ce8426b1371a1070729fea9af31f606cc57f380f3f25e5  connection.go|func (c *Connection) processNotifications(
+cdb06c7daf8f7806f6dbcb36995a1a634b2cc788399b3bdfbfc6b3156dd8303f  connection.go|func (c *Connection) handleInbound(
+f41b53dbc152eb541c95aa128abbfc4e7afd92aab9d43feb8399264baefe8566  connection.go|func SendRequest[T any](c *Connection,
+5501eee3e4b0a557960ff811976f34bf02ba901b634addab228c0577e119f6cb  connection.go|func (c *Connection) SendRequestNoResult(
+8ef9b3537d842153780141d02dac4a88b1c7c8da1b300c198ff421f90d1812cc  connection.go|func (c *Connection) waitNotifications(
+be2432fed3f96a9cdb62bb48db871289743fb9b467160a218c7ca9041da16113  connection.go|func (c *Connection) waitInboundBarrier(
+6632b6156f326675dd5e6bc89df29fd2eceb55d061bb61910ee4f3f65d4838a5  connection.go|func (c *Connection) startPeerWait(
+5f6d8b71d22e519707b6ffe1fbad003d2fdc24c798501ee573821c8e59140d4c  connection.go|func (c *Connection) oldestInflightWatermark(

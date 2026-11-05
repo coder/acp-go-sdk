@@ -113,8 +113,9 @@ type Connection struct {
 	nextID               atomic.Uint64
 	pending              map[string]*pendingResponse
 	inflight             map[string]context.CancelCauseFunc
-	inflightWatermarks   map[uint64]int // requests in inflight, counted by watermark
-	inboundRequests      uint64         // requests that receive has read; only receive touches it
+	inflightWatermarks   map[uint64]int      // requests in inflight, counted by watermark
+	inboundRequests      uint64              // requests that receive has read; only receive touches it
+	inflightArrivals     map[uint64]struct{} // arrival numbers of the requests in inflight
 	pendingCancelRequest []string
 	cancelRequestSignal  chan struct{}
 
@@ -162,6 +163,7 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		pending:             make(map[string]*pendingResponse),
 		inflight:            make(map[string]context.CancelCauseFunc),
 		inflightWatermarks:  make(map[uint64]int),
+		inflightArrivals:    make(map[uint64]struct{}),
 		peerWaits:           make(map[uint64]int),
 		cancelRequestSignal: make(chan struct{}, 1),
 		ctx:                 ctx,
@@ -476,11 +478,13 @@ func (c *Connection) receive() {
 				}
 				reqCtx, cancel := context.WithCancelCause(c.ctx)
 				c.inboundRequests++
-				reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, watermark: watermark, arrival: c.inboundRequests})
+				arrival := c.inboundRequests
+				reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, watermark: watermark, arrival: arrival})
 
 				c.mu.Lock()
 				c.inflight[idKey] = cancel
 				c.inflightWatermarks[watermark]++
+				c.inflightArrivals[arrival] = struct{}{}
 				c.mu.Unlock()
 
 				m := msg
@@ -491,6 +495,7 @@ func (c *Connection) receive() {
 						if c.inflightWatermarks[watermark]--; c.inflightWatermarks[watermark] == 0 {
 							delete(c.inflightWatermarks, watermark)
 						}
+						delete(c.inflightArrivals, arrival)
 						c.mu.Unlock()
 
 						cancel(nil)
@@ -1011,6 +1016,20 @@ func (c *Connection) oldestInflightWatermark() (oldest uint64, ok bool) {
 	for w := range c.inflightWatermarks {
 		if !ok || w < oldest {
 			oldest, ok = w, true
+		}
+	}
+	return oldest, ok
+}
+
+// oldestInflightArrival returns the smallest arrival number of the requests
+// from the peer whose handlers have not returned. ok is false when there are
+// none.
+func (c *Connection) oldestInflightArrival() (oldest uint64, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for a := range c.inflightArrivals {
+		if !ok || a < oldest {
+			oldest, ok = a, true
 		}
 	}
 	return oldest, ok

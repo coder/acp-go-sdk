@@ -503,3 +503,45 @@ func TestAgentSideConnection_PromptAfterCancelSurvivesLateOlderRegister(t *testi
 		}
 	}
 }
+
+// overlapping-prompts.cfg, OlderPromptEnds: the newer prompt of a session
+// registers and returns before the older one registers. The older prompt's
+// ctx ends at once. No black-box path can stall the older handler that long,
+// so the test sets the in-flight state that receive records.
+func TestAgentSideConnection_OlderPromptEndsAfterNewerReturned(t *testing.T) {
+	conn, _ := newCancelPeer(t, agentFuncs{})
+	c := conn.conn
+	reqCtx := func(arrival uint64) context.Context {
+		return context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})
+	}
+	c.mu.Lock()
+	c.inflightArrivals[1] = struct{}{}
+	c.inflightArrivals[2] = struct{}{}
+	c.mu.Unlock()
+
+	newerCtx, newerCancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(2), "s", newerCancel)()
+	c.mu.Lock()
+	delete(c.inflightArrivals, 2)
+	c.mu.Unlock()
+
+	olderCtx, olderCancel := context.WithCancel(context.Background())
+	conn.registerPrompt(reqCtx(1), "s", olderCancel)()
+	if olderCtx.Err() == nil {
+		t.Fatal("the older prompt registered after the newer one returned and kept a live ctx")
+	}
+	if newerCtx.Err() != nil {
+		t.Fatal("the newer prompt was canceled")
+	}
+
+	c.mu.Lock()
+	delete(c.inflightArrivals, 1)
+	c.mu.Unlock()
+	conn.mu.Lock()
+	conn.pruneCancelMarkers()
+	left := len(conn.sessionNewest)
+	conn.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("sessionNewest keeps %d entries with no request in flight", left)
+	}
+}

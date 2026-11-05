@@ -66,6 +66,7 @@ COVERED=(
 	"connection.go|func (c *Connection) waitInboundBarrier("
 	"connection.go|func (c *Connection) startPeerWait("
 	"connection.go|func (c *Connection) oldestInflightWatermark("
+	"connection.go|func (c *Connection) oldestInflightArrival("
 )
 
 die() {
@@ -166,17 +167,24 @@ B_wait=$(need connection.go "func (c *Connection) waitNotifications(")
 B_inb=$(need connection.go "func (c *Connection) waitInboundBarrier(")
 B_peer=$(need connection.go "func (c *Connection) startPeerWait(")
 B_old=$(need connection.go "func (c *Connection) oldestInflightWatermark(")
+B_olda=$(need connection.go "func (c *Connection) oldestInflightArrival(")
 
 # Shapes the model assumes. A change here needs a model change, not a fact.
 in_order "$B_cancel" "a.mu.Lock()" "seq, hasSeq := a.conn.notificationSeq(ctx)" "if pc, ok := a.sessionCancels[sessionID]; ok" \
 	"pc.cancel()" "delete(a.sessionCancels, sessionID)" "a.pruneCancelMarkers()" ||
 	drift "cancelPrompt no longer cancels and deletes a.sessionCancels[sessionID] under a.mu, then prunes (RunCancel)"
 in_order "$B_reg" "a.mu.Lock()" "watermark, hasWatermark := a.conn.requestWatermark(ctx)" \
-	"arrival, _ := a.conn.requestArrival(ctx)" \
-	"pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark, arrival: arrival}" \
+	"arrival, hasArrival := a.conn.requestArrival(ctx)" \
+	"if hasArrival {" "a.sessionNewest[sessionID] = arrival" \
+	"pc := &promptCancel{cancel: cancel, watermark: watermark, hasWatermark: hasWatermark}" \
 	"if prev, ok := a.sessionCancels[sessionID]; ok {" "prev.cancel()" \
 	"a.sessionCancels[sessionID] = pc" "a.pruneCancelMarkers()" ||
-	drift "registerPrompt no longer cancels the previous prompt, stores its cancel, watermark and arrival under a.mu, then prunes (Register)"
+	drift "registerPrompt no longer records the newest arrival, cancels the previous prompt, stores its entry under a.mu, then prunes (Register)"
+in_order "$B_olda" "for a := range c.inflightArrivals {" "if !ok || a < oldest {" ||
+	drift "oldestInflightArrival no longer returns the smallest in-flight arrival (PruneNewest)"
+in_order "$B_recv" "arrival := c.inboundRequests" "c.inflightArrivals[arrival] = struct{}{}" "go func(" \
+	"delete(c.inflightArrivals, arrival)" "c.handleInbound(reqCtx, m)" ||
+	drift "receive no longer tracks the in-flight arrival from before the request goroutine to its defer (PruneNewest)"
 in_order "$B_prune" "oldest, ok := a.conn.oldestInflightWatermark()" "for sessionID, cancelledAt := range a.sessionCancelledAt {" ||
 	drift "pruneCancelMarkers no longer scans the markers against oldestInflightWatermark (Prune)"
 in_order "$B_old" "for w := range c.inflightWatermarks {" "if !ok || w < oldest {" ||
@@ -206,7 +214,7 @@ in_order "$B_ext" "h.HandleExtensionMethod(ctx, method, params)" "return a.handl
 in_order "$B_hin" "result, err := c.handler(ctx, req.Method, req.Params)" "_ = c.sendMessage(res)" ||
 	drift "handleInbound no longer runs the handler with its ctx, then sends the response (Respond)"
 in_order "$B_recv" "watermark := c.lastEnqueuedNotificationSeq" "c.inboundRequests++" \
-	"handlingRequest{conn: c, watermark: watermark, arrival: c.inboundRequests}" "c.inflightWatermarks[watermark]++" "go func(" \
+	"handlingRequest{conn: c, watermark: watermark, arrival: arrival}" "c.inflightWatermarks[watermark]++" "go func(" \
 	"c.inflightWatermarks[watermark]--" "c.handleInbound(reqCtx, m)" ||
 	drift "receive no longer records the watermark and the in-flight request before the request goroutine (ReceivePrompt, ReceiveAddsInflight, Exit)"
 in_order "$B_recv" "c.lastEnqueuedNotificationSeq++" "case c.notificationQueue <- queuedNotification{seq: seq, msg: &m}:" ||
@@ -249,16 +257,27 @@ case "$(sed -n 's/^[[:space:]]*\(if pc, ok := a.sessionCancels\[sessionID\]; ok.
 *) drift "cancelPrompt guards its cancel in a new form" ;;
 esac
 
-# RegisterKeepsNewer: registerPrompt keeps a registered prompt that arrived
-# later, and cancels the new one at once.
-l_keep=$(line_of "$B_reg" "if hasWatermark && prev.hasWatermark && prev.arrival > arrival {")
+# KeepNewerBy: registerPrompt cancels a prompt at once when a prompt of the
+# session that arrived later has registered.
+l_keep=$(line_of "$B_reg" "if newest, ok := a.sessionNewest[sessionID]; ok && hasArrival && newest > arrival {")
 if [ -n "$l_keep" ] && [ "$(line_at "$B_reg" $((l_keep + 1)))" = "cancel()" ] && [ "$(line_at "$B_reg" $((l_keep + 2)))" = "return func() {}" ]; then
-	RegisterKeepsNewer=TRUE
-elif ! has "$B_reg" "prev.arrival"; then
-	RegisterKeepsNewer=FALSE
+	KeepNewerBy=newest
+elif ! has "$B_reg" "a.sessionNewest[sessionID]; ok" && ! has "$B_reg" "prev.arrival"; then
+	KeepNewerBy=never
 else
 	drift "registerPrompt compares prompt arrivals in a new form"
 fi
+
+# NewestDropsWhen: the guard of the sessionNewest delete in pruneCancelMarkers.
+l_ndel=$(line_of "$B_prune" "delete(a.sessionNewest, sessionID)")
+[ -n "$l_ndel" ] || drift "pruneCancelMarkers no longer deletes sessionNewest entries"
+case "$(line_at "$B_prune" $((l_ndel - 1)))" in
+"if !ok || oldestArrival >= newest {") NewestDropsWhen=ge ;;
+"for sessionID, newest := range a.sessionNewest {") NewestDropsWhen=always ;;
+*) drift "pruneCancelMarkers guards its sessionNewest delete in a new form" ;;
+esac
+in_order "$B_prune" "oldestArrival, ok := a.conn.oldestInflightArrival()" "for sessionID, newest := range a.sessionNewest {" ||
+	drift "pruneCancelMarkers no longer scans sessionNewest against oldestInflightArrival (PruneNewest)"
 
 # CleanupChecksOwner: the func that registerPrompt returns deletes the entry
 # only while it is still this prompt's (#83).
@@ -306,7 +325,8 @@ FACTS="CONSTANTS
     PruneDropsWhen = \"$PruneDropsWhen\"
     CancelSkipsLaterPrompt = $CancelSkipsLaterPrompt
     CleanupChecksOwner = $CleanupChecksOwner
-    RegisterKeepsNewer = $RegisterKeepsNewer
+    KeepNewerBy = \"$KeepNewerBy\"
+    NewestDropsWhen = \"$NewestDropsWhen\"
     InboundStopsAtPeerWait = $InboundStopsAtPeerWait"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from the code:"

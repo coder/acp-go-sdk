@@ -1,13 +1,13 @@
 ---
 name: verify-session-cancel
-description: Model-check session/cancel handling in AgentSideConnection with TLA+ (TLC). A session/cancel must cancel the ctx of every prompt of its session that the client sent before it, whichever handler runs first, and must not cancel a prompt that the client sent after it. Of two overlapping prompts of one session, the one sent later must win. Use before you finish any change to cancelPrompt, registerPrompt or pruneCancelMarkers in agent.go, to the session/prompt or session/cancel case in agent_gen.go (or the emitter in cmd/generate/internal/emit/dispatch.go that writes them), to requestWatermark, requestArrival, oldestInflightWatermark, receive, handleInbound, waitInboundBarrier or the peer-wait count in SendRequest and SendRequestNoResult in connection.go, and when a bug report says that a cancel did not stop a turn or that a new prompt was canceled at once.
+description: Model-check session/cancel handling in AgentSideConnection with TLA+ (TLC). A session/cancel must cancel the ctx of every prompt of its session that the client sent before it, whichever handler runs first, and must not cancel a prompt that the client sent after it. Of two overlapping prompts of one session, the one sent later must win, and an older prompt must never run on after a newer one registered. Use before you finish any change to cancelPrompt, registerPrompt or pruneCancelMarkers in agent.go, to the session/prompt or session/cancel case in agent_gen.go (or the emitter in cmd/generate/internal/emit/dispatch.go that writes them), to requestWatermark, requestArrival, oldestInflightWatermark, oldestInflightArrival, receive, handleInbound, waitInboundBarrier or the peer-wait count in SendRequest and SendRequestNoResult in connection.go, and when a bug report says that a cancel did not stop a turn or that a new prompt was canceled at once.
 ---
 
 # Verify session/cancel
 
 `session/cancel` is a notification, so it runs on the `processNotifications` goroutine. Each `session/prompt` runs on its own request goroutine. Either one can reach `a.mu` first. `cancelPrompt` cancels the prompt that has registered, and records a marker for a prompt that arrived before the cancel but registers later. `pruneCancelMarkers` drops a marker once no request that arrived before it is in flight. Unit tests reach a few of these orders (`agent_session_cancel_test.go`). This skill checks every order of a small model of that code with TLC.
 
-The model is a hand translation. `check.sh` reads seven facts from the code on every run and sets the model from them, so a change to one of those lines changes what TLC checks. It refuses to run (DRIFT) when a line that the model depends on has a new form. Any other change inside covered code makes it report STALE until you review the model against the code.
+The model is a hand translation. `check.sh` reads eight facts from the code on every run and sets the model from them, so a change to one of those lines changes what TLC checks. It refuses to run (DRIFT) when a line that the model depends on has a new form. Any other change inside covered code makes it report STALE until you review the model against the code.
 
 ## What it proves
 
@@ -16,20 +16,22 @@ The model is a hand translation. `check.sh` reads seven facts from the code on e
 | `CancelReachesEarlierPrompts` | Once a `session/cancel` handler has run, every prompt of that session that the client sent before the cancel and that is still in `a.agent.Prompt` has a canceled ctx. This holds whether the prompt registered before or after the cancel ran. | The user stops a turn, and the agent keeps working. | all |
 | `CancelSparesLaterPrompts` | A `session/cancel` never cancels the ctx of a prompt that the client sent after it. It counts the cancels that `cancelPrompt` and the marker make, not the cancel of a replaced prompt in `registerPrompt`. | The next prompt ends at once as canceled. | all |
 | `NewerPromptSurvives` | When two prompts of one session overlap, `registerPrompt` cancels the one that the client sent first and keeps the later one, whichever registers first. | The user's newest prompt ends at once as canceled, and the stale turn keeps working. | all |
+| `OlderPromptEnds` | While a prompt of a session that the client sent later has registered, an older prompt of that session never runs with a live ctx, also when the newer prompt has already returned. | A stale turn runs after the user's latest turn, and its output follows the newer answer. | all |
 | `TypeOK` and TLC's deadlock check | The state stays well formed, and the model ends only when every message is handled. TLC stops at the first broken rule, so after a break the deadlock check does not finish. | | all |
 
 "Sent before" uses the SDK's own clock: a prompt's watermark is the number of notifications that `receive` read before it, and a cancel's seq is its place among the notifications.
 
 ## Findings at the sync commit
 
-None. Every config passes. The model found four bugs, and each one now has a regression test in `agent_session_cancel_test.go` and a fact that `check.sh` reads:
+None. Every config passes. The model found five bugs, and each one now has a regression test in `agent_session_cancel_test.go` and a fact that `check.sh` reads:
 
 | Bug | Config | Test | Fact |
 | --- | --- | --- | --- |
 | Overlapping prompts lose the cancel (#83). The cleanup of an older prompt deleted a newer prompt's entry, so a later cancel found nothing. | overlapping-prompts | `TestAgentSideConnection_OverlappingPromptsKeepCancel` | `CleanupChecksOwner` |
 | A notification handler waits on the client, and the barrier starts a prompt sent after a queued cancel. The cancel then cancels it (#72 item 1). | peer-wait-later-prompt | `TestAgentSideConnection_SessionCancelSparesPromptReleasedByPeerWait` | `CancelSkipsLaterPrompt` |
 | The same release, when the agent's `Cancel` calls the client. | cancel-waits-later-prompt | `TestAgentSideConnection_SessionCancelSparesPromptReleasedByCancelWait` | `CancelSkipsLaterPrompt` |
-| Two prompts of one session sent back to back: the newer handler often registered first, and the older one then canceled it and ran on (284 of 300 runs before the fix). | overlapping-prompts | `TestAgentSideConnection_NewerPromptWinsWhicheverRegistersFirst`, and with a cancel between the prompts `TestAgentSideConnection_PromptAfterCancelSurvivesLateOlderRegister` | `RegisterKeepsNewer` |
+| Two prompts of one session sent back to back: the newer handler often registered first, and the older one then canceled it and ran on (284 of 300 runs before the fix). | overlapping-prompts | `TestAgentSideConnection_NewerPromptWinsWhicheverRegistersFirst`, and with a cancel between the prompts `TestAgentSideConnection_PromptAfterCancelSurvivesLateOlderRegister` | `KeepNewerBy` |
+| The newer prompt registered and returned before a delayed older prompt registered. The older prompt found no entry to compare with and ran with a live ctx. | overlapping-prompts (`KeepNewerBy = "prev"` breaks `OlderPromptEnds`) | `TestAgentSideConnection_OlderPromptEndsAfterNewerReturned` | `KeepNewerBy`, `NewestDropsWhen` |
 
 When `check.sh` finds a new break, record it here with its config, its replay and the harm until a fix lands.
 
@@ -93,19 +95,19 @@ The code column cites functions and the line that each step depends on. `check.s
 
 | Action | Code |
 | --- | --- |
-| `ReceivePrompt` | `receive`: `watermark := c.lastEnqueuedNotificationSeq` under `notifyMu`, then `c.inboundRequests++`, both put into the request ctx as `handlingRequest{conn: c, watermark: watermark, arrival: c.inboundRequests}`. The model takes a prompt's index in the script as its arrival. |
-| `ReceiveAddsInflight` | `receive`: `c.inflight[idKey] = cancel` and `c.inflightWatermarks[watermark]++` under `c.mu`, before `go func` |
+| `ReceivePrompt` | `receive`: `watermark := c.lastEnqueuedNotificationSeq` under `notifyMu`, then `c.inboundRequests++` and `arrival := c.inboundRequests`, both put into the request ctx as `handlingRequest{conn: c, watermark: watermark, arrival: arrival}`. The model takes a prompt's index in the script as its arrival. |
+| `ReceiveAddsInflight` | `receive`: `c.inflight[idKey] = cancel`, `c.inflightWatermarks[watermark]++` and `c.inflightArrivals[arrival] = struct{}{}` under `c.mu`, before `go func` |
 | `ReceiveNotification` | `receive`: `c.lastEnqueuedNotificationSeq++` and the send to `c.notificationQueue` under `notifyMu` |
 | `RunCancel` | `processNotifications` runs the `AgentMethodSessionCancel` case, which calls `cancelPrompt` and then `a.agent.Cancel(ctx, p)`. `cancelPrompt` cancels and deletes the entry unless `pc.watermark >= seq`, records `a.sessionCancelledAt[sessionID] = seq`, and prunes. For a `cancelpeer` message, `Cancel` calls the client with that ctx, as in `StartPeerNote`. |
 | `StartPeerNote`, `ClientAnswers` | a handler that calls `CallExtension` (or any request) with its ctx, through `handleWithExtensions`: `SendRequest` or `SendRequestNoResult` calls `startPeerWait`, which counts `c.peerWaits[seq]++`, and its returned func ends the count |
 | `CompleteNotification` | `processNotifications`: `c.completedNotificationSeq = queued.seq` |
 | `PassBarrier` | `waitInboundBarrier`: `c.waitNotifications(ctx, watermark, true)`, whose loop also ends while `c.peerWaits[c.completedNotificationSeq+1] > 0` |
-| `Register` | the `AgentMethodSessionPrompt` case calls `registerPrompt`: `pc := &promptCancel{...}` with the prompt's `requestWatermark` and `requestArrival`. When the registered prompt arrived later (`prev.arrival > arrival`), it calls `cancel()` and returns. Otherwise `prev.cancel()`, `a.sessionCancels[sessionID] = pc`, the marker check `cancelledAt > watermark`, and the prune. |
+| `Register` | the `AgentMethodSessionPrompt` case calls `registerPrompt`. It reads the prompt's `requestWatermark` and `requestArrival`. When `a.sessionNewest[sessionID]` names a later arrival, it calls `cancel()` and returns. Otherwise it records `a.sessionNewest[sessionID] = arrival`, stores `pc := &promptCancel{...}` after `prev.cancel()`, checks the marker (`cancelledAt > watermark`), and prunes. |
 | `PromptReturns` | `a.agent.Prompt(reqCtx, p)` returns |
 | `Cleanup` | `donePrompt()`, the func that `registerPrompt` returned: under `a.mu`, `if a.sessionCancels[sessionID] == pc` then `delete` |
 | `Respond` | `handleInbound`: `c.handler(ctx, req.Method, req.Params)`, then `c.sendMessage(res)` |
-| `Exit` | `receive`: the request goroutine's defer removes the request from `c.inflight` and `c.inflightWatermarks` |
-| `Prune` | `pruneCancelMarkers` with `oldestInflightWatermark` |
+| `Exit` | `receive`: the request goroutine's defer removes the request from `c.inflight`, `c.inflightWatermarks` and `c.inflightArrivals` |
+| `Prune`, `PruneNewest` | `pruneCancelMarkers`: the markers against `oldestInflightWatermark`, `sessionNewest` against `oldestInflightArrival`, then `dropOldestAbove` for each map |
 
 `agent_gen.go` comes from `WriteDispatchJen` in `cmd/generate/internal/emit/dispatch.go`, which writes the `cancelPrompt` call, the `donePrompt := a.registerPrompt(...)` line and the `donePrompt()` call. Change the emitter and regenerate. Do not edit `agent_gen.go` by hand.
 
@@ -117,24 +119,25 @@ The code column cites functions and the line that each step depends on. `check.s
 | `CancelRecordsMarker` | `cancelPrompt`: `if hasSeq {` then `a.sessionCancelledAt[sessionID] = seq` | `CancelReachesEarlierPrompts`: a prompt that registers after the cancel runs on |
 | `PruneDropsWhen` | `pruneCancelMarkers`: `if !ok \|\| oldest >= cancelledAt {`. `>` gives `gt`, and no guard gives `always`. | `always`: `CancelReachesEarlierPrompts`. `gt` keeps markers longer and breaks nothing. |
 | `CancelSkipsLaterPrompt` | `cancelPrompt`: `if pc, ok := a.sessionCancels[sessionID]; ok && !(hasSeq && pc.hasWatermark && pc.watermark >= seq) {`. A plain `ok {` gives `FALSE`. | `FALSE`: `CancelSparesLaterPrompts` in peer-wait-earlier-prompt, peer-wait-later-prompt and cancel-waits-later-prompt (#72 item 1) |
-| `RegisterKeepsNewer` | `registerPrompt`: `if hasWatermark && prev.hasWatermark && prev.arrival > arrival {`, then `cancel()` and `return func() {}`. No `prev.arrival` gives `FALSE`. | `FALSE`: `NewerPromptSurvives` in overlapping-prompts |
+| `KeepNewerBy` | `registerPrompt`: `if newest, ok := a.sessionNewest[sessionID]; ok && hasArrival && newest > arrival {`, then `cancel()` and `return func() {}`, gives `newest`. No read of `sessionNewest` gives `never`. The model's `prev` value compares only with the registered entry. | `never`: `NewerPromptSurvives` in overlapping-prompts. `prev`: `OlderPromptEnds` there. |
+| `NewestDropsWhen` | `pruneCancelMarkers`: `if !ok \|\| oldestArrival >= newest {` before `delete(a.sessionNewest, sessionID)`. No guard gives `always`. | `always`: `NewerPromptSurvives` in overlapping-prompts |
 | `CleanupChecksOwner` | the func that `registerPrompt` returns: `if a.sessionCancels[sessionID] == pc {` right before `delete(a.sessionCancels, sessionID)`. A bare delete after `defer a.mu.Unlock()` gives `FALSE`. | `FALSE`: `CancelReachesEarlierPrompts` in overlapping-prompts (#83) |
 | `InboundStopsAtPeerWait` | `waitInboundBarrier` passes `true`, the `waitNotifications` loop checks `c.peerWaits`, `startPeerWait` counts, and both `SendRequest` and `SendRequestNoResult` call `donePeerWait := c.startPeerWait(ctx)` before `waitForResponse`. Only one of the two gives DRIFT. | `FALSE` hides the release, so the peer-wait configs no longer reach the case that `CancelSkipsLaterPrompt` guards. Nothing fails, so read the facts on every run. |
 
-`check.sh` also gives DRIFT when one of these shapes changes: `cancelPrompt` reads its seq, then cancels and deletes `a.sessionCancels[sessionID]`, `requestArrival` reads the arrival from the `handlingRequest` ctx value, `registerPrompt` reads the watermark and arrival, calls `prev.cancel()` and stores a `promptCancel`, both prune under `a.mu`, the func that `registerPrompt` returns deletes the entry under `a.mu`, the `session/cancel` case calls `cancelPrompt` before `Cancel`, the `session/prompt` case registers, calls `Prompt`, then calls `donePrompt()`, `receive` records the watermark, counts the request in `c.inboundRequests` and records the in-flight request before `go func`, `processNotifications` runs each handler with its seq and then completes it, `NewConnection` starts one `receive` and one `processNotifications`, `NewAgentSideConnection` dispatches through `handleWithExtensions`, which passes the handler ctx on, and `handleInbound` runs the handler with its ctx and then sends the response.
+`check.sh` also gives DRIFT when one of these shapes changes: `cancelPrompt` reads its seq, then cancels and deletes `a.sessionCancels[sessionID]`, `requestArrival` reads the arrival from the `handlingRequest` ctx value, `registerPrompt` reads the watermark and arrival, records `sessionNewest`, calls `prev.cancel()` and stores a `promptCancel`, `pruneCancelMarkers` scans `sessionNewest` against `oldestInflightArrival`, which returns the smallest in-flight arrival, both prune under `a.mu`, the func that `registerPrompt` returns deletes the entry under `a.mu`, the `session/cancel` case calls `cancelPrompt` before `Cancel`, the `session/prompt` case registers, calls `Prompt`, then calls `donePrompt()`, `receive` records the watermark, counts the request in `c.inboundRequests`, records the in-flight request and its arrival before `go func`, and removes the arrival in the goroutine's defer, `processNotifications` runs each handler with its seq and then completes it, `NewConnection` starts one `receive` and one `processNotifications`, `NewAgentSideConnection` dispatches through `handleWithExtensions`, which passes the handler ctx on, and `handleInbound` runs the handler with its ctx and then sends the response.
 
 ## Bounds and assumptions
 
-- one-prompt-at-a-time.cfg: one session, a client that sends a prompt only after the previous prompt's response, cancels before, between and after two prompts, and an agent whose `Cancel` does not call the client, 257 states.
-- two-sessions.cfg: two sessions with two prompts each, one at a time per session, cancels interleaved, and no handler that calls the client, 16,036 states.
-- peer-wait-earlier-prompt.cfg: two notification handlers and two `Cancel` calls that wait on the client, with prompts sent before and after the cancels, 17,153 states.
-- overlapping-prompts.cfg: three prompts of one session in flight at once, two cancels, and a notification handler that waits on the client, 11,460 states.
+- one-prompt-at-a-time.cfg: one session, a client that sends a prompt only after the previous prompt's response, cancels before, between and after two prompts, and an agent whose `Cancel` does not call the client, 297 states.
+- two-sessions.cfg: two sessions with two prompts each, one at a time per session, cancels interleaved, and no handler that calls the client, 19,011 states.
+- peer-wait-earlier-prompt.cfg: two notification handlers and two `Cancel` calls that wait on the client, with prompts sent before and after the cancels, 19,673 states.
+- overlapping-prompts.cfg: three prompts of one session in flight at once, two cancels, and a notification handler that waits on the client, 10,302 states.
 - peer-wait-later-prompt.cfg: a handler that waits on the client, a cancel, then a prompt, 53 states.
 - cancel-waits-later-prompt.cfg: a cancel whose `Cancel` waits on the client, a second cancel, then a prompt, 53 states.
 - A handler calls the client only where the script says so (`peernote`, `cancelpeer`).
 - The client sends each script in order. The agent can return from `Prompt` at any step, canceled or not.
 - Only prompts are requests in the model. Other requests in flight only keep markers longer.
-- The model has fewer than `maxCancelMarkers` (1024) markers, so the eviction of the oldest marker never runs. A lost marker there loses only that peer's own cancel, as the comment on `maxCancelMarkers` says. `TestAgentSideConnection_SessionCancelMarkersArePruned` covers the cap.
+- The model has fewer than `maxCancelMarkers` (1024) entries in `sessionCancelledAt` and `sessionNewest`, so `dropOldestAbove` never runs. A lost entry there loses only that peer's own cancel or prompt order, as the comment on `maxCancelMarkers` says. `TestAgentSideConnection_SessionCancelMarkersArePruned` covers the cap.
 
 Not covered, with what a user sees when it goes wrong:
 
@@ -161,6 +164,6 @@ A pass covers the model within these bounds, not the whole SDK.
 - `agent.go`: `NewAgentSideConnection`, `cancelPrompt`, `registerPrompt`, `pruneCancelMarkers`.
 - `agent_gen.go`: the `AgentMethodSessionCancel` and `AgentMethodSessionPrompt` cases (generated by `cmd/generate/internal/emit/dispatch.go`).
 - `extensions.go`: `AgentSideConnection.handleWithExtensions`.
-- `connection.go`: `NewConnection`, `notificationSeq`, `requestWatermark`, `requestArrival`, `receive`, `processNotifications`, `handleInbound`, `SendRequest`, `SendRequestNoResult`, `waitNotifications`, `waitInboundBarrier`, `startPeerWait`, `oldestInflightWatermark`.
+- `connection.go`: `NewConnection`, `notificationSeq`, `requestWatermark`, `requestArrival`, `oldestInflightArrival`, `receive`, `processNotifications`, `handleInbound`, `SendRequest`, `SendRequestNoResult`, `waitNotifications`, `waitInboundBarrier`, `startPeerWait`, `oldestInflightWatermark`.
 - Sync commit: the last commit that changed `fingerprint.txt`, which `git log -1 --format=%H -- .agents/skills/verify-session-cancel/fingerprint.txt` prints. The model was last confirmed to describe the covered code at that commit, and the line numbers in this file are at that commit.
 - To see what changed since then: `git diff "$(git log -1 --format=%H -- .agents/skills/verify-session-cancel/fingerprint.txt)" -- agent.go agent_gen.go extensions.go connection.go`. `check.sh` exit 3 names the changed blocks.

@@ -80,6 +80,13 @@ func TestUnion_UnmarshalJSON_MatchesAVariantOnlyWithItsConstValue(t *testing.T) 
 		{func() any { return new(Options) }, ` + "`" + `[{"group":"g"}]` + "`" + `, ` + "`" + `[{"group":"g"}]` + "`" + `},
 		{func() any { return new(Options) }, ` + "`" + `[{"value":null}]` + "`" + `, ""},
 		{func() any { return new(Options) }, ` + "`" + `[{"value":null,"group":"g"}]` + "`" + `, ` + "`" + `[{"group":"g"}]` + "`" + `},
+		{func() any { return new(Id) }, ` + "`" + `null` + "`" + `, ` + "`" + `null` + "`" + `},
+		{func() any { return new(Id) }, ` + "`" + `7` + "`" + `, ` + "`" + `7` + "`" + `},
+		{func() any { return new(Id) }, ` + "`" + `{}` + "`" + `, ""},
+		{func() any { return new(Id) }, ` + "`" + `{"a":1}` + "`" + `, ""},
+		{func() any { return new(Options) }, ` + "`" + `null` + "`" + `, ""},
+		{func() any { return new(Reply) }, ` + "`" + `null` + "`" + `, ""},
+		{func() any { return new(Outcome) }, ` + "`" + `null` + "`" + `, ""},
 	}
 	for _, tt := range tests {
 		v := tt.into()
@@ -233,6 +240,11 @@ func TestCatchAllUnions_SelectTheVariant(t *testing.T) {
 	for _, in := range []string{` + "`" + `{"type":null}` + "`" + `, ` + "`" + `{"type":5}` + "`" + `, ` + "`" + `{}` + "`" + `} {
 		if err := json.Unmarshal([]byte(in), &items); err == nil {
 			t.Errorf("unmarshal %s gives %+v, want an error", in, items)
+		}
+	}
+	for _, into := range []any{new(Idle), new(Strict), new(State)} {
+		if err := json.Unmarshal([]byte("null"), into); err == nil {
+			t.Errorf("unmarshal null gives %+v, want an error, because a none variant is an object", into)
 		}
 	}
 	var strict Strict

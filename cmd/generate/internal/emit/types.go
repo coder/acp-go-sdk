@@ -1187,23 +1187,17 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	// Unmarshal
 	f.Func().Params(Id("u").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
 		g.Op("*").Id("u").Op("=").Id(name).Values()
-		// Handle literal null if a null-only variant exists
-		{
-			varNullHandled := false
-			for _, vi := range variants {
-				if vi.isNull {
-					// emit once for the first null variant
-					if !varNullHandled {
-						g.If(Id("string").Call(Id("b")).Op("==").Lit("null")).Block(
-							Var().Id("v").Id(vi.typeName),
-							Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
-							Return(Nil()),
-						)
-						varNullHandled = true
-					}
-				}
+		// JSON null selects the null variant and no other, and the null
+		// variant takes nothing else.
+		g.If(Id("string").Call(Id("b")).Op("==").Lit("null")).BlockFunc(func(null *Group) {
+			if i := slices.IndexFunc(variants, func(vi variantInfo) bool { return vi.isNull }); i >= 0 {
+				null.Var().Id("v").Id(variants[i].typeName)
+				null.Id("u").Dot(variants[i].fieldName).Op("=").Op("&").Id("v")
+				null.Return(Nil())
+				return
 			}
-		}
+			null.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
+		})
 		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
 		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
 			if len(wrapperFields) > 0 {
@@ -1308,7 +1302,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		// A variant that matches by its keys had its turn above. The others
 		// are tried in order.
 		for _, vi := range variants {
-			if matchesByKeys(vi) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
+			if vi.isNull || matchesByKeys(vi) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
 				continue
 			}
 			g.Block(

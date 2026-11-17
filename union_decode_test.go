@@ -113,6 +113,28 @@ func TestUnion_UnmarshalJSON_NullRequiredKeyLeavesTheOtherVariants(t *testing.T)
 	}
 }
 
+func TestUnion_UnmarshalJSON_NullSelectsOnlyANullVariant(t *testing.T) {
+	t.Parallel()
+	var id RequestId
+	if err := json.Unmarshal([]byte(`null`), &id); err != nil || id.Null == nil {
+		t.Errorf("request id null = %+v (error %v), want the null variant", id, err)
+	}
+	for _, in := range []string{`{}`, `{"a":1}`} {
+		if err := json.Unmarshal([]byte(in), &id); err == nil {
+			t.Errorf("request id %s = %+v, want an error", in, id)
+		}
+	}
+	for name, into := range map[string]any{
+		"error code":     new(ErrorCode),
+		"select options": new(SessionConfigSelectOptions),
+		"content block":  new(ContentBlock),
+	} {
+		if err := json.Unmarshal([]byte(`null`), into); err == nil {
+			t.Errorf("%s null = %+v, want an error", name, into)
+		}
+	}
+}
+
 func TestToolCall_UnmarshalJSON_DropsContentOfAnUnknownType(t *testing.T) {
 	t.Parallel()
 	var call ToolCall

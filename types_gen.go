@@ -194,6 +194,9 @@ type AgentResponse struct {
 
 func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	*u = AgentResponse{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -516,6 +519,9 @@ type AuthMethod struct {
 
 func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 	*u = AuthMethod{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -760,6 +766,9 @@ type AvailableCommandInput struct {
 
 func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 	*u = AvailableCommandInput{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1059,6 +1068,9 @@ type ClientResponse struct {
 
 func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	*u = ClientResponse{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1415,6 +1427,9 @@ type ContentBlock struct {
 
 func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 	*u = ContentBlock{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1776,6 +1791,9 @@ type EmbeddedResourceResource struct {
 
 func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 	*u = EmbeddedResourceResource{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1933,6 +1951,9 @@ type ErrorCode struct {
 
 func (u *ErrorCode) UnmarshalJSON(b []byte) error {
 	*u = ErrorCode{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 	} else {
@@ -2731,6 +2752,9 @@ type McpServer struct {
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
 	*u = McpServer{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -3690,6 +3714,9 @@ type PlanUpdateContent struct {
 
 func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
 	*u = PlanUpdateContent{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -4118,13 +4145,6 @@ func (u *RequestId) UnmarshalJSON(b []byte) error {
 	if json.Unmarshal(b, &arr) == nil {
 	}
 	{
-		var v RequestIdNull
-		if json.Unmarshal(b, &v) == nil {
-			u.Null = &v
-			return nil
-		}
-	}
-	{
 		var v RequestIdNumber
 		if json.Unmarshal(b, &v) == nil {
 			u.Number = &v
@@ -4201,6 +4221,9 @@ type RequestPermissionOutcome struct {
 
 func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 	*u = RequestPermissionOutcome{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -4654,6 +4677,9 @@ type SessionConfigOption struct {
 
 func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
 	*u = SessionConfigOption{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -4823,6 +4849,9 @@ type SessionConfigSelectOptions struct {
 
 func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 	*u = SessionConfigSelectOptions{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 	} else {
@@ -5530,6 +5559,9 @@ type SessionUpdate struct {
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 	*u = SessionUpdate{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -5899,6 +5931,9 @@ type SetSessionConfigOptionRequest struct {
 
 func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 	*u = SetSessionConfigOptionRequest{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -6297,6 +6332,9 @@ type ToolCallContent struct {
 
 func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 	*u = ToolCallContent{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -6695,6 +6733,9 @@ type UnstableCreateElicitationForm struct {
 
 func (u *UnstableCreateElicitationForm) UnmarshalJSON(b []byte) error {
 	*u = UnstableCreateElicitationForm{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -6807,6 +6848,9 @@ type UnstableCreateElicitationUrl struct {
 
 func (u *UnstableCreateElicitationUrl) UnmarshalJSON(b []byte) error {
 	*u = UnstableCreateElicitationUrl{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -6904,6 +6948,9 @@ type UnstableCreateElicitationRequest struct {
 
 func (u *UnstableCreateElicitationRequest) UnmarshalJSON(b []byte) error {
 	*u = UnstableCreateElicitationRequest{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7041,6 +7088,9 @@ type UnstableCreateElicitationResponse struct {
 
 func (u *UnstableCreateElicitationResponse) UnmarshalJSON(b []byte) error {
 	*u = UnstableCreateElicitationResponse{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7425,6 +7475,9 @@ type UnstableElicitationFormMode struct {
 
 func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
 	*u = UnstableElicitationFormMode{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7628,6 +7681,9 @@ type UnstableElicitationUrlMode struct {
 
 func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
 	*u = UnstableElicitationUrlMode{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8005,6 +8061,9 @@ type UnstableMcpServer struct {
 
 func (u *UnstableMcpServer) UnmarshalJSON(b []byte) error {
 	*u = UnstableMcpServer{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8550,6 +8609,9 @@ type UnstableNesSuggestion struct {
 
 func (u *UnstableNesSuggestion) UnmarshalJSON(b []byte) error {
 	*u = UnstableNesSuggestion{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8916,6 +8978,9 @@ type UnstableSessionConfigOption struct {
 
 func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
 	*u = UnstableSessionConfigOption{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{

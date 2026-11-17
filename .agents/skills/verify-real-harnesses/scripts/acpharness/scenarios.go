@@ -579,26 +579,25 @@ func (h *harness) deleteSession(a *agentConn) (status, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-	note := ""
 	if caps.Close != nil {
 		if _, err := a.conn.CloseSession(ctx, acp.CloseSessionRequest{SessionId: sid}); err != nil {
-			note = "; session/close of B before the delete failed: " + errText(err)
+			return fail, "session/close of B before the delete: " + errText(err)
 		}
 	}
 	if _, err := a.conn.UnstableDeleteSession(ctx, acp.UnstableDeleteSessionRequest{SessionId: sid}); err != nil {
-		return fail, "session/delete: " + errText(err) + note
+		return fail, "session/delete: " + errText(err)
 	}
 	if caps.List == nil {
-		return pass, "deleted session B; no session/list to confirm" + note
+		return pass, "deleted session B; no session/list to confirm"
 	}
 	found, n, err := listContains(a, h.cwds["B"], sid)
 	switch {
 	case err != nil:
-		return fail, err.Error() + note
+		return fail, err.Error()
 	case found:
-		return fail, fmt.Sprintf("session B is still listed after session/delete (%d sessions)%s", n, note)
+		return fail, fmt.Sprintf("session B is still listed after session/delete (%d sessions)", n)
 	}
-	return pass, "deleted session B; session/list for its cwd no longer has it" + note
+	return pass, "deleted session B; session/list for its cwd no longer has it"
 }
 
 // loadSession reopens session A in a new agent process and expects the

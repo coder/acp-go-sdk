@@ -22,10 +22,11 @@ import (
 )
 
 // A finding is one hit of the global predicate: a "Method not found" or a
-// decode error that the SDK logged or answered on the wire.
+// decode error that the SDK logged or answered on the wire, or an error
+// response from the agent.
 type finding struct {
-	Kind     string `json:"kind"`   // methodNotFound or decodeError
-	Source   string `json:"source"` // sdk-log or sdk-reply
+	Kind     string `json:"kind"`   // methodNotFound, decodeError or agentError
+	Source   string `json:"source"` // sdk-log, sdk-reply or agent-reply
 	Conn     int    `json:"conn"`
 	Scenario string `json:"scenario"`
 	Text     string `json:"text"`
@@ -34,6 +35,7 @@ type finding struct {
 const (
 	methodNotFound = "method-not-found"
 	decodeError    = "decode-error"
+	agentError     = "agent-error"
 )
 
 // recorder owns the evidence that every connection of a run shares: the
@@ -98,6 +100,11 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 		if len(msg.ID) == 0 && !strings.HasPrefix(msg.Method, "_") && !strings.HasPrefix(msg.Method, "$/") {
 			r.notified[conn]++
 		}
+	}
+	// The SDK drops an error response whose request no longer waits, so
+	// every error response from the agent is recorded here.
+	if dir == agentToClient && msg.Method == "" && msg.Error != nil {
+		r.findings = append(r.findings, finding{Kind: agentError, Source: "agent-reply", Conn: conn, Scenario: r.current(), Text: string(raw)})
 	}
 	// The SDK answers an agent request that it cannot dispatch or decode
 	// with an error, without logging it. Count those replies too.

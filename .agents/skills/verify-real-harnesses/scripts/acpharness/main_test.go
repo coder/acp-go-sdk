@@ -89,8 +89,8 @@ func TestRecorder_CountsTheSDKsErrorReplies(t *testing.T) {
 	for _, f := range findings {
 		kinds = append(kinds, f.Kind)
 	}
-	if want := []string{methodNotFound, decodeError}; !reflect.DeepEqual(kinds, want) {
-		t.Fatalf("findings %v, want %v (an agent's error reply is the scenario's failure, not the SDK's)", kinds, want)
+	if want := []string{methodNotFound, decodeError, agentError}; !reflect.DeepEqual(kinds, want) {
+		t.Fatalf("findings %v, want %v", kinds, want)
 	}
 	if inbound["_auth/status_update"] != 1 {
 		t.Fatalf("inbound methods %v", inbound)
@@ -154,12 +154,12 @@ func TestHarnessClient_AnswersByPolicyAndTracksCost(t *testing.T) {
 	_ = c.SessionUpdate(context.Background(), eur)
 	c.usage("a", &acp.Usage{InputTokens: 10, OutputTokens: 1, TotalTokens: 11})
 	c.usage("a", &acp.Usage{InputTokens: 25, OutputTokens: 3, TotalTokens: 28}) // totals across turns
-	tokens, other := c.totals()
+	usage, other := c.totals()
 	if got := c.cost(); got < 0.349 || got > 0.351 {
 		t.Fatalf("cost %v after a EUR update, want 0.35: another currency must not count as USD", got)
 	}
-	if other["EUR"] != 9 || tokens["total"] != 28 {
-		t.Fatalf("other costs %v, tokens %v; want EUR 9 and total 28", other, tokens)
+	if other["EUR"] != 9 || usage["a"].TotalTokens != 28 {
+		t.Fatalf("other costs %v, usage %v; want EUR 9 and session a total 28", other, usage)
 	}
 }
 

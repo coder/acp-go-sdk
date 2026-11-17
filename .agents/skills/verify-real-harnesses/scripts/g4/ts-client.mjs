@@ -65,6 +65,10 @@ function tap(dir) {
       }
       controller.enqueue(chunk);
     },
+    // A fragment without a final newline is still a line on the wire.
+    flush() {
+      if (buf.trim()) record(dir, buf);
+    },
   });
 }
 

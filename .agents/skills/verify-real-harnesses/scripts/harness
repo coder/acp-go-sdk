@@ -365,15 +365,16 @@ cmd_g4() {
 	(cd "$WORK/npm/ts" && tracked timeout 120 env "ACP_HARNESS_TAG=$TAG" "$BIN/acpharness" -profile smoke \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts") || rc=1
 	stop_groups "$from"
-	g4_quiet "$out/agent-1.stderr.log" '[Ee]rror|[Ww]arn' "the TS agent logged an error" || rc=1
+	g4_quiet "$out/agent-1.stderr.log" 'error|warn' "the TS agent logged an error" || rc=1
 	echo "evidence $EVIDENCE/g4-*"
 	return "$rc"
 }
 
-# g4_quiet FILE REGEX WHAT: FAIL when FILE has a line that matches REGEX.
+# g4_quiet FILE REGEX WHAT: FAIL when FILE has a line that matches REGEX,
+# in any letter case.
 g4_quiet() {
-	if [ -f "$1" ] && grep -qE "$2" "$1"; then
-		echo "FAIL  $3: $(grep -m1 -E "$2" "$1" | cut -c1-200)" | tee -a "$(dirname "$1")/result.txt"
+	if [ -f "$1" ] && grep -qiE "$2" "$1"; then
+		echo "FAIL  $3: $(grep -m1 -iE "$2" "$1" | cut -c1-200)" | tee -a "$(dirname "$1")/result.txt"
 		return 1
 	fi
 	echo "PASS  $(basename "$1") is clean"
@@ -530,7 +531,7 @@ leftovers() {
 # line FROM on. A group whose recorded leader runs is stopped whole. When
 # the leader is gone, only the members with this run's tag are stopped.
 stop_groups() {
-	local pid start cmd p left
+	local pid start cmd p left what
 	while IFS=$'\t' read -r pid start cmd; do
 		[ -n "$pid" ] || continue
 		if ours "$pid" "$start"; then
@@ -545,8 +546,9 @@ stop_groups() {
 			sleep 0.5
 		done
 		for p in $left; do
+			what=$(ps -o args= -p "$p" 2>/dev/null | cut -c1-160 || true)
 			stop "$p" alive "$p"
-			echo "stopped pid $p, left behind in process group $pid ($cmd)"
+			echo "stopped pid $p ($what), left behind in process group $pid ($cmd)"
 		done
 	done < <(tail -n "+$1" "$WORK/pgids")
 }

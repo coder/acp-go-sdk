@@ -226,20 +226,34 @@ func (h *harness) finish() int {
 	findings, inbound := h.rec.snapshot()
 	h.globalStep("no-method-not-found", methodNotFound, findings)
 	h.globalStep("no-decode-errors", decodeError, findings)
+	h.globalStep("no-agent-errors", agentError, findings)
 
 	var perms []permission
 	var refused []string
-	tokens, other := map[string]int{}, map[string]float64{}
+	// A session reopened on a later connection reports the same cumulative
+	// usage again, so usage merges by session before it adds up.
+	usage := map[acp.SessionId]acp.Usage{}
+	other := map[string]float64{}
 	for _, a := range h.conns {
 		perms = append(perms, a.client.permissionsSince(0)...)
 		refused = append(refused, a.client.misc...)
-		t, o := a.client.totals()
-		for k, v := range t {
-			tokens[k] += v
+		u, o := a.client.totals()
+		for sid, t := range u {
+			m := usage[sid]
+			m.InputTokens = max(m.InputTokens, t.InputTokens)
+			m.OutputTokens = max(m.OutputTokens, t.OutputTokens)
+			m.TotalTokens = max(m.TotalTokens, t.TotalTokens)
+			usage[sid] = m
 		}
 		for k, v := range o {
 			other[k] += v
 		}
+	}
+	tokens := map[string]int{}
+	for _, t := range usage {
+		tokens["input"] += t.InputTokens
+		tokens["output"] += t.OutputTokens
+		tokens["total"] += t.TotalTokens
 	}
 	models := make([]string, 0, len(h.models))
 	for m := range h.models {
@@ -319,6 +333,9 @@ func (h *harness) globalStep(name, kind string, findings []finding) {
 		}
 	}
 	st, detail := pass, "none in sdk.log or in the SDK's replies"
+	if kind == agentError {
+		detail = "the agent sent no JSON-RPC error response"
+	}
 	if len(hits) > 0 {
 		st = fail
 		where := map[string]bool{}

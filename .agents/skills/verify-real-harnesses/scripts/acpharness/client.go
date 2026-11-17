@@ -178,22 +178,20 @@ func (c *harnessClient) usage(sid acp.SessionId, u *acp.Usage) {
 	c.tokens[sid] = t
 }
 
-// totals returns the token totals of this connection's sessions and its
-// costs in currencies other than USD.
-func (c *harnessClient) totals() (map[string]int, map[string]float64) {
+// totals returns the usage of this connection's sessions and its costs in
+// currencies other than USD.
+func (c *harnessClient) totals() (map[acp.SessionId]acp.Usage, map[string]float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	tokens := map[string]int{}
-	for _, t := range c.tokens {
-		tokens["input"] += t.InputTokens
-		tokens["output"] += t.OutputTokens
-		tokens["total"] += t.TotalTokens
+	usage := make(map[acp.SessionId]acp.Usage, len(c.tokens))
+	for sid, t := range c.tokens {
+		usage[sid] = t
 	}
 	other := map[string]float64{}
 	for key, v := range c.other {
 		other[strings.Fields(key)[0]] += v
 	}
-	return tokens, other
+	return usage, other
 }
 
 // The client offers no file system and no terminal, so a well-behaved agent

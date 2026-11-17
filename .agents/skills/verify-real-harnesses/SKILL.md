@@ -78,7 +78,7 @@ Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `wo
 
 ### Cost and budget
 
-The Claude adapter reports a cumulative session cost in each `usage_update`. The driver adds the highest cost of each session on each connection, and the total is an upper bound: a resumed session that restores its old cost is counted twice. `HARNESS_BUDGET_USD` (default 25) caps the total that the `g5` runs of one run folder report. `g5` reads the spend so far from the transcripts, so a run that died before its summary still counts. Before each scenario, the driver checks the cost so far. Once the cost reaches the cap, every remaining scenario is a `SKIP` with a budget detail, and the driver exits 1. The cap counts USD only. A cost in another currency goes to `otherCosts` in the summary and the report, outside the cap. The Codex adapter reports no cost, so the cap cannot stop a Codex run. The summary records its tokens instead: the highest usage of each session, because the schema defines prompt usage as totals across a session's turns. `report` takes the total cost from the transcripts, so it includes a run that died before its summary.
+The Claude adapter reports a cumulative session cost in each `usage_update`. The driver adds the highest cost of each session on each connection, and the total is an upper bound: a resumed session that restores its old cost is counted twice. `HARNESS_BUDGET_USD` (default 25) caps the total that the `g5` runs of one run folder report. `g5` reads the spend so far from the transcripts, so a run that died before its summary still counts. Before each scenario, the driver checks the cost so far. Once the cost reaches the cap, every remaining scenario is a `SKIP` with a budget detail, and the driver exits 1. The cap counts USD only. A cost in another currency goes to `otherCosts` in the summary and the report, outside the cap. The Codex adapter reports no cost, so the cap cannot stop a Codex run. The summary records its tokens instead: the highest usage of each session across all connections, because the schema defines prompt usage as totals across a session's turns. `report` takes the total cost from the transcripts, so it includes a run that died before its summary.
 
 ## Scenarios and pass predicates
 
@@ -96,12 +96,13 @@ The driver plays an editor. Connection 1 creates session A for the plain turns a
 | `cancel` | 1 | Session B starts a long essay. The driver sends `session/cancel` after the first streamed update, or after 90 s without one while the turn still runs. The turn ends with `cancelled` within 60 s of the cancel. The detail says which case happened. |
 | `session/list` | 1 | `session/list` for session A's cwd, through every page, contains session A. |
 | `session/close` | 1 | `session/close` for session A succeeds. |
-| `session/delete` | 1 | The driver closes session B, then `session/delete` for it succeeds. If the agent lists sessions, session B is no longer in the list for its cwd. |
+| `session/delete` | 1 | If the agent advertises `session/close`, closing session B succeeds. Then `session/delete` for it succeeds. If the agent lists sessions, session B is no longer in the list for its cwd. |
 | `session/load` | 2 | A new process loads session A. Before the response, the agent replays user chunks and agent chunks, and the replayed agent text contains `pong`. The prompt itself says pong, so a replay of the user's chunks alone fails. |
 | `session/resume` | 3 | A new process resumes session A without a replay: no message chunk arrives before the first prompt. A turn that asks for "the single word you replied with" ends with `end_turn` and gets `pong`. |
 | `agent-exit` | all | Every agent process exits 0 within 10 s after the driver closes its stdin. |
 | `no-method-not-found` | all | The SDK logged no "Method not found" (`-32601`) and sent no `-32601` reply to the agent. |
 | `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, and sent no `-32602` or `-32700` reply. |
+| `no-agent-errors` | all | The agent sent no JSON-RPC error response, including one that the SDK drops because no request waits for it. |
 
 The model switch never picks a lesser model. It takes the first option, in the agent's order, that is not the current value, not `default`, not named in the current option's name or description (Claude's `default` says `Opus`, so `opus` is an alias), and has no word such as `legacy`, `older`, `fast`, `affordable` or `efficient` in its name or description. `pickSwitchTarget` in `scripts/acpharness/scenarios.go` holds the rule.
 
@@ -187,6 +188,7 @@ Run on 2026-11-17 with the SDK of `main` at `492745b` (schema 0.13.5): claude-ag
 | `agent-exit` | PASS | PASS |
 | `no-method-not-found` | FAIL | PASS |
 | `no-decode-errors` | PASS | PASS |
+| `no-agent-errors` | PASS | PASS |
 
 Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.77. Codex reported no cost and used about 109,000 tokens.
 
@@ -197,6 +199,6 @@ What the results mean:
 - **Codex's reject option ends the turn.** Codex offers `cancel` (kind `reject_once`) as its reject option, and the turn then ends with `cancelled`. The reject predicate accepts any stop reason.
 - **Codex and symlinked cwds.** codex-acp reports each session's cwd as a real path. With a cwd that goes through a symlink, `session/list` filtered by that cwd returns nothing, and an approved edit fails with "Failed to write file". The driver resolves symlinks in `-cwd` to stay clear of this adapter bug. Keep `HARNESS_ROOT` free of symlinks anyway.
 - **Claude resumes on the last model.** A resumed Claude session runs on the model of its last turn, not on the session's `default` option.
-- **An adapter can leave processes behind.** `g5` has checked for leftovers in two full runs. In the first, one process in claude-agent-acp's group still ran right after the adapter exited 0, before `g5` waited 3 s. In the second, three processes in codex-acp's group still ran 3 s after codex-acp exited 0. `g5` stopped them, and `report` lists them. Focused reruns of the same scenarios did not reproduce either case, and I did not identify the processes.
+- **An adapter can leave processes behind.** `g5` has checked for leftovers in four full runs. In two, three processes in codex-acp's group still ran 3 s after codex-acp exited 0. In one, a process in claude-agent-acp's group still ran right after the adapter exited 0, before `g5` waited 3 s. `g5` stopped them, and `leftovers.txt` and `report` list each one with its command line. Focused reruns of single scenarios did not reproduce it.
 
 To keep this skill true as the adapters change, use the pstack plugin's `maintain-verification-skill` skill. It is hidden from the default skill list, so load it by name. The [feature map](features/README.md) has one recipe per area.

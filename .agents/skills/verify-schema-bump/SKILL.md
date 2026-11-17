@@ -74,7 +74,7 @@ For each value the test decodes it into the def's SDK type, calls its `Validate`
 | `SCHEMA` | A schema file accepts the input but rejects the encoded JSON. |
 | `HINT` | The SDK ignores an `x-deserialize-*` hint. |
 
-`TestHints` finds each property that carries a hint, in a def or in one of its top-level alternatives, and builds a value of the def around it:
+`TestHints` finds each property that carries a hint, in a def or in one of its top-level alternatives, in each schema file (a def that both files share is checked once per file, because the files can define it differently), and builds a value of the def around it:
 
 - `x-deserialize-default-on-error`: the property gets the first of `"malformed"`, `12345`, `true`, `{"malformed":true}`, `["malformed"]` that the schema rejects. The SDK must decode it without an error, to the same JSON as the value without the property.
 - `x-deserialize-skip-invalid-items`: the array gets one good item and one bad one. The SDK must decode it to the same JSON as the array with the good item only.
@@ -125,9 +125,9 @@ G1 from 0.13.5 to 1.32.0 (`g1-walk 1.32.0`, 25 releases): every release generate
 
 From 1.24.0 on, `methods` reports only the `$/cancel_request` constant. `apidiff` at 1.32.0 is skipped because the target does not build.
 
-G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; 13 elicitation schema defs have none. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 143 distinct problems:
+G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; 13 elicitation schema defs have none. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 194 distinct problems:
 
-- `HINT` 114: the SDK honors no hint. 86 `x-deserialize-default-on-error` and 28 `x-deserialize-skip-invalid-items` properties fail to decode a bad value.
+- `HINT` 165 (51 in `schema.json`, 114 in `schema.unstable.json`): the SDK honors no hint. 122 `x-deserialize-default-on-error` and 43 `x-deserialize-skip-invalid-items` sites fail to decode a bad value.
 - `LOSSY` 25: `ContentBlock` drops `_meta` and `annotations` (so do `Content`, `ContentChunk`, `ToolCallContent`, `PromptRequest.prompt` and `SessionUpdate`, which hold one); absent `auth` capabilities come back as `{}`, and an absent `agentCapabilities` or `clientCapabilities` comes back filled with defaults; `AuthEnvVar.secret` comes back as `true` when absent; the unstable elicitation types drop `sessionId`, `toolCallId`, `elicitationId`, `url` and parts of `requestedSchema`; transcripts lose capability flags set to `false` (such as `mcpCapabilities.acp`) and fields that 0.13.5 does not define (`agentCapabilities.auth.status`, `sessionCapabilities.status`, `NewSessionResponse.models`).
 - `SCHEMA` 4: the encoded `CreateElicitationRequest`, `ElicitationFormMode` and `ElicitationUrlMode` miss required properties.
 

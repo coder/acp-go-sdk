@@ -32,18 +32,18 @@ type hintSite struct {
 	hint    string
 }
 
+// findHints lists the hinted properties of each schema file. A def that
+// both files share is listed once per file, because the files can define
+// it differently.
 func findHints(s *suite) []hintSite {
 	var sites []hintSite
-	seen := map[string]bool{}
 	add := func(f *schemaFile, def string, variant int, node any) {
 		m, _ := node.(map[string]any)
 		props, _ := m["properties"].(map[string]any)
 		for _, prop := range sortedKeys(props) {
 			ps, _ := props[prop].(map[string]any)
 			for _, hint := range hintNames {
-				key := fmt.Sprintf("%s/%d/%s/%s", def, variant, prop, hint)
-				if ps[hint] == true && !seen[key] {
-					seen[key] = true
+				if ps[hint] == true {
 					sites = append(sites, hintSite{f, def, variant, prop, ps, hint})
 				}
 			}
@@ -89,7 +89,7 @@ func TestHints(t *testing.T) {
 				t.Logf("skip %s: %s", name, skip)
 			case err != "":
 				outcome = "fail"
-				t.Errorf("HINT %s %s.%s: %s", site.hint, site.def, site.prop, err)
+				t.Errorf("HINT %s %s.%s (%s): %s", site.hint, site.def, site.prop, site.file.name, err)
 			}
 		})
 		counts[outcome]++
@@ -202,4 +202,15 @@ func itemsOf(defs map[string]any, node any) any {
 		}
 	}
 	return nil
+}
+
+func TestFindHints_KeepsEachSchemaFile(t *testing.T) {
+	def := map[string]any{"properties": map[string]any{"p": map[string]any{"x-deserialize-default-on-null": true}}}
+	s := &suite{files: []*schemaFile{
+		{name: "stable", defs: map[string]any{"D": def}},
+		{name: "unstable", defs: map[string]any{"D": def}},
+	}}
+	if got := len(findHints(s)); got != 2 {
+		t.Errorf("findHints found %d sites, want one per schema file (2)", got)
+	}
 }

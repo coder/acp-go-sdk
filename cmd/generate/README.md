@@ -4,8 +4,8 @@
 
 `cmd/generate` is the code generator for the ACP Go SDK. It is a separate Go module, `github.com/coder/acp-go-sdk/cmd/generate`, with Go 1.21 and one dependency, `github.com/dave/jennifer v1.7.1`.
 `main.go` reads the ACP meta and schema inputs, merges the unstable inputs when they exist, and calls the four `emit` writers in a fixed order.
-The root `Makefile` target `version` runs it with `cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .`, so the output goes to the repository root by default.
-After the generator, that target runs `gofumpt -w .` over the whole repository and writes the `version` stamp file [Makefile:version].
+The root `Makefile` target `generate` runs it with `cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .`, so the output goes to the repository root by default.
+The target first downloads the schema files of the release in `schema/version` when they are older than that file. It never writes the top-level `version` file, which holds the SDK's own semver [Makefile:generate].
 
 ## Interface
 

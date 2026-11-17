@@ -27,4 +27,4 @@ Write commit subjects in the imperative mood (`Add request codec`, `Fix session 
 
 ## Code Generation & Schema Updates
 
-Schema bumps originate from `schema/version`. After editing it, run `make version` to re-fetch upstream JSON, regenerate bindings, and reformat the repo. Commit the updated schemas, generated Go, and the `version` stamp together so reviewers can track protocol changes.
+Schema bumps originate from `schema/version`. After editing it, run `make generate` to re-fetch upstream JSON and regenerate bindings. Commit the updated schemas, generated Go, and `schema/version` together so reviewers can track protocol changes. The top-level `version` file is the SDK's own semver: bump it only in a release PR (see `RELEASING.md`).

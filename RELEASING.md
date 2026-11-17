@@ -1,91 +1,99 @@
 # Releasing
 
-This project follows the ACP schema version published by
-[`agentclientprotocol/agent-client-protocol`](https://github.com/agentclientprotocol/agent-client-protocol).
-Each Go release should align with a specific schema tag so that the generated
-code, helper APIs, and library version remain in sync.
+The SDK has its own semver in the top-level `version` file. The ACP schema
+release that the generated code follows is pinned separately in
+`schema/version`, and the SDK exports it as `acp.SchemaVersion`. A release can
+change the SDK without a new schema, and a schema bump does not set the SDK
+version.
+
+The SDK stays on v0. Raise the minor version for a schema bump or an API break,
+and the patch version for fixes only.
+
+Releases are cut by hand: a release PR lands through review and the merge
+queue, and then you tag and publish its merge commit.
 
 ## Prerequisites
 
-- `make`, `curl`, and `git` in your `PATH`.
+- `make`, `curl`, `git`, and `gh` in your `PATH`, with `gh` logged in as
+  yourself.
 - [mise](https://mise.jdx.dev) for the toolchain. Run `mise install` once to
-  provision Go, `treefmt`, and the formatters/linters that `make fmt` and
+  provision Go, `treefmt`, and the formatters and linters that `make fmt` and
   `make check` invoke.
-- The repository must have an Actions secret named `ANTHROPIC_API_KEY` so the
-  release-notes workflow can update GitHub Release bodies after publication.
+- An Actions secret named `ANTHROPIC_API_KEY`, which the release-notes workflow
+  needs.
 
-## Bump the Schema Version
+## Prepare the release PR
 
-1. Decide which upstream ACP schema tag to adopt (for example `v0.4.3`).
-1. Update `schema/version` and regenerate code. There are two supported ways to
-   do this:
+1. Pick the SDK version, for example `0.14.0`. When the release also moves the
+   schema, pick the upstream schema version too, for example `1.18.0`.
 
-### Option A: Use the release helper
-
-```bash
-make release VERSION=0.4.3
-```
-
-The helper performs the following steps:
-
-- writes the requested number to `schema/version`
-- runs `make version` to download the new schema files and regenerate Go code
-- runs `make fmt`, `make test`, and `make check`
-- asserts that `schema/version` and `version` now match
-
-If any command fails, fix the issue and rerun the helper. The target does not
-create commits or tags; it just prepares the tree.
-
-### Option B: Run the steps manually
-
-```bash
-printf '0.4.3\n' > schema/version
-make version
-make fmt
-GOCACHE=$(pwd)/.gocache make test
-make check
-cmp -s schema/version version
-```
-
-`make version` downloads the schema files for the requested ACP tag, regenerates
-all Go code, and formats the repository with `gofumpt`. The `cmp` command is a
-lightweight guard that ensures both `schema/version` and the top-level `version`
-file agree before you publish.
-
-## Review and Commit
-
-1. Inspect the changes: `git status` and `git diff` should show updated schema
-   files, generated Go code, and the version files.
-1. Commit with a descriptive message such as `release: v0.4.3`.
-1. Push the branch to GitHub and open a pull request if review is required.
-
-## Tag and Publish
-
-1. Tag the release commit with a Go-compatible tag:
+1. Run the release helper:
 
    ```bash
-   git tag v0.4.3
-   git push origin v0.4.3
+   make release VERSION=0.14.0 SCHEMA=1.18.0
    ```
 
-1. Create a GitHub release for the tag. Include a summary of notable changes and
-   reference the upstream ACP schema version.
+   Leave out `SCHEMA` when the schema stays the same. The helper writes
+   `version`, writes `schema/version` when `SCHEMA` is set, runs
+   `make generate`, `make fmt`, and `make test`, and then prints the next step.
+   `make generate` downloads the schema files for the new `schema/version` and
+   regenerates the `*_gen.go` files. It never writes `version`.
 
-After the GitHub release is published, CI runs `communique` and replaces the
-release body with generated notes. The workflow requires a `v*` release tag and
-the `ANTHROPIC_API_KEY` Actions secret.
+1. If the new schema breaks hand-written code, examples, or docs, fix them in
+   the same PR, and rerun `make test`.
 
-Consumers rely on the `vX.Y.Z` semver tag for `go get`, so ensure the tag is
-pushed before announcing the release.
+1. Commit the change. Then run `make check`, which fails on any formatting
+   drift.
 
-## Additional Notes
+1. Open a PR. Its CI runs `make check` and `make test`. Merge it through review
+   and the merge queue.
 
-- If the new schema introduces breaking changes, update examples and docs in
-  the same commit.
-- Release-note automation updates GitHub Release bodies only; it does not
+## Tag and publish
+
+Run these steps on the merge commit of the release PR. The examples use
+`v0.14.0` and ACP schema `1.18.0`.
+
+1. Find the merge commit, and check that it carries the expected versions:
+
+   ```bash
+   git fetch origin
+   commit=$(gh pr view <release-pr> --json mergeCommit --jq .mergeCommit.oid)
+   git show "$commit:version" "$commit:schema/version"
+   ```
+
+1. Create an annotated tag on that commit, and push it:
+
+   ```bash
+   git tag -a v0.14.0 -m "v0.14.0 (ACP schema 1.18.0)" "$commit"
+   git push origin v0.14.0
+   ```
+
+1. Create the GitHub release from the pushed tag:
+
+   ```bash
+   gh release create v0.14.0 --verify-tag --title v0.14.0 --notes "ACP schema 1.18.0"
+   ```
+
+   The `release: published` event starts the
+   [release-notes workflow](.github/workflows/release-notes.yaml). It runs
+   `communique` and replaces the release body with generated notes. GitHub
+   starts no workflow for an event that an Actions `GITHUB_TOKEN` causes, so
+   create the release with a user token, such as your own `gh` login.
+
+1. Check that the Go module proxy serves the new version:
+
+   ```bash
+   GOPROXY=https://proxy.golang.org go list -m github.com/coder/acp-go-sdk@v0.14.0
+   ```
+
+   Consumers install the SDK by its `vX.Y.Z` tag through `go get`. Announce the
+   release only after this command prints the version.
+
+## Additional notes
+
+- Release-note automation updates GitHub Release bodies only. It does not
   maintain a `CHANGELOG.md`.
-- The helper uses a repository-local Go build cache (`.gocache`) to avoid
-  sandbox restrictions in CI and local development. You can delete it with
-  `rm -rf .gocache` if needed.
-- `make clean` removes the downloaded schema files and the `version` file; rerun
-  the release steps afterwards if you invoke it.
+- The Makefile uses a repository-local Go build cache (`.gocache`). You can
+  delete it with `rm -rf .gocache`.
+- `make clean` removes the downloaded schema files. Run `make generate` to
+  download them again.

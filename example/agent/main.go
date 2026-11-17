@@ -21,6 +21,7 @@ type agentSession struct {
 	cwd    string
 	seq    uint64
 	cancel context.CancelFunc
+	turn   uint64 // counts the prompts; the newest one owns cancel
 }
 
 type exampleAgent struct {
@@ -227,6 +228,8 @@ func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (ac
 	ctx, cancel := context.WithCancel(ctx)
 	prev := s.cancel
 	s.cancel = cancel
+	s.turn++
+	turn := s.turn
 	a.mu.Unlock()
 	// cancel any previous turn
 	if prev != nil {
@@ -241,7 +244,9 @@ func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (ac
 		return acp.PromptResponse{}, err
 	}
 	a.mu.Lock()
-	s.cancel = nil
+	if s.turn == turn {
+		s.cancel = nil
+	}
 	a.mu.Unlock()
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }

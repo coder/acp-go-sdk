@@ -1,0 +1,480 @@
+#!/usr/bin/env bash
+# Run the live gates of the ACP Go SDK against real agents. Every command
+# except launch needs HARNESS_RUN, which launch prints.
+#
+#   harness launch        new run folder: the latest adapters and TypeScript SDK
+#                         from npm, the driver built from this checkout
+#   harness doctor        read-only: is this run worth driving?
+#   harness g4            cross-SDK gate, no model: TS client -> Go example agent,
+#                         Go driver -> TS example agent
+#   harness g5 ADAPTER    live gate on the adapter's default model: claude or codex
+#   harness report        write evidence/report.md from the gates that ran
+#   harness scan          exit 1 when a credential value is in evidence/ (prints names only)
+#   harness cleanup       stop this run's processes, delete work/, keep evidence/
+#
+# Environment:
+#   HARNESS_ROOT        parent folder for runs (default ${TMPDIR:-/tmp}/acp-harness)
+#   HARNESS_RUN         the run folder that launch printed
+#   HARNESS_BUDGET_USD  most model cost that the g5 runs of one run folder may
+#                       report in total (default 25)
+set -euo pipefail
+
+SKILL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+REPO=$(cd "$SKILL_DIR/../../.." && pwd)
+MARKER=.acp-harness-run
+TS_EXAMPLE=https://raw.githubusercontent.com/agentclientprotocol/typescript-sdk
+
+die() {
+	echo "harness: $*" >&2
+	exit 2
+}
+
+# adapter NAME sets the adapter's npm package, the variable that points it
+# at a private config folder, the credentials it needs, and its driver flags.
+adapter() {
+	case $1 in
+	claude)
+		PKG=@agentclientprotocol/claude-agent-acp
+		BIN_NAME=claude-agent-acp
+		HOME_VAR=CLAUDE_CONFIG_DIR
+		NEEDS=(ANTHROPIC_API_KEY)
+		FLAGS=(-ask-mode default)
+		;;
+	codex)
+		PKG=@agentclientprotocol/codex-acp
+		BIN_NAME=codex-acp
+		HOME_VAR=CODEX_HOME
+		NEEDS=(OPENAI_API_KEY)
+		FLAGS=(-auth api-key -ask-mode read-only)
+		;;
+	*) die "unknown adapter '$1': use claude or codex" ;;
+	esac
+}
+
+# The source state that the binaries come from: HEAD plus a hash of every
+# uncommitted change and every untracked file that git does not ignore.
+source_id() {
+	local head dirty
+	head=$(git -C "$REPO" rev-parse HEAD)
+	dirty=$({
+		git -C "$REPO" diff HEAD --binary
+		(cd "$REPO" && git ls-files -z --others --exclude-standard | xargs -0r sha256sum)
+	} | sha256sum | cut -c1-12)
+	echo "$head+$dirty"
+}
+
+# start_of PID: the process start time, so a reused PID is never mistaken
+# for a process that this run started.
+start_of() { ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//' || true; }
+
+# ours PID START: the PID is alive and is still the process recorded.
+ours() { [ -n "$2" ] && [ "$(start_of "$1")" = "$2" ]; }
+
+need_run() {
+	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set. Run 'harness launch' and export what it prints."
+	if [ ! -f "$HARNESS_RUN/$MARKER" ]; then
+		[ -d "$HARNESS_RUN/evidence" ] && [ ! -d "$HARNESS_RUN/work" ] &&
+			die "$HARNESS_RUN was cleaned up. Its evidence is kept. Run 'harness launch' for a new run."
+		die "$HARNESS_RUN was not made by harness launch. Refusing to use it."
+	fi
+	set_paths "$HARNESS_RUN"
+}
+
+set_paths() {
+	RUN=$1
+	WORK=$RUN/work
+	EVIDENCE=$RUN/evidence
+	BIN=$WORK/bin
+}
+
+# Start a command in the background, record its pid, wait for it, and
+# return its exit code. Cleanup kills only pids recorded here.
+tracked() {
+	"$@" <&0 &
+	local pid=$!
+	printf '%s\t%s\t%s\n' "$pid" "$(start_of "$pid")" "$1" >>"$WORK/pids"
+	set +e
+	wait "$pid"
+	local rc=$?
+	set -e
+	return "$rc"
+}
+
+# installed DIR PKG: the version of PKG that npm installed in DIR. A copy
+# nested under another package wins over the top-level one, because the
+# nested copy is the one that package loads.
+installed() {
+	local dir=$1 pkg=$2 owner=${3:-} f
+	for f in ${owner:+"$dir/node_modules/$owner/node_modules/$pkg/package.json"} "$dir/node_modules/$pkg/package.json"; do
+		[ -f "$f" ] && {
+			jq -r .version "$f"
+			return
+		}
+	done
+	echo unknown
+}
+
+cmd_launch() {
+	local t root
+	for t in go node npm curl jq git; do
+		command -v "$t" >/dev/null || die "$t is not on PATH"
+	done
+	[ "$(node -p 'process.features.typescript || ""')" = strip ] ||
+		die "node $(node --version) cannot run TypeScript; the TS example agent needs Node 22.18 or later"
+	root=${HARNESS_ROOT:-${TMPDIR:-/tmp}/acp-harness}
+	# The root holds binaries and agent config that later commands run or
+	# read, so it must be ours and private.
+	mkdir -p "$(dirname "$root")"
+	mkdir -m 700 "$root" 2>/dev/null || true
+	[ -d "$root" ] && [ ! -L "$root" ] && [ -O "$root" ] ||
+		die "refusing $root: it must be a directory that you own, not a symlink"
+	[ -z "$(find "$root" -maxdepth 0 \( -perm -0020 -o -perm -0002 \))" ] ||
+		die "refusing $root: other users can write to it"
+	umask 077
+	set_paths "$(mktemp -d "$root/$(date +%Y%m%d-%H%M%S)-XXXXXX")"
+	mkdir -p "$BIN" "$EVIDENCE" "$WORK/home/claude" "$WORK/home/codex" "$WORK/cwd"
+	: >"$WORK/pids"
+	: >"$WORK/pgids"
+	basename "$RUN" >"$RUN/$MARKER"
+
+	local before
+	before=$(source_id)
+	(
+		cd "$REPO"
+		go build -o "$BIN/acpharness" ./.agents/skills/verify-real-harnesses/scripts/acpharness
+		go build -o "$BIN/acp-example-agent" ./example/agent
+	) || die "build failed"
+	[ "$(source_id)" = "$before" ] || die "the checkout changed during the build. Run launch again."
+
+	# Each package gets its own folder, so the adapters keep the ACP SDK
+	# versions that they pin.
+	local name pkg ver dir
+	for name in claude codex ts; do
+		case $name in
+		claude | codex)
+			adapter "$name"
+			pkg=$PKG
+			;;
+		ts) pkg=@agentclientprotocol/sdk ;;
+		esac
+		ver=$(npm view "$pkg" version) || die "npm view $pkg failed"
+		dir=$WORK/npm/$name
+		mkdir -p "$dir"
+		printf '{"private": true, "type": "module"}\n' >"$dir/package.json"
+		echo "installing $pkg@$ver"
+		(cd "$dir" && npm install --no-audit --no-fund --save-exact "$pkg@$ver" >"$WORK/npm-$name.log" 2>&1) ||
+			die "npm install $pkg@$ver failed; see $WORK/npm-$name.log"
+	done
+
+	# The TypeScript SDK's own example agent, at the tag of the installed SDK.
+	local tsver url
+	tsver=$(installed "$WORK/npm/ts" @agentclientprotocol/sdk)
+	url=$TS_EXAMPLE/v$tsver/src/examples/agent.ts
+	curl -fsSL "$url" -o "$WORK/npm/ts/agent.src.ts" || die "cannot fetch $url"
+	sed 's#"\.\./v1/stable/acp\.js"#"@agentclientprotocol/sdk"#' "$WORK/npm/ts/agent.src.ts" >"$WORK/npm/ts/agent.ts"
+	grep -q '"@agentclientprotocol/sdk"' "$WORK/npm/ts/agent.ts" ||
+		die "the example agent no longer imports ../v1/stable/acp.js; update the sed in launch"
+	cp "$SKILL_DIR/scripts/g4/ts-client.mjs" "$WORK/npm/ts/ts-client.mjs"
+
+	local c=$WORK/npm/claude x=$WORK/npm/codex s=$WORK/npm/ts
+	jq -n \
+		--arg source "$before" --arg go "$(go version)" --arg node "$(node --version)" \
+		--arg schema "$(cat "$REPO/schema/version")" --arg built "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+		--arg claude "$(installed "$c" @agentclientprotocol/claude-agent-acp)" \
+		--arg claudeSdk "$(installed "$c" @anthropic-ai/claude-agent-sdk @agentclientprotocol/claude-agent-acp)" \
+		--arg claudeAcp "$(installed "$c" @agentclientprotocol/sdk @agentclientprotocol/claude-agent-acp)" \
+		--arg codex "$(installed "$x" @agentclientprotocol/codex-acp)" \
+		--arg codexCli "$(installed "$x" @openai/codex @agentclientprotocol/codex-acp)" \
+		--arg codexAcp "$(installed "$x" @agentclientprotocol/sdk @agentclientprotocol/codex-acp)" \
+		--arg ts "$tsver" --arg url "$url" --arg sha "$(sha256sum "$s/agent.src.ts" | cut -c1-64)" \
+		'{source: $source, schema: $schema, go: $go, node: $node, built: $built,
+		  claude: {package: "@agentclientprotocol/claude-agent-acp", version: $claude, claudeAgentSdk: $claudeSdk, acpTypescriptSdk: $claudeAcp},
+		  codex: {package: "@agentclientprotocol/codex-acp", version: $codex, codexCli: $codexCli, acpTypescriptSdk: $codexAcp},
+		  ts: {package: "@agentclientprotocol/sdk", version: $ts, exampleAgent: $url, exampleAgentSha256: $sha}}' \
+		>"$EVIDENCE/versions.json"
+	jq -c '{claude: .claude.version, codex: .codex.version, codexCli: .codex.codexCli, ts: .ts.version}' "$EVIDENCE/versions.json"
+	echo "Built run $(basename "$RUN")."
+	printf 'export HARNESS_RUN=%q\n' "$RUN"
+}
+
+cmd_doctor() {
+	need_run
+	local ok=1 want have b name latest v
+	for b in acpharness acp-example-agent; do
+		if [ -x "$BIN/$b" ]; then echo "ok    $b built"; else
+			echo "FAIL  $b missing"
+			ok=0
+		fi
+	done
+	want=$(jq -r .source "$EVIDENCE/versions.json")
+	have=$(source_id)
+	if [ "$want" = "$have" ]; then echo "ok    binaries match the checkout ($have)"; else
+		echo "FAIL  binaries are from $want, the checkout is $have: run launch again"
+		ok=0
+	fi
+	for name in claude codex; do
+		adapter "$name"
+		v=$(jq -r ".$name.version" "$EVIDENCE/versions.json")
+		if [ -x "$WORK/npm/$name/node_modules/.bin/$BIN_NAME" ]; then echo "ok    $PKG $v installed"; else
+			echo "FAIL  $PKG missing"
+			ok=0
+		fi
+		latest=$(npm view "$PKG" version 2>/dev/null || echo unknown)
+		[ "$latest" = "$v" ] || echo "WARN  npm now has $PKG $latest; launch again to test the latest"
+		for v in "${NEEDS[@]}"; do
+			if [ -n "${!v:-}" ]; then echo "ok    $v is set (g5 $name)"; else echo "WARN  $v is unset: g5 $name will refuse to start"; fi
+		done
+	done
+	for b in agent.ts ts-client.mjs; do
+		if [ -f "$WORK/npm/ts/$b" ]; then echo "ok    TS $b ready"; else
+			echo "FAIL  TS $b missing"
+			ok=0
+		fi
+	done
+	local live=0 pid start cmd
+	while IFS=$'\t' read -r pid start cmd; do
+		[ -n "$pid" ] || continue
+		if ours "$pid" "$start"; then
+			echo "FAIL  pid $pid from this run is still running: $cmd"
+			live=1
+			ok=0
+		fi
+	done < <(cat "$WORK/pids" "$WORK/pgids")
+	[ "$live" = 0 ] && echo "ok    no process from this run is running"
+	echo "run      $RUN"
+	echo "evidence $EVIDENCE"
+	[ "$ok" = 1 ] || exit 1
+}
+
+# spent: the model cost that the g5 runs in this run folder reported.
+spent() {
+	local f total=0
+	for f in "$EVIDENCE"/g5-*/summary.json; do
+		[ -f "$f" ] || continue
+		total=$(jq -n --argjson a "$total" --argjson b "$(jq .costUsd "$f")" '$a + $b')
+	done
+	echo "$total"
+}
+
+# write_codex_config: Codex ignores OPENAI_BASE_URL, so a proxy needs a
+# model provider in its private config.toml. The file stays in work/.
+write_codex_config() {
+	local f=$WORK/home/codex/config.toml
+	: >"$f"
+	if [ -n "${OPENAI_BASE_URL:-}" ]; then
+		{
+			echo 'model_provider = "harness"'
+			echo '[model_providers.harness]'
+			echo 'name = "harness proxy (OPENAI_BASE_URL)"'
+			printf 'base_url = "%s"\n' "$OPENAI_BASE_URL"
+			echo 'env_key = "OPENAI_API_KEY"'
+			echo 'wire_api = "responses"'
+		} >"$f"
+	fi
+}
+
+cmd_g5() {
+	need_run
+	local name=${1:?adapter: claude or codex} v
+	adapter "$name"
+	for v in "${NEEDS[@]}"; do
+		[ -n "${!v:-}" ] || die "$v is not set; g5 $name needs it"
+	done
+	local budget left
+	budget=${HARNESS_BUDGET_USD:-25}
+	left=$(jq -n --argjson b "$budget" --argjson s "$(spent)" '$b - $s')
+	jq -e -n --argjson l "$left" '$l > 0' >/dev/null ||
+		die "this run already reported \$$(spent) of the \$$budget budget"
+	local label=g5-$name n=1
+	while [ -e "$EVIDENCE/$label" ]; do
+		n=$((n + 1))
+		label=g5-$name.$n
+	done
+	local out=$EVIDENCE/$label cwd=$WORK/cwd/$label home=$WORK/home/$name
+	local agent=$WORK/npm/$name/node_modules/.bin/$BIN_NAME
+	mkdir -p "$out" "$cwd"
+	[ "$name" = codex ] && write_codex_config
+	echo "cd $cwd && $HOME_VAR=$home $BIN/acpharness ${FLAGS[*]} -budget-usd $left -out $out -cwd $cwd -- $agent" >"$out/command.txt"
+	cd "$cwd"
+	local rc=0
+	tracked env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
+		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
+	echo "evidence $out"
+	return "$rc"
+}
+
+cmd_g4() {
+	need_run
+	local rc=0 out
+	# 1. The TypeScript SDK as the client, this repo's example agent as the agent.
+	out=$EVIDENCE/g4-ts-client-go-agent
+	mkdir -p "$out"
+	echo "cd $WORK/npm/ts && node ts-client.mjs --out $out --cwd $WORK/cwd/g4-ts -- $BIN/acp-example-agent" >"$out/command.txt"
+	echo "== TS client -> Go example agent"
+	(cd "$WORK/npm/ts" && tracked timeout 120 node ts-client.mjs --out "$out" --cwd "$WORK/cwd/g4-ts" \
+		-- "$BIN/acp-example-agent" 2>"$out/client.stderr.log") || rc=1
+	g4_quiet "$out/agent.stderr.log" 'ERROR|WARN' "the Go agent logged an error" || rc=1
+	g4_quiet "$out/client.stderr.log" '.' "the TS client wrote to stderr" || rc=1
+
+	# 2. This repo's SDK as the client, the TypeScript SDK's example agent as the agent.
+	out=$EVIDENCE/g4-go-client-ts-agent
+	mkdir -p "$out"
+	echo "== Go driver -> TS example agent"
+	(cd "$WORK/npm/ts" && tracked timeout 120 "$BIN/acpharness" -profile smoke -pgids "$WORK/pgids" \
+		-out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts") || rc=1
+	g4_quiet "$out/agent-1.stderr.log" '[Ee]rror|[Ww]arn' "the TS agent logged an error" || rc=1
+	echo "evidence $EVIDENCE/g4-*"
+	return "$rc"
+}
+
+# g4_quiet FILE REGEX WHAT: FAIL when FILE has a line that matches REGEX.
+g4_quiet() {
+	if [ -f "$1" ] && grep -qE "$2" "$1"; then
+		echo "FAIL  $3: $(grep -m1 -E "$2" "$1" | cut -c1-200)" | tee -a "$(dirname "$1")/result.txt"
+		return 1
+	fi
+	echo "PASS  $(basename "$1") is clean"
+}
+
+cmd_report() {
+	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set"
+	set_paths "$HARNESS_RUN"
+	[ -f "$EVIDENCE/versions.json" ] || die "no evidence in $RUN"
+	local labels=() l f names n row s total=0 cost
+	for f in "$EVIDENCE"/g5-*/summary.json; do
+		[ -f "$f" ] && labels+=("$(basename "$(dirname "$f")")")
+	done
+	{
+		echo "# ACP Go SDK live gates"
+		echo
+		echo "Source $(jq -r .source "$EVIDENCE/versions.json"), schema $(jq -r .schema "$EVIDENCE/versions.json"), $(jq -r .node "$EVIDENCE/versions.json") node, $(jq -r .go "$EVIDENCE/versions.json")."
+		echo
+		jq -r '"- claude: \(.claude.package) \(.claude.version) (claude-agent-sdk \(.claude.claudeAgentSdk), ACP TS SDK \(.claude.acpTypescriptSdk))",
+		       "- codex: \(.codex.package) \(.codex.version) (Codex CLI \(.codex.codexCli), ACP TS SDK \(.codex.acpTypescriptSdk))",
+		       "- ts: \(.ts.package) \(.ts.version), example agent \(.ts.exampleAgent)"' "$EVIDENCE/versions.json"
+		if [ "${#labels[@]}" -gt 0 ]; then
+			echo
+			echo "## G5: this SDK as the client of real agents"
+			echo
+			printf '| Scenario |'
+			printf ' %s |' "${labels[@]}"
+			printf '\n|---|'
+			printf -- '---|%.0s' "${labels[@]}"
+			echo
+			names=$(for l in "${labels[@]}"; do jq -r '.results[].name' "$EVIDENCE/$l/summary.json"; done | awk '!seen[$0]++')
+			while IFS= read -r n; do
+				row="| $n |"
+				for l in "${labels[@]}"; do
+					s=$(jq -r --arg n "$n" '[.results[] | select(.name == $n) | .status][0] // "-"' "$EVIDENCE/$l/summary.json")
+					row="$row $s |"
+				done
+				echo "$row"
+			done <<<"$names"
+			echo
+			for l in "${labels[@]}"; do
+				f=$EVIDENCE/$l/summary.json
+				cost=$(jq .costUsd "$f")
+				total=$(jq -n --argjson a "$total" --argjson b "$cost" '$a + $b')
+				printf -- '- %s: %s, models on the wire %s, %s, tokens %s\n' "$l" \
+					"$(jq -r '"\(.agentInfo.name // "agent") \(.agentInfo.version // "")"' "$f")" \
+					"$(jq -r '.models | join(", ")' "$f")" \
+					"$(if jq -e '.costUsd > 0' "$f" >/dev/null; then printf 'reported cost $%.2f' "$cost"; else echo 'no cost reported'; fi)" \
+					"$(jq -r '.tokens | to_entries | map("\(.key) \(.value)") | join(", ")' "$f")"
+			done
+			printf -- '- Total reported cost: $%.2f of the $%s budget.\n' "$total" "${HARNESS_BUDGET_USD:-25}"
+			echo
+			echo "### Failures and skips"
+			echo
+			for l in "${labels[@]}"; do
+				jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$EVIDENCE/$l/summary.json"
+			done
+		fi
+		if [ -d "$EVIDENCE/g4-ts-client-go-agent" ] || [ -d "$EVIDENCE/g4-go-client-ts-agent" ]; then
+			echo
+			echo "## G4: cross-SDK, no model"
+			echo
+			echo "| Client -> agent | Result |"
+			echo "|---|---|"
+			for l in g4-ts-client-go-agent g4-go-client-ts-agent; do
+				f=$EVIDENCE/$l/result.txt
+				s=FAIL
+				[ -f "$f" ] && grep -qx 'exit=0' "$f" && ! grep -q '^FAIL' "$f" && s=PASS
+				case $l in
+				g4-ts-client-go-agent) echo "| TypeScript SDK client -> Go example agent | $s |" ;;
+				g4-go-client-ts-agent) echo "| Go SDK client (acpharness) -> TypeScript example agent | $s |" ;;
+				esac
+			done
+		fi
+	} >"$EVIDENCE/report.md"
+	cat "$EVIDENCE/report.md"
+}
+
+cmd_scan() {
+	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set"
+	set_paths "$HARNESS_RUN"
+	local v val files hits=0
+	for v in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL OPENAI_API_KEY OPENAI_BASE_URL; do
+		val=${!v:-}
+		[ "${#val}" -ge 8 ] || continue
+		# grep reads the value from a pipe, so it is never in a command line.
+		files=$(printf '%s\n' "$val" | grep -rlF -f - "$EVIDENCE" || true)
+		if [ -n "$files" ]; then
+			echo "FOUND the value of $v in:"
+			echo "$files"
+			hits=1
+		fi
+	done
+	files=$(grep -rlE 'sk-(ant-)?[A-Za-z0-9_-]{24,}' "$EVIDENCE" || true)
+	if [ -n "$files" ]; then
+		echo "FOUND a string shaped like an API key in:"
+		echo "$files"
+		hits=1
+	fi
+	[ "$hits" = 0 ] && echo "ok    no credential value and no key-shaped string in $EVIDENCE"
+	return "$hits"
+}
+
+cmd_cleanup() {
+	need_run
+	local pid start cmd
+	while IFS=$'\t' read -r pid start cmd; do
+		[ -n "$pid" ] || continue
+		if ours "$pid" "$start"; then
+			pkill -TERM -P "$pid" 2>/dev/null || true
+			kill -TERM "$pid" 2>/dev/null || true
+			echo "stopped pid $pid ($cmd)"
+		fi
+	done <"$WORK/pids"
+	# Each agent runs in its own process group, led by the agent. Stop a group
+	# only while its recorded leader still runs, so a reused id is left alone.
+	while IFS=$'\t' read -r pid start cmd; do
+		[ -n "$pid" ] || continue
+		if ours "$pid" "$start"; then
+			kill -TERM -- "-$pid" 2>/dev/null || true
+			echo "stopped process group $pid ($cmd)"
+		elif [ -n "$(pgrep -g "$pid" 2>/dev/null || true)" ]; then
+			echo "WARN  process group $pid outlived its leader; not stopped, check: ps -o pid,lstart,cmd -g $pid"
+		fi
+	done <"$WORK/pgids"
+	rm -rf "$WORK"
+	rm -f "$RUN/$MARKER"
+	echo "removed $WORK"
+	echo "evidence kept in $EVIDENCE"
+}
+
+case "${1:-}" in
+launch) cmd_launch ;;
+doctor) cmd_doctor ;;
+g4) cmd_g4 ;;
+g5)
+	shift
+	cmd_g5 "$@"
+	;;
+report) cmd_report ;;
+scan) cmd_scan ;;
+cleanup) cmd_cleanup ;;
+*)
+	sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	exit 2
+	;;
+esac

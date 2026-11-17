@@ -237,8 +237,14 @@ func (r *recorder) pending(conn int) int {
 	return r.notified[conn] - r.handled[conn] + r.requested[conn] - r.answered[conn]
 }
 
-func (r *recorder) logged(conn int, text string) {
+// logged records an SDK log record as a finding when classify knows its
+// text, or when it is an error that classify does not know, such as a
+// message with neither id nor method: every SDK error log fails a row.
+func (r *recorder) logged(conn int, level slog.Level, text string) {
 	kind := classify(text)
+	if kind == "" && level >= slog.LevelError {
+		kind = decodeError
+	}
 	if kind == "" {
 		return
 	}
@@ -301,7 +307,7 @@ func (h *logTap) Handle(ctx context.Context, rec slog.Record) error {
 		fmt.Fprintf(&text, " %s=%v", a.Key, a.Value.Any())
 		return true
 	})
-	h.rec.logged(h.conn, text.String())
+	h.rec.logged(h.conn, rec.Level, text.String())
 	if rec.Message == "failed to handle notification" {
 		h.rec.handledOne(h.conn)
 	}
@@ -474,6 +480,7 @@ func (a *agentConn) close(grace time.Duration) string {
 		select {
 		case <-a.conn.Done():
 		case <-deadline:
+			return a.ended
 		}
 		for a.rec.pending(a.n) > 0 {
 			select {

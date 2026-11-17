@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"regexp"
@@ -416,5 +417,19 @@ func TestModeOffered_SendsOnlyAnOfferedMode(t *testing.T) {
 				t.Fatalf("modeOffered(%s) = %v, want ok=%v", tc.mode, err, tc.ok)
 			}
 		})
+	}
+}
+
+func TestRecorder_CountsEverySDKErrorLog(t *testing.T) {
+	r, err := newRecorder(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.logged(1, slog.LevelError, `received message with neither id nor method`)
+	r.logged(1, slog.LevelInfo, `connection closed cause=peer connection closed`)
+	r.logged(1, slog.LevelDebug, `failed to parse incoming message err=invalid character`)
+	findings, _ := r.snapshot()
+	if len(findings) != 2 || findings[0].Kind != decodeError || findings[1].Kind != decodeError {
+		t.Fatalf("findings %+v, want two decode errors: the unknown ERROR and the parse failure", findings)
 	}
 }

@@ -253,10 +253,14 @@ cmd_doctor() {
 	for name in claude codex; do
 		adapter "$name"
 		v=$(jq -r ".$name.version" "$EVIDENCE/versions.json")
-		if [ -x "$WORK/npm/$name/node_modules/.bin/$BIN_NAME" ]; then echo "ok    $PKG $v installed"; else
+		have=$(installed "$WORK/npm/$name" "$PKG")
+		if [ ! -x "$WORK/npm/$name/node_modules/.bin/$BIN_NAME" ]; then
 			echo "FAIL  $PKG missing"
 			ok=0
-		fi
+		elif [ "$have" != "$v" ]; then
+			echo "FAIL  $PKG $have is installed, but versions.json records $v: run launch again"
+			ok=0
+		else echo "ok    $PKG $v installed"; fi
 		latest=$(npm view "$PKG" version 2>/dev/null || echo unknown)
 		[ "$latest" = "$v" ] || echo "WARN  npm now has $PKG $latest; launch again to test the latest"
 		for v in "${NEEDS[@]}"; do
@@ -434,10 +438,14 @@ g4_quiet() {
 	echo "PASS  $(basename "$1") is clean"
 }
 
-# complete FILE: FILE is a summary.json that parses. A driver killed while
-# it wrote the file leaves partial JSON, and report shows that run as
-# INCOMPLETE instead of failing on it.
-complete() { [ -f "$1" ] && jq -e . "$1" >/dev/null 2>&1; }
+# complete DIR: the driver finished writing DIR's evidence: summary.json
+# parses, and result.txt, which the driver writes last, has its exit line.
+# A driver killed or out of disk while it wrote them leaves partial files,
+# and report shows that run as INCOMPLETE instead of trusting them.
+complete() {
+	[ -f "$1/summary.json" ] && jq -e . "$1/summary.json" >/dev/null 2>&1 &&
+		grep -qE '^exit=[0-9]+$' "$1/result.txt" 2>/dev/null
+}
 
 cmd_report() {
 	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set"
@@ -466,7 +474,7 @@ cmd_report() {
 			echo
 			names=$(for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
-				if complete "$f"; then jq -r '.results[].name' "$f"; fi
+				if complete "$EVIDENCE/$l"; then jq -r '.results[].name' "$f"; fi
 			done | awk '!seen[$0]++')
 			while IFS= read -r n; do
 				[ -n "$n" ] || continue
@@ -474,7 +482,7 @@ cmd_report() {
 				for l in "${labels[@]}"; do
 					f=$EVIDENCE/$l/summary.json
 					s=INCOMPLETE
-					complete "$f" && s=$(jq -r --arg n "$n" '[.results[] | select(.name == $n) | .status][0] // "-"' "$f")
+					complete "$EVIDENCE/$l" && s=$(jq -r --arg n "$n" '[.results[] | select(.name == $n) | .status][0] // "-"' "$f")
 					row="$row $s |"
 				done
 				echo "$row"
@@ -482,10 +490,10 @@ cmd_report() {
 			echo
 			for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
-				if ! complete "$f"; then
+				if ! complete "$EVIDENCE/$l"; then
 					cost=0
 					[ -f "$EVIDENCE/$l/transcript.jsonl" ] && cost=$(transcript_cost "$EVIDENCE/$l/transcript.jsonl")
-					printf -- '- %s: INCOMPLETE, no complete summary.json: the driver did not finish. Its transcript reports $%.2f.\n' "$l" "$cost"
+					printf -- '- %s: INCOMPLETE, no complete summary.json and result.txt: the driver did not finish. Its transcript reports $%.2f.\n' "$l" "$cost"
 					continue
 				fi
 				cost=$(jq .costUsd "$f")
@@ -503,10 +511,10 @@ cmd_report() {
 			echo
 			for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
-				if complete "$f"; then
+				if complete "$EVIDENCE/$l"; then
 					jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$f"
 				fi
-				if complete "$f" && jq -e '(.evidenceErrors // []) | length > 0' "$f" >/dev/null; then
+				if complete "$EVIDENCE/$l" && jq -e '(.evidenceErrors // []) | length > 0' "$f" >/dev/null; then
 					echo "- $l evidence FAIL: $(jq -r '.evidenceErrors | join("; ")' "$f")"
 				fi
 				f=$EVIDENCE/$l/leftovers.txt
@@ -535,6 +543,14 @@ cmd_report() {
 	cat "$EVIDENCE/report.md"
 }
 
+# scanned RC: grep's exit code 1 means no match. Any other code means that
+# grep could not read all of the evidence, so the scan fails closed.
+scanned() {
+	[ "$1" = 1 ] && return 0
+	echo "ERROR grep could not scan all of the evidence (exit $1)"
+	return 1
+}
+
 cmd_scan() {
 	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set"
 	set_paths "$HARNESS_RUN"
@@ -543,14 +559,14 @@ cmd_scan() {
 		val=${!v:-}
 		[ "${#val}" -ge 8 ] || continue
 		# grep reads the value from a pipe, so it is never in a command line.
-		files=$(printf '%s\n' "$val" | grep -rlF -f - "$EVIDENCE" || true)
+		files=$(printf '%s\n' "$val" | grep -rlF -f - "$EVIDENCE") || scanned $? || hits=1
 		if [ -n "$files" ]; then
 			echo "FOUND the value of $v in:"
 			echo "$files"
 			hits=1
 		fi
 	done
-	files=$(grep -rlE 'sk-(ant-)?[A-Za-z0-9_-]{24,}' "$EVIDENCE" || true)
+	files=$(grep -rlE 'sk-(ant-)?[A-Za-z0-9_-]{24,}' "$EVIDENCE") || scanned $? || hits=1
 	if [ -n "$files" ]; then
 		echo "FOUND a string shaped like an API key in:"
 		echo "$files"

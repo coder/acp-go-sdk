@@ -53,7 +53,7 @@ Run it first, and again whenever a result looks wrong:
 "$V" doctor
 ```
 
-It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncommitted changes>`), that both adapters and the TypeScript files are installed, and that no process from this run still runs, including a tagged process that an agent left behind in its process group. A `WARN` line says that npm now has a newer adapter than the run, or that a credential variable is unset. Exit 1 means that a check failed. After any change to the checkout, run `launch` again.
+It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncommitted changes>`), that both adapters are installed at the versions that `versions.json` records, that the TypeScript files are installed, and that no process from this run still runs, including a tagged process that an agent left behind in its process group. A `WARN` line says that npm now has a newer adapter than the run, or that a credential variable is unset. Exit 1 means that a check failed. After any change to the checkout, run `launch` again.
 
 ## Run the gates
 
@@ -74,7 +74,7 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 | `claude` | `CLAUDE_CONFIG_DIR=work/home/claude` | `-ask-mode default` |
 | `codex` | `CODEX_HOME=work/home/codex` | `-auth api-key -ask-mode read-only` |
 
-Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `work/home/codex/config.toml` with a `model_provider` whose `base_url` is the variable's value, `env_key = "OPENAI_API_KEY"` and `wire_api = "responses"`. That file stays in `work/` and never goes into the evidence. Run one `g5` at a time per run folder. A second one refuses to start, because both would read the same remaining budget. Running `g5` again for the same adapter writes a new label, such as `g5-claude.2`. `report` shows a label whose driver did not finish as `INCOMPLETE`.
+Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `work/home/codex/config.toml` with a `model_provider` whose `base_url` is the variable's value, `env_key = "OPENAI_API_KEY"` and `wire_api = "responses"`. That file stays in `work/` and never goes into the evidence. Run one `g5` at a time per run folder. A second one refuses to start, because both would read the same remaining budget. Running `g5` again for the same adapter writes a new label, such as `g5-claude.2`. `report` shows a label whose driver did not finish, or left a partial `summary.json` or `result.txt`, as `INCOMPLETE`.
 
 ### Cost and budget
 
@@ -103,7 +103,7 @@ Whether the agent advertises a session method or a model option comes from the r
 | `session/resume` | 3 | A new process resumes session A without a replay: no message chunk arrives before the first prompt. A turn that asks for "the single word you replied with" ends with `end_turn` and gets `pong`. |
 | `agent-exit` | all | Every agent process exits 0 within 10 s after the driver closes its stdin. |
 | `no-method-not-found` | all | The SDK logged no "Method not found" (`-32601`) and sent no `-32601` reply to the agent. |
-| `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, sent no `-32602` or `-32700` reply, and decoded the same total cost as the raw `usage_update` lines report. |
+| `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, and no other error-level record except the "Method not found" records that the row above counts, such as a message with neither id nor method. It sent no `-32602` or `-32700` reply, and it decoded the same total cost as the raw `usage_update` lines report. |
 | `no-agent-errors` | all | The agent sent no JSON-RPC error response, including one that the SDK drops because no request waits for it. |
 | `no-refused-calls` | all | The agent called no `fs/*` or `terminal/*` method. The client offers neither, so it refuses such a call, and `summary.json` lists it under `refusedCalls`. |
 | `known-skips` | all | Every `SKIP` has one of the documented reasons below. |
@@ -161,7 +161,7 @@ Proof standards:
 - Drive the real path: the latest published adapters over real pipes, on the model that each adapter picks.
 - Check the side effect, not only the reply. The permission scenarios check the file in the cwd.
 - Read `sdk.log` and the transcript for errors, not only the scenario lines.
-- Run `"$V" scan` before you paste any evidence into a pull request. It checks the evidence for the values of `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY` and `OPENAI_BASE_URL`, and for strings shaped like an API key. It prints file names and variable names, never the values.
+- Run `"$V" scan` before you paste any evidence into a pull request. It checks the evidence for the values of `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY` and `OPENAI_BASE_URL`, and for strings shaped like an API key. It prints file names and variable names, never the values. It fails when `grep` cannot read part of the evidence.
 
 ## Cleanup
 

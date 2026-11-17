@@ -143,20 +143,18 @@ func normalize(v any, schemas []schemaRef, path string, unknown *[]string) any {
 }
 
 // isDefault reports whether the normalized value x equals the default of
-// one of the property schemas that describe it.
+// every property schema that describes it. Schema files that disagree, or
+// one without a default, keep the member.
 func isDefault(x any, props []schemaRef) bool {
 	for _, p := range props {
 		m, _ := p.node.(map[string]any)
 		def, ok := m["default"]
-		if !ok {
-			continue
-		}
 		var ignored []string
-		if equalJSON(x, normalize(def, props, "", &ignored)) {
-			return true
+		if !ok || !equalJSON(x, normalize(def, props, "", &ignored)) {
+			return false
 		}
 	}
-	return false
+	return len(props) > 0
 }
 
 // expand returns the schema nodes that can describe v: the given ones and
@@ -296,6 +294,11 @@ func TestCompareJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := []schemaRef{{defs, defs["D"]}}
+	other := map[string]any{}
+	if err := json.Unmarshal([]byte(`{"D": {"type": "object", "properties": {"flag": {"type": "boolean"}}}}`), &other); err != nil {
+		t.Fatal(err)
+	}
+	both := append(d, schemaRef{other, other["D"]})
 	for _, tc := range []struct {
 		name, in, out string
 		schemas       []schemaRef
@@ -311,6 +314,7 @@ func TestCompareJSON(t *testing.T) {
 		{"non-default dropped", `{"name":"x","flag":true}`, `{"name":"x"}`, d, 1, 0},
 		{"undefined member dropped", `{"name":"x","extra":1}`, `{"name":"x"}`, d, 0, 1},
 		{"free-form member dropped", `{"meta":{"k":"v"}}`, `{}`, d, 1, 0},
+		{"files disagree on the default", `{"flag":false}`, `{}`, both, 1, 0},
 	} {
 		c, err := compareJSON([]byte(tc.in), []byte(tc.out), tc.schemas)
 		if err != nil || len(c.lost) != tc.lost || len(c.unknown) != tc.unknown {

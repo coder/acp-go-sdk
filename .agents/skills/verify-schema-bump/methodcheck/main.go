@@ -184,14 +184,16 @@ func parsePackage(dir string) (*pkg, error) {
 				continue
 			}
 			decoded := decodedVars(fd.Body)
-			// isMethod reports whether e is x.Method of a decoded message x.
+			// isMethod reports whether e is x.Method of a message x that an
+			// earlier json.Unmarshal filled.
 			isMethod := func(e ast.Expr) bool {
 				sel, ok := e.(*ast.SelectorExpr)
 				if !ok || sel.Sel.Name != "Method" {
 					return false
 				}
 				x, ok := sel.X.(*ast.Ident)
-				return ok && decoded[x.Name]
+				at, decodedX := decoded[x.Obj]
+				return ok && x.Obj != nil && decodedX && at < sel.Pos()
 			}
 			ast.Inspect(fd.Body, func(n ast.Node) bool {
 				var operands []ast.Expr
@@ -225,9 +227,11 @@ func parsePackage(dir string) (*pkg, error) {
 	return p, nil
 }
 
-// decodedVars returns the variables that body fills with json.Unmarshal(b, &x).
-func decodedVars(body *ast.BlockStmt) map[string]bool {
-	vars := map[string]bool{}
+// decodedVars returns the variables that body fills with json.Unmarshal(b, &x),
+// each with the position of that call. Variables are parser objects, so a
+// shadowing variable of the same name is a different one.
+func decodedVars(body *ast.BlockStmt) map[*ast.Object]token.Pos {
+	vars := map[*ast.Object]token.Pos{}
 	ast.Inspect(body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok || len(call.Args) != 2 {
@@ -241,8 +245,8 @@ func decodedVars(body *ast.BlockStmt) map[string]bool {
 			return true
 		}
 		if addr, ok := call.Args[1].(*ast.UnaryExpr); ok && addr.Op == token.AND {
-			if x, ok := addr.X.(*ast.Ident); ok {
-				vars[x.Name] = true
+			if x, ok := addr.X.(*ast.Ident); ok && x.Obj != nil {
+				vars[x.Obj] = call.Pos()
 			}
 		}
 		return true

@@ -1,7 +1,7 @@
 // Command registrygen writes roundtrip/registry_gen_test.go: a map from each
 // schema $defs name that the SDK declares as a Go type to a constructor of
 // that type. The generator names a def that only the unstable schema has
-// Unstable<def>. Go cannot look a type up by name at run time, and the set of
+// Unstable<def>; a stable def maps only to a type of its own name. Go cannot look a type up by name at run time, and the set of
 // types changes with every schema version, so scripts/g2-roundtrip runs this
 // before the test. The output is not committed.
 package main
@@ -26,7 +26,8 @@ func main() {
 	out := flag.String("out", "roundtrip/registry_gen_test.go", "output file")
 	flag.Parse()
 
-	defs := map[string]bool{}
+	defs := map[string]bool{}   // every def
+	stable := map[string]bool{} // defs of schema.json
 	for _, name := range []string{"schema.json", "schema.unstable.json"} {
 		b, err := os.ReadFile(filepath.Join(*sdk, "schema", name))
 		if err != nil {
@@ -40,6 +41,7 @@ func main() {
 		}
 		for d := range doc.Defs {
 			defs[d] = true
+			stable[d] = stable[d] || name == "schema.json"
 		}
 	}
 
@@ -66,7 +68,9 @@ func main() {
 				ts := spec.(*ast.TypeSpec)
 				name := ts.Name.Name
 				def := strings.TrimPrefix(name, "Unstable")
-				if ts.TypeParams != nil || !defs[def] || (def != name && types[def] == def) {
+				// Unstable<def> stands for def only when def is unstable-only:
+				// a stable def needs a type of its own name.
+				if ts.TypeParams != nil || !defs[def] || (def != name && (stable[def] || types[def] == def)) {
 					continue
 				}
 				types[def] = name

@@ -43,6 +43,24 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			},
 		},
 		{
+			name: "protocol method compared before decoding",
+			files: map[string]string{
+				"constants_gen.go": constants,
+				"agent_gen.go":     dispatch,
+				"connection.go":    "package acp\n\nimport \"encoding/json\"\n\nfunc recv(line []byte) bool {\n\tvar msg struct{ Method string }\n\tok := msg.Method == ProtocolMethodCancelRequest\n\t_ = json.Unmarshal(line, &msg)\n\treturn ok\n}\n",
+			},
+			wantGaps: []string{"MISSING handler protocol $/cancel_request in hand-written code"},
+		},
+		{
+			name: "protocol method compared on a shadowing variable",
+			files: map[string]string{
+				"constants_gen.go": constants,
+				"agent_gen.go":     dispatch,
+				"connection.go":    "package acp\n\nimport \"encoding/json\"\n\nfunc recv(line []byte, out struct{ Method string }) bool {\n\tvar msg struct{ Method string }\n\t_ = json.Unmarshal(line, &msg)\n\t{\n\t\tmsg := out\n\t\treturn msg.Method == ProtocolMethodCancelRequest\n\t}\n}\n",
+			},
+			wantGaps: []string{"MISSING handler protocol $/cancel_request in hand-written code"},
+		},
+		{
 			name: "agent method without a case",
 			files: map[string]string{
 				"constants_gen.go": constants,

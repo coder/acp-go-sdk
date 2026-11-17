@@ -23,9 +23,9 @@
 //	{"sleep":"300ms"}
 //	{"close":true,"expectExit":0}
 //
-// "{{name.path}}" inside a JSON string is replaced with the string at that
-// path of the message saved as name. Agent requests with no rule get a
-// -32601 error.
+// "{{name.path}}" inside a JSON string of params or expect is replaced with
+// the string at that path of the message saved as name. Agent requests with
+// no rule get a -32601 error.
 package main
 
 import (
@@ -574,6 +574,19 @@ func (d *driver) expand(raw json.RawMessage) (json.RawMessage, error) {
 	return out, nil
 }
 
+// expandAll expands the templates in each value of an expect map.
+func (d *driver) expandAll(want map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	out := make(map[string]json.RawMessage, len(want))
+	for path, raw := range want {
+		v, err := d.expand(raw)
+		if err != nil {
+			return nil, err
+		}
+		out[path] = v
+	}
+	return out, nil
+}
+
 func lookup(v any, path string) (any, bool) {
 	for _, key := range strings.Split(path, ".") {
 		m, ok := v.(map[string]any)
@@ -633,6 +646,10 @@ func (d *driver) do(s step, runDeadline time.Time) (string, string, error) {
 		if err != nil {
 			return label("send " + s.Send), "", err
 		}
+		expect, err := d.expandAll(s.Expect)
+		if err != nil {
+			return label("send " + s.Send), "", err
+		}
 		d.mu.Lock()
 		d.nextID++
 		id := d.nextID
@@ -652,7 +669,7 @@ func (d *driver) do(s step, runDeadline time.Time) (string, string, error) {
 		if s.Async {
 			return label("send " + s.Send + " (async)"), fmt.Sprintf("id %d", id), nil
 		}
-		return d.finish(label("send "+s.Send), c, s.Expect, deadline)
+		return d.finish(label("send "+s.Send), c, expect, deadline)
 	case s.Await != "":
 		d.mu.Lock()
 		c := d.saved[s.Await]
@@ -660,7 +677,11 @@ func (d *driver) do(s step, runDeadline time.Time) (string, string, error) {
 		if c == nil {
 			return label("await " + s.Await), "", fmt.Errorf("no request saved as %q", s.Await)
 		}
-		return d.finish(label("await "+s.Await), c, s.Expect, deadline)
+		expect, err := d.expandAll(s.Expect)
+		if err != nil {
+			return label("await " + s.Await), "", err
+		}
+		return d.finish(label("await "+s.Await), c, expect, deadline)
 	case s.Notify != "":
 		params, err := d.expand(s.Params)
 		if err != nil {

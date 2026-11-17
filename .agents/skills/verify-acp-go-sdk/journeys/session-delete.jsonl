@@ -1,0 +1,18 @@
+# session/list and session/delete. Feature: session-delete.md
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}},"save":"init","expect":{"result.protocolVersion":1,"result.agentCapabilities.sessionCapabilities.list":{},"result.agentCapabilities.sessionCapabilities.delete":{}}}
+{"send":"session/new","params":{"cwd":"/tmp/acp-delete","mcpServers":[]},"save":"a"}
+{"send":"session/new","params":{"cwd":"/tmp/acp-delete","mcpServers":[]},"save":"b"}
+{"send":"session/new","params":{"cwd":"/tmp/acp-keep","mcpServers":[]},"save":"c"}
+{"step":"list has A and B","send":"session/list","params":{"cwd":"/tmp/acp-delete"},"expect":{"result.sessions":[{"sessionId":"{{a.result.sessionId}}","cwd":"/tmp/acp-delete"},{"sessionId":"{{b.result.sessionId}}","cwd":"/tmp/acp-delete"}]}}
+{"step":"delete A","send":"session/delete","params":{"sessionId":"{{a.result.sessionId}}"},"expect":{"result":{}}}
+{"step":"list drops A","send":"session/list","params":{"cwd":"/tmp/acp-delete"},"expect":{"result.sessions":[{"sessionId":"{{b.result.sessionId}}","cwd":"/tmp/acp-delete"}]}}
+{"step":"delete A again","send":"session/delete","params":{"sessionId":"{{a.result.sessionId}}"},"expect":{"result":{}}}
+{"step":"prompt A fails","send":"session/prompt","params":{"sessionId":"{{a.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"expect":{"error.code":-32603}}
+{"send":"session/prompt","params":{"sessionId":"{{b.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"save":"turn","async":true}
+{"waitFor":"session/update","where":{"params.update.sessionUpdate":"tool_call"},"timeout":"10s"}
+{"step":"delete B during its turn","send":"session/delete","params":{"sessionId":"{{b.result.sessionId}}"},"expect":{"result":{}}}
+{"await":"turn","timeout":"3s","expect":{"result.stopReason":"cancelled"}}
+{"step":"list is empty","send":"session/list","params":{"cwd":"/tmp/acp-delete"},"expect":{"result.sessions":[]}}
+{"step":"other cwd keeps C","send":"session/list","params":{},"expect":{"result.sessions":[{"sessionId":"{{c.result.sessionId}}","cwd":"/tmp/acp-keep"}]}}
+{"close":true,"expectExit":0}

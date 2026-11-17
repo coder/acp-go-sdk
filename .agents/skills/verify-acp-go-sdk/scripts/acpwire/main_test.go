@@ -32,6 +32,9 @@ func fakeAgent(mode string) {
 			continue
 		}
 		resp := map[string]any{"jsonrpc": "2.0", "id": req["id"], "result": map[string]any{"ok": true}}
+		if mode == "echo" {
+			resp["result"] = req["params"]
+		}
 		if mode == "no-result" {
 			delete(resp, "result")
 		}
@@ -185,5 +188,36 @@ func TestRun_SleepStopsAtDeadline(t *testing.T) {
 	}
 	if results[0].Pass || !strings.Contains(results[0].Detail, "deadline") {
 		t.Fatalf("sleep result = %+v, want a failure that names the deadline", results[0])
+	}
+}
+
+func TestRun_ExpectExpandsTemplates(t *testing.T) {
+	tests := []struct {
+		name, expect string
+		wantPass     bool
+	}{
+		{"same value", `{"result.v":"{{first.result.id}}"}`, true},
+		{"value in an array", `{"result.list":[{"id":"{{first.result.id}}"}]}`, true},
+		{"other value", `{"result.v":"not-{{first.result.id}}"}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ACPWIRE_FAKE_AGENT", "echo")
+			steps, lines, err := readJourney(writeJourney(t,
+				`{"send":"first","params":{"id":"sess-1"},"save":"first"}`,
+				`{"send":"second","params":{"v":"sess-1","list":[{"id":"sess-1"}]},"expect":`+tt.expect+`}`,
+				`{"close":true,"expectExit":0}`,
+			))
+			if err != nil {
+				t.Fatal(err)
+			}
+			results, err := run(os.Args[0], nil, steps, lines, t.TempDir(), 10*time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := results[1].Pass; got != tt.wantPass {
+				t.Fatalf("second step = %+v, want pass=%v", results[1], tt.wantPass)
+			}
+		})
 	}
 }

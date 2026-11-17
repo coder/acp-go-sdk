@@ -43,6 +43,7 @@ Keep implementation details out of the map, except where a gotcha needs one to e
 
 - [Prompt turn](./prompt-turn.md): an editor runs a turn with streamed updates and a permission request, allowed or rejected.
 - [Cancel](./cancel.md): `session/cancel` ends a turn, and `$/cancel_request` cancels a request.
+- [Session delete](./session-delete.md): `session/list` and `session/delete` remove a session from the agent's history, also during its turn.
 - [Errors and extensions](./errors-and-extensions.md): error replies, `_` extension methods, malformed input and end of input.
 - [Example client CLI](./client-cli.md): a developer runs `example/client` and answers its permission prompt.
 

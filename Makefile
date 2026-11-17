@@ -77,8 +77,9 @@ test: $(GO_FILES)
 	# cmd/generate is its own module, so ./... above does not reach it.
 	cd cmd/generate && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
 	cd cmd/generate && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
-	# ./... skips dot directories, so name the verification driver directly.
-	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./.agents/skills/verify-acp-go-sdk/scripts/acpwire/
+	# ./... skips dot directories, so name the verification drivers directly.
+	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./.agents/skills/verify-real-harnesses/scripts/acpharness/
+	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./.agents/skills/verify-acp-go-sdk/scripts/acpwire/ ./.agents/skills/verify-real-harnesses/scripts/acpharness/
 
 .PHONY: clean
 clean:

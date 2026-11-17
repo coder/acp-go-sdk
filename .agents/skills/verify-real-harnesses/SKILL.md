@@ -157,7 +157,7 @@ Proof standards:
 | `scripts/acpharness/` | Built by `launch`. Directly: `acpharness [-profile live\|smoke] [-ask-mode MODE] [-auth METHOD] [-budget-usd N] [-only a,b] -out DIR -cwd DIR -- AGENT [ARGS...]` | The ACP client on this checkout's SDK. The comment at the top of `main.go` lists the flags. |
 | `scripts/g4/ts-client.mjs` | Copied into `work/npm/ts` by `launch`. `node ts-client.mjs --out DIR --cwd DIR -- AGENT [ARGS...]` | One prompt turn with the official TypeScript SDK as the client. |
 
-`./...` skips dot directories, so `go test ./...` does not reach the driver. Build and test it by path:
+`./...` skips dot directories, so `make test` names the driver by path. Its unit tests need no network and take about a second. To run them alone:
 
 ```bash
 go build -o /dev/null ./.agents/skills/verify-real-harnesses/scripts/acpharness/

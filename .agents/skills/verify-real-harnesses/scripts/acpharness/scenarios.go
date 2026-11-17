@@ -624,6 +624,16 @@ func (h *harness) deleteSession(a *agentConn) (status, string) {
 	if !ok {
 		return skip, "blocked: session B was never created"
 	}
+	// Absence after the delete proves it only if the same list showed B.
+	if canList {
+		found, n, err := listContains(a, h.cwds["B"], sid)
+		switch {
+		case err != nil:
+			return fail, "before the delete: " + err.Error()
+		case !found:
+			return fail, fmt.Sprintf("session B is not among the %d sessions listed for its cwd before the delete", n)
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
 	if canClose {
@@ -644,7 +654,7 @@ func (h *harness) deleteSession(a *agentConn) (status, string) {
 	case found:
 		return fail, fmt.Sprintf("session B is still listed after session/delete (%d sessions)", n)
 	}
-	return pass, "deleted session B; session/list for its cwd no longer has it"
+	return pass, "session/list for session B's cwd had it before session/delete and not after"
 }
 
 // loadSession reopens session A in a new agent process and expects the
@@ -686,7 +696,8 @@ func (h *harness) loadSession() (status, string) {
 
 // replayProblem says why a session/load replay does not bring back the
 // earlier pong turn, or returns "" when it does. The prompt itself says
-// pong, so only the agent's replayed reply counts.
+// pong, so only the agent's replayed reply counts, and only after a user
+// chunk: an editor shows the replay in the order that it arrives.
 func replayProblem(evs []event) string {
 	users, agents, reply := 0, 0, ""
 	for _, ev := range evs {
@@ -695,7 +706,9 @@ func replayProblem(evs []event) string {
 			users++
 		case "agent_message_chunk":
 			agents++
-			reply += ev.Text
+			if users > 0 {
+				reply += ev.Text
+			}
 		}
 	}
 	if users == 0 || !strings.Contains(strings.ToLower(reply), "pong") {

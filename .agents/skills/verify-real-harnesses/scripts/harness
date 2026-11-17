@@ -267,6 +267,12 @@ cmd_doctor() {
 			if [ -n "${!v:-}" ]; then echo "ok    $v is set (g5 $name)"; else echo "WARN  $v is unset: g5 $name will refuse to start"; fi
 		done
 	done
+	v=$(jq -r .ts.version "$EVIDENCE/versions.json")
+	have=$(installed "$WORK/npm/ts" @agentclientprotocol/sdk)
+	if [ "$have" = "$v" ]; then echo "ok    @agentclientprotocol/sdk $v installed"; else
+		echo "FAIL  @agentclientprotocol/sdk $have is installed, but versions.json records $v: run launch again"
+		ok=0
+	fi
 	for b in agent.ts ts-client.mjs; do
 		if [ -f "$WORK/npm/ts/$b" ]; then echo "ok    TS $b ready"; else
 			echo "FAIL  TS $b missing"
@@ -431,11 +437,23 @@ cmd_g4() {
 # g4_quiet FILE REGEX WHAT: FAIL when FILE has a line that matches REGEX,
 # in any letter case.
 g4_quiet() {
-	if [ -f "$1" ] && grep -qiE "$2" "$1"; then
+	local rc=1
+	if [ -f "$1" ]; then
+		rc=0
+		grep -qiE "$2" "$1" || rc=$?
+	fi
+	case $rc in
+	1) echo "PASS  $(basename "$1") is clean" ;;
+	0)
 		echo "FAIL  $3: $(grep -m1 -iE "$2" "$1" | cut -c1-200)" | tee -a "$(dirname "$1")/result.txt"
 		return 1
-	fi
-	echo "PASS  $(basename "$1") is clean"
+		;;
+	*)
+		# grep exits 2 when it cannot read the log: fail closed.
+		echo "FAIL  grep could not read $(basename "$1") (exit $rc)" | tee -a "$(dirname "$1")/result.txt"
+		return 1
+		;;
+	esac
 }
 
 # complete DIR: the driver finished writing DIR's evidence: summary.json

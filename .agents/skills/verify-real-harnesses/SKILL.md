@@ -53,7 +53,7 @@ Run it first, and again whenever a result looks wrong:
 "$V" doctor
 ```
 
-It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncommitted changes>`), that both adapters are installed at the versions that `versions.json` records, that the TypeScript files are installed, and that no process from this run still runs, including a tagged process that an agent left behind in its process group. A `WARN` line says that npm now has a newer adapter than the run, or that a credential variable is unset. Exit 1 means that a check failed. After any change to the checkout, run `launch` again.
+It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncommitted changes>`), that both adapters and the TypeScript SDK are installed at the versions that `versions.json` records, that the TypeScript files are there, and that no process from this run still runs, including a tagged process that an agent left behind in its process group. A `WARN` line says that npm now has a newer adapter than the run, or that a credential variable is unset. Exit 1 means that a check failed. After any change to the checkout, run `launch` again.
 
 ## Run the gates
 
@@ -98,12 +98,12 @@ Whether the agent advertises a session method or a model option comes from the r
 | `cancel` | 1 | Session B starts a long essay. The driver sends `session/cancel` after the first streamed update, or after 90 s without one while the turn still runs. The turn ends with `cancelled` within 60 s of the cancel. The detail says which case happened. |
 | `session/list` | 1 | `session/list` for session A's cwd, through every page, contains session A. |
 | `session/close` | 1 | `session/close` for session A succeeds. |
-| `session/delete` | 1 | If the agent advertises `session/close`, closing session B succeeds. Then `session/delete` for it succeeds, and session B is no longer in the `session/list` result for its cwd. When the agent does not advertise `session/list`, nothing confirms the delete, and the scenario is a `SKIP` (`not advertised`). |
-| `session/load` | 2 | A new process loads session A. Before the response, the agent replays user chunks and agent chunks, and the replayed agent text contains `pong`. The prompt itself says pong, so a replay of the user's chunks alone fails. |
+| `session/delete` | 1 | If the agent advertises `session/close`, closing session B succeeds. Session B is in the `session/list` result for its cwd before the delete. Then `session/delete` for it succeeds, and session B is no longer in that list. When the agent does not advertise `session/list`, nothing confirms the delete, and the scenario is a `SKIP` (`not advertised`). |
+| `session/load` | 2 | A new process loads session A. Before the response, the agent replays user chunks and agent chunks, and the agent text replayed after the first user chunk contains `pong`. The prompt itself says pong, so a replay of the user's chunks alone fails. |
 | `session/resume` | 3 | A new process resumes session A without a replay: no message chunk arrives before the first prompt. A turn that asks for "the single word you replied with" ends with `end_turn` and gets `pong`. |
 | `agent-exit` | all | Every agent process exits 0 within 10 s after the driver closes its stdin. |
 | `no-method-not-found` | all | The SDK logged no "Method not found" (`-32601`) and sent no `-32601` reply to the agent. |
-| `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, and no other error-level record except the "Method not found" records that the row above counts, such as a message with neither id nor method. It sent no `-32602` or `-32700` reply, and it decoded the same total cost as the raw `usage_update` lines report. |
+| `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, and no other error-level record except the "Method not found" records that the row above counts, such as a message with neither id nor method. It sent no `-32602` or `-32700` reply, it decoded the same total cost as the raw `usage_update` lines report, and it finished reading and routing each agent's output within 5 s after the agent ended. |
 | `no-agent-errors` | all | The agent sent no JSON-RPC error response, including one that the SDK drops because no request waits for it. |
 | `no-refused-calls` | all | The agent called no `fs/*` or `terminal/*` method. The client offers neither, so it refuses such a call, and `summary.json` lists it under `refusedCalls`. |
 | `known-skips` | all | Every `SKIP` has one of the documented reasons below. |

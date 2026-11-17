@@ -480,11 +480,13 @@ func (a *agentConn) close(grace time.Duration) string {
 		select {
 		case <-a.conn.Done():
 		case <-deadline:
+			a.rec.finding(decodeError, fmt.Sprintf("connection %d: the SDK had not finished reading the agent's output 5 s after the agent ended", a.n))
 			return a.ended
 		}
 		for a.rec.pending(a.n) > 0 {
 			select {
 			case <-deadline:
+				a.rec.finding(decodeError, fmt.Sprintf("connection %d: the SDK had %d agent message(s) still unrouted 5 s after the agent ended", a.n, a.rec.pending(a.n)))
 				return a.ended
 			case <-time.After(20 * time.Millisecond):
 			}

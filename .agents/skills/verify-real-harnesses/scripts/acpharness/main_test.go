@@ -433,3 +433,10 @@ func TestRecorder_CountsEverySDKErrorLog(t *testing.T) {
 		t.Fatalf("findings %+v, want two decode errors: the unknown ERROR and the parse failure", findings)
 	}
 }
+
+func TestReplayProblem_NeedsTheReplyAfterTheUserMessage(t *testing.T) {
+	evs := []event{{Kind: "agent_message_chunk", Text: "pong"}, {Kind: "user_message_chunk", Text: pongPrompt}}
+	if replayProblem(evs) == "" {
+		t.Fatal("a replay with the agent's reply before the user's message passed")
+	}
+}

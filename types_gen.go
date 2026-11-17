@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Authentication-related capabilities supported by the agent.
@@ -84,46 +85,44 @@ func (v AgentCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain AgentCapabilities
+	type AgentCapabilities struct {
+		*plain
+		Auth                json.RawMessage `json:"auth"`
+		LoadSession         json.RawMessage `json:"loadSession"`
+		McpCapabilities     json.RawMessage `json:"mcpCapabilities"`
+		PromptCapabilities  json.RawMessage `json:"promptCapabilities"`
+		SessionCapabilities json.RawMessage `json:"sessionCapabilities"`
 	}
-	type Alias AgentCapabilities
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := AgentCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["auth"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{}"), &a.Auth)
-		}
+	if decoded, err := decodeField(raw.Auth, &v.Auth); err != nil {
+		return propertyError(err, "AgentCapabilities", "auth")
+	} else if !decoded {
+		setDefault(&v.Auth, "{}")
 	}
-	{
-		_rm, _ok := m["loadSession"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.LoadSession)
-		}
+	if decoded, err := decodeField(raw.LoadSession, &v.LoadSession); err != nil {
+		return propertyError(err, "AgentCapabilities", "loadSession")
+	} else if !decoded {
+		setDefault(&v.LoadSession, "false")
 	}
-	{
-		_rm, _ok := m["mcpCapabilities"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{\"acp\":false,\"http\":false,\"sse\":false}"), &a.McpCapabilities)
-		}
+	if decoded, err := decodeField(raw.McpCapabilities, &v.McpCapabilities); err != nil {
+		return propertyError(err, "AgentCapabilities", "mcpCapabilities")
+	} else if !decoded {
+		setDefault(&v.McpCapabilities, "{\"acp\":false,\"http\":false,\"sse\":false}")
 	}
-	{
-		_rm, _ok := m["promptCapabilities"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{\"audio\":false,\"embeddedContext\":false,\"image\":false}"), &a.PromptCapabilities)
-		}
+	if decoded, err := decodeField(raw.PromptCapabilities, &v.PromptCapabilities); err != nil {
+		return propertyError(err, "AgentCapabilities", "promptCapabilities")
+	} else if !decoded {
+		setDefault(&v.PromptCapabilities, "{\"audio\":false,\"embeddedContext\":false,\"image\":false}")
 	}
-	{
-		_rm, _ok := m["sessionCapabilities"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{}"), &a.SessionCapabilities)
-		}
+	if decoded, err := decodeField(raw.SessionCapabilities, &v.SessionCapabilities); err != nil {
+		return propertyError(err, "AgentCapabilities", "sessionCapabilities")
+	} else if !decoded {
+		setDefault(&v.SessionCapabilities, "{}")
 	}
-	*v = AgentCapabilities(a)
 	return nil
 }
 
@@ -318,22 +317,20 @@ func (v AuthCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *AuthCapabilities) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain AuthCapabilities
+	type AuthCapabilities struct {
+		*plain
+		Terminal json.RawMessage `json:"terminal"`
 	}
-	type Alias AuthCapabilities
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := AuthCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["terminal"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.Terminal)
-		}
+	if decoded, err := decodeField(raw.Terminal, &v.Terminal); err != nil {
+		return propertyError(err, "AuthCapabilities", "terminal")
+	} else if !decoded {
+		setDefault(&v.Terminal, "false")
 	}
-	*v = AuthCapabilities(a)
 	return nil
 }
 
@@ -376,28 +373,26 @@ func (v AuthEnvVar) MarshalJSON() ([]byte, error) {
 }
 
 func (v *AuthEnvVar) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain AuthEnvVar
+	type AuthEnvVar struct {
+		*plain
+		Optional json.RawMessage `json:"optional"`
+		Secret   json.RawMessage `json:"secret"`
 	}
-	type Alias AuthEnvVar
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := AuthEnvVar{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["optional"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.Optional)
-		}
+	if decoded, err := decodeField(raw.Optional, &v.Optional); err != nil {
+		return propertyError(err, "AuthEnvVar", "optional")
+	} else if !decoded {
+		setDefault(&v.Optional, "false")
 	}
-	{
-		_rm, _ok := m["secret"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("true"), &a.Secret)
-		}
+	if decoded, err := decodeField(raw.Secret, &v.Secret); err != nil {
+		return propertyError(err, "AuthEnvVar", "secret")
+	} else if !decoded {
+		setDefault(&v.Secret, "true")
 	}
-	*v = AuthEnvVar(a)
 	return nil
 }
 
@@ -919,34 +914,32 @@ func (v ClientCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain ClientCapabilities
+	type ClientCapabilities struct {
+		*plain
+		Auth     json.RawMessage `json:"auth"`
+		Fs       json.RawMessage `json:"fs"`
+		Terminal json.RawMessage `json:"terminal"`
 	}
-	type Alias ClientCapabilities
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := ClientCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["auth"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{\"terminal\":false}"), &a.Auth)
-		}
+	if decoded, err := decodeField(raw.Auth, &v.Auth); err != nil {
+		return propertyError(err, "ClientCapabilities", "auth")
+	} else if !decoded {
+		setDefault(&v.Auth, "{\"terminal\":false}")
 	}
-	{
-		_rm, _ok := m["fs"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{\"readTextFile\":false,\"writeTextFile\":false}"), &a.Fs)
-		}
+	if decoded, err := decodeField(raw.Fs, &v.Fs); err != nil {
+		return propertyError(err, "ClientCapabilities", "fs")
+	} else if !decoded {
+		setDefault(&v.Fs, "{\"readTextFile\":false,\"writeTextFile\":false}")
 	}
-	{
-		_rm, _ok := m["terminal"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.Terminal)
-		}
+	if decoded, err := decodeField(raw.Terminal, &v.Terminal); err != nil {
+		return propertyError(err, "ClientCapabilities", "terminal")
+	} else if !decoded {
+		setDefault(&v.Terminal, "false")
 	}
-	*v = ClientCapabilities(a)
 	return nil
 }
 
@@ -2143,28 +2136,26 @@ func (v FileSystemCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *FileSystemCapabilities) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain FileSystemCapabilities
+	type FileSystemCapabilities struct {
+		*plain
+		ReadTextFile  json.RawMessage `json:"readTextFile"`
+		WriteTextFile json.RawMessage `json:"writeTextFile"`
 	}
-	type Alias FileSystemCapabilities
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := FileSystemCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["readTextFile"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.ReadTextFile)
-		}
+	if decoded, err := decodeField(raw.ReadTextFile, &v.ReadTextFile); err != nil {
+		return propertyError(err, "FileSystemCapabilities", "readTextFile")
+	} else if !decoded {
+		setDefault(&v.ReadTextFile, "false")
 	}
-	{
-		_rm, _ok := m["writeTextFile"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.WriteTextFile)
-		}
+	if decoded, err := decodeField(raw.WriteTextFile, &v.WriteTextFile); err != nil {
+		return propertyError(err, "FileSystemCapabilities", "writeTextFile")
+	} else if !decoded {
+		setDefault(&v.WriteTextFile, "false")
 	}
-	*v = FileSystemCapabilities(a)
 	return nil
 }
 
@@ -2251,22 +2242,20 @@ func (v InitializeRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain InitializeRequest
+	type InitializeRequest struct {
+		*plain
+		ClientCapabilities json.RawMessage `json:"clientCapabilities"`
 	}
-	type Alias InitializeRequest
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := InitializeRequest{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["clientCapabilities"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{\"auth\":{\"terminal\":false},\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false}"), &a.ClientCapabilities)
-		}
+	if decoded, err := decodeField(raw.ClientCapabilities, &v.ClientCapabilities); err != nil {
+		return propertyError(err, "InitializeRequest", "clientCapabilities")
+	} else if !decoded {
+		setDefault(&v.ClientCapabilities, "{\"auth\":{\"terminal\":false},\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false}")
 	}
-	*v = InitializeRequest(a)
 	return nil
 }
 
@@ -2316,28 +2305,26 @@ func (v InitializeResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain InitializeResponse
+	type InitializeResponse struct {
+		*plain
+		AgentCapabilities json.RawMessage `json:"agentCapabilities"`
+		AuthMethods       json.RawMessage `json:"authMethods"`
 	}
-	type Alias InitializeResponse
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := InitializeResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["agentCapabilities"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{\"auth\":{},\"loadSession\":false,\"mcpCapabilities\":{\"acp\":false,\"http\":false,\"sse\":false},\"promptCapabilities\":{\"audio\":false,\"embeddedContext\":false,\"image\":false},\"sessionCapabilities\":{}}"), &a.AgentCapabilities)
-		}
+	if decoded, err := decodeField(raw.AgentCapabilities, &v.AgentCapabilities); err != nil {
+		return propertyError(err, "InitializeResponse", "agentCapabilities")
+	} else if !decoded {
+		setDefault(&v.AgentCapabilities, "{\"auth\":{},\"loadSession\":false,\"mcpCapabilities\":{\"acp\":false,\"http\":false,\"sse\":false},\"promptCapabilities\":{\"audio\":false,\"embeddedContext\":false,\"image\":false},\"sessionCapabilities\":{}}")
 	}
-	{
-		_rm, _ok := m["authMethods"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("[]"), &a.AuthMethods)
-		}
+	if decoded, err := decodeField(raw.AuthMethods, &v.AuthMethods); err != nil {
+		return propertyError(err, "InitializeResponse", "authMethods")
+	} else if !decoded {
+		setDefault(&v.AuthMethods, "[]")
 	}
-	*v = InitializeResponse(a)
 	return nil
 }
 
@@ -2555,34 +2542,32 @@ func (v McpCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpCapabilities) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain McpCapabilities
+	type McpCapabilities struct {
+		*plain
+		Acp  json.RawMessage `json:"acp"`
+		Http json.RawMessage `json:"http"`
+		Sse  json.RawMessage `json:"sse"`
 	}
-	type Alias McpCapabilities
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := McpCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["acp"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.Acp)
-		}
+	if decoded, err := decodeField(raw.Acp, &v.Acp); err != nil {
+		return propertyError(err, "McpCapabilities", "acp")
+	} else if !decoded {
+		setDefault(&v.Acp, "false")
 	}
-	{
-		_rm, _ok := m["http"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.Http)
-		}
+	if decoded, err := decodeField(raw.Http, &v.Http); err != nil {
+		return propertyError(err, "McpCapabilities", "http")
+	} else if !decoded {
+		setDefault(&v.Http, "false")
 	}
-	{
-		_rm, _ok := m["sse"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.Sse)
-		}
+	if decoded, err := decodeField(raw.Sse, &v.Sse); err != nil {
+		return propertyError(err, "McpCapabilities", "sse")
+	} else if !decoded {
+		setDefault(&v.Sse, "false")
 	}
-	*v = McpCapabilities(a)
 	return nil
 }
 
@@ -3753,34 +3738,32 @@ func (v PromptCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptCapabilities) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain PromptCapabilities
+	type PromptCapabilities struct {
+		*plain
+		Audio           json.RawMessage `json:"audio"`
+		EmbeddedContext json.RawMessage `json:"embeddedContext"`
+		Image           json.RawMessage `json:"image"`
 	}
-	type Alias PromptCapabilities
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := PromptCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["audio"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.Audio)
-		}
+	if decoded, err := decodeField(raw.Audio, &v.Audio); err != nil {
+		return propertyError(err, "PromptCapabilities", "audio")
+	} else if !decoded {
+		setDefault(&v.Audio, "false")
 	}
-	{
-		_rm, _ok := m["embeddedContext"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.EmbeddedContext)
-		}
+	if decoded, err := decodeField(raw.EmbeddedContext, &v.EmbeddedContext); err != nil {
+		return propertyError(err, "PromptCapabilities", "embeddedContext")
+	} else if !decoded {
+		setDefault(&v.EmbeddedContext, "false")
 	}
-	{
-		_rm, _ok := m["image"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("false"), &a.Image)
-		}
+	if decoded, err := decodeField(raw.Image, &v.Image); err != nil {
+		return propertyError(err, "PromptCapabilities", "image")
+	} else if !decoded {
+		setDefault(&v.Image, "false")
 	}
-	*v = PromptCapabilities(a)
 	return nil
 }
 
@@ -7510,28 +7493,26 @@ func (v UnstableElicitationSchema) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableElicitationSchema) UnmarshalJSON(b []byte) error {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+	type plain UnstableElicitationSchema
+	type UnstableElicitationSchema struct {
+		*plain
+		Properties json.RawMessage `json:"properties"`
+		Type       json.RawMessage `json:"type"`
 	}
-	type Alias UnstableElicitationSchema
-	var a Alias
-	if err := json.Unmarshal(b, &a); err != nil {
-		return err
+	raw := UnstableElicitationSchema{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
 	}
-	{
-		_rm, _ok := m["properties"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("{}"), &a.Properties)
-		}
+	if decoded, err := decodeField(raw.Properties, &v.Properties); err != nil {
+		return propertyError(err, "UnstableElicitationSchema", "properties")
+	} else if !decoded {
+		setDefault(&v.Properties, "{}")
 	}
-	{
-		_rm, _ok := m["type"]
-		if !_ok || (string(_rm) == "null") {
-			json.Unmarshal([]byte("\"object\""), &a.Type)
-		}
+	if decoded, err := decodeField(raw.Type, &v.Type); err != nil {
+		return propertyError(err, "UnstableElicitationSchema", "type")
+	} else if !decoded {
+		setDefault(&v.Type, "\"object\"")
 	}
-	*v = UnstableElicitationSchema(a)
 	return nil
 }
 
@@ -9461,4 +9442,54 @@ type ClientExperimental interface {
 	//
 	// Request parameters for 'mcp/disconnect'.
 	UnstableDisconnectMcp(ctx context.Context, params UnstableDisconnectMcpRequest) (UnstableDisconnectMcpResponse, error)
+}
+
+// decodeField decodes the raw JSON of a property into dst. An absent property
+// (a nil raw) leaves dst alone. A null property, or one that is not a valid T,
+// resets dst to its zero value.
+func decodeField[T any](raw json.RawMessage, dst *T) (decoded bool, err error) {
+	if raw == nil {
+		return false, nil
+	}
+	var v T
+	if string(raw) != "null" {
+		if err = json.Unmarshal(raw, &v); err != nil {
+			v = *new(T)
+		}
+		decoded = err == nil
+	}
+	*dst = v
+	return decoded, err
+}
+
+// setDefault replaces dst with the schema default that fallback encodes.
+// Decoding the default into dst would keep what a reused value holds.
+func setDefault[T any](dst *T, fallback string) {
+	var v T
+	json.Unmarshal([]byte(fallback), &v)
+	*dst = v
+}
+
+// plainFieldError names the field in err, from a decode through an embedded
+// pointer named plain, as encoding/json names a field of the struct itself. Go
+// 1.24 and later put the name of the embedded field first.
+func plainFieldError(err error) error {
+	if typeErr, ok := err.(*json.UnmarshalTypeError); ok {
+		typeErr.Field = strings.TrimPrefix(typeErr.Field, "plain.")
+	}
+	return err
+}
+
+// propertyError names the struct and the field in err, from decoding the raw
+// property prop on its own, as encoding/json names a field of a struct.
+func propertyError(err error, structName, prop string) error {
+	if typeErr, ok := err.(*json.UnmarshalTypeError); ok {
+		typeErr.Struct = structName
+		if typeErr.Field == "" {
+			typeErr.Field = prop
+		} else {
+			typeErr.Field = prop + "." + typeErr.Field
+		}
+	}
+	return err
 }

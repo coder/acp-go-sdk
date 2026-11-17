@@ -1966,49 +1966,49 @@ func (u *ErrorCode) UnmarshalJSON(b []byte) error {
 	}
 	{
 		var v ErrorCodeParseError
-		if json.Unmarshal(b, &v) == nil {
+		if json.Unmarshal(b, &v) == nil && v == -32700 {
 			u.ParseError = &v
 			return nil
 		}
 	}
 	{
 		var v ErrorCodeInvalidRequest
-		if json.Unmarshal(b, &v) == nil {
+		if json.Unmarshal(b, &v) == nil && v == -32600 {
 			u.InvalidRequest = &v
 			return nil
 		}
 	}
 	{
 		var v ErrorCodeMethodNotFound
-		if json.Unmarshal(b, &v) == nil {
+		if json.Unmarshal(b, &v) == nil && v == -32601 {
 			u.MethodNotFound = &v
 			return nil
 		}
 	}
 	{
 		var v ErrorCodeInvalidParams
-		if json.Unmarshal(b, &v) == nil {
+		if json.Unmarshal(b, &v) == nil && v == -32602 {
 			u.InvalidParams = &v
 			return nil
 		}
 	}
 	{
 		var v ErrorCodeInternalError
-		if json.Unmarshal(b, &v) == nil {
+		if json.Unmarshal(b, &v) == nil && v == -32603 {
 			u.InternalError = &v
 			return nil
 		}
 	}
 	{
 		var v ErrorCodeAuthenticationRequired
-		if json.Unmarshal(b, &v) == nil {
+		if json.Unmarshal(b, &v) == nil && v == -32000 {
 			u.AuthenticationRequired = &v
 			return nil
 		}
 	}
 	{
 		var v ErrorCodeResourceNotFound
-		if json.Unmarshal(b, &v) == nil {
+		if json.Unmarshal(b, &v) == nil && v == -32002 {
 			u.ResourceNotFound = &v
 			return nil
 		}

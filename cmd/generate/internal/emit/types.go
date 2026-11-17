@@ -883,6 +883,29 @@ func allInlineObjects(alts []unionAlternative) bool {
 	return true
 }
 
+// scalarConstOf returns the literal of the const of a variant whose type is a
+// number, a string, or a boolean, and nil for every other variant.
+func scalarConstOf(v *load.Definition) Code {
+	switch value := v.Const.(type) {
+	case float64:
+		if ir.PrimaryType(v) == "integer" {
+			return Lit(int(value))
+		}
+		if ir.PrimaryType(v) == "number" {
+			return Lit(value)
+		}
+	case string:
+		if ir.PrimaryType(v) == "string" {
+			return Lit(value)
+		}
+	case bool:
+		if ir.PrimaryType(v) == "boolean" {
+			return Lit(value)
+		}
+	}
+	return nil
+}
+
 // emitUnion emits the union wrapper type name and its variants. With exactlyOne
 // (a oneOf), the wrapper's Validate requires exactly one variant. Validate is
 // emitted when exactlyOne or validate is set. It also checks the union's own
@@ -907,7 +930,11 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		openDiscriminator bool
 		// nullKeys are the properties whose type is "null" alone, as in a
 		// "none" variant. The variant matches when they are absent or null.
-		nullKeys    []string
+		nullKeys []string
+		// scalarConst is the const of a variant that is a number, a string, or
+		// a boolean, as -32700 in ErrorCode. Only that value selects the
+		// variant.
+		scalarConst Code
 		isNull      bool
 		description string
 		// sharedChecks hold Validate statements for the union's own required
@@ -1150,6 +1177,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			constPairs:        consts,
 			openDiscriminator: openDiscriminator,
 			nullKeys:          nullKeys,
+			scalarConst:       scalarConstOf(v),
 			isNull:            isNull,
 			description:       v.Description,
 			sharedChecks:      sharedChecks,
@@ -1306,9 +1334,13 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			if vi.isNull || matchesByKeys(vi) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
 				continue
 			}
+			decodes := Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("==").Nil()
+			if vi.scalarConst != nil {
+				decodes = decodes.Op("&&").Id("v").Op("==").Add(vi.scalarConst)
+			}
 			g.Block(
 				Var().Id("v").Id(vi.typeName),
-				If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("==").Nil()).Block(
+				If(decodes).Block(
 					Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
 					Return(Nil()),
 				),

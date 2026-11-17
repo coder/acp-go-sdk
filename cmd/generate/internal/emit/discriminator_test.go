@@ -9,7 +9,8 @@ import "testing"
 // Options is SessionConfigSelectOptions, two arrays told apart by the required
 // keys of their items. Runner and Runners select Launch by required keys that
 // have a hint, as McpServer selects its stdio variant from schema 1.27.0 and
-// SessionConfigSelectOptions its groups from 1.17.0.
+// SessionConfigSelectOptions its groups from 1.17.0. Code is ErrorCode, whose
+// variants are numbers with a const and one number without.
 const discriminatedUnionSchema = `{"$defs": {
   "Stdio": {"type": "object", "required": ["name", "command"], "properties": {
     "name": {"type": "string"}, "command": {"type": "string"}}},
@@ -56,6 +57,12 @@ const discriminatedUnionSchema = `{"$defs": {
   "Runners": {"anyOf": [
     {"title": "flat", "type": "array", "items": {"$ref": "#/$defs/Option"}},
     {"title": "local", "type": "array", "items": {"$ref": "#/$defs/Launch"}}
+  ]},
+  "Code": {"anyOf": [
+    {"title": "low", "type": "integer", "const": 1},
+    {"title": "high", "type": "integer", "const": 2},
+    {"title": "auto", "type": "string", "const": "auto"},
+    {"title": "other", "type": "integer"}
   ]}
 }}`
 
@@ -124,6 +131,35 @@ func TestUnion_UnmarshalJSON_MatchesAVariantOnlyWithItsConstValue(t *testing.T) 
 		}
 		if out, err := json.Marshal(v); err != nil || string(out) != tt.want {
 			t.Errorf("%s decodes and encodes to %s (error %v), want %s", tt.in, out, err, tt.want)
+		}
+	}
+}
+
+func TestCode_UnmarshalJSON_SelectsTheVariantOfTheConst(t *testing.T) {
+	tests := []struct {
+		in      string
+		variant string
+		set     func(Code) bool
+	}{
+		{"1", "low", func(c Code) bool { return c.Low != nil }},
+		{"2", "high", func(c Code) bool { return c.High != nil }},
+		{` + "`" + `"auto"` + "`" + `, "auto", func(c Code) bool { return c.Auto != nil }},
+		{"3", "other", func(c Code) bool { return c.Other != nil }},
+	}
+	for _, tt := range tests {
+		var code Code
+		if err := json.Unmarshal([]byte(tt.in), &code); err != nil || !tt.set(code) {
+			t.Errorf("%s decodes to %+v (error %v), want the variant %s", tt.in, code, err, tt.variant)
+			continue
+		}
+		if out, err := json.Marshal(code); err != nil || string(out) != tt.in {
+			t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", tt.in, out, err)
+		}
+	}
+	var code Code
+	for _, in := range []string{` + "`" + `"manual"` + "`" + `, "1.5"} {
+		if err := json.Unmarshal([]byte(in), &code); err == nil {
+			t.Errorf("unmarshal %s gives %+v, want an error", in, code)
 		}
 	}
 }

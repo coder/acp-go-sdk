@@ -238,20 +238,6 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v AgentResult
-		if json.Unmarshal(b, &v) == nil {
-			u.Result = &v
-			return nil
-		}
-	}
-	{
-		var v AgentError
-		if json.Unmarshal(b, &v) == nil {
-			u.Error = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u AgentResponse) MarshalJSON() ([]byte, error) {
@@ -622,27 +608,6 @@ func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v AuthMethodEnvVarInline
-		if json.Unmarshal(b, &v) == nil {
-			u.EnvVar = &v
-			return nil
-		}
-	}
-	{
-		var v AuthMethodTerminalInline
-		if json.Unmarshal(b, &v) == nil {
-			u.Terminal = &v
-			return nil
-		}
-	}
-	{
-		var v AuthMethodAgent
-		if json.Unmarshal(b, &v) == nil {
-			u.Agent = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u AuthMethod) MarshalJSON() ([]byte, error) {
@@ -861,13 +826,6 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v UnstructuredCommandInput
-		if json.Unmarshal(b, &v) == nil {
-			u.Unstructured = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -1187,20 +1145,6 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v ClientResult
-		if json.Unmarshal(b, &v) == nil {
-			u.Result = &v
-			return nil
-		}
-	}
-	{
-		var v ClientError
-		if json.Unmarshal(b, &v) == nil {
-			u.Error = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -1661,41 +1605,6 @@ func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v ContentBlockText
-		if json.Unmarshal(b, &v) == nil {
-			u.Text = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockImage
-		if json.Unmarshal(b, &v) == nil {
-			u.Image = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockAudio
-		if json.Unmarshal(b, &v) == nil {
-			u.Audio = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockResourceLink
-		if json.Unmarshal(b, &v) == nil {
-			u.ResourceLink = &v
-			return nil
-		}
-	}
-	{
-		var v ContentBlockResource
-		if json.Unmarshal(b, &v) == nil {
-			u.Resource = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u ContentBlock) MarshalJSON() ([]byte, error) {
@@ -2047,20 +1956,6 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v TextResourceContents
-		if json.Unmarshal(b, &v) == nil {
-			u.TextResourceContents = &v
-			return nil
-		}
-	}
-	{
-		var v BlobResourceContents
-		if json.Unmarshal(b, &v) == nil {
-			u.BlobResourceContents = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -3101,34 +2996,6 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v McpServerHttpInline
-		if json.Unmarshal(b, &v) == nil {
-			u.Http = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerSseInline
-		if json.Unmarshal(b, &v) == nil {
-			u.Sse = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerAcpInline
-		if json.Unmarshal(b, &v) == nil {
-			u.Acp = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerStdio
-		if json.Unmarshal(b, &v) == nil {
-			u.Stdio = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u McpServer) MarshalJSON() ([]byte, error) {
@@ -4125,27 +3992,6 @@ func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v PlanUpdateContentItems
-		if json.Unmarshal(b, &v) == nil {
-			u.Items = &v
-			return nil
-		}
-	}
-	{
-		var v PlanUpdateContentFile
-		if json.Unmarshal(b, &v) == nil {
-			u.File = &v
-			return nil
-		}
-	}
-	{
-		var v PlanUpdateContentMarkdown
-		if json.Unmarshal(b, &v) == nil {
-			u.Markdown = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u PlanUpdateContent) MarshalJSON() ([]byte, error) {
@@ -4681,20 +4527,6 @@ func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v RequestPermissionOutcomeCancelled
-		if json.Unmarshal(b, &v) == nil {
-			u.Cancelled = &v
-			return nil
-		}
-	}
-	{
-		var v RequestPermissionOutcomeSelected
-		if json.Unmarshal(b, &v) == nil {
-			u.Selected = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u RequestPermissionOutcome) MarshalJSON() ([]byte, error) {
@@ -5185,20 +5017,6 @@ func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v SessionConfigOptionSelect
-		if json.Unmarshal(b, &v) == nil {
-			u.Select = &v
-			return nil
-		}
-	}
-	{
-		var v SessionConfigOptionBoolean
-		if json.Unmarshal(b, &v) == nil {
-			u.Boolean = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u SessionConfigOption) MarshalJSON() ([]byte, error) {
@@ -5385,20 +5203,6 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 				u.Grouped = &v
 				return nil
 			}
-		}
-	}
-	{
-		var v SessionConfigSelectOptionsUngrouped
-		if json.Unmarshal(b, &v) == nil {
-			u.Ungrouped = &v
-			return nil
-		}
-	}
-	{
-		var v SessionConfigSelectOptionsGrouped
-		if json.Unmarshal(b, &v) == nil {
-			u.Grouped = &v
-			return nil
 		}
 	}
 	return errors.New("no matching variant for union")
@@ -6390,97 +6194,6 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v SessionUpdateUserMessageChunk
-		if json.Unmarshal(b, &v) == nil {
-			u.UserMessageChunk = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateAgentMessageChunk
-		if json.Unmarshal(b, &v) == nil {
-			u.AgentMessageChunk = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateAgentThoughtChunk
-		if json.Unmarshal(b, &v) == nil {
-			u.AgentThoughtChunk = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdateToolCall
-		if json.Unmarshal(b, &v) == nil {
-			u.ToolCall = &v
-			return nil
-		}
-	}
-	{
-		var v SessionToolCallUpdate
-		if json.Unmarshal(b, &v) == nil {
-			u.ToolCallUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdatePlan
-		if json.Unmarshal(b, &v) == nil {
-			u.Plan = &v
-			return nil
-		}
-	}
-	{
-		var v SessionPlanUpdate
-		if json.Unmarshal(b, &v) == nil {
-			u.PlanUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUpdatePlanRemoved
-		if json.Unmarshal(b, &v) == nil {
-			u.PlanRemoved = &v
-			return nil
-		}
-	}
-	{
-		var v SessionAvailableCommandsUpdate
-		if json.Unmarshal(b, &v) == nil {
-			u.AvailableCommandsUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionCurrentModeUpdate
-		if json.Unmarshal(b, &v) == nil {
-			u.CurrentModeUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionConfigOptionUpdate
-		if json.Unmarshal(b, &v) == nil {
-			u.ConfigOptionUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionSessionInfoUpdate
-		if json.Unmarshal(b, &v) == nil {
-			u.SessionInfoUpdate = &v
-			return nil
-		}
-	}
-	{
-		var v SessionUsageUpdate
-		if json.Unmarshal(b, &v) == nil {
-			u.UsageUpdate = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u SessionUpdate) MarshalJSON() ([]byte, error) {
@@ -6796,20 +6509,6 @@ func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v SetSessionConfigOptionBoolean
-		if json.Unmarshal(b, &v) == nil {
-			u.Boolean = &v
-			return nil
-		}
-	}
-	{
-		var v SetSessionConfigOptionValueId
-		if json.Unmarshal(b, &v) == nil {
-			u.ValueId = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -7263,27 +6962,6 @@ func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v ToolCallContentContent
-		if json.Unmarshal(b, &v) == nil {
-			u.Content = &v
-			return nil
-		}
-	}
-	{
-		var v ToolCallContentDiff
-		if json.Unmarshal(b, &v) == nil {
-			u.Diff = &v
-			return nil
-		}
-	}
-	{
-		var v ToolCallContentTerminal
-		if json.Unmarshal(b, &v) == nil {
-			u.Terminal = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u ToolCallContent) MarshalJSON() ([]byte, error) {
@@ -7673,20 +7351,6 @@ func (u *UnstableCreateElicitationForm) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v UnstableElicitationSessionScope
-		if json.Unmarshal(b, &v) == nil {
-			u.Session = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableElicitationRequestScope
-		if json.Unmarshal(b, &v) == nil {
-			u.Request = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u UnstableCreateElicitationForm) MarshalJSON() ([]byte, error) {
@@ -7798,20 +7462,6 @@ func (u *UnstableCreateElicitationUrl) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v UnstableElicitationSessionScope
-		if json.Unmarshal(b, &v) == nil {
-			u.Session = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableElicitationRequestScope
-		if json.Unmarshal(b, &v) == nil {
-			u.Request = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -7930,20 +7580,6 @@ func (u *UnstableCreateElicitationRequest) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v UnstableCreateElicitationForm
-		if json.Unmarshal(b, &v) == nil {
-			u.Form = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableCreateElicitationUrl
-		if json.Unmarshal(b, &v) == nil {
-			u.Url = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -8130,27 +7766,6 @@ func (u *UnstableCreateElicitationResponse) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v UnstableCreateElicitationAccept
-		if json.Unmarshal(b, &v) == nil {
-			u.Accept = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableCreateElicitationDecline
-		if json.Unmarshal(b, &v) == nil {
-			u.Decline = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableCreateElicitationCancel
-		if json.Unmarshal(b, &v) == nil {
-			u.Cancel = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -8545,20 +8160,6 @@ func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v UnstableElicitationSessionScope
-		if json.Unmarshal(b, &v) == nil {
-			u.Session = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableElicitationRequestScope
-		if json.Unmarshal(b, &v) == nil {
-			u.Request = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u UnstableElicitationFormMode) MarshalJSON() ([]byte, error) {
@@ -8761,20 +8362,6 @@ func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v UnstableElicitationSessionScope
-		if json.Unmarshal(b, &v) == nil {
-			u.Session = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableElicitationRequestScope
-		if json.Unmarshal(b, &v) == nil {
-			u.Request = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -9232,34 +8819,6 @@ func (u *UnstableMcpServer) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v UnstableMcpServerHttp
-		if json.Unmarshal(b, &v) == nil {
-			u.Http = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableMcpServerSse
-		if json.Unmarshal(b, &v) == nil {
-			u.Sse = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableMcpServerAcpInline
-		if json.Unmarshal(b, &v) == nil {
-			u.Acp = &v
-			return nil
-		}
-	}
-	{
-		var v McpServerStdio
-		if json.Unmarshal(b, &v) == nil {
-			u.Stdio = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }
@@ -9888,34 +9447,6 @@ func (u *UnstableNesSuggestion) UnmarshalJSON(b []byte) error {
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
 	}
-	{
-		var v UnstableNesSuggestionEdit
-		if json.Unmarshal(b, &v) == nil {
-			u.Edit = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableNesSuggestionJump
-		if json.Unmarshal(b, &v) == nil {
-			u.Jump = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableNesSuggestionRename
-		if json.Unmarshal(b, &v) == nil {
-			u.Rename = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableNesSuggestionSearchAndReplace
-		if json.Unmarshal(b, &v) == nil {
-			u.SearchAndReplace = &v
-			return nil
-		}
-	}
 	return errors.New("no matching variant for union")
 }
 func (u UnstableNesSuggestion) MarshalJSON() ([]byte, error) {
@@ -10304,20 +9835,6 @@ func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
-	}
-	{
-		var v UnstableSessionConfigOptionSelect
-		if json.Unmarshal(b, &v) == nil {
-			u.Select = &v
-			return nil
-		}
-	}
-	{
-		var v UnstableSessionConfigOptionBoolean
-		if json.Unmarshal(b, &v) == nil {
-			u.Boolean = &v
-			return nil
-		}
 	}
 	return errors.New("no matching variant for union")
 }

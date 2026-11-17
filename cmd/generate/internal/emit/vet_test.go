@@ -200,6 +200,14 @@ func TestNewCreateElicitationRequest_EveryConstructorSetsAScope(t *testing.T) {
 	}
 }
 
+func TestCreateElicitationRequest_NeedsAScopeToDecode(t *testing.T) {
+	in := ` + "`" + `{"mode":"form","message":"m","requestedSchema":{},"fields":[]}` + "`" + `
+	var req CreateElicitationRequest
+	if err := json.Unmarshal([]byte(in), &req); err == nil {
+		t.Errorf("a form mode without a scope decodes to %+v, want an error", req.Form)
+	}
+}
+
 func TestCreateElicitationRequest_NeedsAScopeToEncode(t *testing.T) {
 	req := CreateElicitationRequest{Form: &CreateElicitationForm{Message: "m", RequestedSchema: map[string]any{}}}
 	if out, err := json.Marshal(req); err == nil {

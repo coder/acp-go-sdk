@@ -1190,8 +1190,12 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				})
 			}
 		})
-		// fallback: try decode sequentially
+		// A variant with required keys had its turn above, and does not match
+		// an input without them. The others are tried in order.
 		for _, vi := range variants {
+			if (vi.isObject && len(vi.required) > 0) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
+				continue
+			}
 			g.Block(
 				Var().Id("v").Id(vi.typeName),
 				If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("==").Nil()).Block(

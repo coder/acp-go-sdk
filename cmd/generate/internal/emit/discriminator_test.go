@@ -106,6 +106,23 @@ func TestUnion_UnmarshalJSON_MatchesAVariantOnlyWithItsConstValue(t *testing.T) 
 		}
 	}
 }
+
+func TestUnion_UnmarshalJSON_SelectsAVariantByExactKeys(t *testing.T) {
+	// The upstream Rust types read keys exactly too.
+	tests := []struct {
+		into any
+		in   string
+	}{
+		{new(Outcome), ` + "`" + `{"Outcome":"selected","optionId":"o"}` + "`" + `},
+		{new(Server), ` + "`" + `{"Name":"n","Command":"c"}` + "`" + `},
+		{new(Options), ` + "`" + `[{"Value":"v"}]` + "`" + `},
+	}
+	for _, tt := range tests {
+		if err := json.Unmarshal([]byte(tt.in), tt.into); err == nil {
+			t.Errorf("unmarshal %s gives %+v, want an error for a key in another case", tt.in, tt.into)
+		}
+	}
+}
 `
 
 // catchAllUnionSchema has the union shapes that the schema gains from 1.18.0

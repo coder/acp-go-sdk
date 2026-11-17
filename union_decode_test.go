@@ -135,6 +135,23 @@ func TestUnion_UnmarshalJSON_NullSelectsOnlyANullVariant(t *testing.T) {
 	}
 }
 
+func TestUnion_UnmarshalJSON_SelectsAVariantByExactKeys(t *testing.T) {
+	t.Parallel()
+	// The upstream Rust types read keys exactly too.
+	for name, tt := range map[string]struct {
+		into any
+		in   string
+	}{
+		"discriminator in another case": {new(ContentBlock), `{"Type":"text","text":"hi"}`},
+		"required keys in another case": {new(McpServer), `{"Name":"n","Command":"c","Args":[],"Env":[]}`},
+		"item keys in another case":     {new(SessionConfigSelectOptions), `[{"Value":"v","Name":"n"}]`},
+	} {
+		if err := json.Unmarshal([]byte(tt.in), tt.into); err == nil {
+			t.Errorf("%s: unmarshal %s gives %+v, want an error", name, tt.in, tt.into)
+		}
+	}
+}
+
 func TestToolCall_UnmarshalJSON_DropsContentOfAnUnknownType(t *testing.T) {
 	t.Parallel()
 	var call ToolCall

@@ -534,29 +534,28 @@ func (h *harness) listSessions(a *agentConn) (status, string) {
 	return pass, fmt.Sprintf("session A is among the %d sessions listed for its cwd", n)
 }
 
-// listContains pages through session/list for cwd and looks for sid.
+// listContains pages through session/list for cwd and looks for sid. It
+// reads every page, so a failure on a later page still shows.
 func listContains(a *agentConn, cwd string, sid acp.SessionId) (bool, int, error) {
-	n := 0
+	n, found := 0, false
 	var cursor *string
 	for page := 0; page < 50; page++ {
 		ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 		resp, err := a.conn.ListSessions(ctx, acp.ListSessionsRequest{Cwd: &cwd, Cursor: cursor})
 		cancel()
 		if err != nil {
-			return false, n, errors.New("session/list: " + errText(err))
+			return found, n, errors.New("session/list: " + errText(err))
 		}
 		for _, s := range resp.Sessions {
 			n++
-			if s.SessionId == sid {
-				return true, n, nil
-			}
+			found = found || s.SessionId == sid
 		}
 		if resp.NextCursor == nil || *resp.NextCursor == "" {
-			return false, n, nil
+			return found, n, nil
 		}
 		cursor = resp.NextCursor
 	}
-	return false, n, errors.New("session/list: more than 50 pages")
+	return found, n, errors.New("session/list: more than 50 pages")
 }
 
 func (h *harness) closeSession(a *agentConn) (status, string) {

@@ -361,8 +361,9 @@ cmd_g5() {
 	# The driver bounds each request, but a write to an agent that stops
 	# reading stdin cannot time out. The outer timeout ends such a hang, and
 	# stop_groups then stops the agents that the driver left running.
-	export ACP_HARNESS_TAG=$TAG/$label
-	tracked timeout --kill-after=30 "${HARNESS_G5_TIMEOUT:-1800}" \
+	# The tag goes on the tracked command only, never on this shell: then
+	# stop_tagged cannot hit the shell's own helpers, such as tee below.
+	tracked env "ACP_HARNESS_TAG=$TAG/$label" timeout --kill-after=30 "${HARNESS_G5_TIMEOUT:-1800}" \
 		env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
 	[ "$rc" = 124 ] && echo "TIMEOUT: the driver ran longer than ${HARNESS_G5_TIMEOUT:-1800}s"
@@ -377,7 +378,6 @@ cmd_g5() {
 cmd_g4() {
 	need_run
 	local rc=0 out
-	export ACP_HARNESS_TAG=$TAG/g4
 	# Both folders go first, so an interrupted rerun leaves no stale PASS.
 	rm -rf "$EVIDENCE/g4-ts-client-go-agent" "$EVIDENCE/g4-go-client-ts-agent"
 	# 1. The TypeScript SDK as the client, this repo's example agent as the agent.
@@ -385,7 +385,7 @@ cmd_g4() {
 	mkdir -p "$out"
 	echo "cd $WORK/npm/ts && node ts-client.mjs --out $out --cwd $WORK/cwd/g4-ts -- $BIN/acp-example-agent" >"$out/command.txt"
 	echo "== TS client -> Go example agent"
-	(cd "$WORK/npm/ts" && tracked timeout 120 node ts-client.mjs --out "$out" \
+	(cd "$WORK/npm/ts" && tracked env "ACP_HARNESS_TAG=$TAG/g4" timeout 120 node ts-client.mjs --out "$out" \
 		--cwd "$WORK/cwd/g4-ts" -- "$BIN/acp-example-agent" 2>"$out/client.stderr.log") || rc=1
 	# A timeout kills the client before it can stop the agent's own group.
 	stop_tagged g4
@@ -398,7 +398,7 @@ cmd_g4() {
 	echo "== Go driver -> TS example agent"
 	local from
 	from=$(($(wc -l <"$WORK/pgids") + 1))
-	(cd "$WORK/npm/ts" && tracked timeout 120 "$BIN/acpharness" -profile smoke \
+	(cd "$WORK/npm/ts" && tracked env "ACP_HARNESS_TAG=$TAG/g4" timeout 120 "$BIN/acpharness" -profile smoke \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts") || rc=1
 	stop_groups "$from"
 	g4_quiet "$out/agent-1.stderr.log" 'error|warn' "the TS agent logged an error" || rc=1
@@ -446,6 +446,7 @@ cmd_report() {
 				if [ -f "$f" ]; then jq -r '.results[].name' "$f"; fi
 			done | awk '!seen[$0]++')
 			while IFS= read -r n; do
+				[ -n "$n" ] || continue
 				row="| $n |"
 				for l in "${labels[@]}"; do
 					f=$EVIDENCE/$l/summary.json

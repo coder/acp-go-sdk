@@ -54,6 +54,9 @@ type recorder struct {
 	// it has: a client callback or a "failed to handle notification" log.
 	notified map[int]int
 	handled  map[int]int
+	// Agent requests per connection, and the SDK's replies to them.
+	requested map[int]int
+	answered  map[int]int
 }
 
 func newRecorder(dir string) (*recorder, error) {
@@ -61,7 +64,8 @@ func newRecorder(dir string) (*recorder, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &recorder{start: time.Now(), transcript: f, inbound: map[string]int{}, notified: map[int]int{}, handled: map[int]int{}}
+	r := &recorder{start: time.Now(), transcript: f, inbound: map[string]int{}, notified: map[int]int{}, handled: map[int]int{},
+		requested: map[int]int{}, answered: map[int]int{}}
 	r.scenario.Store("setup")
 	return r, nil
 }
@@ -100,6 +104,12 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 		if len(msg.ID) == 0 && !strings.HasPrefix(msg.Method, "_") && msg.Method != "$/cancel_request" {
 			r.notified[conn]++
 		}
+		if len(msg.ID) > 0 {
+			r.requested[conn]++
+		}
+	}
+	if dir == clientToAgent && msg.Method == "" && len(msg.ID) > 0 {
+		r.answered[conn]++
 	}
 	// The SDK drops an error response whose request no longer waits, so
 	// every error response from the agent is recorded here.
@@ -146,11 +156,12 @@ func (r *recorder) handledOne(conn int) {
 	r.mu.Unlock()
 }
 
-// pending is how many notifications on conn the SDK has not routed yet.
+// pending is how many notifications on conn the SDK has not routed yet,
+// plus how many agent requests it has not answered.
 func (r *recorder) pending(conn int) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.notified[conn] - r.handled[conn]
+	return r.notified[conn] - r.handled[conn] + r.requested[conn] - r.answered[conn]
 }
 
 func (r *recorder) logged(conn int, text string) {

@@ -71,7 +71,6 @@ type Definition struct {
 	boolSchema *bool `json:"-"`
 }
 
-// UnmarshalJSON allows Definition to decode both object and boolean JSON Schema forms.
 // isTrue decodes the JSON literal true as true and any other value as false.
 type isTrue bool
 
@@ -80,6 +79,7 @@ func (t *isTrue) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// UnmarshalJSON allows Definition to decode both object and boolean JSON Schema forms.
 func (d *Definition) UnmarshalJSON(b []byte) error {
 	// Trim whitespace for simple equality checks
 	tb := bytes.TrimSpace(b)

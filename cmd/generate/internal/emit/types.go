@@ -141,14 +141,12 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 }
 
 type typesBuilder struct {
-	f                 *File
-	schema            *load.Schema
-	usedTypeNames     map[string]bool
-	variants          map[string][]unionVariant
-	validatedEnums    map[string]bool
-	usesDecodeHelpers bool
-	// usesAdditionalProperties says that a struct keeps the members its
-	// schema does not name, so emitSupport declares the helpers for that.
+	f                        *File
+	schema                   *load.Schema
+	usedTypeNames            map[string]bool
+	variants                 map[string][]unionVariant
+	validatedEnums           map[string]bool
+	usesDecodeHelpers        bool
 	usesAdditionalProperties bool
 }
 

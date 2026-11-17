@@ -4,10 +4,11 @@ import jen "github.com/dave/jennifer/jen"
 
 // Local aliases to avoid dot-importing jennifer while keeping concise calls.
 type (
-	Code  = jen.Code
-	Dict  = jen.Dict
-	Group = jen.Group
-	File  = jen.File
+	Code      = jen.Code
+	Dict      = jen.Dict
+	Group     = jen.Group
+	File      = jen.File
+	Statement = jen.Statement
 )
 
 var (
@@ -36,6 +37,7 @@ var (
 	If            = jen.If
 	List          = jen.List
 	Op            = jen.Op
+	Parens        = jen.Parens
 	InterfaceFunc = jen.InterfaceFunc
 	Comment       = jen.Comment
 )

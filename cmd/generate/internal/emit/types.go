@@ -2,7 +2,6 @@ package emit
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -140,6 +139,14 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 	return os.WriteFile(filepath.Join(outDir, "types_gen.go"), buf.Bytes(), 0o644)
 }
 
+type typesBuilder struct {
+	f                 *File
+	schema            *load.Schema
+	usedTypeNames     map[string]bool
+	variants          map[string][]unionVariant
+	usesDecodeHelpers bool
+}
+
 // buildTypesJen builds the types_gen.go file. It also returns, per oneOf union,
 // the variants that emitUnion emitted, with the names it chose, so that
 // WriteHelpersJen builds constructors for exactly those types.
@@ -153,6 +160,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	for k := range schema.Defs {
 		usedTypeNames[k] = true
 	}
+	b := &typesBuilder{f: f, schema: schema, usedTypeNames: usedTypeNames, variants: emitted}
 
 	// Deterministic order
 	keys := make([]string, 0, len(schema.Defs))
@@ -235,195 +243,15 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			f.Line()
 		case len(def.AnyOf) > 0:
 			unionWrapper = true
-			emitUnion(f, name, schema, def, def.AnyOf, false, validated && ir.PrimaryType(def) == "object", usedTypeNames, emitted)
+			b.emitUnion(name, def, def.AnyOf, false, validated && ir.PrimaryType(def) == "object")
 		case len(def.OneOf) > 0 && !isStringConstUnion(def):
 			// Generic union generation for non-enum oneOf
 			// Use the same implementation, but require exactly one variant
 			unionWrapper = true
-			emitUnion(f, name, schema, def, def.OneOf, true, true, usedTypeNames, emitted)
+			b.emitUnion(name, def, def.OneOf, true, true)
 		case ir.PrimaryType(def) == "object" && len(def.Properties) > 0:
-			st := []Code{}
-			req := map[string]struct{}{}
-			for _, r := range def.Required {
-				req[r] = struct{}{}
-			}
-			pkeys := make([]string, 0, len(def.Properties))
-			for pk := range def.Properties {
-				pkeys = append(pkeys, pk)
-			}
-			sort.Strings(pkeys)
-
-			// Pre-generate nested struct types for inline object properties
-			nestedTypes := map[string]string{} // property name -> generated type name
-			for _, pk := range pkeys {
-				prop := def.Properties[pk]
-				// Detect inline objects: no $ref, type is object, has properties
-				if prop.Ref == "" && ir.PrimaryType(prop) == "object" && len(prop.Properties) > 0 {
-					nestedTypeName := generateNestedTypeName(name, pk, usedTypeNames)
-					nestedTypes[pk] = nestedTypeName
-
-					// DEFENSIVE PROGRAMMING: Assert no collision before registering
-					if usedTypeNames[nestedTypeName] {
-						panic(fmt.Sprintf("BUG: nested type name collision: %q already registered", nestedTypeName))
-					}
-					usedTypeNames[nestedTypeName] = true
-
-					// Generate the nested struct type
-					if prop.Description != "" {
-						emitDocComment(f, prop.Description)
-					}
-					nestedFields := []Code{}
-					nestedReq := map[string]struct{}{}
-					for _, r := range prop.Required {
-						nestedReq[r] = struct{}{}
-					}
-					nestedPkeys := make([]string, 0, len(prop.Properties))
-					for npk := range prop.Properties {
-						nestedPkeys = append(nestedPkeys, npk)
-					}
-					sort.Strings(nestedPkeys)
-
-					for _, npk := range nestedPkeys {
-						nprop := prop.Properties[npk]
-						nfield := util.ToExportedField(npk)
-						if nprop.Description != "" {
-							nestedFields = appendDocComments(nestedFields, nprop.Description)
-						}
-						ntag := npk
-						if _, ok := nestedReq[npk]; !ok {
-							ntag = npk + ",omitempty"
-						}
-						nestedFields = append(nestedFields, Id(nfield).Add(jenTypeForOptional(nprop)).Tag(map[string]string{"json": ntag}))
-					}
-					f.Type().Id(nestedTypeName).Struct(nestedFields...)
-					f.Line()
-				}
-			}
-
-			// Track fields with schema defaults for generic (de)serialization
-			type DefaultKind int
-			const (
-				KindNone DefaultKind = iota
-				KindScalar
-				KindArray
-				KindObject
-			)
-			type defaultProp struct {
-				fieldName   string
-				propName    string
-				defaultJSON string
-				kind        DefaultKind
-				allowNull   bool
-				nilable     bool // whether zero-value is nil (slice/map)
-			}
-			defaults := []defaultProp{}
-
-			for _, pk := range pkeys {
-				prop := def.Properties[pk]
-				field := util.ToExportedField(pk)
-				if prop.Description != "" {
-					st = appendDocComments(st, prop.Description)
-				}
-				tag := pk
-				// Detect defaults generically
-				var dp *defaultProp
-				if prop.Default != nil {
-					// Compute kind from default value
-					k := defaultKindOf(prop.Default)
-					// Whether field zero is nil (slice/map) for Marshal fill-in
-					nilable := ir.PrimaryType(prop) == "array" || (ir.PrimaryType(prop) == "object" && len(prop.Properties) == 0 && prop.Ref == "")
-					// Capture canonical JSON of default
-					defJSON := "null"
-					if b, err := json.Marshal(prop.Default); err == nil {
-						defJSON = string(b)
-					}
-					dp = &defaultProp{
-						fieldName:   field,
-						propName:    pk,
-						defaultJSON: defJSON,
-						kind:        DefaultKind(k),
-						allowNull:   includesNull(prop),
-						nilable:     nilable,
-					}
-					defaults = append(defaults, *dp)
-				}
-				if _, ok := req[pk]; !ok {
-					// Default: omit if empty for optional fields.
-					// Keep always-present behavior only for defaults where the zero value is nil (slice/map).
-					// For typed object defaults (non-nilable), still allow omission on the wire.
-					if dp == nil || (dp.kind != KindArray && dp.kind != KindObject) || (dp != nil && !dp.nilable) {
-						tag = pk + ",omitempty"
-					}
-				}
-				// Emit an additional comment line indicating the default, if any.
-				if dp != nil && dp.defaultJSON != "null" {
-					// Insert an empty comment line before default comment (visual separator)
-					if prop.Description != "" {
-						st = append(st, Comment(""))
-					}
-					st = append(st, Comment(fmt.Sprintf("Defaults to %s if unset.", dp.defaultJSON)))
-				}
-				// Use generated nested type if available, otherwise use jenTypeForOptional
-				var fieldType Code
-				if nestedTypeName, hasNested := nestedTypes[pk]; hasNested {
-					fieldType = Id(nestedTypeName)
-				} else {
-					fieldType = jenTypeForOptional(prop)
-				}
-				st = append(st, Id(field).Add(fieldType).Tag(map[string]string{"json": tag}))
-			}
-			f.Type().Id(name).Struct(st...)
-			f.Line()
-
-			// If the struct has any fields with schema defaults, synthesize MarshalJSON and UnmarshalJSON
-			if len(defaults) > 0 {
-				// MarshalJSON: coerce nil slices to empty slices before encoding
-				f.Func().Params(Id("v").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
-					g.Type().Id("Alias").Id(name)
-					g.Var().Id("a").Id("Alias")
-					g.Id("a").Op("=").Id("Alias").Call(Id("v"))
-					for _, dp := range defaults {
-						// For array/map defaults: if zero is nil, fill with default JSON when nil
-						if dp.kind == KindArray || dp.kind == KindObject {
-							if dp.nilable {
-								g.If(Id("a").Dot(dp.fieldName).Op("==").Nil()).Block(
-									Qual("encoding/json", "Unmarshal").Call(Index().Byte().Parens(Lit(dp.defaultJSON)), Op("&").Id("a").Dot(dp.fieldName)),
-								)
-							}
-						}
-						// For typed object defaults (non-nilable), we keep Option A: do not inject values on encode.
-					}
-					g.Return(Qual("encoding/json", "Marshal").Call(Id("a")))
-				})
-				f.Line()
-
-				// UnmarshalJSON: apply defaults when field is missing or null (and schema doesn't include null)
-				f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
-					g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
-					g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("!=").Nil()).Block(Return(Id("err")))
-					g.Type().Id("Alias").Id(name)
-					g.Var().Id("a").Id("Alias")
-					g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("a")), Id("err").Op("!=").Nil()).Block(Return(Id("err")))
-					for _, dp := range defaults {
-						g.BlockFunc(func(h *Group) {
-							h.List(Id("_rm"), Id("_ok")).Op(":=").Id("m").Index(Lit(dp.propName))
-							// Apply default when missing, or when null and null is not allowed
-							if dp.allowNull {
-								h.If(Op("!").Id("_ok")).Block(
-									Qual("encoding/json", "Unmarshal").Call(Index().Byte().Parens(Lit(dp.defaultJSON)), Op("&").Id("a").Dot(dp.fieldName)),
-								)
-							} else {
-								h.If(Op("!").Id("_ok").Op("||").Parens(Id("string").Call(Id("_rm")).Op("==").Lit("null"))).Block(
-									Qual("encoding/json", "Unmarshal").Call(Index().Byte().Parens(Lit(dp.defaultJSON)), Op("&").Id("a").Dot(dp.fieldName)),
-								)
-							}
-						})
-					}
-					g.Op("*").Id("v").Op("=").Id(name).Call(Id("a"))
-					g.Return(Nil())
-				})
-				f.Line()
-			}
+			fields := ir.Fields(def.Properties, def.Required)
+			b.emitStruct(name, fields, b.emitNestedStructs(name, fields))
 		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":
 			f.Type().Id(name).Add(primitiveJenType(ir.PrimaryType(def)))
 			f.Line()
@@ -531,6 +359,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	// Always emit ClientExperimental, even if empty.
 	f.Comment("ClientExperimental defines unstable methods that are not part of the official spec. These may change or be removed without notice.")
 	f.Type().Id("ClientExperimental").Interface(clientExperimental...)
+	b.emitSupport()
 	return f, emitted
 }
 
@@ -668,30 +497,6 @@ func primitiveJenType(t string) Code {
 		return Bool()
 	default:
 		return Any()
-	}
-}
-
-// defaultKindOf classifies the JSON Schema default value into a coarse kind.
-func defaultKindOf(val any) int {
-	switch val.(type) {
-	case nil:
-		return 0 // KindNone
-	case []any:
-		return 2 // KindArray
-	case map[string]any:
-		return 3 // KindObject
-	case string, float64, bool:
-		return 1 // KindScalar
-	default:
-		// Fallback: classify by fmt string
-		s := fmt.Sprint(val)
-		if strings.HasPrefix(s, "[") {
-			return 2
-		}
-		if strings.HasPrefix(s, "map[") || strings.HasPrefix(s, "{") {
-			return 3
-		}
-		return 1
 	}
 }
 
@@ -968,7 +773,8 @@ func isPhantomVariant(v *load.Definition, ref string) bool {
 // (a oneOf), the wrapper's Validate requires exactly one variant. Validate is
 // emitted when exactlyOne or validate is set. It also checks the union's own
 // required properties on the set variant.
-func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Definition, defs []*load.Definition, exactlyOne, validate bool, usedTypeNames map[string]bool, emitted map[string][]unionVariant) {
+func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs []*load.Definition, exactlyOne, validate bool) {
+	f, schema, usedTypeNames, emitted := b.f, b.schema, b.usedTypeNames, b.variants
 	type variantInfo struct {
 		fieldName         string
 		typeName          string
@@ -1140,15 +946,11 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				panic(fmt.Sprintf("BUG: attempting to emit unregistered type: %q (parent union: %q)", tname, name))
 			}
 
-			st := []Code{}
-			if !isNull && isObj {
-				req := map[string]struct{}{}
-				for _, r := range v.Required {
-					req[r] = struct{}{}
-				}
-				for r := range sharedRequired {
-					req[r] = struct{}{}
-				}
+			switch {
+			case isNull:
+				f.Type().Id(tname).Struct()
+				f.Line()
+			case isObj:
 				mergedProps := make(map[string]*load.Definition, len(sharedProps)+len(v.Properties))
 				for pk, pDef := range sharedProps {
 					mergedProps[pk] = pDef
@@ -1156,14 +958,14 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				for pk, pDef := range v.Properties {
 					mergedProps[pk] = pDef
 				}
-				pkeys := make([]string, 0, len(mergedProps))
-				for pk := range mergedProps {
-					pkeys = append(pkeys, pk)
+				required := append([]string(nil), v.Required...)
+				for r := range sharedRequired {
+					required = append(required, r)
 				}
-				sort.Strings(pkeys)
-				for _, pk := range pkeys {
-					if _, shared := sharedRequired[pk]; shared && mergedProps[pk].Const == nil {
-						if check := requiredCheck(pk, mergedProps[pk], "u", fieldName); check != nil {
+				fields := ir.Fields(mergedProps, required)
+				for _, field := range fields {
+					if _, shared := sharedRequired[field.Prop]; shared && field.Def.Const == nil {
+						if check := requiredCheck(field.Prop, field.Def, "u", fieldName); check != nil {
 							sharedChecks = append(sharedChecks, check)
 						}
 					}
@@ -1171,19 +973,8 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				if v.Description != "" {
 					emitDocComment(f, v.Description)
 				}
-				for _, pk := range pkeys {
-					pDef := mergedProps[pk]
-					field := util.ToExportedField(pk)
-					if pDef.Description != "" {
-						st = appendDocComments(st, pDef.Description)
-					}
-					tag := pk
-					if _, ok := req[pk]; !ok {
-						tag = pk + ",omitempty"
-					}
-					st = append(st, Id(field).Add(jenTypeForOptional(pDef)).Tag(map[string]string{"json": tag}))
-				}
-			} else if !isNull && !isObj && v.Title != "" {
+				b.emitStruct(tname, fields, nil)
+			default:
 				// Title-only variants: check if they're extension types
 				// Extension types should preserve the raw payload, not drop it
 				isExtension := strings.Contains(strings.ToLower(v.Description), "extension") ||
@@ -1203,15 +994,10 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 					f.Type().Id(tname).Add(jenTypeFor(v))
 				} else {
 					// Emit as empty struct only for truly empty variants.
-					f.Type().Id(tname).Struct(st...)
+					f.Type().Id(tname).Struct()
 				}
 				f.Line()
-				// Skip the struct emission below for title-only variants
-				goto skipStructEmit
 			}
-			f.Type().Id(tname).Struct(st...)
-			f.Line()
-		skipStructEmit:
 		}
 		variants = append(variants, variantInfo{
 			fieldName:         fieldName,

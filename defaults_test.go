@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -126,4 +127,32 @@ func TestInitializeResponse_AgentCapabilities_Defaults(t *testing.T) {
 			t.Fatalf("unexpected agentCapabilities defaults: %+v", resp.AgentCapabilities)
 		}
 	})
+}
+
+func TestInitializeResponse_UnmarshalJSON_TypeErrorNamesStructAndProperty(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		in        string
+		wantField string
+	}{
+		{"property without a default", `{"protocolVersion":"one"}`, "protocolVersion"},
+		{"property with a default", `{"protocolVersion":1,"agentCapabilities":5}`, "agentCapabilities"},
+		{"property inside one with a default", `{"protocolVersion":1,"agentCapabilities":{"loadSession":"yes"}}`, "agentCapabilities.loadSession"},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var resp InitializeResponse
+			err := json.Unmarshal([]byte(tt.in), &resp)
+			var typeErr *json.UnmarshalTypeError
+			if !errors.As(err, &typeErr) {
+				t.Fatalf("unmarshal error = %v, want a *json.UnmarshalTypeError", err)
+			}
+			if typeErr.Struct != "InitializeResponse" || typeErr.Field != tt.wantField {
+				t.Fatalf("error names %s.%s, want InitializeResponse.%s (error: %v)", typeErr.Struct, typeErr.Field, tt.wantField, err)
+			}
+		})
+	}
 }

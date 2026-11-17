@@ -127,8 +127,11 @@ func checkHint(site hintSite) (skip, problem string) {
 		b, _ := json.Marshal(o)
 		return b
 	}
-	invalid := func(build func(any) []byte) (any, bool) {
+	invalid := func(node any, build func(any) []byte) (any, bool) {
 		for _, bad := range malformed {
+			if _, isString := bad.(string); isString && readsEveryString(site.file.defs, node) {
+				continue
+			}
 			if site.file.validate(site.def, build(bad)) != nil {
 				return bad, true
 			}
@@ -145,7 +148,7 @@ func checkHint(site hintSite) (skip, problem string) {
 		if !ok || site.file.validate(site.def, with(good)) != nil {
 			return "no schema-valid instance with the property set", ""
 		}
-		bad, ok := invalid(with)
+		bad, ok := invalid(site.schema, with)
 		if !ok {
 			return "the property accepts every tried value", ""
 		}
@@ -158,7 +161,7 @@ func checkHint(site hintSite) (skip, problem string) {
 		if err := site.file.validate(site.def, with([]any{item})); err != nil {
 			return "built item is not schema-valid: " + err.Error(), ""
 		}
-		bad, ok := invalid(func(bad any) []byte { return with([]any{item, bad}) })
+		bad, ok := invalid(itemsOf(site.file.defs, site.schema), func(bad any) []byte { return with([]any{item, bad}) })
 		if !ok {
 			return "the items accept every tried value", ""
 		}
@@ -224,6 +227,60 @@ func itemsOf(defs map[string]any, node any) any {
 	return nil
 }
 
+// readsEveryString reports whether node resolves to a closed string enum that
+// has the member "other". The Rust schema crate marks that member
+// #[serde(other)] and reads every string the enum does not list as it, so a
+// string is no bad value there.
+func readsEveryString(defs map[string]any, node any) bool {
+	m, _ := node.(map[string]any)
+	if ref, ok := m["$ref"].(string); ok {
+		return readsEveryString(defs, defs[ref[len("#/$defs/"):]])
+	}
+	members, _ := m["enum"].([]any)
+	for _, key := range []string{"allOf", "anyOf", "oneOf"} {
+		alts, _ := m[key].([]any)
+		for _, alt := range alts {
+			am, _ := alt.(map[string]any)
+			if member, ok := am["const"]; ok {
+				members = append(members, member)
+			} else if readsEveryString(defs, alt) {
+				return true
+			}
+		}
+	}
+	for _, member := range members {
+		if member == "other" {
+			return true
+		}
+	}
+	return false
+}
+
+// readsOther reads kind as the generated SDK reads ToolCallUpdate.kind: a
+// string that Kind does not list is "other", and a value that is no string
+// reads as absent.
+type readsOther struct {
+	Kind *string `json:"kind,omitempty"`
+}
+
+func (v *readsOther) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Kind json.RawMessage `json:"kind"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	var kind string
+	if json.Unmarshal(raw.Kind, &kind) != nil {
+		return nil
+	}
+	if kind != "read" {
+		kind = "other"
+	}
+	v.Kind = &kind
+	return nil
+}
+
 func TestFindHints_KeepsEachSchemaFile(t *testing.T) {
 	def := map[string]any{"properties": map[string]any{"p": map[string]any{"x-deserialize-default-on-null": true}}}
 	s := &suite{files: []*schemaFile{
@@ -241,7 +298,10 @@ func TestCheckHint(t *testing.T) {
 			"p": {"type": ["string", "null"], "x-deserialize-default-on-null": true}}},
 		"E": {"type": "object", "required": ["name"], "properties": {
 			"name": {"type": "string", "minLength": 20},
-			"p": {"type": "string", "x-deserialize-default-on-error": true}}}}}`))
+			"p": {"type": "string", "x-deserialize-default-on-error": true}}},
+		"Kind": {"oneOf": [{"const": "read", "type": "string"}, {"const": "other", "type": "string"}]},
+		"O": {"type": "object", "properties": {
+			"kind": {"anyOf": [{"$ref": "#/$defs/Kind"}, {"type": "null"}], "x-deserialize-default-on-error": true}}}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,6 +327,7 @@ func TestCheckHint(t *testing.T) {
 		{"null kept as null", "N", func() any { return new(keepsNull) }, false, true},
 		{"null read as absent", "N", func() any { return new(readsNullAsAbsent) }, false, false},
 		{"no schema-valid baseline", "E", func() any { return new(plain) }, true, false},
+		{"an enum with the member other takes every string", "O", func() any { return new(readsOther) }, false, false},
 	} {
 		saved, had := registry[tc.def]
 		registry[tc.def] = tc.sdkType

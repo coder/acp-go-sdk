@@ -92,9 +92,12 @@ func namedTypeRef(d *load.Definition) string {
 	return d.Ref
 }
 
+// enumValidator returns the check that a decoded value is a member of the
+// closed enum that ref names. An enum with the member "other" needs none: its
+// UnmarshalJSON reads every other string as that member.
 func (b *typesBuilder) enumValidator(ref string, ptr bool) Code {
 	name := strings.TrimPrefix(ref, "#/$defs/")
-	if def := b.schema.Defs[name]; def == nil || (len(def.Enum) == 0 && !isStringConstUnion(def)) {
+	if def := b.schema.Defs[name]; def == nil || (len(def.Enum) == 0 && !isStringConstUnion(def)) || hasOtherMember(def) {
 		return nil
 	}
 	b.validatedEnums[name] = true

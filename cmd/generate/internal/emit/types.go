@@ -203,30 +203,8 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 		// so emitUnion writes its Validate.
 		unionWrapper := false
 		switch {
-		case len(def.Enum) > 0:
-			f.Type().Id(name).String()
-			defs := []Code{}
-			for _, v := range def.Enum {
-				s := fmt.Sprint(v)
-				defs = append(defs, Id(util.ToEnumConst(name, s)).Id(name).Op("=").Lit(s))
-			}
-			if len(defs) > 0 {
-				f.Const().Defs(defs...)
-			}
-			f.Line()
-		case isStringConstUnion(def):
-			f.Type().Id(name).String()
-			defs := []Code{}
-			for _, v := range def.OneOf {
-				if v != nil && v.Const != nil {
-					s := fmt.Sprint(v.Const)
-					defs = append(defs, Id(util.ToEnumConst(name, s)).Id(name).Op("=").Lit(s))
-				}
-			}
-			if len(defs) > 0 {
-				f.Const().Defs(defs...)
-			}
-			f.Line()
+		case len(def.Enum) > 0, isStringConstUnion(def):
+			b.emitEnum(name, def)
 		case len(def.AnyOf) > 0 && isOpenStringEnum(def):
 			// "Open" string enum: `anyOf` of string consts plus (typically) a
 			// free-form string catch-all. Emit as a named string type with
@@ -383,6 +361,49 @@ func isStringConstUnion(def *load.Definition) bool {
 		}
 	}
 	return true
+}
+
+// otherEnumValue is the member of a closed enum that stands for every value the
+// enum does not list. The Rust schema crate marks that member #[serde(other)].
+const otherEnumValue = "other"
+
+func hasOtherMember(def *load.Definition) bool {
+	return slices.Contains(enumValues(def), otherEnumValue)
+}
+
+// emitEnum declares the closed string enum name with one constant per member.
+func (b *typesBuilder) emitEnum(name string, def *load.Definition) {
+	f := b.f
+	f.Type().Id(name).String()
+	members := []Code{}
+	defs := []Code{}
+	for _, value := range enumValues(def) {
+		members = append(members, Id(util.ToEnumConst(name, value)))
+		defs = append(defs, Id(util.ToEnumConst(name, value)).Id(name).Op("=").Lit(value))
+	}
+	if len(defs) > 0 {
+		f.Const().Defs(defs...)
+	}
+	f.Line()
+	if !hasOtherMember(def) {
+		return
+	}
+
+	other := util.ToEnumConst(name, otherEnumValue)
+	f.Comment(fmt.Sprintf("UnmarshalJSON reads a string that %s does not list as %s.", name, other))
+	f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().Block(
+		If(Id("string").Call(Id("b")).Op("==").Lit("null")).Block(Return(Nil())),
+		Var().Id("s").String(),
+		If(Id("err").Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("s")), Id("err").Op("!=").Nil()).Block(
+			Return(Id("err")),
+		),
+		Switch(Id("member").Op(":=").Id(name).Call(Id("s")), Id("member")).Block(
+			Case(members...).Block(Op("*").Id("v").Op("=").Id("member")),
+			Default().Block(Op("*").Id("v").Op("=").Id(other)),
+		),
+		Return(Nil()),
+	)
+	f.Line()
 }
 
 // isOpenStringEnum reports whether def is an "open" string enum: an `anyOf`

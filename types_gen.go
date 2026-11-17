@@ -5258,7 +5258,7 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenientItems(raw.Content, &v.Content)
-	decodeLenient(raw.Kind, &v.Kind, (*ToolKind).valid)
+	decodeLenient(raw.Kind, &v.Kind)
 	decodeLenientItems(raw.Locations, &v.Locations)
 	decodeLenient(raw.Status, &v.Status, (*ToolCallStatus).valid)
 	return nil
@@ -6476,7 +6476,7 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenientItems(raw.Content, &v.Content)
-	decodeLenient(raw.Kind, &v.Kind, (*ToolKind).valid)
+	decodeLenient(raw.Kind, &v.Kind)
 	decodeLenientItems(raw.Locations, &v.Locations)
 	decodeLenient(raw.Status, &v.Status, (*ToolCallStatus).valid)
 	return nil
@@ -6509,6 +6509,24 @@ const (
 	ToolKindSwitchMode ToolKind = "switch_mode"
 	ToolKindOther      ToolKind = "other"
 )
+
+// UnmarshalJSON reads a string that ToolKind does not list as ToolKindOther.
+func (v *ToolKind) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	switch member := ToolKind(s); member {
+	case ToolKindRead, ToolKindEdit, ToolKindDelete, ToolKindMove, ToolKindSearch, ToolKindExecute, ToolKindThink, ToolKindFetch, ToolKindSwitchMode, ToolKindOther:
+		*v = member
+	default:
+		*v = ToolKindOther
+	}
+	return nil
+}
 
 // Notification sent when a suggestion is accepted.
 type UnstableAcceptNesNotification struct {
@@ -9560,14 +9578,6 @@ func (v Role) valid() bool {
 func (v ToolCallStatus) valid() bool {
 	switch v {
 	case ToolCallStatusPending, ToolCallStatusInProgress, ToolCallStatusCompleted, ToolCallStatusFailed:
-		return true
-	}
-	return false
-}
-
-func (v ToolKind) valid() bool {
-	switch v {
-	case ToolKindRead, ToolKindEdit, ToolKindDelete, ToolKindMove, ToolKindSearch, ToolKindExecute, ToolKindThink, ToolKindFetch, ToolKindSwitchMode, ToolKindOther:
 		return true
 	}
 	return false

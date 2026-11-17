@@ -2,6 +2,7 @@ package emit
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1337,19 +1338,22 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 						gg.Return(Id("_b"), Nil())
 						return
 					}
-					// Marshal object variant to map for discriminant injection and shaping.
-					gg.Var().Id("m").Map(String()).Any()
+					// The const properties and the union's own fields go into the
+					// object of the variant. Its members stay raw JSON, so that a
+					// number keeps every digit.
+					gg.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
 					notAnObject := Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload")))
 					if !vi.isObject {
 						// JSON Schema applies the union's own properties to objects only.
 						notAnObject = Return(Id("_b"), Nil())
 					}
 					gg.If(Qual("encoding/json", "Unmarshal").Call(Id("_b"), Op("&").Id("m")).Op("!=").Nil()).Block(notAnObject)
-					// Inject const discriminants
-					if len(vi.constPairs) > 0 {
-						for _, kv := range vi.constPairs {
-							gg.Id("m").Index(Lit(kv[0])).Op("=").Lit(kv[1])
+					for _, kv := range vi.constPairs {
+						value, err := json.Marshal(kv[1])
+						if err != nil {
+							panic(fmt.Sprintf("encode the const %q of union %q: %v", kv[1], name, err))
 						}
+						gg.Id("m").Index(Lit(kv[0])).Op("=").Qual("encoding/json", "RawMessage").Call(Lit(string(value)))
 					}
 					if len(wrapperFields) > 0 {
 						gg.If(Qual("encoding/json", "Unmarshal").Call(Id("ownJSON"), Op("&").Id("m")).Op("!=").Nil()).Block(Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload"))))

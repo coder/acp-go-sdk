@@ -282,14 +282,23 @@ func TestProblem_AdditionalPropertiesDoNotReplaceANamedProperty(t *testing.T) {
 	}
 }
 
-func TestProblem_AdditionalNumbersKeepEveryDigit(t *testing.T) {
-	const in = ` + "`" + `{"big":9007199254740993,"code":1,"huge":1e400}` + "`" + `
-	var problem Problem
-	if err := json.Unmarshal([]byte(in), &problem); err != nil {
-		t.Fatalf("unmarshal %s: %v", in, err)
+func TestAdditionalProperties_NumbersKeepEveryDigit(t *testing.T) {
+	tests := []struct {
+		into any
+		in   string
+	}{
+		{new(Problem), ` + "`" + `{"big":9007199254740993,"code":1,"huge":1e400}` + "`" + `},
+		{new(Idle), ` + "`" + `{"big":9007199254740993,"huge":1e400,"stopReason":"_custom"}` + "`" + `},
+		{new(State), ` + "`" + `{"big":9007199254740993,"state":"_later"}` + "`" + `},
 	}
-	if out, err := json.Marshal(problem); err != nil || string(out) != in {
-		t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", in, out, err)
+	for _, tt := range tests {
+		if err := json.Unmarshal([]byte(tt.in), tt.into); err != nil {
+			t.Errorf("unmarshal %s: %v", tt.in, err)
+			continue
+		}
+		if out, err := json.Marshal(tt.into); err != nil || string(out) != tt.in {
+			t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", tt.in, out, err)
+		}
 	}
 }
 `

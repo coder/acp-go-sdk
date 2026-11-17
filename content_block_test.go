@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 )
 
@@ -47,6 +48,21 @@ func TestContentBlock_MarshalJSON_WritesMetaSetInGo(t *testing.T) {
 	}
 	if ok, got, want := equalJSON(got, []byte(`{"type":"text","text":"hi","_meta":{"trace":"abc"}}`)); !ok {
 		t.Fatalf("text block with _meta encodes to %s, want %s", got, want)
+	}
+}
+
+func TestContentBlock_MarshalJSON_KeepsEveryDigitOfAnInteger(t *testing.T) {
+	t.Parallel()
+	if strconv.IntSize < 64 {
+		t.Skip("the size field cannot hold an integer above 2^53 on this platform")
+	}
+	const in = `{"name":"n","size":9007199254740993,"type":"resource_link","uri":"u"}`
+	var block ContentBlock
+	if err := json.Unmarshal([]byte(in), &block); err != nil {
+		t.Fatalf("unmarshal %s: %v", in, err)
+	}
+	if out, err := json.Marshal(block); err != nil || string(out) != in {
+		t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", in, out, err)
 	}
 }
 

@@ -1,0 +1,2 @@
+# Written by scripts/g2-roundtrip from the SDK sources; see registrygen.
+roundtrip/registry_gen_test.go

@@ -9,7 +9,7 @@ Unit tests and `verify-acp-go-sdk` drive this repository's own example agent. Re
 
 | Gate | Client -> agent | Model | Cost per run |
 | --- | --- | --- | --- |
-| G4 | TypeScript SDK client -> `example/agent`; `acpharness` -> the TypeScript SDK's example agent | none | free |
+| G4 | TypeScript SDK client -> `example/agent`, and `acpharness` -> the TypeScript SDK's example agent | none | free |
 | G5 | `acpharness` -> `@agentclientprotocol/claude-agent-acp` | the adapter's default (`claude-opus-5-5` on 2026-11-17) | about $0.80 |
 | G5 | `acpharness` -> `@agentclientprotocol/codex-acp` | the adapter's default (`gpt-6.1-sol` on 2026-11-17) | not reported |
 
@@ -166,7 +166,7 @@ The driver uses the SDK's generated types. A schema bump that renames a type, su
 
 ## Known results at schema 0.13.5
 
-Run on 2026-11-17 against `main` at `492745b` (schema 0.13.5): claude-agent-acp 0.108.0 (claude-agent-sdk 0.3.326, ACP TypeScript SDK 2.7.0), codex-acp 2.7.0 (Codex CLI 0.166.0, ACP TypeScript SDK 2.6.0), TypeScript SDK 2.7.0.
+Run on 2026-11-17 with the SDK of `main` at `492745b` (schema 0.13.5): claude-agent-acp 0.108.0 (claude-agent-sdk 0.3.326, ACP TypeScript SDK 2.7.0), codex-acp 2.7.0 (Codex CLI 0.166.0, ACP TypeScript SDK 2.6.0), TypeScript SDK 2.7.0.
 
 | Scenario | claude | codex |
 | --- | --- | --- |
@@ -186,7 +186,7 @@ Run on 2026-11-17 against `main` at `492745b` (schema 0.13.5): claude-agent-acp 
 | `no-method-not-found` | FAIL | PASS |
 | `no-decode-errors` | PASS | PASS |
 
-Both G4 drives pass. Models on the wire: `claude-opus-5-5`, plus `claude-fable-5-2` after the switch; `gpt-6.1-sol`, plus `gpt-6-astra` after the switch. Claude reported $0.80. Codex reported no cost.
+Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.77. Codex reported no cost and used about 109,000 tokens.
 
 What the results mean:
 

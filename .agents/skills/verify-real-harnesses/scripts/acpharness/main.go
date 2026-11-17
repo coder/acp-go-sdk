@@ -220,6 +220,7 @@ func (h *harness) finish() int {
 	for m := range h.models {
 		models = append(models, m)
 	}
+	sort.Strings(models)
 	failed := h.budgetHit
 	for _, r := range h.results {
 		failed = failed || r.Status == fail

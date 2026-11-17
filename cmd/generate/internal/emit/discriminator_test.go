@@ -9,8 +9,7 @@ import "testing"
 // Options is SessionConfigSelectOptions, two arrays told apart by the required
 // keys of their items. Runner and Runners select Launch by required keys that
 // have a hint, as McpServer selects its stdio variant from schema 1.27.0 and
-// SessionConfigSelectOptions its groups from 1.17.0. Code is ErrorCode, whose
-// variants are numbers with a const and one number without.
+// SessionConfigSelectOptions its groups from 1.17.0.
 const discriminatedUnionSchema = `{"$defs": {
   "Stdio": {"type": "object", "required": ["name", "command"], "properties": {
     "name": {"type": "string"}, "command": {"type": "string"}}},

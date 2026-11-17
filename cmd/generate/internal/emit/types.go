@@ -883,8 +883,6 @@ func allInlineObjects(alts []unionAlternative) bool {
 	return true
 }
 
-// scalarConstOf returns the literal of the const of a variant whose type is a
-// number, a string, or a boolean, and nil for every other variant.
 func scalarConstOf(v *load.Definition) Code {
 	switch value := v.Const.(type) {
 	case float64:
@@ -930,10 +928,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		openDiscriminator bool
 		// nullKeys are the properties whose type is "null" alone, as in a
 		// "none" variant. The variant matches when they are absent or null.
-		nullKeys []string
-		// scalarConst is the const of a variant that is a number, a string, or
-		// a boolean, as -32700 in ErrorCode. Only that value selects the
-		// variant.
+		nullKeys    []string
 		scalarConst Code
 		isNull      bool
 		description string

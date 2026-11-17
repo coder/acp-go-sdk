@@ -17,30 +17,46 @@ func parseObject(t *testing.T, schemaJSON string) *load.Definition {
 	return &def
 }
 
-func TestFields_ReadsNamesAndRequired(t *testing.T) {
+func TestFields_ReadsNamesRequiredAndHints(t *testing.T) {
 	def := parseObject(t, `{"type": "object", "required": ["sessionId"], "properties": {
 		"sessionId": {"type": "string"},
-		"_meta": {"type": ["object", "null"]},
-		"mcpServers": {"type": "array", "items": {"type": "string"}}
+		"_meta": {"type": ["object", "null"], "x-deserialize-default-on-error": true},
+		"entries": {"type": "array", "items": {"type": "string"},
+			"x-deserialize-default-on-error": true, "x-deserialize-skip-invalid-items": true},
+		"mcpServers": {"type": "array", "items": {"type": "string"}, "x-deserialize-default-on-null": true}
 	}}`)
 
 	type summary struct {
 		Prop, Name string
 		Required   bool
+		Lenient    Lenient
 	}
 	var got []summary
 	for _, f := range Fields(def.Properties, def.Required) {
 		if f.Def != def.Properties[f.Prop] {
 			t.Errorf("field %q does not point at its property schema", f.Prop)
 		}
-		got = append(got, summary{f.Prop, f.Name, f.Required})
+		got = append(got, summary{f.Prop, f.Name, f.Required, f.Lenient})
 	}
 	want := []summary{
-		{"_meta", "Meta", false},
-		{"mcpServers", "McpServers", false},
-		{"sessionId", "SessionId", true},
+		{"_meta", "Meta", false, Lenient{DefaultOnError: true}},
+		{"entries", "Entries", false, Lenient{DefaultOnError: true, SkipInvalidItems: true}},
+		{"mcpServers", "McpServers", false, Lenient{DefaultOnNull: true}},
+		{"sessionId", "SessionId", true, Lenient{}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Fields() =\n %+v\nwant, sorted by property:\n %+v", got, want)
 	}
+}
+
+func TestFields_PanicsOnSkipInvalidItemsOutsideAnArray(t *testing.T) {
+	def := parseObject(t, `{"type": "object", "properties": {
+		"title": {"type": "string", "x-deserialize-skip-invalid-items": true}
+	}}`)
+	defer func() {
+		if recover() == nil {
+			t.Errorf("Fields() did not panic for a string property with x-deserialize-skip-invalid-items")
+		}
+	}()
+	Fields(def.Properties, def.Required)
 }

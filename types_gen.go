@@ -24,6 +24,20 @@ type AgentAuthCapabilities struct {
 	Logout *LogoutCapabilities `json:"logout,omitempty"`
 }
 
+func (v *AgentAuthCapabilities) UnmarshalJSON(b []byte) error {
+	type plain AgentAuthCapabilities
+	type AgentAuthCapabilities struct {
+		*plain
+		Logout json.RawMessage `json:"logout"`
+	}
+	raw := AgentAuthCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Logout, &v.Logout)
+	return nil
+}
+
 // Capabilities supported by the agent.
 //
 // Advertised during initialization to inform the client about
@@ -91,7 +105,10 @@ func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
 		Auth                json.RawMessage `json:"auth"`
 		LoadSession         json.RawMessage `json:"loadSession"`
 		McpCapabilities     json.RawMessage `json:"mcpCapabilities"`
+		Nes                 json.RawMessage `json:"nes"`
+		PositionEncoding    json.RawMessage `json:"positionEncoding"`
 		PromptCapabilities  json.RawMessage `json:"promptCapabilities"`
+		Providers           json.RawMessage `json:"providers"`
 		SessionCapabilities json.RawMessage `json:"sessionCapabilities"`
 	}
 	raw := AgentCapabilities{plain: (*plain)(v)}
@@ -113,11 +130,14 @@ func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
 	} else if !decoded {
 		setDefault(&v.McpCapabilities, "{\"acp\":false,\"http\":false,\"sse\":false}")
 	}
+	decodeLenient(raw.Nes, &v.Nes)
+	decodeLenient(raw.PositionEncoding, &v.PositionEncoding, (*PositionEncodingKind).valid)
 	if decoded, err := decodeField(raw.PromptCapabilities, &v.PromptCapabilities); err != nil {
 		return propertyError(err, "AgentCapabilities", "promptCapabilities")
 	} else if !decoded {
 		setDefault(&v.PromptCapabilities, "{\"audio\":false,\"embeddedContext\":false,\"image\":false}")
 	}
+	decodeLenient(raw.Providers, &v.Providers)
 	if decoded, err := decodeField(raw.SessionCapabilities, &v.SessionCapabilities); err != nil {
 		return propertyError(err, "AgentCapabilities", "sessionCapabilities")
 	} else if !decoded {
@@ -272,6 +292,20 @@ type Annotations struct {
 	Priority     *float64       `json:"priority,omitempty"`
 }
 
+func (v *Annotations) UnmarshalJSON(b []byte) error {
+	type plain Annotations
+	type Annotations struct {
+		*plain
+		Audience json.RawMessage `json:"audience"`
+	}
+	raw := Annotations{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.Audience, &v.Audience, Role.valid)
+	return nil
+}
+
 // Audio provided to or from an LLM.
 type AudioContent struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -283,6 +317,20 @@ type AudioContent struct {
 	Annotations *Annotations   `json:"annotations,omitempty"`
 	Data        string         `json:"data"`
 	MimeType    string         `json:"mimeType"`
+}
+
+func (v *AudioContent) UnmarshalJSON(b []byte) error {
+	type plain AudioContent
+	type AudioContent struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := AudioContent{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
 }
 
 // **UNSTABLE**
@@ -423,6 +471,16 @@ type AuthMethodEnvVarInline struct {
 	Type string `json:"type"`
 	// The environment variables the client should set.
 	Vars []AuthEnvVar `json:"vars"`
+}
+
+func (v AuthMethodEnvVarInline) MarshalJSON() ([]byte, error) {
+	type Alias AuthMethodEnvVarInline
+	var a Alias
+	a = Alias(v)
+	if a.Vars == nil {
+		json.Unmarshal([]byte("[]"), &a.Vars)
+	}
+	return json.Marshal(a)
 }
 
 // **UNSTABLE**
@@ -668,6 +726,16 @@ type AuthMethodEnvVar struct {
 	Vars []AuthEnvVar `json:"vars"`
 }
 
+func (v AuthMethodEnvVar) MarshalJSON() ([]byte, error) {
+	type Alias AuthMethodEnvVar
+	var a Alias
+	a = Alias(v)
+	if a.Vars == nil {
+		json.Unmarshal([]byte("[]"), &a.Vars)
+	}
+	return json.Marshal(a)
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -746,6 +814,20 @@ type AvailableCommand struct {
 	Name string `json:"name"`
 }
 
+func (v *AvailableCommand) UnmarshalJSON(b []byte) error {
+	type plain AvailableCommand
+	type AvailableCommand struct {
+		*plain
+		Input json.RawMessage `json:"input"`
+	}
+	raw := AvailableCommand{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Input, &v.Input)
+	return nil
+}
+
 // The input specification for a command.
 type AvailableCommandInput struct {
 	// All text that was typed after the command name is provided as input.
@@ -811,6 +893,32 @@ type AvailableCommandsUpdate struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Commands the agent can execute
 	AvailableCommands []AvailableCommand `json:"availableCommands"`
+}
+
+func (v AvailableCommandsUpdate) MarshalJSON() ([]byte, error) {
+	type Alias AvailableCommandsUpdate
+	var a Alias
+	a = Alias(v)
+	if a.AvailableCommands == nil {
+		json.Unmarshal([]byte("[]"), &a.AvailableCommands)
+	}
+	return json.Marshal(a)
+}
+
+func (v *AvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
+	type plain AvailableCommandsUpdate
+	type AvailableCommandsUpdate struct {
+		*plain
+		AvailableCommands json.RawMessage `json:"availableCommands"`
+	}
+	raw := AvailableCommandsUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands) && raw.AvailableCommands != nil {
+		setDefault(&v.AvailableCommands, "[]")
+	}
+	return nil
 }
 
 // Binary resource contents.
@@ -917,9 +1025,13 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 	type plain ClientCapabilities
 	type ClientCapabilities struct {
 		*plain
-		Auth     json.RawMessage `json:"auth"`
-		Fs       json.RawMessage `json:"fs"`
-		Terminal json.RawMessage `json:"terminal"`
+		Auth              json.RawMessage `json:"auth"`
+		Elicitation       json.RawMessage `json:"elicitation"`
+		Fs                json.RawMessage `json:"fs"`
+		Nes               json.RawMessage `json:"nes"`
+		PlanCapabilities  json.RawMessage `json:"planCapabilities"`
+		PositionEncodings json.RawMessage `json:"positionEncodings"`
+		Terminal          json.RawMessage `json:"terminal"`
 	}
 	raw := ClientCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
@@ -930,11 +1042,15 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 	} else if !decoded {
 		setDefault(&v.Auth, "{\"terminal\":false}")
 	}
+	decodeLenient(raw.Elicitation, &v.Elicitation)
 	if decoded, err := decodeField(raw.Fs, &v.Fs); err != nil {
 		return propertyError(err, "ClientCapabilities", "fs")
 	} else if !decoded {
 		setDefault(&v.Fs, "{\"readTextFile\":false,\"writeTextFile\":false}")
 	}
+	decodeLenient(raw.Nes, &v.Nes)
+	decodeLenient(raw.PlanCapabilities, &v.PlanCapabilities)
+	decodeLenientItems(raw.PositionEncodings, &v.PositionEncodings, PositionEncodingKind.valid)
 	if decoded, err := decodeField(raw.Terminal, &v.Terminal); err != nil {
 		return propertyError(err, "ClientCapabilities", "terminal")
 	} else if !decoded {
@@ -957,6 +1073,24 @@ type ClientNesCapabilities struct {
 	Rename *NesRenameCapabilities `json:"rename,omitempty"`
 	// Whether the client supports the 'searchAndReplace' suggestion kind.
 	SearchAndReplace *NesSearchAndReplaceCapabilities `json:"searchAndReplace,omitempty"`
+}
+
+func (v *ClientNesCapabilities) UnmarshalJSON(b []byte) error {
+	type plain ClientNesCapabilities
+	type ClientNesCapabilities struct {
+		*plain
+		Jump             json.RawMessage `json:"jump"`
+		Rename           json.RawMessage `json:"rename"`
+		SearchAndReplace json.RawMessage `json:"searchAndReplace"`
+	}
+	raw := ClientNesCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Jump, &v.Jump)
+	decodeLenient(raw.Rename, &v.Rename)
+	decodeLenient(raw.SearchAndReplace, &v.SearchAndReplace)
+	return nil
 }
 
 type ClientNotification struct {
@@ -1140,6 +1274,32 @@ type ConfigOptionUpdate struct {
 	ConfigOptions []SessionConfigOption `json:"configOptions"`
 }
 
+func (v ConfigOptionUpdate) MarshalJSON() ([]byte, error) {
+	type Alias ConfigOptionUpdate
+	var a Alias
+	a = Alias(v)
+	if a.ConfigOptions == nil {
+		json.Unmarshal([]byte("[]"), &a.ConfigOptions)
+	}
+	return json.Marshal(a)
+}
+
+func (v *ConfigOptionUpdate) UnmarshalJSON(b []byte) error {
+	type plain ConfigOptionUpdate
+	type ConfigOptionUpdate struct {
+		*plain
+		ConfigOptions json.RawMessage `json:"configOptions"`
+	}
+	raw := ConfigOptionUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions) && raw.ConfigOptions != nil {
+		setDefault(&v.ConfigOptions, "[]")
+	}
+	return nil
+}
+
 // Standard content block (text, images, resources).
 type Content struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -1182,6 +1342,20 @@ type ContentBlockText struct {
 	Type        string         `json:"type"`
 }
 
+func (v *ContentBlockText) UnmarshalJSON(b []byte) error {
+	type plain ContentBlockText
+	type ContentBlockText struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := ContentBlockText{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
+}
+
 // Images for visual context or analysis.
 //
 // Requires the 'image' prompt capability when included in prompts.
@@ -1199,6 +1373,20 @@ type ContentBlockImage struct {
 	Uri         *string        `json:"uri,omitempty"`
 }
 
+func (v *ContentBlockImage) UnmarshalJSON(b []byte) error {
+	type plain ContentBlockImage
+	type ContentBlockImage struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := ContentBlockImage{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
+}
+
 // Audio data for transcription or analysis.
 //
 // Requires the 'audio' prompt capability when included in prompts.
@@ -1213,6 +1401,20 @@ type ContentBlockAudio struct {
 	Data        string         `json:"data"`
 	MimeType    string         `json:"mimeType"`
 	Type        string         `json:"type"`
+}
+
+func (v *ContentBlockAudio) UnmarshalJSON(b []byte) error {
+	type plain ContentBlockAudio
+	type ContentBlockAudio struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := ContentBlockAudio{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
 }
 
 // References to resources that the agent can access.
@@ -1235,6 +1437,20 @@ type ContentBlockResourceLink struct {
 	Uri         string         `json:"uri"`
 }
 
+func (v *ContentBlockResourceLink) UnmarshalJSON(b []byte) error {
+	type plain ContentBlockResourceLink
+	type ContentBlockResourceLink struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := ContentBlockResourceLink{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
+}
+
 // Complete resource contents embedded directly in the message.
 //
 // Preferred for including context as it avoids extra round-trips.
@@ -1250,6 +1466,20 @@ type ContentBlockResource struct {
 	Annotations *Annotations             `json:"annotations,omitempty"`
 	Resource    EmbeddedResourceResource `json:"resource"`
 	Type        string                   `json:"type"`
+}
+
+func (v *ContentBlockResource) UnmarshalJSON(b []byte) error {
+	type plain ContentBlockResource
+	type ContentBlockResource struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := ContentBlockResource{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
 }
 
 type ContentBlock struct {
@@ -1739,6 +1969,22 @@ type ElicitationCapabilities struct {
 	Url *ElicitationUrlCapabilities `json:"url,omitempty"`
 }
 
+func (v *ElicitationCapabilities) UnmarshalJSON(b []byte) error {
+	type plain ElicitationCapabilities
+	type ElicitationCapabilities struct {
+		*plain
+		Form json.RawMessage `json:"form"`
+		Url  json.RawMessage `json:"url"`
+	}
+	raw := ElicitationCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Form, &v.Form)
+	decodeLenient(raw.Url, &v.Url)
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -1777,6 +2023,20 @@ type EmbeddedResource struct {
 	Meta        map[string]any           `json:"_meta,omitempty"`
 	Annotations *Annotations             `json:"annotations,omitempty"`
 	Resource    EmbeddedResourceResource `json:"resource"`
+}
+
+func (v *EmbeddedResource) UnmarshalJSON(b []byte) error {
+	type plain EmbeddedResource
+	type EmbeddedResource struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := EmbeddedResource{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
 }
 
 // Resource content that can be embedded in a message.
@@ -2187,6 +2447,20 @@ type ImageContent struct {
 	Uri         *string        `json:"uri,omitempty"`
 }
 
+func (v *ImageContent) UnmarshalJSON(b []byte) error {
+	type plain ImageContent
+	type ImageContent struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := ImageContent{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
+}
+
 // Metadata about the implementation of the client or agent.
 // Describes the name and version of an MCP implementation, with an optional
 // title for UI representation.
@@ -2246,6 +2520,7 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 	type InitializeRequest struct {
 		*plain
 		ClientCapabilities json.RawMessage `json:"clientCapabilities"`
+		ClientInfo         json.RawMessage `json:"clientInfo"`
 	}
 	raw := InitializeRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
@@ -2256,6 +2531,7 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 	} else if !decoded {
 		setDefault(&v.ClientCapabilities, "{\"auth\":{\"terminal\":false},\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false}")
 	}
+	decodeLenient(raw.ClientInfo, &v.ClientInfo)
 	return nil
 }
 
@@ -2309,6 +2585,7 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 	type InitializeResponse struct {
 		*plain
 		AgentCapabilities json.RawMessage `json:"agentCapabilities"`
+		AgentInfo         json.RawMessage `json:"agentInfo"`
 		AuthMethods       json.RawMessage `json:"authMethods"`
 	}
 	raw := InitializeResponse{plain: (*plain)(v)}
@@ -2320,9 +2597,8 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 	} else if !decoded {
 		setDefault(&v.AgentCapabilities, "{\"auth\":{},\"loadSession\":false,\"mcpCapabilities\":{\"acp\":false,\"http\":false,\"sse\":false},\"promptCapabilities\":{\"audio\":false,\"embeddedContext\":false,\"image\":false},\"sessionCapabilities\":{}}")
 	}
-	if decoded, err := decodeField(raw.AuthMethods, &v.AuthMethods); err != nil {
-		return propertyError(err, "InitializeResponse", "authMethods")
-	} else if !decoded {
+	decodeLenient(raw.AgentInfo, &v.AgentInfo)
+	if !decodeLenientItems(raw.AuthMethods, &v.AuthMethods) {
 		setDefault(&v.AuthMethods, "[]")
 	}
 	return nil
@@ -2402,6 +2678,32 @@ type ListSessionsResponse struct {
 	Sessions []SessionInfo `json:"sessions"`
 }
 
+func (v ListSessionsResponse) MarshalJSON() ([]byte, error) {
+	type Alias ListSessionsResponse
+	var a Alias
+	a = Alias(v)
+	if a.Sessions == nil {
+		json.Unmarshal([]byte("[]"), &a.Sessions)
+	}
+	return json.Marshal(a)
+}
+
+func (v *ListSessionsResponse) UnmarshalJSON(b []byte) error {
+	type plain ListSessionsResponse
+	type ListSessionsResponse struct {
+		*plain
+		Sessions json.RawMessage `json:"sessions"`
+	}
+	raw := ListSessionsResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.Sessions, &v.Sessions) && raw.Sessions != nil {
+		setDefault(&v.Sessions, "[]")
+	}
+	return nil
+}
+
 func (v *ListSessionsResponse) Validate() error {
 	if v.Sessions == nil {
 		return fmt.Errorf("sessions is required")
@@ -2436,6 +2738,16 @@ type LoadSessionRequest struct {
 	SessionId SessionId `json:"sessionId"`
 }
 
+func (v LoadSessionRequest) MarshalJSON() ([]byte, error) {
+	type Alias LoadSessionRequest
+	var a Alias
+	a = Alias(v)
+	if a.McpServers == nil {
+		json.Unmarshal([]byte("[]"), &a.McpServers)
+	}
+	return json.Marshal(a)
+}
+
 func (v *LoadSessionRequest) Validate() error {
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
@@ -2460,6 +2772,22 @@ type LoadSessionResponse struct {
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
 	Modes *SessionModeState `json:"modes,omitempty"`
+}
+
+func (v *LoadSessionResponse) UnmarshalJSON(b []byte) error {
+	type plain LoadSessionResponse
+	type LoadSessionResponse struct {
+		*plain
+		ConfigOptions json.RawMessage `json:"configOptions"`
+		Modes         json.RawMessage `json:"modes"`
+	}
+	raw := LoadSessionResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
+	decodeLenient(raw.Modes, &v.Modes)
+	return nil
 }
 
 func (v *LoadSessionResponse) Validate() error {
@@ -2596,6 +2924,16 @@ type McpServerHttpInline struct {
 	Url string `json:"url"`
 }
 
+func (v McpServerHttpInline) MarshalJSON() ([]byte, error) {
+	type Alias McpServerHttpInline
+	var a Alias
+	a = Alias(v)
+	if a.Headers == nil {
+		json.Unmarshal([]byte("[]"), &a.Headers)
+	}
+	return json.Marshal(a)
+}
+
 // SSE transport configuration
 //
 // Only available when the Agent capabilities indicate 'mcp_capabilities.sse' is 'true'.
@@ -2613,6 +2951,16 @@ type McpServerSseInline struct {
 	Type string `json:"type"`
 	// URL to the MCP server.
 	Url string `json:"url"`
+}
+
+func (v McpServerSseInline) MarshalJSON() ([]byte, error) {
+	type Alias McpServerSseInline
+	var a Alias
+	a = Alias(v)
+	if a.Headers == nil {
+		json.Unmarshal([]byte("[]"), &a.Headers)
+	}
+	return json.Marshal(a)
 }
 
 // **UNSTABLE**
@@ -2925,6 +3273,16 @@ type McpServerHttp struct {
 	Url string `json:"url"`
 }
 
+func (v McpServerHttp) MarshalJSON() ([]byte, error) {
+	type Alias McpServerHttp
+	var a Alias
+	a = Alias(v)
+	if a.Headers == nil {
+		json.Unmarshal([]byte("[]"), &a.Headers)
+	}
+	return json.Marshal(a)
+}
+
 // SSE transport configuration for MCP.
 type McpServerSse struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -2939,6 +3297,16 @@ type McpServerSse struct {
 	Name string `json:"name"`
 	// URL to the MCP server.
 	Url string `json:"url"`
+}
+
+func (v McpServerSse) MarshalJSON() ([]byte, error) {
+	type Alias McpServerSse
+	var a Alias
+	a = Alias(v)
+	if a.Headers == nil {
+		json.Unmarshal([]byte("[]"), &a.Headers)
+	}
+	return json.Marshal(a)
 }
 
 // Stdio transport configuration for MCP.
@@ -2959,6 +3327,19 @@ type McpServerStdio struct {
 	Name string `json:"name"`
 }
 
+func (v McpServerStdio) MarshalJSON() ([]byte, error) {
+	type Alias McpServerStdio
+	var a Alias
+	a = Alias(v)
+	if a.Args == nil {
+		json.Unmarshal([]byte("[]"), &a.Args)
+	}
+	if a.Env == nil {
+		json.Unmarshal([]byte("[]"), &a.Env)
+	}
+	return json.Marshal(a)
+}
+
 // NES capabilities advertised by the agent during initialization.
 type NesCapabilities struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -2971,6 +3352,22 @@ type NesCapabilities struct {
 	Context *NesContextCapabilities `json:"context,omitempty"`
 	// Events the agent wants to receive.
 	Events *NesEventCapabilities `json:"events,omitempty"`
+}
+
+func (v *NesCapabilities) UnmarshalJSON(b []byte) error {
+	type plain NesCapabilities
+	type NesCapabilities struct {
+		*plain
+		Context json.RawMessage `json:"context"`
+		Events  json.RawMessage `json:"events"`
+	}
+	raw := NesCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Context, &v.Context)
+	decodeLenient(raw.Events, &v.Events)
+	return nil
 }
 
 // Context capabilities the agent wants attached to each suggestion request.
@@ -2993,6 +3390,30 @@ type NesContextCapabilities struct {
 	RelatedSnippets *NesRelatedSnippetsCapabilities `json:"relatedSnippets,omitempty"`
 	// Whether the agent wants user actions context.
 	UserActions *NesUserActionsCapabilities `json:"userActions,omitempty"`
+}
+
+func (v *NesContextCapabilities) UnmarshalJSON(b []byte) error {
+	type plain NesContextCapabilities
+	type NesContextCapabilities struct {
+		*plain
+		Diagnostics     json.RawMessage `json:"diagnostics"`
+		EditHistory     json.RawMessage `json:"editHistory"`
+		OpenFiles       json.RawMessage `json:"openFiles"`
+		RecentFiles     json.RawMessage `json:"recentFiles"`
+		RelatedSnippets json.RawMessage `json:"relatedSnippets"`
+		UserActions     json.RawMessage `json:"userActions"`
+	}
+	raw := NesContextCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Diagnostics, &v.Diagnostics)
+	decodeLenient(raw.EditHistory, &v.EditHistory)
+	decodeLenient(raw.OpenFiles, &v.OpenFiles)
+	decodeLenient(raw.RecentFiles, &v.RecentFiles)
+	decodeLenient(raw.RelatedSnippets, &v.RelatedSnippets)
+	decodeLenient(raw.UserActions, &v.UserActions)
+	return nil
 }
 
 // Capabilities for diagnostics context.
@@ -3077,6 +3498,28 @@ type NesDocumentEventCapabilities struct {
 	DidSave *NesDocumentDidSaveCapabilities `json:"didSave,omitempty"`
 }
 
+func (v *NesDocumentEventCapabilities) UnmarshalJSON(b []byte) error {
+	type plain NesDocumentEventCapabilities
+	type NesDocumentEventCapabilities struct {
+		*plain
+		DidChange json.RawMessage `json:"didChange"`
+		DidClose  json.RawMessage `json:"didClose"`
+		DidFocus  json.RawMessage `json:"didFocus"`
+		DidOpen   json.RawMessage `json:"didOpen"`
+		DidSave   json.RawMessage `json:"didSave"`
+	}
+	raw := NesDocumentEventCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.DidChange, &v.DidChange)
+	decodeLenient(raw.DidClose, &v.DidClose)
+	decodeLenient(raw.DidFocus, &v.DidFocus)
+	decodeLenient(raw.DidOpen, &v.DidOpen)
+	decodeLenient(raw.DidSave, &v.DidSave)
+	return nil
+}
+
 // Capabilities for edit history context.
 type NesEditHistoryCapabilities struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -3099,6 +3542,20 @@ type NesEventCapabilities struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Document event capabilities.
 	Document *NesDocumentEventCapabilities `json:"document,omitempty"`
+}
+
+func (v *NesEventCapabilities) UnmarshalJSON(b []byte) error {
+	type plain NesEventCapabilities
+	type NesEventCapabilities struct {
+		*plain
+		Document json.RawMessage `json:"document"`
+	}
+	raw := NesEventCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Document, &v.Document)
+	return nil
 }
 
 // Marker for jump suggestion support.
@@ -3197,6 +3654,16 @@ type NewSessionRequest struct {
 	McpServers []McpServer `json:"mcpServers"`
 }
 
+func (v NewSessionRequest) MarshalJSON() ([]byte, error) {
+	type Alias NewSessionRequest
+	var a Alias
+	a = Alias(v)
+	if a.McpServers == nil {
+		json.Unmarshal([]byte("[]"), &a.McpServers)
+	}
+	return json.Marshal(a)
+}
+
 func (v *NewSessionRequest) Validate() error {
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
@@ -3227,6 +3694,22 @@ type NewSessionResponse struct {
 	//
 	// Used in all subsequent requests for this conversation.
 	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
+	type plain NewSessionResponse
+	type NewSessionResponse struct {
+		*plain
+		ConfigOptions json.RawMessage `json:"configOptions"`
+		Modes         json.RawMessage `json:"modes"`
+	}
+	raw := NewSessionResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
+	decodeLenient(raw.Modes, &v.Modes)
+	return nil
 }
 
 func (v *NewSessionResponse) Validate() error {
@@ -3283,6 +3766,32 @@ type Plan struct {
 	// When updating a plan, the agent must send a complete list of all entries
 	// with their current status. The client replaces the entire plan with each update.
 	Entries []PlanEntry `json:"entries"`
+}
+
+func (v Plan) MarshalJSON() ([]byte, error) {
+	type Alias Plan
+	var a Alias
+	a = Alias(v)
+	if a.Entries == nil {
+		json.Unmarshal([]byte("[]"), &a.Entries)
+	}
+	return json.Marshal(a)
+}
+
+func (v *Plan) UnmarshalJSON(b []byte) error {
+	type plain Plan
+	type Plan struct {
+		*plain
+		Entries json.RawMessage `json:"entries"`
+	}
+	raw := Plan{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.Entries, &v.Entries) && raw.Entries != nil {
+		setDefault(&v.Entries, "[]")
+	}
+	return nil
 }
 
 // **UNSTABLE**
@@ -3391,6 +3900,32 @@ type PlanItems struct {
 	Id PlanId `json:"id"`
 }
 
+func (v PlanItems) MarshalJSON() ([]byte, error) {
+	type Alias PlanItems
+	var a Alias
+	a = Alias(v)
+	if a.Entries == nil {
+		json.Unmarshal([]byte("[]"), &a.Entries)
+	}
+	return json.Marshal(a)
+}
+
+func (v *PlanItems) UnmarshalJSON(b []byte) error {
+	type plain PlanItems
+	type PlanItems struct {
+		*plain
+		Entries json.RawMessage `json:"entries"`
+	}
+	raw := PlanItems{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.Entries, &v.Entries) && raw.Entries != nil {
+		setDefault(&v.Entries, "[]")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -3462,6 +3997,32 @@ type PlanUpdateContentItems struct {
 	// The plan ID to update.
 	Id   PlanId `json:"id"`
 	Type string `json:"type"`
+}
+
+func (v PlanUpdateContentItems) MarshalJSON() ([]byte, error) {
+	type Alias PlanUpdateContentItems
+	var a Alias
+	a = Alias(v)
+	if a.Entries == nil {
+		json.Unmarshal([]byte("[]"), &a.Entries)
+	}
+	return json.Marshal(a)
+}
+
+func (v *PlanUpdateContentItems) UnmarshalJSON(b []byte) error {
+	type plain PlanUpdateContentItems
+	type PlanUpdateContentItems struct {
+		*plain
+		Entries json.RawMessage `json:"entries"`
+	}
+	raw := PlanUpdateContentItems{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.Entries, &v.Entries) && raw.Entries != nil {
+		setDefault(&v.Entries, "[]")
+	}
+	return nil
 }
 
 // A URI pointing to a file containing the plan.
@@ -3807,6 +4368,16 @@ type PromptRequest struct {
 	SessionId SessionId `json:"sessionId"`
 }
 
+func (v PromptRequest) MarshalJSON() ([]byte, error) {
+	type Alias PromptRequest
+	var a Alias
+	a = Alias(v)
+	if a.Prompt == nil {
+		json.Unmarshal([]byte("[]"), &a.Prompt)
+	}
+	return json.Marshal(a)
+}
+
 func (v *PromptRequest) Validate() error {
 	if v.Prompt == nil {
 		return fmt.Errorf("prompt is required")
@@ -3842,6 +4413,20 @@ type PromptResponse struct {
 	// to confirm it was recorded. If the client did not provide one, the agent MAY assign one
 	// and return it here. Absence of this field indicates the agent did not record a message ID.
 	UserMessageId *string `json:"userMessageId,omitempty"`
+}
+
+func (v *PromptResponse) UnmarshalJSON(b []byte) error {
+	type plain PromptResponse
+	type PromptResponse struct {
+		*plain
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := PromptResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
 }
 
 func (v *PromptResponse) Validate() error {
@@ -4211,6 +4796,16 @@ type RequestPermissionRequest struct {
 	ToolCall ToolCallUpdate `json:"toolCall"`
 }
 
+func (v RequestPermissionRequest) MarshalJSON() ([]byte, error) {
+	type Alias RequestPermissionRequest
+	var a Alias
+	a = Alias(v)
+	if a.Options == nil {
+		json.Unmarshal([]byte("[]"), &a.Options)
+	}
+	return json.Marshal(a)
+}
+
 func (v *RequestPermissionRequest) Validate() error {
 	if v.Options == nil {
 		return fmt.Errorf("options is required")
@@ -4249,6 +4844,20 @@ type ResourceLink struct {
 	Size        *int           `json:"size,omitempty"`
 	Title       *string        `json:"title,omitempty"`
 	Uri         string         `json:"uri"`
+}
+
+func (v *ResourceLink) UnmarshalJSON(b []byte) error {
+	type plain ResourceLink
+	type ResourceLink struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := ResourceLink{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
 }
 
 // Request parameters for resuming an existing session.
@@ -4300,6 +4909,22 @@ type ResumeSessionResponse struct {
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
 	Modes *SessionModeState `json:"modes,omitempty"`
+}
+
+func (v *ResumeSessionResponse) UnmarshalJSON(b []byte) error {
+	type plain ResumeSessionResponse
+	type ResumeSessionResponse struct {
+		*plain
+		ConfigOptions json.RawMessage `json:"configOptions"`
+		Modes         json.RawMessage `json:"modes"`
+	}
+	raw := ResumeSessionResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
+	decodeLenient(raw.Modes, &v.Modes)
+	return nil
 }
 
 func (v *ResumeSessionResponse) Validate() error {
@@ -4386,6 +5011,30 @@ type SessionCapabilities struct {
 	Resume *SessionResumeCapabilities `json:"resume,omitempty"`
 }
 
+func (v *SessionCapabilities) UnmarshalJSON(b []byte) error {
+	type plain SessionCapabilities
+	type SessionCapabilities struct {
+		*plain
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		Close                 json.RawMessage `json:"close"`
+		Delete                json.RawMessage `json:"delete"`
+		Fork                  json.RawMessage `json:"fork"`
+		List                  json.RawMessage `json:"list"`
+		Resume                json.RawMessage `json:"resume"`
+	}
+	raw := SessionCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.AdditionalDirectories, &v.AdditionalDirectories)
+	decodeLenient(raw.Close, &v.Close)
+	decodeLenient(raw.Delete, &v.Delete)
+	decodeLenient(raw.Fork, &v.Fork)
+	decodeLenient(raw.List, &v.List)
+	decodeLenient(raw.Resume, &v.Resume)
+	return nil
+}
+
 // Capabilities for the 'session/close' method.
 //
 // By supplying '{}' it means that the agent supports closing of sessions.
@@ -4438,6 +5087,20 @@ type SessionConfigOptionSelect struct {
 	Type    string                     `json:"type"`
 }
 
+func (v *SessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
+	type plain SessionConfigOptionSelect
+	type SessionConfigOptionSelect struct {
+		*plain
+		Category json.RawMessage `json:"category"`
+	}
+	raw := SessionConfigOptionSelect{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Category, &v.Category)
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -4461,6 +5124,20 @@ type SessionConfigOptionBoolean struct {
 	// Human-readable label for the option.
 	Name string `json:"name"`
 	Type string `json:"type"`
+}
+
+func (v *SessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	type plain SessionConfigOptionBoolean
+	type SessionConfigOptionBoolean struct {
+		*plain
+		Category json.RawMessage `json:"category"`
+	}
+	raw := SessionConfigOptionBoolean{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Category, &v.Category)
+	return nil
 }
 
 type SessionConfigOption struct {
@@ -4653,6 +5330,16 @@ type SessionConfigSelectGroup struct {
 	Options []SessionConfigSelectOption `json:"options"`
 }
 
+func (v SessionConfigSelectGroup) MarshalJSON() ([]byte, error) {
+	type Alias SessionConfigSelectGroup
+	var a Alias
+	a = Alias(v)
+	if a.Options == nil {
+		json.Unmarshal([]byte("[]"), &a.Options)
+	}
+	return json.Marshal(a)
+}
+
 // A possible value for a session configuration option.
 type SessionConfigSelectOption struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -4836,6 +5523,22 @@ type SessionInfo struct {
 	UpdatedAt *string `json:"updatedAt,omitempty"`
 }
 
+func (v *SessionInfo) UnmarshalJSON(b []byte) error {
+	type plain SessionInfo
+	type SessionInfo struct {
+		*plain
+		Title     json.RawMessage `json:"title"`
+		UpdatedAt json.RawMessage `json:"updatedAt"`
+	}
+	raw := SessionInfo{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Title, &v.Title)
+	decodeLenient(raw.UpdatedAt, &v.UpdatedAt)
+	return nil
+}
+
 // Update to session metadata. All fields are optional to support partial updates.
 //
 // Agents send this notification to update session information like title or custom metadata.
@@ -4895,6 +5598,32 @@ type SessionModeState struct {
 	AvailableModes []SessionMode `json:"availableModes"`
 	// The current mode the Agent is in.
 	CurrentModeId SessionModeId `json:"currentModeId"`
+}
+
+func (v SessionModeState) MarshalJSON() ([]byte, error) {
+	type Alias SessionModeState
+	var a Alias
+	a = Alias(v)
+	if a.AvailableModes == nil {
+		json.Unmarshal([]byte("[]"), &a.AvailableModes)
+	}
+	return json.Marshal(a)
+}
+
+func (v *SessionModeState) UnmarshalJSON(b []byte) error {
+	type plain SessionModeState
+	type SessionModeState struct {
+		*plain
+		AvailableModes json.RawMessage `json:"availableModes"`
+	}
+	raw := SessionModeState{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.AvailableModes, &v.AvailableModes) && raw.AvailableModes != nil {
+		setDefault(&v.AvailableModes, "[]")
+	}
+	return nil
 }
 
 // Notification containing a session update from the agent.
@@ -5034,6 +5763,22 @@ type SessionUpdateToolCall struct {
 	ToolCallId ToolCallId `json:"toolCallId"`
 }
 
+func (v *SessionUpdateToolCall) UnmarshalJSON(b []byte) error {
+	type plain SessionUpdateToolCall
+	type SessionUpdateToolCall struct {
+		*plain
+		Content   json.RawMessage `json:"content"`
+		Locations json.RawMessage `json:"locations"`
+	}
+	raw := SessionUpdateToolCall{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenientItems(raw.Locations, &v.Locations)
+	return nil
+}
+
 // Update on the status or results of a tool call.
 type SessionToolCallUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -5061,6 +5806,26 @@ type SessionToolCallUpdate struct {
 	ToolCallId ToolCallId `json:"toolCallId"`
 }
 
+func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
+	type plain SessionToolCallUpdate
+	type SessionToolCallUpdate struct {
+		*plain
+		Content   json.RawMessage `json:"content"`
+		Kind      json.RawMessage `json:"kind"`
+		Locations json.RawMessage `json:"locations"`
+		Status    json.RawMessage `json:"status"`
+	}
+	raw := SessionToolCallUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenient(raw.Kind, &v.Kind, (*ToolKind).valid)
+	decodeLenientItems(raw.Locations, &v.Locations)
+	decodeLenient(raw.Status, &v.Status, (*ToolCallStatus).valid)
+	return nil
+}
+
 // The agent's execution plan for complex tasks.
 // See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)
 type SessionUpdatePlan struct {
@@ -5076,6 +5841,32 @@ type SessionUpdatePlan struct {
 	// with their current status. The client replaces the entire plan with each update.
 	Entries       []PlanEntry `json:"entries"`
 	SessionUpdate string      `json:"sessionUpdate"`
+}
+
+func (v SessionUpdatePlan) MarshalJSON() ([]byte, error) {
+	type Alias SessionUpdatePlan
+	var a Alias
+	a = Alias(v)
+	if a.Entries == nil {
+		json.Unmarshal([]byte("[]"), &a.Entries)
+	}
+	return json.Marshal(a)
+}
+
+func (v *SessionUpdatePlan) UnmarshalJSON(b []byte) error {
+	type plain SessionUpdatePlan
+	type SessionUpdatePlan struct {
+		*plain
+		Entries json.RawMessage `json:"entries"`
+	}
+	raw := SessionUpdatePlan{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.Entries, &v.Entries) && raw.Entries != nil {
+		setDefault(&v.Entries, "[]")
+	}
+	return nil
 }
 
 // **UNSTABLE**
@@ -5125,6 +5916,32 @@ type SessionAvailableCommandsUpdate struct {
 	SessionUpdate     string             `json:"sessionUpdate"`
 }
 
+func (v SessionAvailableCommandsUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SessionAvailableCommandsUpdate
+	var a Alias
+	a = Alias(v)
+	if a.AvailableCommands == nil {
+		json.Unmarshal([]byte("[]"), &a.AvailableCommands)
+	}
+	return json.Marshal(a)
+}
+
+func (v *SessionAvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
+	type plain SessionAvailableCommandsUpdate
+	type SessionAvailableCommandsUpdate struct {
+		*plain
+		AvailableCommands json.RawMessage `json:"availableCommands"`
+	}
+	raw := SessionAvailableCommandsUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands) && raw.AvailableCommands != nil {
+		setDefault(&v.AvailableCommands, "[]")
+	}
+	return nil
+}
+
 // The current mode of the session has changed
 //
 // See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
@@ -5151,6 +5968,32 @@ type SessionConfigOptionUpdate struct {
 	// The full set of configuration options and their current values.
 	ConfigOptions []SessionConfigOption `json:"configOptions"`
 	SessionUpdate string                `json:"sessionUpdate"`
+}
+
+func (v SessionConfigOptionUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SessionConfigOptionUpdate
+	var a Alias
+	a = Alias(v)
+	if a.ConfigOptions == nil {
+		json.Unmarshal([]byte("[]"), &a.ConfigOptions)
+	}
+	return json.Marshal(a)
+}
+
+func (v *SessionConfigOptionUpdate) UnmarshalJSON(b []byte) error {
+	type plain SessionConfigOptionUpdate
+	type SessionConfigOptionUpdate struct {
+		*plain
+		ConfigOptions json.RawMessage `json:"configOptions"`
+	}
+	raw := SessionConfigOptionUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions) && raw.ConfigOptions != nil {
+		setDefault(&v.ConfigOptions, "[]")
+	}
+	return nil
 }
 
 // Session metadata has been updated (title, timestamps, custom metadata)
@@ -5187,6 +6030,20 @@ type SessionUsageUpdate struct {
 	Size int `json:"size"`
 	// Tokens currently in context.
 	Used int `json:"used"`
+}
+
+func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
+	type plain SessionUsageUpdate
+	type SessionUsageUpdate struct {
+		*plain
+		Cost json.RawMessage `json:"cost"`
+	}
+	raw := SessionUsageUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Cost, &v.Cost)
+	return nil
 }
 
 type SessionUpdate struct {
@@ -6032,6 +6889,32 @@ type SetSessionConfigOptionResponse struct {
 	ConfigOptions []SessionConfigOption `json:"configOptions"`
 }
 
+func (v SetSessionConfigOptionResponse) MarshalJSON() ([]byte, error) {
+	type Alias SetSessionConfigOptionResponse
+	var a Alias
+	a = Alias(v)
+	if a.ConfigOptions == nil {
+		json.Unmarshal([]byte("[]"), &a.ConfigOptions)
+	}
+	return json.Marshal(a)
+}
+
+func (v *SetSessionConfigOptionResponse) UnmarshalJSON(b []byte) error {
+	type plain SetSessionConfigOptionResponse
+	type SetSessionConfigOptionResponse struct {
+		*plain
+		ConfigOptions json.RawMessage `json:"configOptions"`
+	}
+	raw := SetSessionConfigOptionResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions) && raw.ConfigOptions != nil {
+		setDefault(&v.ConfigOptions, "[]")
+	}
+	return nil
+}
+
 func (v *SetSessionConfigOptionResponse) Validate() error {
 	if v.ConfigOptions == nil {
 		return fmt.Errorf("configOptions is required")
@@ -6169,6 +7052,20 @@ type TextContent struct {
 	Text        string         `json:"text"`
 }
 
+func (v *TextContent) UnmarshalJSON(b []byte) error {
+	type plain TextContent
+	type TextContent struct {
+		*plain
+		Annotations json.RawMessage `json:"annotations"`
+	}
+	raw := TextContent{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
+}
+
 // How the agent wants document changes delivered.
 type TextDocumentSyncKind string
 
@@ -6221,6 +7118,22 @@ type ToolCall struct {
 	Title string `json:"title"`
 	// Unique identifier for this tool call within the session.
 	ToolCallId ToolCallId `json:"toolCallId"`
+}
+
+func (v *ToolCall) UnmarshalJSON(b []byte) error {
+	type plain ToolCall
+	type ToolCall struct {
+		*plain
+		Content   json.RawMessage `json:"content"`
+		Locations json.RawMessage `json:"locations"`
+	}
+	raw := ToolCall{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenientItems(raw.Locations, &v.Locations)
+	return nil
 }
 
 // Content produced by a tool call.
@@ -6527,6 +7440,26 @@ type ToolCallUpdate struct {
 	Title *string `json:"title,omitempty"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
+}
+
+func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
+	type plain ToolCallUpdate
+	type ToolCallUpdate struct {
+		*plain
+		Content   json.RawMessage `json:"content"`
+		Kind      json.RawMessage `json:"kind"`
+		Locations json.RawMessage `json:"locations"`
+		Status    json.RawMessage `json:"status"`
+	}
+	raw := ToolCallUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenient(raw.Kind, &v.Kind, (*ToolKind).valid)
+	decodeLenientItems(raw.Locations, &v.Locations)
+	decodeLenient(raw.Status, &v.Status, (*ToolCallStatus).valid)
+	return nil
 }
 
 func (t *ToolCallUpdate) Validate() error {
@@ -7148,6 +8081,16 @@ type UnstableDidChangeDocumentNotification struct {
 	Version int `json:"version"`
 }
 
+func (v UnstableDidChangeDocumentNotification) MarshalJSON() ([]byte, error) {
+	type Alias UnstableDidChangeDocumentNotification
+	var a Alias
+	a = Alias(v)
+	if a.ContentChanges == nil {
+		json.Unmarshal([]byte("[]"), &a.ContentChanges)
+	}
+	return json.Marshal(a)
+}
+
 func (v *UnstableDidChangeDocumentNotification) Validate() error {
 	if v.ContentChanges == nil {
 		return fmt.Errorf("contentChanges is required")
@@ -7693,6 +8636,22 @@ type UnstableForkSessionResponse struct {
 	SessionId SessionId `json:"sessionId"`
 }
 
+func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
+	type plain UnstableForkSessionResponse
+	type UnstableForkSessionResponse struct {
+		*plain
+		ConfigOptions json.RawMessage `json:"configOptions"`
+		Modes         json.RawMessage `json:"modes"`
+	}
+	raw := UnstableForkSessionResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
+	decodeLenient(raw.Modes, &v.Modes)
+	return nil
+}
+
 func (v *UnstableForkSessionResponse) Validate() error {
 	return nil
 }
@@ -7729,6 +8688,32 @@ type UnstableListProvidersResponse struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// Configurable providers with current routing info suitable for UI display.
 	Providers []UnstableProviderInfo `json:"providers"`
+}
+
+func (v UnstableListProvidersResponse) MarshalJSON() ([]byte, error) {
+	type Alias UnstableListProvidersResponse
+	var a Alias
+	a = Alias(v)
+	if a.Providers == nil {
+		json.Unmarshal([]byte("[]"), &a.Providers)
+	}
+	return json.Marshal(a)
+}
+
+func (v *UnstableListProvidersResponse) UnmarshalJSON(b []byte) error {
+	type plain UnstableListProvidersResponse
+	type UnstableListProvidersResponse struct {
+		*plain
+		Providers json.RawMessage `json:"providers"`
+	}
+	raw := UnstableListProvidersResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.Providers, &v.Providers) && raw.Providers != nil {
+		setDefault(&v.Providers, "[]")
+	}
+	return nil
 }
 
 func (v *UnstableListProvidersResponse) Validate() error {
@@ -7790,6 +8775,16 @@ type UnstableMcpServerHttp struct {
 	Url string `json:"url"`
 }
 
+func (v UnstableMcpServerHttp) MarshalJSON() ([]byte, error) {
+	type Alias UnstableMcpServerHttp
+	var a Alias
+	a = Alias(v)
+	if a.Headers == nil {
+		json.Unmarshal([]byte("[]"), &a.Headers)
+	}
+	return json.Marshal(a)
+}
+
 // SSE transport configuration
 //
 // Only available when the Agent capabilities indicate 'mcp_capabilities.sse' is 'true'.
@@ -7807,6 +8802,16 @@ type UnstableMcpServerSse struct {
 	Type string `json:"type"`
 	// URL to the MCP server.
 	Url string `json:"url"`
+}
+
+func (v UnstableMcpServerSse) MarshalJSON() ([]byte, error) {
+	type Alias UnstableMcpServerSse
+	var a Alias
+	a = Alias(v)
+	if a.Headers == nil {
+		json.Unmarshal([]byte("[]"), &a.Headers)
+	}
+	return json.Marshal(a)
 }
 
 // **UNSTABLE**
@@ -8216,6 +9221,30 @@ type UnstableNesEditSuggestion struct {
 	Uri string `json:"uri"`
 }
 
+func (v UnstableNesEditSuggestion) MarshalJSON() ([]byte, error) {
+	type Alias UnstableNesEditSuggestion
+	var a Alias
+	a = Alias(v)
+	if a.Edits == nil {
+		json.Unmarshal([]byte("[]"), &a.Edits)
+	}
+	return json.Marshal(a)
+}
+
+func (v *UnstableNesEditSuggestion) UnmarshalJSON(b []byte) error {
+	type plain UnstableNesEditSuggestion
+	type UnstableNesEditSuggestion struct {
+		*plain
+		CursorPosition json.RawMessage `json:"cursorPosition"`
+	}
+	raw := UnstableNesEditSuggestion{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.CursorPosition, &v.CursorPosition)
+	return nil
+}
+
 // A code excerpt from a file.
 type UnstableNesExcerpt struct {
 	// The end line of the excerpt (zero-based).
@@ -8248,6 +9277,22 @@ type UnstableNesOpenFile struct {
 	VisibleRange *UnstableRange `json:"visibleRange,omitempty"`
 }
 
+func (v *UnstableNesOpenFile) UnmarshalJSON(b []byte) error {
+	type plain UnstableNesOpenFile
+	type UnstableNesOpenFile struct {
+		*plain
+		LastFocusedMs json.RawMessage `json:"lastFocusedMs"`
+		VisibleRange  json.RawMessage `json:"visibleRange"`
+	}
+	raw := UnstableNesOpenFile{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.LastFocusedMs, &v.LastFocusedMs)
+	decodeLenient(raw.VisibleRange, &v.VisibleRange)
+	return nil
+}
+
 // A recently accessed file.
 type UnstableNesRecentFile struct {
 	// The language identifier.
@@ -8274,6 +9319,16 @@ type UnstableNesRelatedSnippet struct {
 	Excerpts []UnstableNesExcerpt `json:"excerpts"`
 	// The URI of the file containing the snippets.
 	Uri string `json:"uri"`
+}
+
+func (v UnstableNesRelatedSnippet) MarshalJSON() ([]byte, error) {
+	type Alias UnstableNesRelatedSnippet
+	var a Alias
+	a = Alias(v)
+	if a.Excerpts == nil {
+		json.Unmarshal([]byte("[]"), &a.Excerpts)
+	}
+	return json.Marshal(a)
 }
 
 // A rename symbol suggestion.
@@ -8334,6 +9389,30 @@ type UnstableNesSuggestContext struct {
 	UserActions []UnstableNesUserAction `json:"userActions,omitempty"`
 }
 
+func (v *UnstableNesSuggestContext) UnmarshalJSON(b []byte) error {
+	type plain UnstableNesSuggestContext
+	type UnstableNesSuggestContext struct {
+		*plain
+		Diagnostics     json.RawMessage `json:"diagnostics"`
+		EditHistory     json.RawMessage `json:"editHistory"`
+		OpenFiles       json.RawMessage `json:"openFiles"`
+		RecentFiles     json.RawMessage `json:"recentFiles"`
+		RelatedSnippets json.RawMessage `json:"relatedSnippets"`
+		UserActions     json.RawMessage `json:"userActions"`
+	}
+	raw := UnstableNesSuggestContext{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenientItems(raw.Diagnostics, &v.Diagnostics)
+	decodeLenientItems(raw.EditHistory, &v.EditHistory)
+	decodeLenientItems(raw.OpenFiles, &v.OpenFiles)
+	decodeLenientItems(raw.RecentFiles, &v.RecentFiles)
+	decodeLenientItems(raw.RelatedSnippets, &v.RelatedSnippets)
+	decodeLenientItems(raw.UserActions, &v.UserActions)
+	return nil
+}
+
 // A suggestion returned by the agent.
 // A text edit suggestion.
 type UnstableNesSuggestionEdit struct {
@@ -8346,6 +9425,30 @@ type UnstableNesSuggestionEdit struct {
 	Kind string `json:"kind"`
 	// The URI of the file to edit.
 	Uri string `json:"uri"`
+}
+
+func (v UnstableNesSuggestionEdit) MarshalJSON() ([]byte, error) {
+	type Alias UnstableNesSuggestionEdit
+	var a Alias
+	a = Alias(v)
+	if a.Edits == nil {
+		json.Unmarshal([]byte("[]"), &a.Edits)
+	}
+	return json.Marshal(a)
+}
+
+func (v *UnstableNesSuggestionEdit) UnmarshalJSON(b []byte) error {
+	type plain UnstableNesSuggestionEdit
+	type UnstableNesSuggestionEdit struct {
+		*plain
+		CursorPosition json.RawMessage `json:"cursorPosition"`
+	}
+	raw := UnstableNesSuggestionEdit{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.CursorPosition, &v.CursorPosition)
+	return nil
 }
 
 // A jump-to-location suggestion.
@@ -8720,6 +9823,32 @@ type UnstableProviderInfo struct {
 	Supported []UnstableLlmProtocol `json:"supported"`
 }
 
+func (v UnstableProviderInfo) MarshalJSON() ([]byte, error) {
+	type Alias UnstableProviderInfo
+	var a Alias
+	a = Alias(v)
+	if a.Supported == nil {
+		json.Unmarshal([]byte("[]"), &a.Supported)
+	}
+	return json.Marshal(a)
+}
+
+func (v *UnstableProviderInfo) UnmarshalJSON(b []byte) error {
+	type plain UnstableProviderInfo
+	type UnstableProviderInfo struct {
+		*plain
+		Supported json.RawMessage `json:"supported"`
+	}
+	raw := UnstableProviderInfo{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.Supported, &v.Supported) && raw.Supported != nil {
+		setDefault(&v.Supported, "[]")
+	}
+	return nil
+}
+
 // A range in a text document, expressed as start and end positions.
 type UnstableRange struct {
 	// The end position (exclusive).
@@ -8742,6 +9871,20 @@ type UnstableRejectNesNotification struct {
 	Reason *UnstableNesRejectReason `json:"reason,omitempty"`
 	// The session ID for this notification.
 	SessionId SessionId `json:"sessionId"`
+}
+
+func (v *UnstableRejectNesNotification) UnmarshalJSON(b []byte) error {
+	type plain UnstableRejectNesNotification
+	type UnstableRejectNesNotification struct {
+		*plain
+		Reason json.RawMessage `json:"reason"`
+	}
+	raw := UnstableRejectNesNotification{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Reason, &v.Reason, (*UnstableNesRejectReason).valid)
+	return nil
 }
 
 func (v *UnstableRejectNesNotification) Validate() error {
@@ -8785,6 +9928,20 @@ type UnstableSessionConfigOptionSelect struct {
 	Type    string                     `json:"type"`
 }
 
+func (v *UnstableSessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
+	type plain UnstableSessionConfigOptionSelect
+	type UnstableSessionConfigOptionSelect struct {
+		*plain
+		Category json.RawMessage `json:"category"`
+	}
+	raw := UnstableSessionConfigOptionSelect{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Category, &v.Category)
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -8808,6 +9965,20 @@ type UnstableSessionConfigOptionBoolean struct {
 	// Human-readable label for the option.
 	Name string `json:"name"`
 	Type string `json:"type"`
+}
+
+func (v *UnstableSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	type plain UnstableSessionConfigOptionBoolean
+	type UnstableSessionConfigOptionBoolean struct {
+		*plain
+		Category json.RawMessage `json:"category"`
+	}
+	raw := UnstableSessionConfigOptionBoolean{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Category, &v.Category)
+	return nil
 }
 
 type UnstableSessionConfigOption struct {
@@ -9028,6 +10199,22 @@ type UnstableStartNesRequest struct {
 	WorkspaceUri *string `json:"workspaceUri,omitempty"`
 }
 
+func (v *UnstableStartNesRequest) UnmarshalJSON(b []byte) error {
+	type plain UnstableStartNesRequest
+	type UnstableStartNesRequest struct {
+		*plain
+		Repository       json.RawMessage `json:"repository"`
+		WorkspaceFolders json.RawMessage `json:"workspaceFolders"`
+	}
+	raw := UnstableStartNesRequest{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Repository, &v.Repository)
+	decodeLenientItems(raw.WorkspaceFolders, &v.WorkspaceFolders)
+	return nil
+}
+
 func (v *UnstableStartNesRequest) Validate() error {
 	return nil
 }
@@ -9072,6 +10259,22 @@ type UnstableSuggestNesRequest struct {
 	Version int `json:"version"`
 }
 
+func (v *UnstableSuggestNesRequest) UnmarshalJSON(b []byte) error {
+	type plain UnstableSuggestNesRequest
+	type UnstableSuggestNesRequest struct {
+		*plain
+		Context   json.RawMessage `json:"context"`
+		Selection json.RawMessage `json:"selection"`
+	}
+	raw := UnstableSuggestNesRequest{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Context, &v.Context)
+	decodeLenient(raw.Selection, &v.Selection)
+	return nil
+}
+
 func (v *UnstableSuggestNesRequest) Validate() error {
 	if v.Uri == "" {
 		return fmt.Errorf("uri is required")
@@ -9089,6 +10292,32 @@ type UnstableSuggestNesResponse struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// The list of suggestions.
 	Suggestions []UnstableNesSuggestion `json:"suggestions"`
+}
+
+func (v UnstableSuggestNesResponse) MarshalJSON() ([]byte, error) {
+	type Alias UnstableSuggestNesResponse
+	var a Alias
+	a = Alias(v)
+	if a.Suggestions == nil {
+		json.Unmarshal([]byte("[]"), &a.Suggestions)
+	}
+	return json.Marshal(a)
+}
+
+func (v *UnstableSuggestNesResponse) UnmarshalJSON(b []byte) error {
+	type plain UnstableSuggestNesResponse
+	type UnstableSuggestNesResponse struct {
+		*plain
+		Suggestions json.RawMessage `json:"suggestions"`
+	}
+	raw := UnstableSuggestNesResponse{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if !decodeLenientItems(raw.Suggestions, &v.Suggestions) && raw.Suggestions != nil {
+		setDefault(&v.Suggestions, "[]")
+	}
+	return nil
 }
 
 func (v *UnstableSuggestNesResponse) Validate() error {
@@ -9167,6 +10396,20 @@ type UsageUpdate struct {
 	Size int `json:"size"`
 	// Tokens currently in context.
 	Used int `json:"used"`
+}
+
+func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
+	type plain UsageUpdate
+	type UsageUpdate struct {
+		*plain
+		Cost json.RawMessage `json:"cost"`
+	}
+	raw := UsageUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Cost, &v.Cost)
+	return nil
 }
 
 // Request to wait for a terminal command to exit.
@@ -9444,6 +10687,46 @@ type ClientExperimental interface {
 	UnstableDisconnectMcp(ctx context.Context, params UnstableDisconnectMcpRequest) (UnstableDisconnectMcpResponse, error)
 }
 
+func (v PositionEncodingKind) valid() bool {
+	switch v {
+	case PositionEncodingKindUtf16, PositionEncodingKindUtf32, PositionEncodingKindUtf8:
+		return true
+	}
+	return false
+}
+
+func (v Role) valid() bool {
+	switch v {
+	case RoleAssistant, RoleUser:
+		return true
+	}
+	return false
+}
+
+func (v ToolCallStatus) valid() bool {
+	switch v {
+	case ToolCallStatusPending, ToolCallStatusInProgress, ToolCallStatusCompleted, ToolCallStatusFailed:
+		return true
+	}
+	return false
+}
+
+func (v ToolKind) valid() bool {
+	switch v {
+	case ToolKindRead, ToolKindEdit, ToolKindDelete, ToolKindMove, ToolKindSearch, ToolKindExecute, ToolKindThink, ToolKindFetch, ToolKindSwitchMode, ToolKindOther:
+		return true
+	}
+	return false
+}
+
+func (v UnstableNesRejectReason) valid() bool {
+	switch v {
+	case UnstableNesRejectReasonRejected, UnstableNesRejectReasonIgnored, UnstableNesRejectReasonReplaced, UnstableNesRejectReasonCancelled:
+		return true
+	}
+	return false
+}
+
 // decodeField decodes the raw JSON of a property into dst. An absent property
 // (a nil raw) leaves dst alone. A null property, or one that is not a valid T,
 // resets dst to its zero value.
@@ -9470,6 +10753,48 @@ func setDefault[T any](dst *T, fallback string) {
 	*dst = v
 }
 
+// decodeLenient decodes a property that has x-deserialize-default-on-error: a
+// value that is not a valid T, or that valid rejects, is not an error.
+func decodeLenient[T any](raw json.RawMessage, dst *T, valid ...func(T) bool) bool {
+	decoded, _ := decodeField(raw, dst)
+	for _, isValid := range valid {
+		if decoded && !isValid(*dst) {
+			*dst = *new(T)
+			return false
+		}
+	}
+	return decoded
+}
+
+// decodeItems decodes an array property that has
+// x-deserialize-skip-invalid-items: it drops the items that are null, that are
+// not a valid T, or that valid rejects.
+func decodeItems[T any](raw json.RawMessage, dst *[]T, valid ...func(T) bool) (decoded bool, err error) {
+	var items []json.RawMessage
+	if decoded, err = decodeField(raw, &items); !decoded {
+		if raw != nil {
+			*dst = nil
+		}
+		return false, err
+	}
+	kept := make([]T, 0, len(items))
+	for _, item := range items {
+		var v T
+		if decodeLenient(item, &v, valid...) {
+			kept = append(kept, v)
+		}
+	}
+	*dst = kept
+	return true, nil
+}
+
+// decodeLenientItems decodes an array property that has both hints: a value
+// that is not an array is not an error either.
+func decodeLenientItems[T any](raw json.RawMessage, dst *[]T, valid ...func(T) bool) bool {
+	decoded, _ := decodeItems(raw, dst, valid...)
+	return decoded
+}
+
 // plainFieldError names the field in err, from a decode through an embedded
 // pointer named plain, as encoding/json names a field of the struct itself. Go
 // 1.24 and later put the name of the embedded field first.
@@ -9480,8 +10805,9 @@ func plainFieldError(err error) error {
 	return err
 }
 
-// propertyError names the struct and the field in err, from decoding the raw
-// property prop on its own, as encoding/json names a field of a struct.
+// propertyError names structName and the path from it in err, which comes from
+// decoding the raw property prop on its own. encoding/json would name the
+// innermost struct.
 func propertyError(err error, structName, prop string) error {
 	if typeErr, ok := err.(*json.UnmarshalTypeError); ok {
 		typeErr.Struct = structName

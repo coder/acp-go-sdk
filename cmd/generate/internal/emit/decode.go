@@ -1,5 +1,13 @@
 package emit
 
+import (
+	"fmt"
+	"sort"
+
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/util"
+)
+
 func decodeFallback(p fieldPlan, target Code) Code {
 	return Qual("encoding/json", "Unmarshal").Call(Index().Byte().Parens(Lit(p.fallbackJSON)), Op("&").Add(target).Dot(p.field.Name))
 }
@@ -24,21 +32,71 @@ func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fie
 
 func decodeStmt(p fieldPlan, structName, recv string) Code {
 	raw := func() *Statement { return Id("raw").Dot(p.field.Name) }
-	needsFallback := Op("!").Id("decoded")
-	if !p.fallbackOnNull {
-		notNull := Id("string").Call(raw()).Op("!=").Lit("null")
-		needsFallback = needsFallback.Op("&&").Add(notNull)
+	args := []Code{raw(), Op("&").Id(recv).Dot(p.field.Name)}
+	if p.enumValidator != nil {
+		args = append(args, p.enumValidator)
 	}
-	return If(List(Id("decoded"), Id("err")).Op(":=").Id("decodeField").Call(raw(), Op("&").Id(recv).Dot(p.field.Name)), Id("err").Op("!=").Nil()).Block(
-		Return(Id("propertyError").Call(Id("err"), Lit(structName), Lit(p.field.Prop))),
-	).Else().If(needsFallback).Block(Id("setDefault").Call(Op("&").Id(recv).Dot(p.field.Name), Lit(p.fallbackJSON)))
+	needsFallback := func(notDecoded *Statement) *Statement {
+		if !p.fallbackOnAbsent {
+			notAbsent := raw().Op("!=").Nil()
+			notDecoded = notDecoded.Op("&&").Add(notAbsent)
+		}
+		if !p.fallbackOnNull {
+			notNull := Id("string").Call(raw()).Op("!=").Lit("null")
+			notDecoded = notDecoded.Op("&&").Add(notNull)
+		}
+		return notDecoded
+	}
+	fallback := Id("setDefault").Call(Op("&").Id(recv).Dot(p.field.Name), Lit(p.fallbackJSON))
+
+	if p.field.Lenient.DefaultOnError {
+		helper := "decodeLenient"
+		if p.field.Lenient.SkipInvalidItems {
+			helper = "decodeLenientItems"
+		}
+		decoded := Id(helper).Call(args...)
+		if !p.hasFallback() {
+			return decoded
+		}
+		return If(needsFallback(Op("!").Add(decoded))).Block(fallback)
+	}
+
+	helper := "decodeField"
+	if p.field.Lenient.SkipInvalidItems {
+		helper = "decodeItems"
+	}
+	fail := Return(Id("propertyError").Call(Id("err"), Lit(structName), Lit(p.field.Prop)))
+	if !p.fallbackOnAbsent && !p.fallbackOnNull {
+		return If(List(Id("_"), Id("err")).Op(":=").Id(helper).Call(args...), Id("err").Op("!=").Nil()).Block(fail)
+	}
+	return If(List(Id("decoded"), Id("err")).Op(":=").Id(helper).Call(args...), Id("err").Op("!=").Nil()).Block(fail).
+		Else().If(needsFallback(Op("!").Id("decoded"))).Block(fallback)
 }
 
 func (b *typesBuilder) emitSupport() {
+	f := b.f
+	enums := make([]string, 0, len(b.validatedEnums))
+	for name := range b.validatedEnums {
+		enums = append(enums, name)
+	}
+	sort.Strings(enums)
+	for _, name := range enums {
+		consts := []Code{}
+		for _, value := range enumValues(b.schema.Defs[name]) {
+			consts = append(consts, Id(util.ToEnumConst(name, value)))
+		}
+		f.Func().Params(Id("v").Id(name)).Id("valid").Params().Bool().Block(
+			Switch(Id("v")).Block(Case(consts...).Block(Return(Lit(true)))),
+			Return(Lit(false)),
+		)
+		f.Line()
+	}
 	if !b.usesDecodeHelpers {
 		return
 	}
-	f := b.f
+
+	rawParam := func() Code { return Id("raw").Qual("encoding/json", "RawMessage") }
+	validParam := func() Code { return Id("valid").Op("...").Func().Params(Id("T")).Bool() }
 	typeErr := func() Code {
 		return List(Id("typeErr"), Id("ok")).Op(":=").Id("err").Assert(Op("*").Qual("encoding/json", "UnmarshalTypeError"))
 	}
@@ -46,7 +104,7 @@ func (b *typesBuilder) emitSupport() {
 	f.Comment("decodeField decodes the raw JSON of a property into dst. An absent property")
 	f.Comment("(a nil raw) leaves dst alone. A null property, or one that is not a valid T,")
 	f.Comment("resets dst to its zero value.")
-	f.Func().Id("decodeField").Types(Id("T").Any()).Params(Id("raw").Qual("encoding/json", "RawMessage"), Id("dst").Op("*").Id("T")).Params(Id("decoded").Bool(), Id("err").Error()).Block(
+	f.Func().Id("decodeField").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Id("T")).Params(Id("decoded").Bool(), Id("err").Error()).Block(
 		If(Id("raw").Op("==").Nil()).Block(Return(Lit(false), Nil())),
 		Var().Id("v").Id("T"),
 		If(Id("string").Call(Id("raw")).Op("!=").Lit("null")).Block(
@@ -69,6 +127,49 @@ func (b *typesBuilder) emitSupport() {
 	)
 	f.Line()
 
+	f.Comment("decodeLenient decodes a property that has x-deserialize-default-on-error: a")
+	f.Comment("value that is not a valid T, or that valid rejects, is not an error.")
+	f.Func().Id("decodeLenient").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Id("T"), validParam()).Bool().Block(
+		List(Id("decoded"), Id("_")).Op(":=").Id("decodeField").Call(Id("raw"), Id("dst")),
+		For(List(Id("_"), Id("isValid")).Op(":=").Range().Id("valid")).Block(
+			If(Id("decoded").Op("&&").Op("!").Id("isValid").Call(Op("*").Id("dst"))).Block(
+				Op("*").Id("dst").Op("=").Op("*").Id("new").Call(Id("T")),
+				Return(Lit(false)),
+			),
+		),
+		Return(Id("decoded")),
+	)
+	f.Line()
+
+	f.Comment("decodeItems decodes an array property that has")
+	f.Comment("x-deserialize-skip-invalid-items: it drops the items that are null, that are")
+	f.Comment("not a valid T, or that valid rejects.")
+	f.Func().Id("decodeItems").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Index().Id("T"), validParam()).Params(Id("decoded").Bool(), Id("err").Error()).Block(
+		Var().Id("items").Index().Qual("encoding/json", "RawMessage"),
+		If(List(Id("decoded"), Id("err")).Op("=").Id("decodeField").Call(Id("raw"), Op("&").Id("items")), Op("!").Id("decoded")).Block(
+			If(Id("raw").Op("!=").Nil()).Block(Op("*").Id("dst").Op("=").Nil()),
+			Return(Lit(false), Id("err")),
+		),
+		Id("kept").Op(":=").Make(Index().Id("T"), Lit(0), Id("len").Call(Id("items"))),
+		For(List(Id("_"), Id("item")).Op(":=").Range().Id("items")).Block(
+			Var().Id("v").Id("T"),
+			If(Id("decodeLenient").Call(Id("item"), Op("&").Id("v"), Id("valid").Op("..."))).Block(
+				Id("kept").Op("=").Append(Id("kept"), Id("v")),
+			),
+		),
+		Op("*").Id("dst").Op("=").Id("kept"),
+		Return(Lit(true), Nil()),
+	)
+	f.Line()
+
+	f.Comment("decodeLenientItems decodes an array property that has both hints: a value")
+	f.Comment("that is not an array is not an error either.")
+	f.Func().Id("decodeLenientItems").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Index().Id("T"), validParam()).Bool().Block(
+		List(Id("decoded"), Id("_")).Op(":=").Id("decodeItems").Call(Id("raw"), Id("dst"), Id("valid").Op("...")),
+		Return(Id("decoded")),
+	)
+	f.Line()
+
 	f.Comment("plainFieldError names the field in err, from a decode through an embedded")
 	f.Comment("pointer named plain, as encoding/json names a field of the struct itself. Go")
 	f.Comment("1.24 and later put the name of the embedded field first.")
@@ -80,8 +181,9 @@ func (b *typesBuilder) emitSupport() {
 	)
 	f.Line()
 
-	f.Comment("propertyError names the struct and the field in err, from decoding the raw")
-	f.Comment("property prop on its own, as encoding/json names a field of a struct.")
+	f.Comment("propertyError names structName and the path from it in err, which comes from")
+	f.Comment("decoding the raw property prop on its own. encoding/json would name the")
+	f.Comment("innermost struct.")
 	f.Func().Id("propertyError").Params(Id("err").Error(), List(Id("structName"), Id("prop")).String()).Error().Block(
 		If(typeErr(), Id("ok")).Block(
 			Id("typeErr").Dot("Struct").Op("=").Id("structName"),
@@ -94,4 +196,17 @@ func (b *typesBuilder) emitSupport() {
 		Return(Id("err")),
 	)
 	f.Line()
+}
+
+func enumValues(def *load.Definition) []string {
+	values := []string{}
+	for _, v := range def.Enum {
+		values = append(values, fmt.Sprint(v))
+	}
+	if len(values) == 0 {
+		for _, v := range def.OneOf {
+			values = append(values, fmt.Sprint(v.Const))
+		}
+	}
+	return values
 }

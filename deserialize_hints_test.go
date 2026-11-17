@@ -1,0 +1,131 @@
+package acp
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestUnmarshalJSON_HonorsDeserializeHints(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		into func() any
+		in   string
+		want string
+	}{
+		{
+			name: "tool call update with optional values of the wrong shape",
+			into: func() any { return new(ToolCallUpdate) },
+			in:   `{"toolCallId":"t","title":"run","kind":7,"status":{"x":1},"content":"oops","locations":5}`,
+			want: `{"toolCallId":"t","title":"run"}`,
+		},
+		{
+			name: "tool call update with enum values that the schema does not define",
+			into: func() any { return new(ToolCallUpdate) },
+			in:   `{"toolCallId":"t","kind":"teleport","status":"paused"}`,
+			want: `{"toolCallId":"t"}`,
+		},
+		{
+			name: "tool call update inside a session notification",
+			into: func() any { return new(SessionNotification) },
+			in:   `{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"t","kind":"teleport","locations":[{"path":"/a"},"oops"]}}`,
+			want: `{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"t","locations":[{"path":"/a"}]}}`,
+		},
+		{
+			name: "plan with one entry of the wrong shape",
+			into: func() any { return new(Plan) },
+			in:   `{"entries":[{"content":"a","priority":"high","status":"pending"},"oops",null]}`,
+			want: `{"entries":[{"content":"a","priority":"high","status":"pending"}]}`,
+		},
+		{
+			name: "text content block with annotations of the wrong shape",
+			into: func() any { return new(ContentBlock) },
+			in:   `{"type":"text","text":"hi","annotations":"oops"}`,
+			want: `{"type":"text","text":"hi"}`,
+		},
+		{
+			name: "annotations with an audience that the schema does not define",
+			into: func() any { return new(Annotations) },
+			in:   `{"audience":["user","robot"],"priority":1}`,
+			want: `{"audience":["user"],"priority":1}`,
+		},
+		{
+			name: "session list with one session of the wrong shape",
+			into: func() any { return new(ListSessionsResponse) },
+			in:   `{"sessions":[{"sessionId":"s","cwd":"/work","title":7},"oops"]}`,
+			want: `{"sessions":[{"sessionId":"s","cwd":"/work"}]}`,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := tt.into()
+			if err := json.Unmarshal([]byte(tt.in), v); err != nil {
+				t.Fatalf("unmarshal %s: %v", tt.in, err)
+			}
+			got, err := json.Marshal(v)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if ok, got, want := equalJSON(got, []byte(tt.want)); !ok {
+				t.Fatalf("%s decoded to\n got: %s\nwant: %s", tt.in, got, want)
+			}
+		})
+	}
+}
+
+func TestInitializeResponse_UnmarshalJSON_BadAuthMethodsReadAsDefault(t *testing.T) {
+	t.Parallel()
+	var resp InitializeResponse
+	if err := json.Unmarshal([]byte(`{"protocolVersion":1,"agentInfo":"oops","authMethods":"oops"}`), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.AgentInfo != nil {
+		t.Errorf("agentInfo = %+v, want nil for a value of the wrong shape", resp.AgentInfo)
+	}
+	if resp.AuthMethods == nil || len(resp.AuthMethods) != 0 {
+		t.Errorf("authMethods = %#v, want the default empty array", resp.AuthMethods)
+	}
+
+	if err := json.Unmarshal([]byte(`{"protocolVersion":1,"authMethods":[{"id":"a","name":"A"},7]}`), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.AuthMethods) != 1 {
+		t.Fatalf("authMethods has %d items, want the one valid item", len(resp.AuthMethods))
+	}
+}
+
+func TestToolCallUpdate_UnmarshalJSON_KeepsFieldsThatTheJSONOmits(t *testing.T) {
+	t.Parallel()
+	var update ToolCallUpdate
+	for _, in := range []string{
+		`{"toolCallId":"t","title":"run","status":"pending"}`,
+		`{"toolCallId":"t","status":"completed"}`,
+	} {
+		if err := json.Unmarshal([]byte(in), &update); err != nil {
+			t.Fatalf("unmarshal %s: %v", in, err)
+		}
+	}
+	if update.Title == nil || *update.Title != "run" {
+		t.Errorf("title = %v after an update without one, want it kept as %q", update.Title, "run")
+	}
+	if update.Status == nil || *update.Status != ToolCallStatusCompleted {
+		t.Errorf("status = %v, want %q from the second update", update.Status, ToolCallStatusCompleted)
+	}
+}
+
+func TestUnmarshalJSON_StaysStrictWithoutDeserializeHints(t *testing.T) {
+	t.Parallel()
+	var update ToolCallUpdate
+	if err := json.Unmarshal([]byte(`{"toolCallId":5}`), &update); err == nil {
+		t.Errorf("a number as toolCallId decoded without an error")
+	}
+	var entry PlanEntry
+	if err := json.Unmarshal([]byte(`{"content":"a","priority":"urgent","status":"pending"}`), &entry); err != nil {
+		t.Fatalf("unmarshal a plan entry with an unknown priority: %v", err)
+	}
+	if entry.Priority != "urgent" {
+		t.Errorf("priority = %q, want the unknown value %q kept", entry.Priority, "urgent")
+	}
+}

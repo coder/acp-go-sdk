@@ -144,6 +144,7 @@ type typesBuilder struct {
 	schema            *load.Schema
 	usedTypeNames     map[string]bool
 	variants          map[string][]unionVariant
+	validatedEnums    map[string]bool
 	usesDecodeHelpers bool
 }
 
@@ -160,7 +161,10 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	for k := range schema.Defs {
 		usedTypeNames[k] = true
 	}
-	b := &typesBuilder{f: f, schema: schema, usedTypeNames: usedTypeNames, variants: emitted}
+	b := &typesBuilder{
+		f: f, schema: schema, usedTypeNames: usedTypeNames, variants: emitted,
+		validatedEnums: map[string]bool{},
+	}
 
 	// Deterministic order
 	keys := make([]string, 0, len(schema.Defs))
@@ -656,14 +660,31 @@ func jenTypeFor(d *load.Definition) Code {
 	}
 }
 
+func nonNullAlternative(d *load.Definition) *load.Definition {
+	alts := d.AnyOf
+	if len(alts) == 0 {
+		alts = d.OneOf
+	}
+	if len(alts) != 2 {
+		return nil
+	}
+	var nonNull *load.Definition
+	for _, alt := range alts {
+		if alt == nil {
+			continue
+		}
+		if s, ok := alt.Type.(string); ok && s == "null" {
+			continue
+		}
+		nonNull = alt
+	}
+	return nonNull
+}
+
 // jenTypeForOptional maps unions that include null to pointer types where applicable.
 func jenTypeForOptional(d *load.Definition) Code {
 	if d == nil {
 		return Any()
-	}
-	list := d.AnyOf
-	if len(list) == 0 {
-		list = d.OneOf
 	}
 	// Case: property type is a union like ["string","null"]
 	if arr, ok := d.Type.([]any); ok && len(arr) == 2 {
@@ -687,37 +708,24 @@ func jenTypeForOptional(d *load.Definition) Code {
 			return Op("*").Bool()
 		}
 	}
-	if len(list) == 2 {
-		var nonNull *load.Definition
-		for _, e := range list {
-			if e == nil {
-				continue
-			}
-			if s, ok := e.Type.(string); ok && s == "null" {
-				continue
-			}
-			if e.Const != nil {
-				nn := *e
-				nn.Type = "string"
-				nonNull = &nn
-			} else {
-				nonNull = e
-			}
+	if nonNull := nonNullAlternative(d); nonNull != nil {
+		if nonNull.Const != nil {
+			nn := *nonNull
+			nn.Type = "string"
+			nonNull = &nn
 		}
-		if nonNull != nil {
-			if nonNull.Ref != "" && strings.HasPrefix(nonNull.Ref, "#/$defs/") {
-				return Op("*").Id(nonNull.Ref[len("#/$defs/"):])
-			}
-			switch ir.PrimaryType(nonNull) {
-			case "string":
-				return Op("*").String()
-			case "integer":
-				return Op("*").Int()
-			case "number":
-				return Op("*").Float64()
-			case "boolean":
-				return Op("*").Bool()
-			}
+		if nonNull.Ref != "" && strings.HasPrefix(nonNull.Ref, "#/$defs/") {
+			return Op("*").Id(nonNull.Ref[len("#/$defs/"):])
+		}
+		switch ir.PrimaryType(nonNull) {
+		case "string":
+			return Op("*").String()
+		case "integer":
+			return Op("*").Int()
+		case "number":
+			return Op("*").Float64()
+		case "boolean":
+			return Op("*").Bool()
 		}
 	}
 	return jenTypeFor(d)

@@ -11,7 +11,7 @@ Package `load` reads the generator inputs from the schema directory into minimal
 - `type Meta struct { Version int; AgentMethods, ClientMethods, ProtocolMethods map[string]string }`, decoded from `meta.json` [load.go:Meta]
 - `type Schema struct { Defs map[string]*Definition }`, decoded from the `$defs` key [load.go:Schema]
 - `type Discriminator struct { PropertyName string }` [load.go:Discriminator]
-- `type Definition struct` with JSON-tagged fields `Description`, `Type`, `Properties`, `Required`, `Enum`, `Items`, `Ref`, `AnyOf`, `OneOf`, `AllOf`, `DocsIgnore` (`x-docs-ignore`), `Title`, `Const`, `XSide` (`x-side`), `XMethod` (`x-method`), `Default`, and `Discriminator` [load.go:Definition]
+- `type Definition struct` with JSON-tagged fields `Description`, `Type`, `Properties`, `Required`, `Enum`, `Items`, `Ref`, `AnyOf`, `OneOf`, `AllOf`, `DocsIgnore` (`x-docs-ignore`), `Title`, `Const`, `XSide` (`x-side`), `XMethod` (`x-method`), `Default`, `Discriminator`, `DefaultOnError` (`x-deserialize-default-on-error`), `SkipInvalidItems` (`x-deserialize-skip-invalid-items`), and `DefaultOnNull` (`x-deserialize-default-on-null`) [load.go:Definition]
 - `func (d *Definition) UnmarshalJSON(b []byte) error` decodes the object and boolean JSON Schema forms [load.go:Definition.UnmarshalJSON]
 - `func ReadSchemaVersion(schemaDir string) (string, error)` reads `version`, the ACP schema release, without surrounding whitespace. An empty file is an error [load.go:ReadSchemaVersion] [load_test.go:TestReadSchemaVersion]
 - `func ReadMeta(schemaDir string) (*Meta, error)` reads `meta.json` [load.go:ReadMeta]

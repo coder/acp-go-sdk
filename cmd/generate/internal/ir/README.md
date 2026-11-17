@@ -6,7 +6,7 @@ Package `ir` holds the generator's intermediate representation of ACP methods.
 `BuildMethodGroups` links each wire method on the agent or client side to its Go Request, Response, and Notification type names and to the interface binding the emitter puts it in.
 `Fields` turns the properties of an object schema into the fields of a Go struct.
 It also provides schema type helpers (`PrimaryType`, `IsNullResponse`) and naming helpers used by `github.com/coder/acp-go-sdk/cmd/generate/internal/emit`.
-The package imports only `sort`, `strings`, and the sibling `load` and `util` packages, and it does no I/O.
+The package imports only `fmt`, `sort`, `strings`, and the sibling `load` and `util` packages, and it does no I/O.
 
 ## Interface
 
@@ -19,7 +19,8 @@ The package imports only `sort`, `strings`, and the sibling `load` and `util` pa
 - `func BuildMethodGroups(schema *load.Schema, meta *load.Meta) Groups` builds the method groups from the schema and the meta fallback [ir.go:BuildMethodGroups]
 - `func DispatchMethodNameForNotification(methodKey, typeName string) string` returns the Go method name for a notification [ir.go:DispatchMethodNameForNotification]
 - `func SortedKeys(m map[string]string) []string` returns the keys of `m` in sorted order [ir.go:SortedKeys]
-- `type Field struct` with fields `Prop` (the property name on the wire), `Name` (the exported Go field name), `Def` (`*load.Definition`, the property's schema), and `Required` (`bool`) [field.go:Field]
+- `type Lenient struct` with the `bool` fields `DefaultOnError`, `DefaultOnNull`, and `SkipInvalidItems`: the decode leniency that the `x-deserialize-*` hints of one property ask for. The zero value is strict [field.go:Lenient]
+- `type Field struct` with fields `Prop` (the property name on the wire), `Name` (the exported Go field name), `Def` (`*load.Definition`, the property's schema), `Required` (`bool`), and `Lenient` (`Lenient`) [field.go:Field]
 - `func Fields(props map[string]*load.Definition, required []string) []Field` returns one `Field` per property of an object schema [field.go:Fields]
 
 ## Invariants
@@ -37,7 +38,8 @@ The package imports only `sort`, `strings`, and the sibling `load` and `util` pa
 - `inferTypeBaseFromMethodKey` maps `terminal_wait_for_exit` to `WaitForTerminalExit`. A two-part key whose second part is `new`, `create`, `release`, `wait`, `load`, `authenticate`, `prompt`, `cancel`, `read`, or `write` becomes verb then noun (for example `session_new` becomes `NewSession`) [ir.go:inferTypeBaseFromMethodKey]
 - `DispatchMethodNameForNotification` returns `SessionUpdate` for `session_update` and `Cancel` for `session_cancel`. Otherwise it trims the `Notification` suffix from `typeName` [ir.go:DispatchMethodNameForNotification]
 - `BuildMethodGroups` does not check `schema` or `meta` for nil, so a nil argument panics [ir.go:BuildMethodGroups]
-- `Fields` returns the fields sorted by property name. `Name` is `util.ToExportedField` of the property name, and `Required` is true for a property that `required` lists [field.go:Fields] [field_test.go:TestFields_ReadsNamesAndRequired]
+- `Fields` returns the fields sorted by property name. `Name` is `util.ToExportedField` of the property name, and `Required` is true for a property that `required` lists. `Lenient` copies the three hint fields of the property's `load.Definition` [field.go:Fields] [field_test.go:TestFields_ReadsNamesRequiredAndHints]
+- `Fields` panics when a property that is not an array has `x-deserialize-skip-invalid-items` [field.go:Fields] [field_test.go:TestFields_PanicsOnSkipInvalidItemsOutsideAnArray]
 
 ## Side Effects
 

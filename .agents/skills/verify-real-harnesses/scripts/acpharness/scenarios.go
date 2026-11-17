@@ -295,6 +295,8 @@ func (h *harness) switchModel(a *agentConn) (status, string) {
 		return fail, fmt.Sprintf("set %s back to %s: %v; %s", sel.Id, orig, back, detail)
 	case off.err != nil:
 		return fail, "session/prompt after the switch back: " + errText(off.err) + "; " + detail
+	case off.resp.StopReason != acp.StopReasonEndTurn:
+		return fail, "turn after the switch back: " + off.describe() + "; " + detail
 	}
 	if problem := switchProblem(h.defaultModels, on.models, off.models); problem != "" {
 		return fail, problem + "; " + detail
@@ -653,6 +655,8 @@ func (h *harness) resumeSession() (status, string) {
 	switch {
 	case t.err != nil:
 		return fail, "session/prompt: " + errText(t.err) + "; " + detail
+	case t.resp.StopReason != acp.StopReasonEndTurn:
+		return fail, "the recall turn did not end with end_turn; " + detail
 	case !strings.Contains(strings.ToLower(t.text), "pong"):
 		return fail, "the resumed session does not remember pong; " + detail
 	}

@@ -255,8 +255,15 @@ func (h *harness) finish() int {
 		"exits":           exits,
 		"pass":            !failed,
 	}
+	// Missing proof fails the run: a gate must not pass without its evidence.
+	var lost []string
+	if err := h.rec.close(); err != nil {
+		lost = append(lost, "transcript.jsonl: "+err.Error())
+	}
 	b, _ := json.MarshalIndent(summary, "", "  ")
-	_ = os.WriteFile(filepath.Join(h.opts.out, "summary.json"), append(b, '\n'), 0o600)
+	if err := os.WriteFile(filepath.Join(h.opts.out, "summary.json"), append(b, '\n'), 0o600); err != nil {
+		lost = append(lost, err.Error())
+	}
 
 	var lines strings.Builder
 	for _, r := range h.results {
@@ -269,7 +276,13 @@ func (h *harness) finish() int {
 		code = 1
 	}
 	fmt.Fprintf(&lines, "exit=%d\n", code)
-	_ = os.WriteFile(filepath.Join(h.opts.out, "result.txt"), []byte(lines.String()), 0o600)
+	if err := os.WriteFile(filepath.Join(h.opts.out, "result.txt"), []byte(lines.String()), 0o600); err != nil {
+		lost = append(lost, err.Error())
+	}
+	if len(lost) > 0 {
+		fmt.Fprintln(os.Stderr, "acpharness: the evidence is incomplete:", strings.Join(lost, "; "))
+		return 1
+	}
 	return code
 }
 

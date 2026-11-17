@@ -7,9 +7,10 @@
 //   node ts-client.mjs --out DIR --cwd DIR -- AGENT [ARGS...]
 //
 // It writes DIR/transcript.jsonl, DIR/agent.stderr.log, DIR/summary.json and
-// DIR/result.txt. Exit 0: the turn ended with end_turn, at least one agent
-// message arrived, and no error response or non-JSON line crossed the wire.
-// Exit 1: otherwise. Run it from a folder whose node_modules holds the SDK.
+// DIR/result.txt. Exit 0: protocol version 1 was negotiated, the turn ended
+// with end_turn, at least one agent message arrived, no error response or
+// non-JSON line crossed the wire, and the agent exited 0 after its input
+// closed. Exit 1: otherwise. Run it from a folder whose node_modules holds the SDK.
 import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
@@ -112,9 +113,11 @@ const exit = await Promise.race([exited, new Promise((r) => setTimeout(() => r(n
 if (exit === null) child.kill("SIGTERM");
 
 const checks = [
+  [`protocol version ${acp.PROTOCOL_VERSION} negotiated`, outcome?.protocolVersion === acp.PROTOCOL_VERSION],
   ["turn ended with end_turn", outcome?.stopReason === "end_turn"],
   ["at least one agent_message_chunk", (kinds.agent_message_chunk ?? 0) > 0],
   ["no error response or non-JSON line on the wire", problems.length === 0],
+  ["agent exited 0 after its input closed", exit === "exit 0"],
 ];
 const pass = checks.every(([, ok]) => ok);
 const summary = { agent, sdk: "@agentclientprotocol/sdk", outcome, kinds, permissions, problems, agentExit: exit ?? "killed", pass };

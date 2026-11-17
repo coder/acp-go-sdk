@@ -116,7 +116,7 @@ installed() {
 
 cmd_launch() {
 	local t root
-	for t in go node npm curl jq git; do
+	for t in go node npm curl jq git sha256sum timeout pgrep; do
 		command -v "$t" >/dev/null || die "$t is not on PATH"
 	done
 	[ "$(node -p 'process.features.typescript || ""')" = strip ] ||
@@ -240,6 +240,14 @@ cmd_doctor() {
 			ok=0
 		fi
 	done < <(cat "$WORK/pids" "$WORK/pgids")
+	while IFS=$'\t' read -r pid start cmd; do
+		[ -n "$pid" ] || continue
+		if orphaned "$pid"; then
+			echo "FAIL  process group $pid from this run outlived its leader: $cmd"
+			live=1
+			ok=0
+		fi
+	done <"$WORK/pgids"
 	[ "$live" = 0 ] && echo "ok    no process from this run is running"
 	echo "run      $RUN"
 	echo "evidence $EVIDENCE"
@@ -307,7 +315,9 @@ cmd_g4() {
 	need_run
 	local rc=0 out
 	# 1. The TypeScript SDK as the client, this repo's example agent as the agent.
+	# Each drive replaces its folder, so a failed rerun leaves no stale PASS.
 	out=$EVIDENCE/g4-ts-client-go-agent
+	rm -rf "$out"
 	mkdir -p "$out"
 	echo "cd $WORK/npm/ts && node ts-client.mjs --out $out --cwd $WORK/cwd/g4-ts -- $BIN/acp-example-agent" >"$out/command.txt"
 	echo "== TS client -> Go example agent"
@@ -318,6 +328,7 @@ cmd_g4() {
 
 	# 2. This repo's SDK as the client, the TypeScript SDK's example agent as the agent.
 	out=$EVIDENCE/g4-go-client-ts-agent
+	rm -rf "$out"
 	mkdir -p "$out"
 	echo "== Go driver -> TS example agent"
 	(cd "$WORK/npm/ts" && tracked timeout 120 "$BIN/acpharness" -profile smoke -pgids "$WORK/pgids" \
@@ -341,8 +352,8 @@ cmd_report() {
 	set_paths "$HARNESS_RUN"
 	[ -f "$EVIDENCE/versions.json" ] || die "no evidence in $RUN"
 	local labels=() l f names n row s total=0 cost
-	for f in "$EVIDENCE"/g5-*/summary.json; do
-		[ -f "$f" ] && labels+=("$(basename "$(dirname "$f")")")
+	for f in "$EVIDENCE"/g5-*; do
+		[ -d "$f" ] && labels+=("$(basename "$f")")
 	done
 	{
 		echo "# ACP Go SDK live gates"
@@ -361,11 +372,16 @@ cmd_report() {
 			printf '\n|---|'
 			printf -- '---|%.0s' "${labels[@]}"
 			echo
-			names=$(for l in "${labels[@]}"; do jq -r '.results[].name' "$EVIDENCE/$l/summary.json"; done | awk '!seen[$0]++')
+			names=$(for l in "${labels[@]}"; do
+				f=$EVIDENCE/$l/summary.json
+				[ -f "$f" ] && jq -r '.results[].name' "$f"
+			done | awk '!seen[$0]++')
 			while IFS= read -r n; do
 				row="| $n |"
 				for l in "${labels[@]}"; do
-					s=$(jq -r --arg n "$n" '[.results[] | select(.name == $n) | .status][0] // "-"' "$EVIDENCE/$l/summary.json")
+					f=$EVIDENCE/$l/summary.json
+					s=INCOMPLETE
+					[ -f "$f" ] && s=$(jq -r --arg n "$n" '[.results[] | select(.name == $n) | .status][0] // "-"' "$f")
 					row="$row $s |"
 				done
 				echo "$row"
@@ -373,6 +389,10 @@ cmd_report() {
 			echo
 			for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
+				if [ ! -f "$f" ]; then
+					echo "- $l: INCOMPLETE, no summary.json: the driver did not finish"
+					continue
+				fi
 				cost=$(jq .costUsd "$f")
 				total=$(jq -n --argjson a "$total" --argjson b "$cost" '$a + $b')
 				printf -- '- %s: %s, models on the wire %s, %s, tokens %s\n' "$l" \
@@ -386,7 +406,8 @@ cmd_report() {
 			echo "### Failures and skips"
 			echo
 			for l in "${labels[@]}"; do
-				jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$EVIDENCE/$l/summary.json"
+				f=$EVIDENCE/$l/summary.json
+				[ -f "$f" ] && jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$f"
 			done
 		fi
 		if [ -d "$EVIDENCE/g4-ts-client-go-agent" ] || [ -d "$EVIDENCE/g4-go-client-ts-agent" ]; then
@@ -450,6 +471,10 @@ stop() {
 
 group_alive() { [ -n "$(pgrep -g "$1" 2>/dev/null || true)" ]; }
 
+# orphaned PGID: the group's leader is gone, and members that it started
+# still run.
+orphaned() { ! ps -p "$1" >/dev/null 2>&1 && group_alive "$1"; }
+
 cmd_cleanup() {
 	need_run
 	local pid start cmd
@@ -462,16 +487,17 @@ cmd_cleanup() {
 		fi
 	done <"$WORK/pids"
 	# Each agent runs in its own process group, led by the agent. Stop a group
-	# only while its recorded leader still runs, so a reused id is left alone.
-	# A group id cannot be reused while any member lives, so the wait and the
-	# SIGKILL reach only this run's processes.
+	# while its recorded leader still runs, or when the leader is gone and
+	# members remain. The kernel does not reuse a group id while a member
+	# lives, so the signals reach only this run's processes.
 	while IFS=$'\t' read -r pid start cmd; do
 		[ -n "$pid" ] || continue
 		if ours "$pid" "$start"; then
 			stop "-$pid" group_alive "$pid"
 			echo "stopped process group $pid ($cmd)"
-		elif group_alive "$pid"; then
-			echo "WARN  process group $pid outlived its leader; not stopped, check: ps -o pid,lstart,cmd -g $pid"
+		elif orphaned "$pid"; then
+			stop "-$pid" group_alive "$pid"
+			echo "stopped the members that process group $pid left behind ($cmd)"
 		fi
 	done <"$WORK/pgids"
 	rm -rf "$WORK"

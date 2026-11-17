@@ -45,6 +45,7 @@ type recorder struct {
 
 	mu         sync.Mutex
 	transcript *os.File
+	writeErr   error // the first failed transcript write
 	findings   []finding
 	inbound    map[string]int // agent->client methods by name
 }
@@ -83,7 +84,9 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	_, _ = r.transcript.Write(append(b, '\n'))
+	if _, err := r.transcript.Write(append(b, '\n')); err != nil && r.writeErr == nil {
+		r.writeErr = err
+	}
 	if dir == agentToClient && msg.Method != "" {
 		r.inbound[msg.Method]++
 	}
@@ -127,6 +130,16 @@ func (r *recorder) logged(conn int, text string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.findings = append(r.findings, finding{Kind: kind, Source: "sdk-log", Conn: conn, Scenario: r.current(), Text: text})
+}
+
+// close closes the transcript and returns the first error that it hit.
+func (r *recorder) close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.transcript.Close(); err != nil && r.writeErr == nil {
+		r.writeErr = err
+	}
+	return r.writeErr
 }
 
 func (r *recorder) snapshot() ([]finding, map[string]int) {

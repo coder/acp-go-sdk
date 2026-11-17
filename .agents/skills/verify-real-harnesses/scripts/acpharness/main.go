@@ -169,9 +169,8 @@ func (h *harness) step(name string, fn func() (status, string)) status {
 	default:
 		st, detail = fn()
 	}
-	r := result{Name: name, Status: st, Detail: detail, Ms: time.Since(start).Milliseconds()}
-	h.results = append(h.results, r)
-	fmt.Printf("%-4s  %-18s %s\n", r.Status, r.Name, r.Detail)
+	h.results = append(h.results, result{Name: name, Status: st, Detail: detail, Ms: time.Since(start).Milliseconds()})
+	fmt.Printf("%-4s  %-18s %s\n", st, name, detail)
 	return st
 }
 
@@ -201,10 +200,19 @@ func (h *harness) trackPgid(pid int) {
 // finish closes every agent, adds the global predicate, and writes
 // summary.json and result.txt. It returns the exit code.
 func (h *harness) finish() int {
-	h.rec.scenario.Store("shutdown")
-	var exits []string
+	h.rec.scenario.Store("agent-exit")
+	var exits, bad []string
 	for _, a := range h.conns {
-		exits = append(exits, fmt.Sprintf("conn %d: %s", a.n, a.close(10*time.Second)))
+		exit := fmt.Sprintf("conn %d: %s", a.n, a.close(10*time.Second))
+		exits = append(exits, exit)
+		if a.ended != "exit 0" {
+			bad = append(bad, exit)
+		}
+	}
+	if len(bad) == 0 {
+		h.row("agent-exit", pass, fmt.Sprintf("%d agent process(es) exited 0 after their input closed", len(exits)))
+	} else {
+		h.row("agent-exit", fail, strings.Join(bad, "; "))
 	}
 	findings, inbound := h.rec.snapshot()
 	h.globalStep("no-method-not-found", methodNotFound, findings)
@@ -288,6 +296,11 @@ func (h *harness) globalStep(name, kind string, findings []finding) {
 		sort.Strings(scen)
 		detail = fmt.Sprintf("%d (in %s); first: %s", len(hits), strings.Join(scen, ","), clip(hits[0].Text, 240))
 	}
+	h.row(name, st, detail)
+}
+
+// row records a result that no scenario function produced and prints it.
+func (h *harness) row(name string, st status, detail string) {
 	h.results = append(h.results, result{Name: name, Status: st, Detail: detail})
 	fmt.Printf("%-4s  %-18s %s\n", st, name, detail)
 }

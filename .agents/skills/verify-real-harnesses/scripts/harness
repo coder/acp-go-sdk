@@ -434,6 +434,22 @@ cmd_scan() {
 	return "$hits"
 }
 
+# stop TARGET CHECK...: send SIGTERM to TARGET (a pid, or -pgid for a
+# process group), wait up to 10 s while CHECK still succeeds, then send SIGKILL.
+stop() {
+	local target=$1
+	shift
+	kill -TERM -- "$target" 2>/dev/null || return 0
+	for _ in $(seq 1 20); do
+		"$@" || return 0
+		sleep 0.5
+	done
+	kill -KILL -- "$target" 2>/dev/null || true
+	echo "  $target ignored SIGTERM for 10 s and got SIGKILL"
+}
+
+group_alive() { [ -n "$(pgrep -g "$1" 2>/dev/null || true)" ]; }
+
 cmd_cleanup() {
 	need_run
 	local pid start cmd
@@ -441,18 +457,20 @@ cmd_cleanup() {
 		[ -n "$pid" ] || continue
 		if ours "$pid" "$start"; then
 			pkill -TERM -P "$pid" 2>/dev/null || true
-			kill -TERM "$pid" 2>/dev/null || true
+			stop "$pid" ours "$pid" "$start"
 			echo "stopped pid $pid ($cmd)"
 		fi
 	done <"$WORK/pids"
 	# Each agent runs in its own process group, led by the agent. Stop a group
 	# only while its recorded leader still runs, so a reused id is left alone.
+	# A group id cannot be reused while any member lives, so the wait and the
+	# SIGKILL reach only this run's processes.
 	while IFS=$'\t' read -r pid start cmd; do
 		[ -n "$pid" ] || continue
 		if ours "$pid" "$start"; then
-			kill -TERM -- "-$pid" 2>/dev/null || true
+			stop "-$pid" group_alive "$pid"
 			echo "stopped process group $pid ($cmd)"
-		elif [ -n "$(pgrep -g "$pid" 2>/dev/null || true)" ]; then
+		elif group_alive "$pid"; then
 			echo "WARN  process group $pid outlived its leader; not stopped, check: ps -o pid,lstart,cmd -g $pid"
 		fi
 	done <"$WORK/pgids"

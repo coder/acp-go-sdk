@@ -90,15 +90,16 @@ The driver plays an editor. Connection 1 creates session A for the plain turns a
 | `authenticate` | 1 | With `-auth`, the agent advertises that method and `authenticate` succeeds. Without `-auth`, it is a `SKIP`. |
 | `session/new` | 1 | Session A gets a session id in its own empty cwd. |
 | `prompt` | 1 | Session A answers "Reply with exactly the single word pong" with `end_turn` and a reply that contains `pong`. |
-| `config-option` | 1 | The driver sets the `model` option to another model, runs a pong turn, sets it back and runs another. Each response reports the new value. The turn after the switch runs on a model id that the first turn did not use, and the turn after the switch back does not run on it. |
+| `config-option` | 1 | The driver sets the `model` option to another model, runs a pong turn, sets it back and runs another. Each response reports the new value. Each turn names its model ids on the wire. The turn after the switch runs on a model id that the first turn did not use, and the turn after the switch back does not run on it. |
 | `permission-allow` | 1 | Session B, in the `-ask-mode` mode, asks to write `allow-check.txt`. At least one `session/request_permission` arrives and gets an `allow_*` option, and the file exists with its marker line afterwards. |
 | `permission-reject` | 1 | The same with `reject-check.txt` and a `reject_*` option. The file does not exist afterwards. Any stop reason passes. |
-| `cancel` | 1 | Session B starts a long essay. After the first streamed update, the driver sends `session/cancel`. The turn ends with `cancelled` within 60 s. |
+| `cancel` | 1 | Session B starts a long essay. The driver sends `session/cancel` after the first streamed update, or after 90 s without one while the turn still runs. The turn ends with `cancelled` within 60 s of the cancel. The detail says which case happened. |
 | `session/list` | 1 | `session/list` for session A's cwd, through every page, contains session A. |
 | `session/close` | 1 | `session/close` for session A succeeds. |
 | `session/delete` | 1 | The driver closes session B, then `session/delete` for it succeeds. If the agent lists sessions, session B is no longer in the list for its cwd. |
-| `session/load` | 2 | A new process loads session A. Before the response, the agent replays user chunks, and the replay contains the pong turn. |
+| `session/load` | 2 | A new process loads session A. Before the response, the agent replays user chunks and agent chunks, and the replayed agent text contains `pong`. The prompt itself says pong, so a replay of the user's chunks alone fails. |
 | `session/resume` | 3 | A new process resumes session A. A turn that asks for "the single word you replied with" gets `pong`. |
+| `agent-exit` | all | Every agent process exits 0 within 10 s after the driver closes its stdin. |
 | `no-method-not-found` | all | The SDK logged no "Method not found" (`-32601`) and sent no `-32601` reply to the agent. |
 | `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, and sent no `-32602` or `-32700` reply. |
 
@@ -145,7 +146,7 @@ Proof standards:
 "$V" cleanup
 ```
 
-`cleanup` stops only the processes that this run recorded. It checks each start time first, so it leaves a reused PID alone, and it never kills by process name. Each agent runs in its own process group, and `cleanup` stops a group only while its recorded leader still runs. Then it deletes `work/` (binaries, npm folders, the private agent config and the session cwds) and keeps `evidence/`. Confirm that the proof is still there with `ls "$HARNESS_RUN/evidence"`. A run that was cleaned up cannot be driven again. `report` and `scan` still work on it.
+`cleanup` stops only the processes that this run recorded. It checks each start time first, so it leaves a reused PID alone, and it never kills by process name. Each agent runs in its own process group, and `cleanup` stops a group only while its recorded leader still runs. A process or group that still runs 10 s after SIGTERM gets SIGKILL, so no adapter keeps calling a paid model after `cleanup` returns. Then it deletes `work/` (binaries, npm folders, the private agent config and the session cwds) and keeps `evidence/`. Confirm that the proof is still there with `ls "$HARNESS_RUN/evidence"`. A run that was cleaned up cannot be driven again. `report` and `scan` still work on it.
 
 ## Helpers
 
@@ -183,6 +184,7 @@ Run on 2026-11-17 with the SDK of `main` at `492745b` (schema 0.13.5): claude-ag
 | `session/delete` | PASS | PASS |
 | `session/load` | PASS | PASS |
 | `session/resume` | PASS | PASS |
+| `agent-exit` | PASS | PASS |
 | `no-method-not-found` | FAIL | PASS |
 | `no-decode-errors` | PASS | PASS |
 

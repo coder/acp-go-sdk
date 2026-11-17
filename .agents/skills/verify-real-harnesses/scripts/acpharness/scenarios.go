@@ -284,7 +284,6 @@ func (h *harness) switchModel(a *agentConn) (status, string) {
 	if back == nil {
 		off = h.prompt(a, sid, pongPrompt)
 	}
-	added := minus(on.models, h.defaultModels)
 	detail := fmt.Sprintf("%s %s -> %s (%s) -> %s; wire models before %v, after the switch %v, after the switch back %v",
 		sel.Id, orig, target, why, orig, h.defaultModels, on.models, off.models)
 	switch {
@@ -292,16 +291,32 @@ func (h *harness) switchModel(a *agentConn) (status, string) {
 		return fail, "session/prompt after the switch: " + errText(on.err) + "; " + detail
 	case on.resp.StopReason != acp.StopReasonEndTurn:
 		return fail, "turn after the switch: " + on.describe() + "; " + detail
-	case len(on.models) > 0 && len(h.defaultModels) > 0 && len(added) == 0:
-		return fail, "the turn after the switch ran on no new model; " + detail
 	case back != nil:
 		return fail, fmt.Sprintf("set %s back to %s: %v; %s", sel.Id, orig, back, detail)
 	case off.err != nil:
 		return fail, "session/prompt after the switch back: " + errText(off.err) + "; " + detail
-	case len(minus(added, off.models)) < len(added):
-		return fail, "the turn after the switch back still ran on the switched model; " + detail
+	}
+	if problem := switchProblem(h.defaultModels, on.models, off.models); problem != "" {
+		return fail, problem + "; " + detail
 	}
 	return pass, detail
+}
+
+// switchProblem says why the model ids on the wire do not prove a model
+// switch and the switch back, or returns "" when they do. before, on and off
+// are the models of the turns before the switch, after it, and after the
+// switch back.
+func switchProblem(before, on, off []string) string {
+	added := minus(on, before)
+	switch {
+	case len(before) == 0 || len(on) == 0 || len(off) == 0:
+		return "a turn named no model id on the wire, so the switch is not proven"
+	case len(added) == 0:
+		return "the turn after the switch ran on no new model"
+	case len(minus(added, off)) < len(added):
+		return "the turn after the switch back still ran on the switched model"
+	}
+	return ""
 }
 
 // setOption sets a select config option and checks that the response
@@ -578,19 +593,32 @@ func (h *harness) loadSession() (status, string) {
 	if _, err := b.conn.LoadSession(ctx, acp.LoadSessionRequest{SessionId: sid, Cwd: h.cwds["A"], McpServers: []acp.McpServer{}}); err != nil {
 		return fail, "session/load: " + errText(err)
 	}
-	kinds := map[string]int{}
-	replay := ""
-	for _, ev := range b.client.since(sid, 0) {
-		kinds[ev.Kind]++
-		if ev.Kind == "agent_message_chunk" || ev.Kind == "user_message_chunk" {
-			replay += ev.Text
-		}
-	}
-	detail := fmt.Sprintf("connection %d replayed %d user and %d agent chunks before the response", b.n, kinds["user_message_chunk"], kinds["agent_message_chunk"])
-	if kinds["user_message_chunk"] == 0 || !strings.Contains(strings.ToLower(replay), "pong") {
-		return fail, "the replay lacks the earlier pong turn; " + detail
+	evs := b.client.since(sid, 0)
+	detail := fmt.Sprintf("connection %d replayed %d updates before the response", b.n, len(evs))
+	if problem := replayProblem(evs); problem != "" {
+		return fail, problem + "; " + detail
 	}
 	return pass, detail
+}
+
+// replayProblem says why a session/load replay does not bring back the
+// earlier pong turn, or returns "" when it does. The prompt itself says
+// pong, so only the agent's replayed reply counts.
+func replayProblem(evs []event) string {
+	users, agents, reply := 0, 0, ""
+	for _, ev := range evs {
+		switch ev.Kind {
+		case "user_message_chunk":
+			users++
+		case "agent_message_chunk":
+			agents++
+			reply += ev.Text
+		}
+	}
+	if users == 0 || !strings.Contains(strings.ToLower(reply), "pong") {
+		return fmt.Sprintf("the replay lacks the earlier pong turn (%d user chunks, %d agent chunks, agent text %q)", users, agents, clip(reply, 60))
+	}
+	return ""
 }
 
 // resumeSession reopens session A in a new agent process without a replay

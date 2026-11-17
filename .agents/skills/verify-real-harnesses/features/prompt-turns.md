@@ -29,7 +29,7 @@ Steps:
 
 ## Gotchas
 
-- The model ids come from `_meta` on the wire: `_claude/model` in Claude's `usage_update`, and `quota.model_usage[].model` in both adapters' prompt responses. A turn can list two models, because Claude Code makes side calls on its default model.
+- The model ids come from `_meta` on the wire: `_claude/model` in Claude's `usage_update`, and `quota.model_usage[].model` in both adapters' prompt responses. A turn can list two models, because Claude Code makes side calls on its default model. A turn that names no model id fails `config-option`, because nothing then proves the switch.
 - The switch target is the first offered model that is not current, not an alias of the current one and not a lesser model. When an adapter reorders or renames its options, check the `config-option` detail for the model that was picked.
 - Claude can think for 20 s before its first chunk. The cancel waits up to 90 s for the first streamed update, and sends `session/cancel` then even if none came.
 - The essay prompt asks for no tools. If an agent asks for a permission during the cancel turn, the driver answers `cancelled`.

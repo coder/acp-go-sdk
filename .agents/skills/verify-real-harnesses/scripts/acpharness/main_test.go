@@ -141,3 +141,47 @@ func TestHarnessClient_AnswersByPolicyAndTracksCost(t *testing.T) {
 		t.Fatalf("cost %v, want 0.35", got)
 	}
 }
+
+func TestSwitchProblem_NeedsModelEvidence(t *testing.T) {
+	opus, fable := []string{"claude-opus-5-5"}, []string{"claude-fable-5-2", "claude-opus-5-5"}
+	cases := []struct {
+		name            string
+		before, on, off []string
+		ok              bool
+	}{
+		{"switch and switch back seen on the wire", opus, fable, opus, true},
+		{"no new model after the switch", opus, opus, opus, false},
+		{"switched model still used after the switch back", opus, fable, fable, false},
+		{"no model ids at all", nil, nil, nil, false},
+		{"no model ids after the switch", opus, nil, opus, false},
+		{"no model ids after the switch back", opus, fable, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := switchProblem(tc.before, tc.on, tc.off); (got == "") != tc.ok {
+				t.Fatalf("switchProblem(%v, %v, %v) = %q, want ok=%v", tc.before, tc.on, tc.off, got, tc.ok)
+			}
+		})
+	}
+}
+
+func TestReplayProblem_NeedsTheAgentsReply(t *testing.T) {
+	user := event{Kind: "user_message_chunk", Text: pongPrompt}
+	cases := []struct {
+		name string
+		evs  []event
+		ok   bool
+	}{
+		{"user prompt and agent reply", []event{user, {Kind: "agent_message_chunk", Text: "pong"}}, true},
+		{"only the user prompt, which itself says pong", []event{user}, false},
+		{"an agent reply without pong", []event{user, {Kind: "agent_message_chunk", Text: "ping"}}, false},
+		{"an agent reply without the user prompt", []event{{Kind: "agent_message_chunk", Text: "pong"}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := replayProblem(tc.evs); (got == "") != tc.ok {
+				t.Fatalf("replayProblem = %q, want ok=%v", got, tc.ok)
+			}
+		})
+	}
+}

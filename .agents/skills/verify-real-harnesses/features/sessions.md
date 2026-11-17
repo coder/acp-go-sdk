@@ -30,7 +30,7 @@ Steps:
 
 - **Run the lifecycle.** Run `"$V" g5 claude`. The lines for `initialize`, `session/new`, `session/list`, `session/close`, `session/delete`, `session/load` and `session/resume` print PASS. `authenticate` prints SKIP, because the Claude adapter advertises no auth method.
 - **Sign in.** Run `"$V" g5 codex`. `authenticate` prints `PASS  authenticate  methodId api-key`.
-- **See what was reopened.** Run `jq -c 'select(.conn==2 and .msg.params.update.sessionUpdate) | .msg.params.update.sessionUpdate' "$HARNESS_RUN/evidence/g5-claude/transcript.jsonl"`. The output starts with `user_message_chunk` and `agent_message_chunk` lines, the replay of the earlier turns.
+- **See what was reopened.** Run `jq -c 'select(.conn==2 and .msg.params.update.sessionUpdate) | .msg.params.update.sessionUpdate' "$HARNESS_RUN/evidence/g5-claude/transcript.jsonl"`. The output starts with `user_message_chunk` and `agent_message_chunk` lines, the replay of the earlier turns. The `session/load` predicate reads only the agent chunks for `pong`, because the user's prompt also contains the word.
 - **See what the SDK could not decode or route.** Run `jq -r 'select(.level=="ERROR") | [.scenario, .msg, .method // ""] | @tsv' "$HARNESS_RUN/evidence/g5-claude/sdk.log"`. At schema 0.13.5 this prints three `auth/status_update` lines, in `session/new`, `session/load` and `session/resume`.
 
 ## Gotchas

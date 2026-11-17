@@ -26,7 +26,7 @@
 
 - `Prompt` returns the error `session <id> not found` when the session ID is not in the sessions map, so a prompt after `DeleteSession` fails [main.go:Prompt, main.go:DeleteSession]
 - `DeleteSession` reads the session's cancel func under `a.mu` and calls it, when it is set, after it releases `a.mu`, so a running turn ends with `StopReasonCancelled` [main.go:DeleteSession, main.go:Prompt]
-- `Prompt` calls the cancel func that it finds in `s.cancel` before it starts a new turn. It reads `s.cancel` and stores the new func in separate critical sections, so two concurrent `Prompt` calls on one session can both find it empty and neither cancels the other. The SDK still cancels the earlier prompt of a session when a later one registers [main.go:Prompt] [../../agent.go:registerPrompt]
+- `Prompt` looks up the session, takes the earlier turn's cancel func from `s.cancel`, and stores its own in one critical section, and then calls the earlier func. A concurrent `DeleteSession` either runs first, so `Prompt` fails with `session <id> not found`, or finds the new func and cancels the turn. The SDK also cancels the earlier prompt of a session when a later one registers [main.go:Prompt, main.go:DeleteSession] [../../agent.go:registerPrompt]
 - `Prompt` maps any turn error that occurs after the turn context ends to `StopReasonCancelled` with a nil error [main.go:Prompt]
 - `Prompt` stores the current turn's cancel func in `s.cancel` before the turn runs, and clears it only after a successful turn. On the error and cancelled paths, `s.cancel` still holds the current turn's func [main.go:Prompt]
 - `Cancel` returns nil for unknown sessions and calls the cancel func only when it is set. It reads `s.cancel` after it releases `a.mu` [main.go:Cancel]
@@ -56,4 +56,4 @@
 
 ## Verification
 
-- Run: `go vet ./example/agent`
+- Run: `go vet ./example/agent` and `go test ./example/agent`. The tests drive `session/new`, `session/list`, `session/delete`, and `session/prompt` through an SDK client connection over pipes [main_test.go]

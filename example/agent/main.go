@@ -215,26 +215,23 @@ func (a *exampleAgent) Cancel(ctx context.Context, params acp.CancelNotification
 
 func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (acp.PromptResponse, error) {
 	sid := string(params.SessionId)
+	// Look up the session and install this turn's cancel func in one critical
+	// section, so that a concurrent DeleteSession either runs first or
+	// cancels this turn.
 	a.mu.Lock()
 	s, ok := a.sessions[sid]
-	a.mu.Unlock()
 	if !ok {
+		a.mu.Unlock()
 		return acp.PromptResponse{}, fmt.Errorf("session %s not found", sid)
 	}
-
-	// cancel any previous turn
-	a.mu.Lock()
-	if s.cancel != nil {
-		prev := s.cancel
-		a.mu.Unlock()
-		prev()
-	} else {
-		a.mu.Unlock()
-	}
 	ctx, cancel := context.WithCancel(ctx)
-	a.mu.Lock()
+	prev := s.cancel
 	s.cancel = cancel
 	a.mu.Unlock()
+	// cancel any previous turn
+	if prev != nil {
+		prev()
+	}
 
 	// simulate a full turn with streaming updates and a permission request
 	if err := a.simulateTurn(ctx, sid); err != nil {

@@ -173,7 +173,7 @@ func checkRoundTrip(t *testing.T, def string, data []byte, files []*schemaFile) 
 // diffJSON compares two JSON documents after normalizing them: numbers
 // compare by exact value (1.0 equals 1, and no digit is rounded away) and an
 // object member whose value is null counts as absent. It returns "" when
-// they are equal, else the number of differing paths and the first one.
+// they are equal, else every differing path and the values at the first.
 func diffJSON(in, out []byte) string {
 	a, err := decodeExact(in)
 	if err != nil {
@@ -188,7 +188,11 @@ func diffJSON(in, out []byte) string {
 	if len(diffs) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%d difference(s), first %s", len(diffs), diffs[0])
+	paths := make([]string, len(diffs))
+	for i, d := range diffs {
+		paths[i], _, _ = strings.Cut(d, ": in=")
+	}
+	return fmt.Sprintf("%d difference(s) at %s; first %s", len(diffs), strings.Join(paths, " "), diffs[0])
 }
 
 func walkDiff(path string, a, b any, diffs *[]string) {
@@ -306,5 +310,13 @@ func TestDiffJSON_ComparesNumbersExactly(t *testing.T) {
 		if got := diffJSON([]byte(tc.in), []byte(tc.out)) == ""; got != tc.equal {
 			t.Errorf("diffJSON(%s, %s) equal = %v, want %v", tc.in, tc.out, got, tc.equal)
 		}
+	}
+}
+
+func TestDiffJSON_NamesEveryPath(t *testing.T) {
+	a := diffJSON([]byte(`{"a":1,"b":1}`), []byte(`{"a":2,"b":2}`))
+	b := diffJSON([]byte(`{"a":1,"c":1}`), []byte(`{"a":2,"c":2}`))
+	if a == b {
+		t.Errorf("losses at /a /b and at /a /c read the same: %q", a)
 	}
 }

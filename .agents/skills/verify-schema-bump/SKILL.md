@@ -39,10 +39,10 @@ It lists the upstream releases that carry schema files (0.x releases on tags `v<
 | Column | Check |
 | --- | --- |
 | `gen` | The generator exits 0. |
-| `idem` | A second generator run changes no file. |
+| `idem` | A second generator run leaves the same tree: no file changed, added or removed. |
 | `build` | `go build -gcflags=-e ./...` passes. `gen-errs` counts the compile errors in `*_gen.go` files: a generator bug. `hand-errs` counts the rest: hand-written code that the bump must fix. A package that fails hides the errors of the packages that import it. |
 | `vet` | `go vet ./...` passes. Runs only when the build passes. |
-| `methods` | `methodcheck`: each method in `meta.json` and `meta.unstable.json` has a generated constant and a `case` in the dispatcher of its side, `(*AgentSideConnection).handle` or `(*ClientSideConnection).handle`; a method of both sides needs both. A protocol method (`$/...`) needs a constant and an inbound check in hand-written code, because `connection.go` dispatches it: a `==`, `!=` or `case` against its wire string or constant. Sending it does not count. |
+| `methods` | `methodcheck`: each method in `meta.json` and `meta.unstable.json` has a constant in a `*_gen.go` file and a `case` in the dispatcher of its side, in the `switch` on the method name of `(*AgentSideConnection).handle` or `(*ClientSideConnection).handle`; a method of both sides needs both. A protocol method (`$/...`) needs a constant and an inbound check in hand-written code, because `connection.go` dispatches it: a `==`, `!=` or `case` against its wire string or constant. Sending it does not count. |
 | `apidiff` | Target row only, when it builds: `apidiff -incompatible` of the package against `--base-tag` (default: the newest `v*` tag merged into `--ref`; with no such tag the script stops and asks for `git fetch --tags origin`). Shows the count; the list follows the table. |
 
 Pass: exit 0 and `G1 PASS`. Every row has `gen=ok` and `idem=ok`, and the target row has `build=ok`, `vet=ok`, `methods=ok` and an API diff. Rows before the target may fail to build: the hand-written code of `--ref` fits only its own schema.
@@ -70,7 +70,7 @@ For each value the test decodes it into the def's SDK type, calls its `Validate`
 | `NO-TYPE` | A message's def has no SDK type. |
 | `DECODE` | The SDK type cannot decode a value. |
 | `VALIDATE` | The type's `Validate` method rejects a value. |
-| `LOSSY` | The encoded JSON differs from the input. Numbers compare by exact value (`1.0` equals `1`; no digit is rounded away), and an object member set to `null` counts as absent. `{}` and absent differ, because ACP capabilities use `{}` to mean "supported". |
+| `LOSSY` | The encoded JSON differs from the input. The line lists every differing path and the values at the first. Numbers compare by exact value (`1.0` equals `1`; no digit is rounded away), and an object member set to `null` counts as absent. `{}` and absent differ, because ACP capabilities use `{}` to mean "supported". |
 | `SCHEMA` | A schema file accepts the input but rejects the encoded JSON. |
 | `HINT` | The SDK ignores an `x-deserialize-*` hint. |
 
@@ -128,7 +128,7 @@ From 1.24.0 on, `methods` reports only the `$/cancel_request` constant. `apidiff
 G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; 13 elicitation schema defs have none. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 143 distinct problems:
 
 - `HINT` 114: the SDK honors no hint. 86 `x-deserialize-default-on-error` and 28 `x-deserialize-skip-invalid-items` properties fail to decode a bad value.
-- `LOSSY` 25: `ContentBlock` drops `_meta` (and so do `Content`, `ContentChunk`, `ToolCallContent`, `PromptRequest.prompt` and `SessionUpdate` that hold one); absent `auth` capabilities come back as `{}` and an absent `agentCapabilities` or `clientCapabilities` comes back filled with defaults; `AuthEnvVar.secret` comes back as `true` when absent; the unstable elicitation types drop `sessionId`, `elicitationId`, `url` and `requestedSchema`; transcripts lose fields that 0.13.5 does not define (`agentCapabilities.auth.status`, `mcpCapabilities.acp`, `NewSessionResponse.models`).
+- `LOSSY` 25: `ContentBlock` drops `_meta` and `annotations` (so do `Content`, `ContentChunk`, `ToolCallContent`, `PromptRequest.prompt` and `SessionUpdate`, which hold one); absent `auth` capabilities come back as `{}`, and an absent `agentCapabilities` or `clientCapabilities` comes back filled with defaults; `AuthEnvVar.secret` comes back as `true` when absent; the unstable elicitation types drop `sessionId`, `toolCallId`, `elicitationId`, `url` and parts of `requestedSchema`; transcripts lose capability flags set to `false` (such as `mcpCapabilities.acp`) and fields that 0.13.5 does not define (`agentCapabilities.auth.status`, `sessionCapabilities.status`, `NewSessionResponse.models`).
 - `SCHEMA` 4: the encoded `CreateElicitationRequest`, `ElicitationFormMode` and `ElicitationUrlMode` miss required properties.
 
 G7 (`g7-canary`): passes. `docker/docker-agent` at `19a7356` (1 package), `jaegertracing/jaeger` at `f141f57` (3 packages) and `coder/coder` at `a3f25a4` (2 packages: `agent/x/agentacp`, `coderd/x/chatd`) build against `main`. A checkout with `NewInvalidParams` and `PromptResponse.StopReason` renamed fails docker-agent with two groups, `acp.NewInvalidParams (29)` and `acp.PromptResponse.StopReason (5)`.

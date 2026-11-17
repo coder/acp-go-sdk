@@ -102,8 +102,15 @@ while read -r v tag <&3; do
 	g=FAIL i=- b=- ge=- he=- t=- m=- a=-
 	if gen >"$out/gen.log" 2>&1; then
 		g=ok
-		git -C "$wt" add -A
-		gen >>"$out/gen.log" 2>&1 && git -C "$wt" diff --exit-code --stat >"$out/idem.diff" && i=ok || i=FAIL
+		# Compare whole trees, so a file that only the second run writes counts.
+		first=$(git -C "$wt" add -A && git -C "$wt" write-tree)
+		if gen >>"$out/gen.log" 2>&1; then
+			second=$(git -C "$wt" add -A && git -C "$wt" write-tree)
+			git -C "$wt" diff --stat "$first" "$second" >"$out/idem.diff"
+			[ "$first" = "$second" ] && i=ok || i=FAIL
+		else
+			i=FAIL
+		fi
 		(cd "$wt" && go build -gcflags=-e ./...) >"$out/build.log" 2>&1 && b=ok || b=FAIL
 		ge=$(grep -cE '_gen\.go:[0-9]+:[0-9]+: ' "$out/build.log" || true)
 		he=$(($(grep -cE '\.go:[0-9]+:[0-9]+: ' "$out/build.log" || true) - ge))

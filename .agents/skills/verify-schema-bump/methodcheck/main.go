@@ -34,9 +34,10 @@ type meta struct {
 
 // pkg is what the check needs from the SDK package source.
 type pkg struct {
-	consts  map[string]string          // constant name -> string value
-	cases   map[string]map[string]bool // dispatcher receiver -> wire methods with a case
-	inbound map[string]bool            // wire methods that hand-written code compares an inbound method with
+	consts    map[string]string          // constant name -> string value
+	generated map[string]bool            // string values of constants in *_gen.go files
+	cases     map[string]map[string]bool // dispatcher receiver -> wire methods with a case
+	inbound   map[string]bool            // wire methods that hand-written code compares an inbound method with
 }
 
 func main() {
@@ -79,16 +80,11 @@ func check(sdk string) (missing []string, checked int, err error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	constFor := map[string]bool{}
-	for _, v := range p.consts {
-		constFor[v] = true
-	}
-
 	dispatcher := map[string]string{"agent": "AgentSideConnection", "client": "ClientSideConnection"}
 	for _, side := range []string{"agent", "client", "protocol"} {
 		for _, wire := range sorted(sides[side]) {
 			checked++
-			if !constFor[wire] {
+			if !p.generated[wire] {
 				missing = append(missing, fmt.Sprintf("MISSING constant %s %s", side, wire))
 			}
 			if recv, ok := dispatcher[side]; ok && !p.cases[recv][wire] {
@@ -120,8 +116,8 @@ func parsePackage(dir string) (*pkg, error) {
 		files[filepath.Base(path)] = f
 	}
 
-	p := &pkg{consts: map[string]string{}, cases: map[string]map[string]bool{}, inbound: map[string]bool{}}
-	for _, f := range files {
+	p := &pkg{consts: map[string]string{}, generated: map[string]bool{}, cases: map[string]map[string]bool{}, inbound: map[string]bool{}}
+	for name, f := range files {
 		for _, decl := range f.Decls {
 			gd, ok := decl.(*ast.GenDecl)
 			if !ok || gd.Tok != token.CONST {
@@ -129,10 +125,11 @@ func parsePackage(dir string) (*pkg, error) {
 			}
 			for _, spec := range gd.Specs {
 				vs := spec.(*ast.ValueSpec)
-				for i, name := range vs.Names {
+				for i, id := range vs.Names {
 					if i < len(vs.Values) {
 						if s, ok := stringLit(vs.Values[i]); ok {
-							p.consts[name.Name] = s
+							p.consts[id.Name] = s
+							p.generated[s] = p.generated[s] || strings.HasSuffix(name, "_gen.go")
 						}
 					}
 				}
@@ -158,9 +155,18 @@ func parsePackage(dir string) (*pkg, error) {
 				if p.cases[recv] == nil {
 					p.cases[recv] = map[string]bool{}
 				}
+				// Only cases of a switch on the handler's method parameter count.
+				param := methodParam(fd.Type)
 				ast.Inspect(fd.Body, func(n ast.Node) bool {
-					if cc, ok := n.(*ast.CaseClause); ok {
-						for _, e := range cc.List {
+					sw, ok := n.(*ast.SwitchStmt)
+					if !ok {
+						return true
+					}
+					if tag, ok := sw.Tag.(*ast.Ident); !ok || tag.Name != param {
+						return true
+					}
+					for _, stmt := range sw.Body.List {
+						for _, e := range stmt.(*ast.CaseClause).List {
 							if s, ok := value(e); ok {
 								p.cases[recv][s] = true
 							}
@@ -192,6 +198,17 @@ func parsePackage(dir string) (*pkg, error) {
 		}
 	}
 	return p, nil
+}
+
+// methodParam is the name of the handler's first string parameter, the
+// incoming method name.
+func methodParam(ft *ast.FuncType) string {
+	for _, field := range ft.Params.List {
+		if id, ok := field.Type.(*ast.Ident); ok && id.Name == "string" && len(field.Names) > 0 {
+			return field.Names[0].Name
+		}
+	}
+	return ""
 }
 
 func receiverType(e ast.Expr) string {

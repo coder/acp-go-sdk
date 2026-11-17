@@ -42,6 +42,24 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			},
 			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
 		},
+		{
+			name: "case in a switch on another value",
+			files: map[string]string{
+				"constants_gen.go": constants,
+				"agent_gen.go":     "package acp\n\nfunc (a *AgentSideConnection) handle(method string) {\n\tother := \"\"\n\tswitch other {\n\tcase AgentMethodSessionNew:\n\t}\n}\n",
+				"connection.go":    "package acp\n\nfunc recv(m string) bool { return m == \"$/cancel_request\" }\n",
+			},
+			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
+		},
+		{
+			name: "constant only in hand-written code",
+			files: map[string]string{
+				"constants_gen.go": "package acp\n\nconst AgentMethodSessionNew = \"session/new\"\n",
+				"agent_gen.go":     dispatch,
+				"connection.go":    "package acp\n\nconst cancelRequest = \"$/cancel_request\"\n\nfunc recv(m string) bool { return m == cancelRequest }\n",
+			},
+			wantGaps: []string{"MISSING constant protocol $/cancel_request"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

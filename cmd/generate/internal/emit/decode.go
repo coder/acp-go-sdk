@@ -31,7 +31,7 @@ func decodeStmt(p fieldPlan, structName, recv string) Code {
 	}
 	return If(List(Id("decoded"), Id("err")).Op(":=").Id("decodeField").Call(raw(), Op("&").Id(recv).Dot(p.field.Name)), Id("err").Op("!=").Nil()).Block(
 		Return(Id("propertyError").Call(Id("err"), Lit(structName), Lit(p.field.Prop))),
-	).Else().If(needsFallback).Block(decodeFallback(p, Id(recv)))
+	).Else().If(needsFallback).Block(Id("setDefault").Call(Op("&").Id(recv).Dot(p.field.Name), Lit(p.fallbackJSON)))
 }
 
 func (b *typesBuilder) emitSupport() {
@@ -57,6 +57,15 @@ func (b *typesBuilder) emitSupport() {
 		),
 		Op("*").Id("dst").Op("=").Id("v"),
 		Return(Id("decoded"), Id("err")),
+	)
+	f.Line()
+
+	f.Comment("setDefault replaces dst with the schema default that fallback encodes.")
+	f.Comment("Decoding the default into dst would keep what a reused value holds.")
+	f.Func().Id("setDefault").Types(Id("T").Any()).Params(Id("dst").Op("*").Id("T"), Id("fallback").String()).Block(
+		Var().Id("v").Id("T"),
+		Qual("encoding/json", "Unmarshal").Call(Index().Byte().Parens(Id("fallback")), Op("&").Id("v")),
+		Op("*").Id("dst").Op("=").Id("v"),
 	)
 	f.Line()
 

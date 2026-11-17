@@ -129,6 +129,19 @@ func TestInitializeResponse_AgentCapabilities_Defaults(t *testing.T) {
 	})
 }
 
+func TestAgentCapabilities_UnmarshalJSON_ReusedValueReadsAbsentPropertiesAsDefaults(t *testing.T) {
+	t.Parallel()
+	var caps AgentCapabilities
+	for _, in := range []string{`{"loadSession":true,"sessionCapabilities":{"list":{}}}`, `{}`} {
+		if err := json.Unmarshal([]byte(in), &caps); err != nil {
+			t.Fatalf("unmarshal %s: %v", in, err)
+		}
+	}
+	if caps.LoadSession || caps.SessionCapabilities.List != nil {
+		t.Fatalf("a reused value decoded from {} has loadSession %v and session list capability %+v, want the defaults false and none", caps.LoadSession, caps.SessionCapabilities.List)
+	}
+}
+
 func TestInitializeResponse_UnmarshalJSON_TypeErrorNamesStructAndProperty(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

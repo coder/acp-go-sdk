@@ -101,27 +101,27 @@ func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.Auth, &v.Auth); err != nil {
 		return propertyError(err, "AgentCapabilities", "auth")
 	} else if !decoded {
-		json.Unmarshal([]byte("{}"), &v.Auth)
+		setDefault(&v.Auth, "{}")
 	}
 	if decoded, err := decodeField(raw.LoadSession, &v.LoadSession); err != nil {
 		return propertyError(err, "AgentCapabilities", "loadSession")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.LoadSession)
+		setDefault(&v.LoadSession, "false")
 	}
 	if decoded, err := decodeField(raw.McpCapabilities, &v.McpCapabilities); err != nil {
 		return propertyError(err, "AgentCapabilities", "mcpCapabilities")
 	} else if !decoded {
-		json.Unmarshal([]byte("{\"acp\":false,\"http\":false,\"sse\":false}"), &v.McpCapabilities)
+		setDefault(&v.McpCapabilities, "{\"acp\":false,\"http\":false,\"sse\":false}")
 	}
 	if decoded, err := decodeField(raw.PromptCapabilities, &v.PromptCapabilities); err != nil {
 		return propertyError(err, "AgentCapabilities", "promptCapabilities")
 	} else if !decoded {
-		json.Unmarshal([]byte("{\"audio\":false,\"embeddedContext\":false,\"image\":false}"), &v.PromptCapabilities)
+		setDefault(&v.PromptCapabilities, "{\"audio\":false,\"embeddedContext\":false,\"image\":false}")
 	}
 	if decoded, err := decodeField(raw.SessionCapabilities, &v.SessionCapabilities); err != nil {
 		return propertyError(err, "AgentCapabilities", "sessionCapabilities")
 	} else if !decoded {
-		json.Unmarshal([]byte("{}"), &v.SessionCapabilities)
+		setDefault(&v.SessionCapabilities, "{}")
 	}
 	return nil
 }
@@ -329,7 +329,7 @@ func (v *AuthCapabilities) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.Terminal, &v.Terminal); err != nil {
 		return propertyError(err, "AuthCapabilities", "terminal")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.Terminal)
+		setDefault(&v.Terminal, "false")
 	}
 	return nil
 }
@@ -386,12 +386,12 @@ func (v *AuthEnvVar) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.Optional, &v.Optional); err != nil {
 		return propertyError(err, "AuthEnvVar", "optional")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.Optional)
+		setDefault(&v.Optional, "false")
 	}
 	if decoded, err := decodeField(raw.Secret, &v.Secret); err != nil {
 		return propertyError(err, "AuthEnvVar", "secret")
 	} else if !decoded {
-		json.Unmarshal([]byte("true"), &v.Secret)
+		setDefault(&v.Secret, "true")
 	}
 	return nil
 }
@@ -928,17 +928,17 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.Auth, &v.Auth); err != nil {
 		return propertyError(err, "ClientCapabilities", "auth")
 	} else if !decoded {
-		json.Unmarshal([]byte("{\"terminal\":false}"), &v.Auth)
+		setDefault(&v.Auth, "{\"terminal\":false}")
 	}
 	if decoded, err := decodeField(raw.Fs, &v.Fs); err != nil {
 		return propertyError(err, "ClientCapabilities", "fs")
 	} else if !decoded {
-		json.Unmarshal([]byte("{\"readTextFile\":false,\"writeTextFile\":false}"), &v.Fs)
+		setDefault(&v.Fs, "{\"readTextFile\":false,\"writeTextFile\":false}")
 	}
 	if decoded, err := decodeField(raw.Terminal, &v.Terminal); err != nil {
 		return propertyError(err, "ClientCapabilities", "terminal")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.Terminal)
+		setDefault(&v.Terminal, "false")
 	}
 	return nil
 }
@@ -2149,12 +2149,12 @@ func (v *FileSystemCapabilities) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.ReadTextFile, &v.ReadTextFile); err != nil {
 		return propertyError(err, "FileSystemCapabilities", "readTextFile")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.ReadTextFile)
+		setDefault(&v.ReadTextFile, "false")
 	}
 	if decoded, err := decodeField(raw.WriteTextFile, &v.WriteTextFile); err != nil {
 		return propertyError(err, "FileSystemCapabilities", "writeTextFile")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.WriteTextFile)
+		setDefault(&v.WriteTextFile, "false")
 	}
 	return nil
 }
@@ -2254,7 +2254,7 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.ClientCapabilities, &v.ClientCapabilities); err != nil {
 		return propertyError(err, "InitializeRequest", "clientCapabilities")
 	} else if !decoded {
-		json.Unmarshal([]byte("{\"auth\":{\"terminal\":false},\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false}"), &v.ClientCapabilities)
+		setDefault(&v.ClientCapabilities, "{\"auth\":{\"terminal\":false},\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false}")
 	}
 	return nil
 }
@@ -2318,12 +2318,12 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.AgentCapabilities, &v.AgentCapabilities); err != nil {
 		return propertyError(err, "InitializeResponse", "agentCapabilities")
 	} else if !decoded {
-		json.Unmarshal([]byte("{\"auth\":{},\"loadSession\":false,\"mcpCapabilities\":{\"acp\":false,\"http\":false,\"sse\":false},\"promptCapabilities\":{\"audio\":false,\"embeddedContext\":false,\"image\":false},\"sessionCapabilities\":{}}"), &v.AgentCapabilities)
+		setDefault(&v.AgentCapabilities, "{\"auth\":{},\"loadSession\":false,\"mcpCapabilities\":{\"acp\":false,\"http\":false,\"sse\":false},\"promptCapabilities\":{\"audio\":false,\"embeddedContext\":false,\"image\":false},\"sessionCapabilities\":{}}")
 	}
 	if decoded, err := decodeField(raw.AuthMethods, &v.AuthMethods); err != nil {
 		return propertyError(err, "InitializeResponse", "authMethods")
 	} else if !decoded {
-		json.Unmarshal([]byte("[]"), &v.AuthMethods)
+		setDefault(&v.AuthMethods, "[]")
 	}
 	return nil
 }
@@ -2556,17 +2556,17 @@ func (v *McpCapabilities) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.Acp, &v.Acp); err != nil {
 		return propertyError(err, "McpCapabilities", "acp")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.Acp)
+		setDefault(&v.Acp, "false")
 	}
 	if decoded, err := decodeField(raw.Http, &v.Http); err != nil {
 		return propertyError(err, "McpCapabilities", "http")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.Http)
+		setDefault(&v.Http, "false")
 	}
 	if decoded, err := decodeField(raw.Sse, &v.Sse); err != nil {
 		return propertyError(err, "McpCapabilities", "sse")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.Sse)
+		setDefault(&v.Sse, "false")
 	}
 	return nil
 }
@@ -3752,17 +3752,17 @@ func (v *PromptCapabilities) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.Audio, &v.Audio); err != nil {
 		return propertyError(err, "PromptCapabilities", "audio")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.Audio)
+		setDefault(&v.Audio, "false")
 	}
 	if decoded, err := decodeField(raw.EmbeddedContext, &v.EmbeddedContext); err != nil {
 		return propertyError(err, "PromptCapabilities", "embeddedContext")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.EmbeddedContext)
+		setDefault(&v.EmbeddedContext, "false")
 	}
 	if decoded, err := decodeField(raw.Image, &v.Image); err != nil {
 		return propertyError(err, "PromptCapabilities", "image")
 	} else if !decoded {
-		json.Unmarshal([]byte("false"), &v.Image)
+		setDefault(&v.Image, "false")
 	}
 	return nil
 }
@@ -7506,12 +7506,12 @@ func (v *UnstableElicitationSchema) UnmarshalJSON(b []byte) error {
 	if decoded, err := decodeField(raw.Properties, &v.Properties); err != nil {
 		return propertyError(err, "UnstableElicitationSchema", "properties")
 	} else if !decoded {
-		json.Unmarshal([]byte("{}"), &v.Properties)
+		setDefault(&v.Properties, "{}")
 	}
 	if decoded, err := decodeField(raw.Type, &v.Type); err != nil {
 		return propertyError(err, "UnstableElicitationSchema", "type")
 	} else if !decoded {
-		json.Unmarshal([]byte("\"object\""), &v.Type)
+		setDefault(&v.Type, "\"object\"")
 	}
 	return nil
 }
@@ -9460,6 +9460,14 @@ func decodeField[T any](raw json.RawMessage, dst *T) (decoded bool, err error) {
 	}
 	*dst = v
 	return decoded, err
+}
+
+// setDefault replaces dst with the schema default that fallback encodes.
+// Decoding the default into dst would keep what a reused value holds.
+func setDefault[T any](dst *T, fallback string) {
+	var v T
+	json.Unmarshal([]byte(fallback), &v)
+	*dst = v
 }
 
 // plainFieldError names the field in err, from a decode through an embedded

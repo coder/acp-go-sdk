@@ -3,7 +3,7 @@ package emit
 import "testing"
 
 const defaultedStructSchema = `{"$defs": {
-  "Paging": {"type": "object", "properties": {"limit": {"type": "integer", "default": 10}}},
+  "Paging": {"type": "object", "properties": {"limit": {"type": "integer", "default": 10}, "offset": {"type": "integer"}}},
   "Query": {"type": "object", "required": ["id"], "properties": {
     "id": {"type": "string"},
     "limit": {"type": "integer", "default": 10},
@@ -39,6 +39,18 @@ func TestQuery_UnmarshalJSON_TypeErrorNamesStructAndProperty(t *testing.T) {
 		} else if typeErr.Struct != "Query" || typeErr.Field != tt.wantField {
 			t.Errorf("%s: unmarshal %s: error names %s.%s, want Query.%s", tt.name, tt.in, typeErr.Struct, typeErr.Field, tt.wantField)
 		}
+	}
+}
+
+func TestQuery_UnmarshalJSON_ReusedValueReadsAnAbsentPropertyAsItsDefault(t *testing.T) {
+	var query Query
+	for _, in := range []string{` + "`" + `{"id":"q","paging":{"limit":5,"offset":7}}` + "`" + `, ` + "`" + `{"id":"q"}` + "`" + `} {
+		if err := json.Unmarshal([]byte(in), &query); err != nil {
+			t.Fatalf("unmarshal %s: %v", in, err)
+		}
+	}
+	if query.Paging.Limit != 10 || query.Paging.Offset != 0 {
+		t.Errorf("paging of a reused query = %+v, want the default: limit 10 and no offset", query.Paging)
 	}
 }
 

@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -49,9 +52,10 @@ func TestDriver_UsageErrorsExit64(t *testing.T) {
 
 // stubDriver stands in for acpharness in a fake run folder. With STUB_EXIT
 // 64 it rejects its arguments, as the driver does before it starts an
-// agent. Else it records one paid usage_update in the transcript, leaves a
-// tagged process running, as the agent of a driver that died would, writes
-// a panic to stderr, and exits with STUB_EXIT.
+// agent. Else it records one paid usage_update in the transcript and starts
+// a tagged process, its agent, whose pid goes to agent.pid. With STUB_EXIT
+// hang it then runs on, as a driver in a long turn does. Else it writes a
+// panic to stderr and exits with STUB_EXIT, leaving the agent running.
 const stubDriver = `#!/usr/bin/env bash
 if [ "$STUB_EXIT" = 64 ]; then
 	echo "acpharness: -only names \"nope\", which is not a live scenario" >&2
@@ -63,6 +67,8 @@ while [ $# -gt 0 ]; do
 done
 printf '%s\n' '{"t_ms":1,"conn":1,"scenario":"prompt","dir":"agent->client","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":1,"size":2,"cost":{"amount":0.42,"currency":"USD"}}}}}' >"$out/transcript.jsonl"
 sleep 30 </dev/null >/dev/null 2>&1 &
+echo $! >"$out/agent.pid"
+[ "$STUB_EXIT" = hang ] && exec sleep 30
 echo "panic: stub driver died" >&2
 exit "$STUB_EXIT"
 `
@@ -177,5 +183,47 @@ func TestHarnessG5_RecordsNoRunWhenTheDriverRejectsItsArguments(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(run, "evidence", "g5-claude")); !os.IsNotExist(err) {
 		t.Errorf("g5 kept a run folder for rejected arguments: %v", err)
+	}
+}
+
+// TestHarnessG5_StopsTheRunWhenInterrupted: Ctrl-C reaches only the
+// harness's shell, because timeout and the agents run in process groups of
+// their own. g5 must stop the driver and its paid agents before it exits.
+func TestHarnessG5_StopsTheRunWhenInterrupted(t *testing.T) {
+	run := fakeRun(t)
+	cmd := exec.Command("bash", "../harness", "g5", "claude", "prompt")
+	cmd.Env = append(os.Environ(), "HARNESS_RUN="+run, "STUB_EXIT=hang", "ANTHROPIC_API_KEY=stub")
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	cmd.WaitDelay = 5 * time.Second
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ev := filepath.Join(run, "evidence", "g5-claude")
+	var agent int
+	for start := time.Now(); agent == 0; time.Sleep(50 * time.Millisecond) {
+		if time.Since(start) > 10*time.Second {
+			_ = cmd.Process.Kill()
+			t.Fatalf("the stub driver did not start its agent; output:\n%s", out.String())
+		}
+		b, _ := os.ReadFile(filepath.Join(ev, "agent.pid"))
+		agent, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+	}
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait()
+	if code := cmd.ProcessState.ExitCode(); code != 130 {
+		t.Errorf("interrupted g5 exited %d, want 130; output:\n%s", code, out.String())
+	}
+	// A killed process can take a moment to be reaped.
+	for start := time.Now(); syscall.Kill(agent, 0) == nil; time.Sleep(100 * time.Millisecond) {
+		if time.Since(start) > 5*time.Second {
+			_ = syscall.Kill(agent, syscall.SIGKILL)
+			t.Fatalf("the agent, pid %d, still ran after g5 exited; output:\n%s", agent, out.String())
+		}
+	}
+	if got := readFile(t, filepath.Join(ev, "leftovers.txt")); got == "" {
+		t.Errorf("leftovers.txt does not name the processes that g5 stopped")
 	}
 }

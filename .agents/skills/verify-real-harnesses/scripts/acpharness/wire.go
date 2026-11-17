@@ -48,6 +48,10 @@ type recorder struct {
 	writeErr   error // the first evidence write that failed
 	findings   []finding
 	inbound    map[string]int // agent->client methods by name
+	// Notifications that the SDK must route, per connection, and how many
+	// it has: a client callback or a "failed to handle notification" log.
+	notified map[int]int
+	handled  map[int]int
 }
 
 func newRecorder(dir string) (*recorder, error) {
@@ -55,7 +59,7 @@ func newRecorder(dir string) (*recorder, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &recorder{start: time.Now(), transcript: f, inbound: map[string]int{}}
+	r := &recorder{start: time.Now(), transcript: f, inbound: map[string]int{}, notified: map[int]int{}, handled: map[int]int{}}
 	r.scenario.Store("setup")
 	return r, nil
 }
@@ -89,6 +93,11 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 	}
 	if dir == agentToClient && msg.Method != "" {
 		r.inbound[msg.Method]++
+		// The SDK ignores _ extension notifications and handles
+		// $/cancel_request itself, so neither reaches a callback or a log.
+		if len(msg.ID) == 0 && !strings.HasPrefix(msg.Method, "_") && !strings.HasPrefix(msg.Method, "$/") {
+			r.notified[conn]++
+		}
 	}
 	// The SDK answers an agent request that it cannot dispatch or decode
 	// with an error, without logging it. Count those replies too.
@@ -112,6 +121,7 @@ func classify(text string) string {
 	case strings.Contains(text, "Method not found"), strings.Contains(text, "-32601"):
 		return methodNotFound
 	case strings.Contains(text, "failed to parse"),
+		strings.Contains(text, "token too long"),
 		strings.Contains(text, "cannot unmarshal"),
 		strings.Contains(text, "unexpected end of JSON"),
 		strings.Contains(text, "Invalid params"),
@@ -120,6 +130,20 @@ func classify(text string) string {
 		return decodeError
 	}
 	return ""
+}
+
+// handledOne counts a notification that the SDK routed on conn.
+func (r *recorder) handledOne(conn int) {
+	r.mu.Lock()
+	r.handled[conn]++
+	r.mu.Unlock()
+}
+
+// pending is how many notifications on conn the SDK has not routed yet.
+func (r *recorder) pending(conn int) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.notified[conn] - r.handled[conn]
 }
 
 func (r *recorder) logged(conn int, text string) {
@@ -187,6 +211,9 @@ func (h *logTap) Handle(ctx context.Context, rec slog.Record) error {
 		return true
 	})
 	h.rec.logged(h.conn, text.String())
+	if rec.Message == "failed to handle notification" {
+		h.rec.handledOne(h.conn)
+	}
 	rec.AddAttrs(slog.Int("conn", h.conn), slog.String("scenario", h.rec.current()))
 	if err := h.next.Handle(ctx, rec); err != nil {
 		h.rec.lost(fmt.Errorf("sdk.log: %w", err))
@@ -236,6 +263,7 @@ type agentConn struct {
 	exited  chan struct{}
 	waitErr error
 	ended   string // how close ended the agent; empty while it runs
+	rec     *recorder
 }
 
 // startAgent starts the agent command in its own process group, so that
@@ -272,7 +300,7 @@ func (h *harness) startAgent() (*agentConn, error) {
 		return nil, fmt.Errorf("record the process group of %s: %w", h.opts.agent[0], err)
 	}
 
-	a := &agentConn{n: n, cmd: cmd, stdin: stdin, exited: make(chan struct{})}
+	a := &agentConn{n: n, cmd: cmd, stdin: stdin, exited: make(chan struct{}), rec: h.rec}
 	stderrDone := make(chan struct{})
 	go func() {
 		defer close(stderrDone)
@@ -328,6 +356,12 @@ func (h *harness) startAgent() (*agentConn, error) {
 	a.conn = acp.NewClientSideConnection(a.client, &tapWriter{w: stdin, rec: h.rec, conn: n}, pr)
 	a.conn.SetLogger(slog.New(&logTap{next: h.sdkLog, rec: h.rec, conn: n}))
 	close(ready)
+	// When the SDK stops reading, such as after a line over its size limit,
+	// unblock the forwarder so that the agent can still be reaped.
+	go func() {
+		<-a.conn.Done()
+		_ = pr.Close()
+	}()
 	h.conns = append(h.conns, a)
 	return a, nil
 }
@@ -338,11 +372,20 @@ func (h *harness) startAgent() (*agentConn, error) {
 func (a *agentConn) close(grace time.Duration) string {
 	if a.ended == "" {
 		a.ended = a.stop(grace)
-		// The SDK may still be parsing the agent's last lines. Let it finish,
-		// so that their decode errors reach the findings.
+		// The SDK may still be reading the agent's last lines, and it routes
+		// queued notifications after its reader stops. Wait for both, so that
+		// their decode errors reach the findings.
+		deadline := time.After(5 * time.Second)
 		select {
 		case <-a.conn.Done():
-		case <-time.After(5 * time.Second):
+		case <-deadline:
+		}
+		for a.rec.pending(a.n) > 0 {
+			select {
+			case <-deadline:
+				return a.ended
+			case <-time.After(20 * time.Millisecond):
+			}
 		}
 	}
 	return a.ended

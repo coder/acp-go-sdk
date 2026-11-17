@@ -259,18 +259,23 @@ cmd_doctor() {
 	[ "$ok" = 1 ] || exit 1
 }
 
-# spent: the model cost that the g5 runs in this run folder reported. It
-# reads the transcripts, not the summaries, so a run that died before its
-# summary still counts: the highest usage_update cost of each session on
-# each connection, as the driver adds it.
+# transcript_cost FILE: the USD cost that a g5 transcript reports: the
+# highest usage_update cost of each session on each connection, added up,
+# as the driver adds it. It works on the transcript of a run that died.
+transcript_cost() {
+	jq -s '[.[] | select(.dir == "agent->client" and .msg.params.update.cost.amount != null
+			and (.msg.params.update.cost.currency | ascii_upcase) == "USD")
+		| {k: "\(.conn)/\(.msg.params.sessionId)", a: .msg.params.update.cost.amount}]
+		| group_by(.k) | map(max_by(.a).a) | add // 0' "$1"
+}
+
+# spent: the USD cost that the g5 runs in this run folder reported, read
+# from the transcripts, so a run that died before its summary still counts.
 spent() {
-	local f total=0 cost
+	local f total=0
 	for f in "$EVIDENCE"/g5-*/transcript.jsonl; do
 		[ -f "$f" ] || continue
-		cost=$(jq -s '[.[] | select(.dir == "agent->client" and .msg.params.update.cost.amount != null)
-			| {k: "\(.conn)/\(.msg.params.sessionId)", a: .msg.params.update.cost.amount}]
-			| group_by(.k) | map(max_by(.a).a) | add // 0' "$f")
-		total=$(jq -n --argjson a "$total" --argjson b "$cost" '$a + $b')
+		total=$(jq -n --argjson a "$total" --argjson b "$(transcript_cost "$f")" '$a + $b')
 	done
 	echo "$total"
 }
@@ -378,7 +383,7 @@ cmd_report() {
 	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set"
 	set_paths "$HARNESS_RUN"
 	[ -f "$EVIDENCE/versions.json" ] || die "no evidence in $RUN"
-	local labels=() l f names n row s total=0 cost
+	local labels=() l f names n row s cost
 	for f in "$EVIDENCE"/g5-*; do
 		[ -d "$f" ] && labels+=("$(basename "$f")")
 	done
@@ -417,19 +422,21 @@ cmd_report() {
 			for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
 				if [ ! -f "$f" ]; then
-					echo "- $l: INCOMPLETE, no summary.json: the driver did not finish"
+					cost=0
+					[ -f "$EVIDENCE/$l/transcript.jsonl" ] && cost=$(transcript_cost "$EVIDENCE/$l/transcript.jsonl")
+					printf -- '- %s: INCOMPLETE, no summary.json: the driver did not finish. Its transcript reports $%.2f.\n' "$l" "$cost"
 					continue
 				fi
 				cost=$(jq .costUsd "$f")
-				total=$(jq -n --argjson a "$total" --argjson b "$cost" '$a + $b')
 				printf -- '- %s: %s, models on the wire %s, %s, tokens %s\n' "$l" \
 					"$(jq -r '"\(.agentInfo.name // "agent") \(.agentInfo.version // "")"' "$f")" \
 					"$(jq -r '.models | join(", ")' "$f")" \
-					"$(if jq -e '.costUsd > 0' "$f" >/dev/null; then printf 'reported cost $%.2f' "$cost"; else echo 'no cost reported'; fi)" \
+					"$(if jq -e '.costUsd > 0' "$f" >/dev/null; then printf 'reported cost $%.2f' "$cost"; else echo 'no cost reported'; fi)$(jq -r '.otherCosts // {} | to_entries | map(", plus \(.value) \(.key) outside the USD budget") | join("")' "$f")" \
 					"$(jq -r '.tokens | to_entries | map("\(.key) \(.value)") | join(", ")' "$f")"
 			done
-			printf -- '- Total reported cost: $%.2f of the $%s budget.\n' "$total" \
-				"$(cat "$EVIDENCE"/g5-*/budget.txt 2>/dev/null | sort -u | paste -sd/ -)"
+			cost=$( (cat "$EVIDENCE"/g5-*/budget.txt 2>/dev/null || true) | sort -u | paste -sd/ -)
+			if [ -n "$cost" ]; then cost="\$$cost"; else cost="not recorded"; fi
+			printf -- '- Total reported cost, from the transcripts: $%.2f (budget: %s).\n' "$(spent)" "$cost"
 			echo
 			echo "### Failures and skips"
 			echo

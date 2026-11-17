@@ -109,8 +109,11 @@ func TestMetaModels_FindsModelKeysAtAnyDepth(t *testing.T) {
 }
 
 func TestHarnessClient_AnswersByPolicyAndTracksCost(t *testing.T) {
-	h := &harness{rec: &recorder{}}
-	h.rec.scenario.Store("test")
+	rec, err := newRecorder(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{rec: rec}
 	c := newHarnessClient(h, 1)
 	req := acp.RequestPermissionRequest{Options: []acp.PermissionOption{
 		{Kind: acp.PermissionOptionKindAllowAlways, OptionId: "always"},
@@ -142,6 +145,21 @@ func TestHarnessClient_AnswersByPolicyAndTracksCost(t *testing.T) {
 	update("b", 0.05)
 	if got := c.cost(); got < 0.349 || got > 0.351 {
 		t.Fatalf("cost %v, want 0.35", got)
+	}
+
+	var eur acp.SessionNotification
+	if err := json.Unmarshal([]byte(`{"sessionId":"c","update":{"sessionUpdate":"usage_update","used":1,"size":2,"cost":{"amount":9,"currency":"EUR"}}}`), &eur); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SessionUpdate(context.Background(), eur)
+	c.usage("a", &acp.Usage{InputTokens: 10, OutputTokens: 1, TotalTokens: 11})
+	c.usage("a", &acp.Usage{InputTokens: 25, OutputTokens: 3, TotalTokens: 28}) // totals across turns
+	tokens, other := c.totals()
+	if got := c.cost(); got < 0.349 || got > 0.351 {
+		t.Fatalf("cost %v after a EUR update, want 0.35: another currency must not count as USD", got)
+	}
+	if other["EUR"] != 9 || tokens["total"] != 28 {
+		t.Fatalf("other costs %v, tokens %v; want EUR 9 and total 28", other, tokens)
 	}
 }
 

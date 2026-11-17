@@ -69,7 +69,6 @@ type harness struct {
 	init          acp.InitializeResponse
 	models        map[string]bool
 	defaultModels []string // models of the first plain turn
-	tokens        map[string]int
 	sessions      map[string]acp.SessionId
 	cwds          map[string]string
 	configs       map[string][]acp.SessionConfigOption
@@ -147,7 +146,6 @@ func newHarness(o options) (*harness, error) {
 		rec:      rec,
 		sdkLog:   slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}),
 		models:   map[string]bool{},
-		tokens:   map[string]int{},
 		sessions: map[string]acp.SessionId{},
 		cwds:     map[string]string{},
 		configs:  map[string][]acp.SessionConfigOption{},
@@ -231,16 +229,30 @@ func (h *harness) finish() int {
 
 	var perms []permission
 	var refused []string
+	tokens, other := map[string]int{}, map[string]float64{}
 	for _, a := range h.conns {
 		perms = append(perms, a.client.permissionsSince(0)...)
 		refused = append(refused, a.client.misc...)
+		t, o := a.client.totals()
+		for k, v := range t {
+			tokens[k] += v
+		}
+		for k, v := range o {
+			other[k] += v
+		}
 	}
 	models := make([]string, 0, len(h.models))
 	for m := range h.models {
 		models = append(models, m)
 	}
 	sort.Strings(models)
-	failed := h.budgetHit
+	// Missing proof fails the run: a gate must not pass without its
+	// evidence. A file that cannot be written below fails only the exit code.
+	var lost []string
+	if err := h.rec.close(); err != nil {
+		lost = append(lost, err.Error())
+	}
+	failed := h.budgetHit || len(lost) > 0
 	for _, r := range h.results {
 		failed = failed || r.Status == fail
 	}
@@ -260,16 +272,13 @@ func (h *harness) finish() int {
 		"costUsd":         h.cost(),
 		"budgetUsd":       h.opts.budget,
 		"budgetHit":       h.budgetHit,
-		"tokens":          h.tokens,
+		"tokens":          tokens,
+		"otherCosts":      other,
+		"evidenceErrors":  lost,
 		"permissions":     perms,
 		"refusedCalls":    refused,
 		"exits":           exits,
 		"pass":            !failed,
-	}
-	// Missing proof fails the run: a gate must not pass without its evidence.
-	var lost []string
-	if err := h.rec.close(); err != nil {
-		lost = append(lost, err.Error())
 	}
 	b, _ := json.MarshalIndent(summary, "", "  ")
 	if err := os.WriteFile(filepath.Join(h.opts.out, "summary.json"), append(b, '\n'), 0o600); err != nil {
@@ -279,6 +288,9 @@ func (h *harness) finish() int {
 	var lines strings.Builder
 	for _, r := range h.results {
 		fmt.Fprintf(&lines, "%s  %s  %s\n", r.Status, r.Name, r.Detail)
+	}
+	for _, l := range lost {
+		fmt.Fprintf(&lines, "FAIL  evidence  %s\n", l)
 	}
 	fmt.Fprintf(&lines, "models=%s cost_usd=%.4f budget_hit=%v\n", strings.Join(models, ","), h.cost(), h.budgetHit)
 	fmt.Printf("models=%s cost_usd=%.4f budget_hit=%v\n", strings.Join(models, ","), h.cost(), h.budgetHit)

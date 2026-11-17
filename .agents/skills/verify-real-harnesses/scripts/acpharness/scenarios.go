@@ -225,7 +225,7 @@ func (h *harness) prompt(a *agentConn, sid acp.SessionId, text string) turn {
 }
 
 // collect fills a turn from the updates that arrived since mark, and adds
-// its models and tokens to the run's totals.
+// its models and token usage to the run's totals.
 func (h *harness) collect(t *turn, a *agentConn, sid acp.SessionId, mark, pmark int) {
 	t.kinds, t.tools = map[string]int{}, map[string]int{}
 	models := map[string]bool{}
@@ -249,11 +249,7 @@ func (h *harness) collect(t *turn, a *agentConn, sid acp.SessionId, mark, pmark 
 		h.models[m] = true
 	}
 	sort.Strings(t.models)
-	if u := t.resp.Usage; u != nil {
-		h.tokens["input"] += u.InputTokens
-		h.tokens["output"] += u.OutputTokens
-		h.tokens["total"] += u.TotalTokens
-	}
+	a.client.usage(sid, t.resp.Usage)
 	t.perms = a.client.permissionsSince(pmark)
 }
 

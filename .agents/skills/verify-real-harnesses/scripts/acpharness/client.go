@@ -44,7 +44,9 @@ type harnessClient struct {
 	mu     sync.Mutex
 	policy string
 	events map[acp.SessionId][]event
-	costs  map[acp.SessionId]float64 // highest cumulative cost per session
+	costs  map[acp.SessionId]float64 // highest cumulative USD cost per session
+	other  map[string]float64        // the same in other currencies, by "CUR session"
+	tokens map[acp.SessionId]acp.Usage
 	perms  []permission
 	misc   []string // client methods the agent called that this client does not offer
 }
@@ -52,7 +54,8 @@ type harnessClient struct {
 var _ acp.Client = (*harnessClient)(nil)
 
 func newHarnessClient(h *harness, conn int) *harnessClient {
-	return &harnessClient{h: h, conn: conn, policy: answerCancel, events: map[acp.SessionId][]event{}, costs: map[acp.SessionId]float64{}}
+	return &harnessClient{h: h, conn: conn, policy: answerCancel, events: map[acp.SessionId][]event{},
+		costs: map[acp.SessionId]float64{}, other: map[string]float64{}, tokens: map[acp.SessionId]acp.Usage{}}
 }
 
 func (c *harnessClient) setPolicy(p string) {
@@ -142,13 +145,55 @@ func (c *harnessClient) SessionUpdate(_ context.Context, n acp.SessionNotificati
 			ev.Model = models[0]
 		}
 	}
+	c.h.rec.handledOne(c.conn)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.events[n.SessionId] = append(c.events[n.SessionId], ev)
-	if u.UsageUpdate != nil && u.UsageUpdate.Cost != nil && u.UsageUpdate.Cost.Amount > c.costs[n.SessionId] {
-		c.costs[n.SessionId] = u.UsageUpdate.Cost.Amount
+	if u.UsageUpdate != nil && u.UsageUpdate.Cost != nil {
+		cost := u.UsageUpdate.Cost
+		if strings.EqualFold(cost.Currency, "USD") {
+			c.costs[n.SessionId] = max(c.costs[n.SessionId], cost.Amount)
+		} else {
+			// The budget is in USD, so another currency is kept apart and
+			// reported, never added to the USD total.
+			key := strings.ToUpper(cost.Currency) + " " + string(n.SessionId)
+			c.other[key] = max(c.other[key], cost.Amount)
+		}
 	}
 	return nil
+}
+
+// usage records a prompt response's usage. The schema defines its fields
+// as totals across the session's turns, so the highest value counts.
+func (c *harnessClient) usage(sid acp.SessionId, u *acp.Usage) {
+	if u == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := c.tokens[sid]
+	t.InputTokens = max(t.InputTokens, u.InputTokens)
+	t.OutputTokens = max(t.OutputTokens, u.OutputTokens)
+	t.TotalTokens = max(t.TotalTokens, u.TotalTokens)
+	c.tokens[sid] = t
+}
+
+// totals returns the token totals of this connection's sessions and its
+// costs in currencies other than USD.
+func (c *harnessClient) totals() (map[string]int, map[string]float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	tokens := map[string]int{}
+	for _, t := range c.tokens {
+		tokens["input"] += t.InputTokens
+		tokens["output"] += t.OutputTokens
+		tokens["total"] += t.TotalTokens
+	}
+	other := map[string]float64{}
+	for key, v := range c.other {
+		other[strings.Fields(key)[0]] += v
+	}
+	return tokens, other
 }
 
 // The client offers no file system and no terminal, so a well-behaved agent

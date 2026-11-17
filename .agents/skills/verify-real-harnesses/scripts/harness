@@ -7,7 +7,9 @@
 #   harness doctor        read-only: is this run worth driving?
 #   harness g4            cross-SDK gate, no model: TS client -> Go example agent,
 #                         Go driver -> TS example agent
-#   harness g5 ADAPTER    live gate on the adapter's default model: claude or codex
+#   harness g5 ADAPTER [SCENARIO,...]
+#                         live gate on the adapter's default model: claude or
+#                         codex; a scenario list reruns only those scenarios
 #   harness report        write evidence/report.md from the gates that ran
 #   harness scan          exit 1 when a credential value is in evidence/ (prints names only)
 #   harness cleanup       stop this run's processes, delete work/, keep evidence/
@@ -329,8 +331,13 @@ write_codex_config() {
 
 cmd_g5() {
 	need_run
-	local name=${1:?adapter: claude or codex} v
+	local name=${1:?adapter: claude or codex} only=${2:-} v
+	[ "$#" -le 2 ] || die "usage: harness g5 ADAPTER [SCENARIO,...]"
 	adapter "$name"
+	# A scenario list goes to the driver's -only, which rejects a name that
+	# is not a scenario. The run stays tracked, budgeted and in the report.
+	local select=()
+	[ -n "$only" ] && select=(-only "$only")
 	for v in "${NEEDS[@]}"; do
 		[ -n "${!v:-}" ] || die "$v is not set; g5 $name needs it"
 	done
@@ -354,19 +361,23 @@ cmd_g5() {
 	mkdir -p "$out" "$cwd"
 	echo "$budget" >"$out/budget.txt"
 	[ "$name" = codex ] && write_codex_config
-	echo "cd $cwd && $HOME_VAR=$home $BIN/acpharness ${FLAGS[*]} -budget-usd $left -out $out -cwd $cwd -- $agent" >"$out/command.txt"
+	echo "cd $cwd && $HOME_VAR=$home $BIN/acpharness ${FLAGS[*]} ${select[*]} -budget-usd $left -out $out -cwd $cwd -- $agent" >"$out/command.txt"
 	cd "$cwd"
-	local rc=0 from
+	local rc=0 from limit=${HARNESS_G5_TIMEOUT:-1800} began=$SECONDS
 	from=$(($(wc -l <"$WORK/pgids") + 1))
 	# The driver bounds each request, but a write to an agent that stops
 	# reading stdin cannot time out. The outer timeout ends such a hang, and
 	# stop_groups then stops the agents that the driver left running.
 	# The tag goes on the tracked command only, never on this shell: then
 	# stop_tagged cannot hit the shell's own helpers, such as tee below.
-	tracked env "ACP_HARNESS_TAG=$TAG/$label" timeout --kill-after=30 "${HARNESS_G5_TIMEOUT:-1800}" \
-		env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
+	tracked env "ACP_HARNESS_TAG=$TAG/$label" timeout --kill-after=30 "$limit" \
+		env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" ${select[@]+"${select[@]}"} -budget-usd "$left" \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
-	[ "$rc" = 124 ] && echo "TIMEOUT: the driver ran longer than ${HARNESS_G5_TIMEOUT:-1800}s"
+	# timeout exits 124 after SIGTERM, or 137 when the driver ignored it and
+	# got SIGKILL 30 s later. The elapsed time tells a timeout from another kill.
+	if { [ "$rc" = 124 ] || [ "$rc" = 137 ]; } && [ $((SECONDS - began)) -ge "$limit" ]; then
+		echo "TIMEOUT: the driver ran longer than ${limit}s (exit $rc)"
+	fi
 	{
 		stop_groups "$from"
 		stop_tagged "$label"
@@ -629,7 +640,7 @@ report) cmd_report ;;
 scan) cmd_scan ;;
 cleanup) cmd_cleanup ;;
 *)
-	sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 	exit 2
 	;;
 esac

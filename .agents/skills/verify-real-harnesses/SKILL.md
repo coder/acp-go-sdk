@@ -67,7 +67,7 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 
 `g4` runs two drives. First, `scripts/g4/ts-client.mjs` uses the TypeScript SDK to run one prompt turn against `acp-example-agent`, and answers its permission request with allow. Second, `acpharness -profile smoke` runs `initialize`, `session/new` and one prompt turn against the TypeScript example agent. A drive fails when protocol version 1 is not negotiated, when the turn does not end with `end_turn`, when the agent's permission request does not arrive or is not allowed, when an error response or a non-JSON line crosses the wire, when the SDK logs a "Method not found" or decode error, when the agent does not exit 0 after its input closes, or when the agent's stderr has an error or warning line. Each `g4` replaces its two evidence folders, so a failed rerun leaves no stale PASS behind.
 
-`g5 ADAPTER` runs every scenario in the next section, under a 1800 s limit (`HARNESS_G5_TIMEOUT`) that ends a driver stuck on an agent that stopped reading. After the driver exits, `g5` stops any agent process that it left running. Each adapter gets a private config folder in `work/home/`:
+`g5 ADAPTER` runs every scenario in the next section (`g5 ADAPTER SCENARIO,...` runs some of them, see [Rerun some scenarios](#rerun-some-scenarios)), under a 1800 s limit (`HARNESS_G5_TIMEOUT`) that ends a driver stuck on an agent that stopped reading. After the driver exits, `g5` stops any agent process that it left running. Each adapter gets a private config folder in `work/home/`:
 
 | Adapter | Private config | Driver flags |
 | --- | --- | --- |
@@ -122,18 +122,22 @@ A `SKIP` detail starts with its reason. These are the documented reasons:
 | `not advertised` | `session/list`, `session/close`, `session/delete`, `session/load`, `session/resume` | The raw `initialize` result lacks the capability, or has it as `null` or `false`. `session/delete` also skips after a successful delete when the agent does not advertise `session/list`, because nothing confirms the delete. |
 | `no model option` | `config-option` | The raw `session/new` result has no select option with category or id `model`. |
 | `no other model` | `config-option` | Every other model is the current one, an alias of it or a lesser model, by the rule above. |
-| `not selected by -only` | all but `initialize`, `authenticate` and `session/new` | The driver's `-only` list left the scenario out. |
+| `not selected by -only` | all but `initialize`, `authenticate` and `session/new` | The scenario list of `g5 ADAPTER SCENARIO,...` left the scenario out. |
 
 Any other `SKIP` fails `known-skips`, so the run exits 1: a scenario blocked by an earlier failure (`blocked: ...`), or a scenario that the budget stopped (`budget: ...`).
 
-To rerun some scenarios, run the driver directly with `-only`. It rejects a name that is not a scenario of the profile. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and a scenario that needs the state of a skipped one can fail. For example, `config-option` without `prompt` has no model to compare with:
+### Rerun some scenarios
+
+Name the scenarios after the adapter, separated by commas:
 
 ```bash
-cd "$HARNESS_RUN/work/cwd" && CLAUDE_CONFIG_DIR="$HARNESS_RUN/work/home/claude" \
-	"$HARNESS_RUN/work/bin/acpharness" -ask-mode default -only cancel \
-	-out "$HARNESS_RUN/evidence/claude-cancel" -cwd "$HARNESS_RUN/work/cwd/claude-cancel" \
-	-- "$HARNESS_RUN/work/npm/claude/node_modules/.bin/claude-agent-acp"
+"$V" g5 claude cancel
+"$V" g5 codex session/list,session/close
 ```
+
+The run gets its own label, such as `g5-claude.2`, and `g5` tracks, budgets and reports it like a full run. The driver rejects a name that is not a scenario of the live profile. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and every other scenario is a `SKIP` with `not selected by -only`. A scenario that needs the state of a left-out one can fail, or skip with `blocked`, which fails `known-skips`. For example, `config-option` without `prompt` has no model to compare with, and `session/delete` without a permission or cancel scenario has no session B.
+
+Do not run `acpharness` by hand against a real adapter. Outside `g5`, nothing records its process groups for `cleanup`, passes it the budget that is left, or counts its cost in `report`.
 
 ## Evidence
 
@@ -172,7 +176,7 @@ Proof standards:
 | Helper | Invocation | Purpose |
 | --- | --- | --- |
 | `scripts/harness` | `"$V" launch`, `doctor`, `g4`, `g5 claude`, `g5 codex`, `report`, `scan`, `cleanup` | Run lifecycle, adapter table, budget, report, credential scan. |
-| `scripts/acpharness/` | Built by `launch`. Directly: `acpharness [-profile live\|smoke] [-ask-mode MODE] [-auth METHOD] [-budget-usd N] [-only a,b] -out DIR -cwd DIR -- AGENT [ARGS...]` | The ACP client on this checkout's SDK. The comment at the top of `main.go` lists the flags. |
+| `scripts/acpharness/` | Built by `launch`, run by `g4` and `g5`: `acpharness [-profile live\|smoke] [-ask-mode MODE] [-auth METHOD] [-budget-usd N] [-only a,b] [-pgids FILE] -out DIR -cwd DIR -- AGENT [ARGS...]` | The ACP client on this checkout's SDK. The comment at the top of `main.go` lists the flags. Use `g5 ADAPTER SCENARIO,...` instead of a direct run against a real adapter. |
 | `scripts/g4/ts-client.mjs` | Copied into `work/npm/ts` by `launch`. `node ts-client.mjs --out DIR --cwd DIR -- AGENT [ARGS...]` | One prompt turn with the official TypeScript SDK as the client. |
 
 `./...` skips dot directories, so `make test` names the driver by path. Its unit tests need no network and take about a second. To run them alone:

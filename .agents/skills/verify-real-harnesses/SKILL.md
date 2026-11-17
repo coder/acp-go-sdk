@@ -53,7 +53,7 @@ Run it first, and again whenever a result looks wrong:
 "$V" doctor
 ```
 
-It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncommitted changes>`), that both adapters and the TypeScript files are installed, and that no process from this run still runs, including a process that an agent left behind in its process group. A `WARN` line says that npm now has a newer adapter than the run, or that a credential variable is unset. Exit 1 means that a check failed. After any change to the checkout, run `launch` again.
+It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncommitted changes>`), that both adapters and the TypeScript files are installed, and that no process from this run still runs, including a tagged process that an agent left behind in its process group. A `WARN` line says that npm now has a newer adapter than the run, or that a credential variable is unset. Exit 1 means that a check failed. After any change to the checkout, run `launch` again.
 
 ## Run the gates
 
@@ -67,7 +67,7 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 
 `g4` runs two drives. First, `scripts/g4/ts-client.mjs` uses the TypeScript SDK to run one prompt turn against `acp-example-agent`, and answers its permission request with allow. Second, `acpharness -profile smoke` runs `initialize`, `session/new` and one prompt turn against the TypeScript example agent. A drive fails when protocol version 1 is not negotiated, when the turn does not end with `end_turn`, when an error response or a non-JSON line crosses the wire, when the SDK logs a "Method not found" or decode error, when the agent does not exit 0 after its input closes, or when the agent's stderr has an error or warning line. Each `g4` replaces its two evidence folders, so a failed rerun leaves no stale PASS behind.
 
-`g5 ADAPTER` runs every scenario in the next section. Each adapter gets a private config folder in `work/home/`:
+`g5 ADAPTER` runs every scenario in the next section, under a 1800 s limit (`HARNESS_G5_TIMEOUT`) that ends a driver stuck on an agent that stopped reading. After the driver exits, `g5` stops any agent process that it left running. Each adapter gets a private config folder in `work/home/`:
 
 | Adapter | Private config | Driver flags |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `wo
 
 ### Cost and budget
 
-The Claude adapter reports a cumulative session cost in each `usage_update`. The driver adds the highest cost of each session on each connection, and the total is an upper bound: a resumed session that restores its old cost is counted twice. `HARNESS_BUDGET_USD` (default 25) caps the total that the `g5` runs of one run folder report. Before each scenario, the driver checks the cost so far. Once the cost reaches the cap, every remaining scenario is a `SKIP` with a budget detail, and the driver exits 1. The Codex adapter reports no cost, so the cap cannot stop a Codex run. The summary records its tokens instead.
+The Claude adapter reports a cumulative session cost in each `usage_update`. The driver adds the highest cost of each session on each connection, and the total is an upper bound: a resumed session that restores its old cost is counted twice. `HARNESS_BUDGET_USD` (default 25) caps the total that the `g5` runs of one run folder report. `g5` reads the spend so far from the transcripts, so a run that died before its summary still counts. Before each scenario, the driver checks the cost so far. Once the cost reaches the cap, every remaining scenario is a `SKIP` with a budget detail, and the driver exits 1. The Codex adapter reports no cost, so the cap cannot stop a Codex run. The summary records its tokens instead.
 
 ## Scenarios and pass predicates
 
@@ -91,14 +91,14 @@ The driver plays an editor. Connection 1 creates session A for the plain turns a
 | `session/new` | 1 | Session A gets a session id in its own empty cwd. |
 | `prompt` | 1 | Session A answers "Reply with exactly the single word pong" with `end_turn` and a reply that contains `pong`. |
 | `config-option` | 1 | The driver sets the `model` option to another model, runs a pong turn, sets it back and runs another. Each response reports the new value. Both pong turns end with `end_turn` and name their model ids on the wire. The turn after the switch runs on a model id that the first turn did not use, and the turn after the switch back does not run on it. |
-| `permission-allow` | 1 | Session B, in the `-ask-mode` mode, asks to write `allow-check.txt`. At least one `session/request_permission` arrives and gets an `allow_*` option, and the file exists with its marker line afterwards. |
-| `permission-reject` | 1 | The same with `reject-check.txt` and a `reject_*` option. The file does not exist afterwards. Any stop reason passes. |
+| `permission-allow` | 1 | Session B, in the `-ask-mode` mode, asks to write `allow-check.txt`. At least one `session/request_permission` arrives, every request gets an `allow_*` option, and the file exists with its marker line afterwards. |
+| `permission-reject` | 1 | The same with `reject-check.txt` and a `reject_*` option for every request. The file does not exist afterwards. Any stop reason passes. |
 | `cancel` | 1 | Session B starts a long essay. The driver sends `session/cancel` after the first streamed update, or after 90 s without one while the turn still runs. The turn ends with `cancelled` within 60 s of the cancel. The detail says which case happened. |
 | `session/list` | 1 | `session/list` for session A's cwd, through every page, contains session A. |
 | `session/close` | 1 | `session/close` for session A succeeds. |
 | `session/delete` | 1 | The driver closes session B, then `session/delete` for it succeeds. If the agent lists sessions, session B is no longer in the list for its cwd. |
 | `session/load` | 2 | A new process loads session A. Before the response, the agent replays user chunks and agent chunks, and the replayed agent text contains `pong`. The prompt itself says pong, so a replay of the user's chunks alone fails. |
-| `session/resume` | 3 | A new process resumes session A. A turn that asks for "the single word you replied with" ends with `end_turn` and gets `pong`. |
+| `session/resume` | 3 | A new process resumes session A without a replay: no message chunk arrives before the first prompt. A turn that asks for "the single word you replied with" ends with `end_turn` and gets `pong`. |
 | `agent-exit` | all | Every agent process exits 0 within 10 s after the driver closes its stdin. |
 | `no-method-not-found` | all | The SDK logged no "Method not found" (`-32601`) and sent no `-32601` reply to the agent. |
 | `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, and sent no `-32602` or `-32700` reply. |
@@ -146,7 +146,7 @@ Proof standards:
 "$V" cleanup
 ```
 
-`cleanup` stops only the processes that this run recorded. It checks each start time first, so it leaves a reused PID alone, and it never kills by process name. Each agent runs in its own process group, and `cleanup` stops a group only while its recorded leader still runs. When a leader is gone but processes that it started still run in its group, `cleanup` stops them too: the kernel does not reuse a group id while a member lives. A process or group that still runs 10 s after SIGTERM gets SIGKILL, so no adapter keeps calling a paid model after `cleanup` returns. Then it deletes `work/` (binaries, npm folders, the private agent config and the session cwds) and keeps `evidence/`. Confirm that the proof is still there with `ls "$HARNESS_RUN/evidence"`. A run that was cleaned up cannot be driven again. `report` and `scan` still work on it.
+`cleanup` stops only the processes that this run recorded. It checks each start time first, so it leaves a reused PID alone, and it never kills by process name. Each agent runs in its own process group, and `cleanup` stops a group only while its recorded leader still runs. When a leader is gone but processes that it started still run in its group, `cleanup` stops them too. `g4` and `g5` give every process that they start the environment variable `ACP_HARNESS_TAG=<run folder name>`, and `cleanup` stops a leftover process only when it carries that tag, so a reused group id never leads it to another user's processes. The tag check reads `/proc`, so on macOS `cleanup` does not stop leftovers. A process or group that still runs 10 s after SIGTERM gets SIGKILL, so no adapter keeps calling a paid model after `cleanup` returns. Then it deletes `work/` (binaries, npm folders, the private agent config and the session cwds) and keeps `evidence/`. Confirm that the proof is still there with `ls "$HARNESS_RUN/evidence"`. A run that was cleaned up cannot be driven again. `report` and `scan` still work on it.
 
 ## Helpers
 

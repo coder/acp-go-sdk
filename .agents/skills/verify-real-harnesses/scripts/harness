@@ -17,6 +17,7 @@
 #   HARNESS_RUN         the run folder that launch printed
 #   HARNESS_BUDGET_USD  most model cost that the g5 runs of one run folder may
 #                       report in total (default 25)
+#   HARNESS_G5_TIMEOUT  seconds before g5 stops a driver that hangs (default 1800)
 set -euo pipefail
 
 SKILL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -85,6 +86,9 @@ set_paths() {
 	WORK=$RUN/work
 	EVIDENCE=$RUN/evidence
 	BIN=$WORK/bin
+	# Every process that g4 or g5 starts inherits this tag, so cleanup can
+	# tell this run's leftover processes from anyone else's.
+	TAG=$(basename "$RUN")
 }
 
 # Start a command in the background, record its pid, wait for it, and
@@ -241,12 +245,10 @@ cmd_doctor() {
 		fi
 	done < <(cat "$WORK/pids" "$WORK/pgids")
 	while IFS=$'\t' read -r pid start cmd; do
-		[ -n "$pid" ] || continue
-		if orphaned "$pid"; then
-			echo "FAIL  process group $pid from this run outlived its leader: $cmd"
-			live=1
-			ok=0
-		fi
+		[ -n "$pid" ] && [ -n "$(leftovers "$pid")" ] || continue
+		echo "FAIL  process group $pid from this run has members left after its leader: $cmd"
+		live=1
+		ok=0
 	done <"$WORK/pgids"
 	[ "$live" = 0 ] && echo "ok    no process from this run is running"
 	echo "run      $RUN"
@@ -254,12 +256,18 @@ cmd_doctor() {
 	[ "$ok" = 1 ] || exit 1
 }
 
-# spent: the model cost that the g5 runs in this run folder reported.
+# spent: the model cost that the g5 runs in this run folder reported. It
+# reads the transcripts, not the summaries, so a run that died before its
+# summary still counts: the highest usage_update cost of each session on
+# each connection, as the driver adds it.
 spent() {
-	local f total=0
-	for f in "$EVIDENCE"/g5-*/summary.json; do
+	local f total=0 cost
+	for f in "$EVIDENCE"/g5-*/transcript.jsonl; do
 		[ -f "$f" ] || continue
-		total=$(jq -n --argjson a "$total" --argjson b "$(jq .costUsd "$f")" '$a + $b')
+		cost=$(jq -s '[.[] | select(.dir == "agent->client" and .msg.params.update.cost.amount != null)
+			| {k: "\(.conn)/\(.msg.params.sessionId)", a: .msg.params.update.cost.amount}]
+			| group_by(.k) | map(max_by(.a).a) | add // 0' "$f")
+		total=$(jq -n --argjson a "$total" --argjson b "$cost" '$a + $b')
 	done
 	echo "$total"
 }
@@ -304,9 +312,16 @@ cmd_g5() {
 	[ "$name" = codex ] && write_codex_config
 	echo "cd $cwd && $HOME_VAR=$home $BIN/acpharness ${FLAGS[*]} -budget-usd $left -out $out -cwd $cwd -- $agent" >"$out/command.txt"
 	cd "$cwd"
-	local rc=0
-	tracked env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
+	local rc=0 from
+	from=$(($(wc -l <"$WORK/pgids") + 1))
+	# The driver bounds each request, but a write to an agent that stops
+	# reading stdin cannot time out. The outer timeout ends such a hang, and
+	# stop_groups then stops the agents that the driver left running.
+	tracked timeout --kill-after=30 "${HARNESS_G5_TIMEOUT:-1800}" \
+		env "ACP_HARNESS_TAG=$TAG" "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
+	[ "$rc" = 124 ] && echo "TIMEOUT: the driver ran longer than ${HARNESS_G5_TIMEOUT:-1800}s"
+	stop_groups "$from"
 	echo "evidence $out"
 	return "$rc"
 }
@@ -321,8 +336,8 @@ cmd_g4() {
 	mkdir -p "$out"
 	echo "cd $WORK/npm/ts && node ts-client.mjs --out $out --cwd $WORK/cwd/g4-ts -- $BIN/acp-example-agent" >"$out/command.txt"
 	echo "== TS client -> Go example agent"
-	(cd "$WORK/npm/ts" && tracked timeout 120 node ts-client.mjs --out "$out" --cwd "$WORK/cwd/g4-ts" \
-		-- "$BIN/acp-example-agent" 2>"$out/client.stderr.log") || rc=1
+	(cd "$WORK/npm/ts" && tracked timeout 120 env "ACP_HARNESS_TAG=$TAG" node ts-client.mjs --out "$out" \
+		--cwd "$WORK/cwd/g4-ts" -- "$BIN/acp-example-agent" 2>"$out/client.stderr.log") || rc=1
 	g4_quiet "$out/agent.stderr.log" 'ERROR|WARN' "the Go agent logged an error" || rc=1
 	g4_quiet "$out/client.stderr.log" '.' "the TS client wrote to stderr" || rc=1
 
@@ -331,8 +346,11 @@ cmd_g4() {
 	rm -rf "$out"
 	mkdir -p "$out"
 	echo "== Go driver -> TS example agent"
-	(cd "$WORK/npm/ts" && tracked timeout 120 "$BIN/acpharness" -profile smoke -pgids "$WORK/pgids" \
-		-out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts") || rc=1
+	local from
+	from=$(($(wc -l <"$WORK/pgids") + 1))
+	(cd "$WORK/npm/ts" && tracked timeout 120 env "ACP_HARNESS_TAG=$TAG" "$BIN/acpharness" -profile smoke \
+		-pgids "$WORK/pgids" -out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts") || rc=1
+	stop_groups "$from"
 	g4_quiet "$out/agent-1.stderr.log" '[Ee]rror|[Ww]arn' "the TS agent logged an error" || rc=1
 	echo "evidence $EVIDENCE/g4-*"
 	return "$rc"
@@ -469,11 +487,41 @@ stop() {
 	echo "  $target ignored SIGTERM for 10 s and got SIGKILL"
 }
 
+alive() { kill -0 "$1" 2>/dev/null; }
+
 group_alive() { [ -n "$(pgrep -g "$1" 2>/dev/null || true)" ]; }
 
-# orphaned PGID: the group's leader is gone, and members that it started
-# still run.
-orphaned() { ! ps -p "$1" >/dev/null 2>&1 && group_alive "$1"; }
+# leftovers PGID: the processes in the group that carry this run's tag. A
+# group id can be reused once the group is empty, so the tag, not the id,
+# shows that a process belongs to this run. It needs /proc, so it finds
+# nothing on macOS.
+leftovers() {
+	local p
+	for p in $(pgrep -g "$1" 2>/dev/null || true); do
+		grep -qzxF "ACP_HARNESS_TAG=$TAG" "/proc/$p/environ" 2>/dev/null && echo "$p"
+	done
+	return 0
+}
+
+# stop_groups FROM: stop each agent process group recorded in pgids from
+# line FROM on. A group whose recorded leader runs is stopped whole. When
+# the leader is gone, only the members with this run's tag are stopped.
+stop_groups() {
+	local pid start cmd p left
+	while IFS=$'\t' read -r pid start cmd; do
+		[ -n "$pid" ] || continue
+		if ours "$pid" "$start"; then
+			stop "-$pid" group_alive "$pid"
+			echo "stopped process group $pid ($cmd)"
+			continue
+		fi
+		left=$(leftovers "$pid")
+		for p in $left; do
+			stop "$p" alive "$p"
+			echo "stopped pid $p, left behind in process group $pid ($cmd)"
+		done
+	done < <(tail -n "+$1" "$WORK/pgids")
+}
 
 cmd_cleanup() {
 	need_run
@@ -486,20 +534,7 @@ cmd_cleanup() {
 			echo "stopped pid $pid ($cmd)"
 		fi
 	done <"$WORK/pids"
-	# Each agent runs in its own process group, led by the agent. Stop a group
-	# while its recorded leader still runs, or when the leader is gone and
-	# members remain. The kernel does not reuse a group id while a member
-	# lives, so the signals reach only this run's processes.
-	while IFS=$'\t' read -r pid start cmd; do
-		[ -n "$pid" ] || continue
-		if ours "$pid" "$start"; then
-			stop "-$pid" group_alive "$pid"
-			echo "stopped process group $pid ($cmd)"
-		elif orphaned "$pid"; then
-			stop "-$pid" group_alive "$pid"
-			echo "stopped the members that process group $pid left behind ($cmd)"
-		fi
-	done <"$WORK/pgids"
+	stop_groups 1
 	rm -rf "$WORK"
 	rm -f "$RUN/$MARKER"
 	echo "removed $WORK"

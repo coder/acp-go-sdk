@@ -30,3 +30,4 @@ Steps:
 - Codex's reject option is `cancel` with kind `reject_once`. It ends the turn with `stopReason cancelled`.
 - The session cwd lives under `work/cwd/`, and `cleanup` deletes it. The file check happens during the run, and the scenario detail records it.
 - An agent that writes the file without a permission request fails `permission-allow`, even though the file exists. The scenario proves the round trip, not only the file.
+- Every request in the turn must get the policy's answer. A request that offers no option of that kind gets `cancelled`, and the scenario fails.

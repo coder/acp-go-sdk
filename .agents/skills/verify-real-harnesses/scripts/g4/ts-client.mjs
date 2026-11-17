@@ -69,8 +69,11 @@ function tap(dir) {
 }
 
 const child = spawn(agent[0], agent.slice(1), { cwd, stdio: ["pipe", "pipe", "pipe"] });
-child.stderr.pipe(createWriteStream(`${out}/agent.stderr.log`));
-const exited = new Promise((resolve) => child.on("exit", (code, signal) => resolve(signal ?? `exit ${code}`)));
+const agentLog = createWriteStream(`${out}/agent.stderr.log`);
+child.stderr.pipe(agentLog);
+// "close" fires after the agent exits and its stdio streams end, so every
+// stderr line has reached agentLog by then.
+const exited = new Promise((resolve) => child.on("close", (code, signal) => resolve(signal ?? `exit ${code}`)));
 
 const toAgent = tap("client->agent");
 toAgent.readable.pipeTo(Writable.toWeb(child.stdin)).catch(() => {});
@@ -109,8 +112,13 @@ try {
 }
 
 child.stdin.end();
-const exit = await Promise.race([exited, new Promise((r) => setTimeout(() => r(null), 5000))]);
-if (exit === null) child.kill("SIGTERM");
+const within = (ms) => Promise.race([exited, new Promise((r) => setTimeout(() => r(null), ms))]);
+let exit = await within(5000);
+if (exit === null) {
+  child.kill("SIGTERM");
+  exit = (await within(5000)) === null ? "still running after SIGTERM" : "stopped with SIGTERM after 5 s";
+}
+if (!exit.startsWith("still")) await new Promise((r) => (agentLog.writableFinished ? r() : agentLog.on("finish", r)));
 
 const checks = [
   [`protocol version ${acp.PROTOCOL_VERSION} negotiated`, outcome?.protocolVersion === acp.PROTOCOL_VERSION],
@@ -120,7 +128,7 @@ const checks = [
   ["agent exited 0 after its input closed", exit === "exit 0"],
 ];
 const pass = checks.every(([, ok]) => ok);
-const summary = { agent, sdk: "@agentclientprotocol/sdk", outcome, kinds, permissions, problems, agentExit: exit ?? "killed", pass };
+const summary = { agent, sdk: "@agentclientprotocol/sdk", outcome, kinds, permissions, problems, agentExit: exit, pass };
 writeFileSync(`${out}/summary.json`, JSON.stringify(summary, null, 2) + "\n");
 const lines = checks.map(([name, ok]) => `${ok ? "PASS" : "FAIL"}  ${name}`);
 lines.push(...problems.map((p) => `      ${p}`), `exit=${pass ? 0 : 1}`);

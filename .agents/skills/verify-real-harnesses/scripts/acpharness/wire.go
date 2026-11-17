@@ -263,11 +263,16 @@ func (h *harness) startAgent() (*agentConn, error) {
 	}()
 
 	// The SDK reads from a pipe that this goroutine fills line by line, so
-	// each line from the agent is recorded before the SDK sees it.
+	// each line from the agent is recorded before the SDK sees it. The SDK
+	// starts reading when the connection is made, so the goroutine waits for
+	// ready: a line that the SDK cannot parse must reach the tapped logger,
+	// not the default one.
 	pr, pw := io.Pipe()
+	ready := make(chan struct{})
 	stdoutDone := make(chan struct{})
 	go func() {
 		defer close(stdoutDone)
+		<-ready
 		sc := bufio.NewScanner(stdout)
 		sc.Buffer(make([]byte, 0, 1024*1024), 64*1024*1024)
 		for sc.Scan() {
@@ -292,6 +297,7 @@ func (h *harness) startAgent() (*agentConn, error) {
 	a.client = newHarnessClient(h, n)
 	a.conn = acp.NewClientSideConnection(a.client, &tapWriter{w: stdin, rec: h.rec, conn: n}, pr)
 	a.conn.SetLogger(slog.New(&logTap{next: h.sdkLog, rec: h.rec, conn: n}))
+	close(ready)
 	h.conns = append(h.conns, a)
 	return a, nil
 }

@@ -403,8 +403,8 @@ func (h *harness) permissionTurn(a *agentConn, policy string) (status, string) {
 		return fail, "session/prompt: " + errText(t.err) + "; " + detail
 	case len(t.perms) == 0:
 		return fail, "no session/request_permission arrived; " + detail
-	case answered == 0:
-		return fail, "no " + policy + " option was offered; " + detail
+	case answered < len(t.perms):
+		return fail, "a request offered no " + policy + " option, so the client cancelled it; " + detail
 	case policy == answerAllow && (!exists || !strings.Contains(string(body), marker)):
 		return fail, "the file is missing or lacks the marker after allow; " + detail
 	case policy == answerReject && exists:
@@ -646,13 +646,23 @@ func (h *harness) resumeSession() (status, string) {
 	if _, err := c.conn.ResumeSession(ctx, acp.ResumeSessionRequest{SessionId: sid, Cwd: h.cwds["A"]}); err != nil {
 		return fail, "session/resume: " + errText(err)
 	}
-	replayed := len(c.client.since(sid, 0))
+	// session/resume restores a session without its history, so no message
+	// chunk may arrive before the first prompt.
+	replayed, messages := 0, 0
+	for _, ev := range c.client.since(sid, 0) {
+		replayed++
+		if ev.Kind == "user_message_chunk" || ev.Kind == "agent_message_chunk" {
+			messages++
+		}
+	}
 	t := h.prompt(c, sid, recallPrompt)
 	if caps.Close != nil {
 		_, _ = c.conn.CloseSession(ctx, acp.CloseSessionRequest{SessionId: sid})
 	}
-	detail := fmt.Sprintf("connection %d, %d updates before the first prompt; recall turn: %s", c.n, replayed, t.describe())
+	detail := fmt.Sprintf("connection %d, %d updates and %d message chunks before the first prompt; recall turn: %s", c.n, replayed, messages, t.describe())
 	switch {
+	case messages > 0:
+		return fail, "session/resume replayed the conversation, which only session/load may do; " + detail
 	case t.err != nil:
 		return fail, "session/prompt: " + errText(t.err) + "; " + detail
 	case t.resp.StopReason != acp.StopReasonEndTurn:

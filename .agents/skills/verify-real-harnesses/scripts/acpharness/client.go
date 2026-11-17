@@ -145,7 +145,9 @@ func (c *harnessClient) SessionUpdate(_ context.Context, n acp.SessionNotificati
 			ev.Model = models[0]
 		}
 	}
-	c.h.rec.handledOne(c.conn)
+	// Count the notification as routed only once its state is stored, so
+	// that close never returns before the last update is in the summary.
+	defer c.h.rec.handledOne(c.conn)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.events[n.SessionId] = append(c.events[n.SessionId], ev)

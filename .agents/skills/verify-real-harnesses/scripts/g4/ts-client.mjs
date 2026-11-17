@@ -72,12 +72,20 @@ function tap(dir) {
   });
 }
 
-const child = spawn(agent[0], agent.slice(1), { cwd, stdio: ["pipe", "pipe", "pipe"] });
+// The agent leads its own process group, so a signal reaches every
+// process that it started.
+const child = spawn(agent[0], agent.slice(1), { cwd, stdio: ["pipe", "pipe", "pipe"], detached: true });
+const signalGroup = (sig) => {
+  try {
+    process.kill(-child.pid, sig);
+  } catch {}
+};
 const agentLog = createWriteStream(`${out}/agent.stderr.log`);
 child.stderr.pipe(agentLog);
 // "close" fires after the agent exits and its stdio streams end, so every
-// stderr line has reached agentLog by then.
-const exited = new Promise((resolve) => child.on("close", (code, signal) => resolve(signal ?? `exit ${code}`)));
+// stderr line has reached agentLog by then. "exit" fires when it dies.
+const closed = new Promise((resolve) => child.on("close", (code, signal) => resolve(signal ?? `exit ${code}`)));
+const died = new Promise((resolve) => child.on("exit", () => resolve(true)));
 
 const toAgent = tap("client->agent");
 toAgent.readable.pipeTo(Writable.toWeb(child.stdin)).catch(() => {});
@@ -116,13 +124,17 @@ try {
 }
 
 child.stdin.end();
-const within = (ms) => Promise.race([exited, new Promise((r) => setTimeout(() => r(null), ms))]);
-let exit = await within(5000);
-if (exit === null) {
-  child.kill("SIGTERM");
-  exit = (await within(5000)) === null ? "still running after SIGTERM" : "stopped with SIGTERM after 5 s";
+const within = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
+let exit = await within(closed, 5000);
+if (exit !== null) {
+  await new Promise((r) => (agentLog.writableFinished ? r() : agentLog.on("finish", r)));
+} else {
+  // Nothing else would stop an agent that outlives this client.
+  signalGroup("SIGTERM");
+  exit = (await within(died, 5000)) ? "stopped with SIGTERM after 5 s" : null;
+  signalGroup("SIGKILL");
+  exit ??= (await within(died, 5000)) ? "killed after SIGTERM was ignored" : "still running after SIGKILL";
 }
-if (!exit.startsWith("still")) await new Promise((r) => (agentLog.writableFinished ? r() : agentLog.on("finish", r)));
 
 const checks = [
   [`protocol version ${acp.PROTOCOL_VERSION} negotiated`, outcome?.protocolVersion === acp.PROTOCOL_VERSION],

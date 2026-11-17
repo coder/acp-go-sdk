@@ -68,8 +68,17 @@ source_id() {
 # for a process that this run started.
 start_of() { ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//' || true; }
 
-# ours PID START: the PID is alive and is still the process recorded.
-ours() { [ -n "$2" ] && [ "$(start_of "$1")" = "$2" ]; }
+# tagged PID: the process carries this run's ACP_HARNESS_TAG. Without /proc
+# (macOS) the check cannot run and passes.
+tagged() {
+	[ -d /proc/self ] || return 0
+	grep -qzxF "ACP_HARNESS_TAG=$TAG" "/proc/$1/environ" 2>/dev/null
+}
+
+# ours PID START: the PID is alive and is still the process recorded. The
+# start time has whole-second precision, so a process that g4 or g5 started
+# must also carry the run's tag.
+ours() { [ -n "$2" ] && [ "$(start_of "$1")" = "$2" ] && tagged "$1"; }
 
 need_run() {
 	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set. Run 'harness launch' and export what it prints."
@@ -263,8 +272,9 @@ cmd_doctor() {
 # highest usage_update cost of each session on each connection, added up,
 # as the driver adds it. It works on the transcript of a run that died.
 transcript_cost() {
-	jq -s '[.[] | select(.dir == "agent->client" and .msg.params.update.cost.amount != null
-			and (.msg.params.update.cost.currency | ascii_upcase) == "USD")
+	# -R with fromjson? skips a last line that a killed driver left unfinished.
+	jq -Rn '[inputs | fromjson? | select(.dir == "agent->client" and .msg.params.update.cost.amount != null
+			and ((.msg.params.update.cost.currency // "") | ascii_upcase) == "USD")
 		| {k: "\(.conn)/\(.msg.params.sessionId)", a: .msg.params.update.cost.amount}]
 		| group_by(.k) | map(max_by(.a).a) | add // 0' "$1"
 }
@@ -331,8 +341,9 @@ cmd_g5() {
 	# The driver bounds each request, but a write to an agent that stops
 	# reading stdin cannot time out. The outer timeout ends such a hang, and
 	# stop_groups then stops the agents that the driver left running.
+	export ACP_HARNESS_TAG=$TAG
 	tracked timeout --kill-after=30 "${HARNESS_G5_TIMEOUT:-1800}" \
-		env "ACP_HARNESS_TAG=$TAG" "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
+		env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
 	[ "$rc" = 124 ] && echo "TIMEOUT: the driver ran longer than ${HARNESS_G5_TIMEOUT:-1800}s"
 	stop_groups "$from" | tee "$out/leftovers.txt"
@@ -343,26 +354,26 @@ cmd_g5() {
 cmd_g4() {
 	need_run
 	local rc=0 out
+	export ACP_HARNESS_TAG=$TAG
+	# Both folders go first, so an interrupted rerun leaves no stale PASS.
+	rm -rf "$EVIDENCE/g4-ts-client-go-agent" "$EVIDENCE/g4-go-client-ts-agent"
 	# 1. The TypeScript SDK as the client, this repo's example agent as the agent.
-	# Each drive replaces its folder, so a failed rerun leaves no stale PASS.
 	out=$EVIDENCE/g4-ts-client-go-agent
-	rm -rf "$out"
 	mkdir -p "$out"
 	echo "cd $WORK/npm/ts && node ts-client.mjs --out $out --cwd $WORK/cwd/g4-ts -- $BIN/acp-example-agent" >"$out/command.txt"
 	echo "== TS client -> Go example agent"
-	(cd "$WORK/npm/ts" && tracked timeout 120 env "ACP_HARNESS_TAG=$TAG" node ts-client.mjs --out "$out" \
+	(cd "$WORK/npm/ts" && tracked timeout 120 node ts-client.mjs --out "$out" \
 		--cwd "$WORK/cwd/g4-ts" -- "$BIN/acp-example-agent" 2>"$out/client.stderr.log") || rc=1
 	g4_quiet "$out/agent.stderr.log" 'ERROR|WARN' "the Go agent logged an error" || rc=1
 	g4_quiet "$out/client.stderr.log" '.' "the TS client wrote to stderr" || rc=1
 
 	# 2. This repo's SDK as the client, the TypeScript SDK's example agent as the agent.
 	out=$EVIDENCE/g4-go-client-ts-agent
-	rm -rf "$out"
 	mkdir -p "$out"
 	echo "== Go driver -> TS example agent"
 	local from
 	from=$(($(wc -l <"$WORK/pgids") + 1))
-	(cd "$WORK/npm/ts" && tracked timeout 120 env "ACP_HARNESS_TAG=$TAG" "$BIN/acpharness" -profile smoke \
+	(cd "$WORK/npm/ts" && tracked timeout 120 "$BIN/acpharness" -profile smoke \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts") || rc=1
 	stop_groups "$from"
 	g4_quiet "$out/agent-1.stderr.log" 'error|warn' "the TS agent logged an error" || rc=1
@@ -521,8 +532,9 @@ group_alive() { [ -n "$(pgrep -g "$1" 2>/dev/null || true)" ]; }
 # nothing on macOS.
 leftovers() {
 	local p
+	[ -d /proc/self ] || return 0
 	for p in $(pgrep -g "$1" 2>/dev/null || true); do
-		grep -qzxF "ACP_HARNESS_TAG=$TAG" "/proc/$p/environ" 2>/dev/null && echo "$p"
+		tagged "$p" && echo "$p"
 	done
 	return 0
 }

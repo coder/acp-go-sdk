@@ -158,6 +158,9 @@ func (h *harness) reconnect() (*agentConn, error) {
 		return a, fmt.Errorf("initialize on connection %d: protocolVersion %d, want %d", a.n, resp.ProtocolVersion, acp.ProtocolVersionNumber)
 	}
 	if h.opts.auth != "" {
+		if ids := authIDs(resp.AuthMethods); !contains(ids, h.opts.auth) {
+			return a, fmt.Errorf("connection %d does not advertise auth method %q; it advertises %v", a.n, h.opts.auth, ids)
+		}
 		if _, err := a.conn.Authenticate(ctx, acp.AuthenticateRequest{MethodId: h.opts.auth}); err != nil {
 			return a, fmt.Errorf("authenticate on connection %d: %s", a.n, errText(err))
 		}

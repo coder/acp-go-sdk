@@ -136,7 +136,8 @@ func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 }
 
 // additionalPropertiesField is the field of a struct whose schema says
-// "additionalProperties": true. It holds the members the schema does not name.
+// "additionalProperties": true. It holds the members the schema does not name,
+// each as the JSON that was read, so that a number keeps every digit.
 const additionalPropertiesField = "AdditionalProperties"
 
 // emitStruct declares the struct name with one field per entry of fields. open
@@ -154,7 +155,7 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 		b.usesAdditionalProperties = true
 		decls = append(decls,
 			Comment("AdditionalProperties holds the members that the schema does not name."),
-			Id(additionalPropertiesField).Map(String()).Any().Tag(map[string]string{"json": "-"}),
+			Id(additionalPropertiesField).Map(String()).Qual("encoding/json", "RawMessage").Tag(map[string]string{"json": "-"}),
 		)
 	}
 	f.Type().Id(name).Struct(decls...)

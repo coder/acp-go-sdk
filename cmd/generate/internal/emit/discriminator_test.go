@@ -238,7 +238,7 @@ func TestCatchAllUnions_SelectTheVariant(t *testing.T) {
 			t.Fatalf("unmarshal %s: %v", in, err)
 		}
 	}
-	if custom.Other == nil || custom.Other.StopReason != "_custom" || custom.Other.AdditionalProperties["detail"] != float64(1) {
+	if custom.Other == nil || custom.Other.StopReason != "_custom" || string(custom.Other.AdditionalProperties["detail"]) != "1" {
 		t.Errorf("an unknown stop reason decodes to %+v, want the other variant with the reason and the detail member", custom.Other)
 	}
 	if absent.None == nil || null.None == nil || malformed.None == nil {
@@ -269,7 +269,7 @@ func TestCatchAllUnions_SelectTheVariant(t *testing.T) {
 }
 
 func TestProblem_AdditionalPropertiesDoNotReplaceANamedProperty(t *testing.T) {
-	out, err := json.Marshal(Problem{Code: 1, AdditionalProperties: map[string]any{"code": 9, "retry": true}})
+	out, err := json.Marshal(Problem{Code: 1, AdditionalProperties: map[string]json.RawMessage{"code": []byte("9"), "retry": []byte("true")}})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -279,6 +279,17 @@ func TestProblem_AdditionalPropertiesDoNotReplaceANamedProperty(t *testing.T) {
 	var problem Problem
 	if err := json.Unmarshal([]byte(` + "`" + `{"code":1}` + "`" + `), &problem); err != nil || problem.AdditionalProperties != nil {
 		t.Errorf("a problem without other members has AdditionalProperties %v (error %v), want nil", problem.AdditionalProperties, err)
+	}
+}
+
+func TestProblem_AdditionalNumbersKeepEveryDigit(t *testing.T) {
+	const in = ` + "`" + `{"big":9007199254740993,"code":1,"huge":1e400}` + "`" + `
+	var problem Problem
+	if err := json.Unmarshal([]byte(in), &problem); err != nil {
+		t.Fatalf("unmarshal %s: %v", in, err)
+	}
+	if out, err := json.Marshal(problem); err != nil || string(out) != in {
+		t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", in, out, err)
 	}
 }
 `

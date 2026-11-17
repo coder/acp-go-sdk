@@ -1,9 +1,9 @@
 context = """
-acp-go-sdk is the Go SDK for the Agent Client Protocol (ACP). Releases track ACP schema tags from agentclientprotocol/agent-client-protocol and should help Go SDK users understand what changed in generated protocol APIs, helper APIs, examples, and compatibility.
+acp-go-sdk is the Go SDK for the Agent Client Protocol (ACP). The SDK has its own semver, separate from the ACP schema version. Each release pins one schema release from agentclientprotocol/agent-client-protocol in schema/version and exports it as acp.SchemaVersion. The tag message names it, for example "v0.14.0 (ACP schema 1.18.0)". Release notes should state which ACP schema version the release targets and help Go SDK users understand what changed in generated protocol APIs, helper APIs, examples, and compatibility.
 
 Generated Go files with the _gen.go suffix come from schema updates. When schema-aligned releases change generated APIs, explain the user-visible Go surface and migration impact rather than restating internal generator mechanics.
 
-Primary readers are Go developers integrating ACP agents and clients. Call out breaking changes, behavior changes, dependency or tooling requirements, schema/version alignment, and example updates.
+Primary readers are Go developers integrating ACP agents and clients. Call out breaking changes, behavior changes, dependency or tooling requirements, schema version changes, and example updates.
 """
 
 system_extra = """

@@ -40,14 +40,15 @@ It lists the upstream releases that carry schema files (0.x releases on tags `v<
 | --- | --- |
 | `gen` | The generator exits 0. |
 | `idem` | A second generator run leaves the same tree: no file changed, added or removed. |
+| `drift` | Only in the row of the ref's own `schema/version`: the ref's committed `schema/` files and `*_gen.go` equal the downloaded schema and the regenerated code (`drift.diff` lists the files that differ). A bump PR that forgot to commit `make version` output fails here. `-` in other rows. |
 | `build` | `go build -gcflags=-e ./...` passes. `gen-errs` counts the compile errors in `*_gen.go` files: a generator bug. `hand-errs` counts the rest: hand-written code that the bump must fix. A package that fails hides the errors of the packages that import it. |
 | `vet` | `go vet ./...` passes. Runs only when the build passes. |
 | `methods` | `methodcheck`: each method in `meta.json` and `meta.unstable.json` has a constant in a `*_gen.go` file and a `case` in the dispatcher of its side, in the `switch` on the method name of `(*AgentSideConnection).handle` or `(*ClientSideConnection).handle`; a method of both sides needs both. A protocol method (`$/...`) needs a constant and a receive path in hand-written code, because `connection.go` dispatches it: a function that decodes a message with `json.Unmarshal` into `x` and then compares that same variable's `x.Method` with the wire string or its constant (`==`, `!=` or `switch x.Method`). Sending it, or comparing another value with it, does not count. |
 | `apidiff` | Target row only, when it builds: `apidiff -incompatible` of the package against `--base-tag` (default: the newest `v*` tag merged into `--ref`; with no such tag the script stops and asks for `git fetch --tags origin`). Shows the count; the list follows the table. |
 
-Pass: exit 0 and `G1 PASS`. Every row has `gen=ok` and `idem=ok`, and the target row has `build=ok`, `vet=ok`, `methods=ok` and an API diff. Rows before the target may fail to build: the hand-written code of `--ref` fits only its own schema.
+Pass: exit 0 and `G1 PASS`. Every row has `gen=ok` and `idem=ok` and no `drift=FAIL`, and the target row has `build=ok`, `vet=ok`, `methods=ok` and an API diff. Rows before the target may fail to build: the hand-written code of `--ref` fits only its own schema.
 
-Evidence, in `$VSB_ROOT/runs/g1-FROM-TARGET-TIME/`: `summary.txt` (the table), `versions.txt`, one folder per release with `gen.log`, `idem.diff`, `build.log`, `vet.log`, `methods.txt` and, for the target, `apidiff.txt`; `incompatible.txt` (the release-note list) and `base.export`. Schema files are cached in `$VSB_ROOT/cache/schemas/<tag>/`. `VSB_ROOT` defaults to `${TMPDIR:-/tmp}/verify-schema-bump`. The script removes its worktrees on exit.
+Evidence, in `$VSB_ROOT/runs/g1-FROM-TARGET-TIME/`: `summary.txt` (the table), `versions.txt`, one folder per release with `gen.log`, `idem.diff`, `drift.diff` (the ref's own version), `build.log`, `vet.log`, `methods.txt` and, for the target, `apidiff.txt`; `incompatible.txt` (the release-note list) and `base.export`. Schema files are cached in `$VSB_ROOT/cache/schemas/<tag>/`. `VSB_ROOT` defaults to `${TMPDIR:-/tmp}/verify-schema-bump`. The script removes its worktrees on exit.
 
 ## G2: JSON round trip and hints
 
@@ -114,7 +115,7 @@ None of the gates runs in `make test`. G1 and G7 need the network. G2 needs the 
 
 `main` at `492745b`, measured on 2026-11-17.
 
-G1 at 0.13.5 alone (`g1-walk 0.13.5`): `gen`, `idem` and `build` pass; `vet` fails with 12 `unreachable code` findings in `types_gen.go`; `methods` reports 3 gaps: `mcp/message` (`x-side: both`) has no dispatcher case on either side, and `$/cancel_request` has no generated constant. The API diff against `v0.13.5` is empty.
+G1 at 0.13.5 alone (`g1-walk 0.13.5`): `gen`, `idem`, `drift` and `build` pass; `vet` fails with 12 `unreachable code` findings in `types_gen.go`; `methods` reports 3 gaps: `mcp/message` (`x-side: both`) has no dispatcher case on either side, and `$/cancel_request` has no generated constant. The API diff against `v0.13.5` is empty.
 
 G1 from 0.13.5 to 1.32.0 (`g1-walk 1.32.0`, 25 releases): every release generates and regenerates the same output. The build fails from 0.13.6 on:
 

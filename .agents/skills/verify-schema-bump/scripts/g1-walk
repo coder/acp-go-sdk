@@ -9,8 +9,10 @@
 #               merged into REF)
 # env: VSB_ROOT  run and cache folder (default: ${TMPDIR:-/tmp}/verify-schema-bump)
 #
-# Exit 0 when every row has gen=ok and idem=ok and the TARGET row has
-# build=ok, vet=ok, methods=ok and an API diff. Needs network for the release
+# Exit 0 when every row has gen=ok, idem=ok and no drift=FAIL, and the
+# TARGET row has build=ok, vet=ok, methods=ok and an API diff. drift checks
+# the row of REF's own schema/version: REF's schema files and *_gen.go must
+# equal the regenerated ones. Needs network for the release
 # list and for schema files that are not cached yet.
 set -euo pipefail
 
@@ -32,7 +34,8 @@ done
 root=$(git rev-parse --show-toplevel)
 skill=$root/.agents/skills/verify-schema-bump
 ref=$(git -C "$root" rev-parse --verify "$ref^{commit}")
-[ -n "$from" ] || from=$(git -C "$root" show "$ref:schema/version")
+ref_version=$(git -C "$root" show "$ref:schema/version")
+[ -n "$from" ] || from=$ref_version
 [ -n "$base_tag" ] || base_tag=$(git -C "$root" tag --merged "$ref" -l 'v[0-9]*' --sort=-v:refname | head -1)
 [ -n "$base_tag" ] || { echo "no v* release tag is merged into $ref: run 'git fetch --tags origin' or pass --base-tag" >&2; exit 2; }
 module=$(git -C "$root" show "$ref:go.mod" | awk '$1 == "module" { print $2; exit }')
@@ -88,9 +91,9 @@ gen() { (cd "$wt/cmd/generate" && env -u GOPATH -u GOMODCACHE go run .) && (cd "
 first_error() { cat "$@" 2>/dev/null | grep -m1 -E '^[^#].*:[0-9]+:[0-9]+: |panic:|MISSING' | cut -c1-110 || true; }
 
 summary=$run/summary.txt
-row='%-8s %-15s %-4s %-4s %-5s %-8s %-9s %-4s %-10s %-14s %s\n'
+row='%-8s %-15s %-4s %-4s %-5s %-5s %-8s %-9s %-4s %-10s %-14s %s\n'
 # shellcheck disable=SC2059 # one format string for every row
-printf "$row" version tag gen idem build gen-errs hand-errs vet methods apidiff first-error | tee "$summary"
+printf "$row" version tag gen idem drift build gen-errs hand-errs vet methods apidiff first-error | tee "$summary"
 pass=1
 while read -r v tag <&3; do
 	fetch "$tag"
@@ -102,11 +105,17 @@ while read -r v tag <&3; do
 	rm -f "$wt"/*_gen.go
 	for f in "${FILES[@]}"; do cp "$cache/$tag/$f" "$wt/schema/$f"; done
 	echo "$v" >"$wt/schema/version"
-	g=FAIL i=- b=- ge=- he=- t=- m=- a=-
+	g=FAIL i=- d=- b=- ge=- he=- t=- m=- a=-
 	if gen >"$out/gen.log" 2>&1; then
 		g=ok
 		# Compare whole trees, so a file that only the second run writes counts.
 		first=$(git -C "$wt" add -A && git -C "$wt" write-tree)
+		# At the ref's own schema version, the ref must hold exactly what
+		# regeneration gives: the upstream schema files and *_gen.go.
+		if [ "$v" = "$ref_version" ]; then
+			git -C "$wt" diff --stat "$ref" "$first" -- '*_gen.go' schema >"$out/drift.diff"
+			if [ -s "$out/drift.diff" ]; then d=FAIL; else d=ok; fi
+		fi
 		if gen >>"$out/gen.log" 2>&1; then
 			second=$(git -C "$wt" add -A && git -C "$wt" write-tree)
 			git -C "$wt" diff --stat "$first" "$second" >"$out/idem.diff"
@@ -136,8 +145,8 @@ while read -r v tag <&3; do
 	fi
 	err=$(first_error "$out/gen.log" "$out/build.log" "$out/vet.log" "$out/methods.txt")
 	# shellcheck disable=SC2059
-	printf "$row" "$v" "$tag" $g $i $b "$ge" "$he" $t "$m" "$a" "$err" | tee -a "$summary"
-	[ $g = ok ] && [ $i = ok ] || pass=0
+	printf "$row" "$v" "$tag" $g $i $d $b "$ge" "$he" $t "$m" "$a" "$err" | tee -a "$summary"
+	[ $g = ok ] && [ $i = ok ] && [ $d != FAIL ] || pass=0
 	if [ "$v" = "$target" ]; then [ $b = ok ] && [ $t = ok ] && [ "$m" = ok ] && [ "$a" != skip ] || pass=0; fi
 done 3<"$run/versions.txt"
 

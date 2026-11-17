@@ -10,6 +10,23 @@ import (
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 )
 
+// From ACP schema 1.18.0 on, CreateElicitationRequest is an object with its own
+// required "message" property and an anyOf of modes. emitUnion turns it into a
+// wrapper of variant pointers, so the wrapper has no Message field to check.
+const objectAnyOfRequestSchema = `{"$defs": {
+  "FormMode": {"type": "object", "required": ["requestedSchema"], "properties": {
+    "requestedSchema": {"type": "object"}}},
+  "UrlMode": {"type": "object", "required": ["url"], "properties": {"url": {"type": "string"}}},
+  "CreateElicitationRequest": {"type": "object", "required": ["message"],
+    "properties": {"message": {"type": "string"}},
+    "anyOf": [
+      {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "form"}},
+        "allOf": [{"$ref": "#/$defs/FormMode"}]},
+      {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "url"}},
+        "allOf": [{"$ref": "#/$defs/UrlMode"}]}
+    ]}
+}}`
+
 // The variants of RequestId are not objects, so its MarshalJSON returns each
 // encoded variant as it is.
 const scalarUnionSchema = `{"$defs": {
@@ -27,6 +44,13 @@ func TestWriteTypesJen_GeneratedPackagePassesVet(t *testing.T) {
 		// extra holds hand-written files to compile with the generated ones.
 		extra map[string]string
 	}{
+		{
+			name:   "object anyOf request",
+			schema: objectAnyOfRequestSchema,
+			// The generated dispatch calls Validate on every request it decodes.
+			extra: map[string]string{"validate.go": "package acp\n\n" +
+				"var _ interface{ Validate() error } = (*CreateElicitationRequest)(nil)\n"},
+		},
 		{name: "union of scalar variants", schema: scalarUnionSchema},
 	}
 	for _, tt := range tests {

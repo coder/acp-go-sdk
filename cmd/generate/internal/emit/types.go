@@ -181,6 +181,10 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			emitDocComment(f, def.Description)
 		}
 
+		// structFields holds the schema properties that became fields of the
+		// emitted Go type. Only a plain object struct has them: a union wrapper
+		// holds variant pointers, even when its schema also lists properties.
+		var structFields map[string]*load.Definition
 		switch {
 		case len(def.Enum) > 0:
 			f.Type().Id(name).String()
@@ -234,6 +238,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			// Use the same implementation, but require exactly one variant
 			emitUnion(f, name, schema, def, def.OneOf, true, usedTypeNames, emitted)
 		case ir.PrimaryType(def) == "object" && len(def.Properties) > 0:
+			structFields = def.Properties
 			st := []Code{}
 			req := map[string]struct{}{}
 			for _, r := range def.Required {
@@ -435,7 +440,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 		// so skip emitValidateJen for types that already have a union Validate.
 		hasUnionValidate := len(def.OneOf) > 0 && !isStringConstUnion(def)
 		if !hasUnionValidate && (strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification") || name == "ToolCallUpdate") {
-			emitValidateJen(f, name, def)
+			emitValidateJen(f, name, def, structFields)
 		}
 	}
 
@@ -582,9 +587,9 @@ func isOpenStringEnum(def *load.Definition) bool {
 	return sawConst
 }
 
-// emitValidateJen generates validators for selected types (logic unchanged).
-
-func emitValidateJen(f *File, name string, def *load.Definition) {
+// emitValidateJen generates validators for selected types. It checks only the
+// required properties in fields, the ones the emitted Go type has as fields.
+func emitValidateJen(f *File, name string, def *load.Definition, fields map[string]*load.Definition) {
 	switch name {
 	case "ToolCallUpdate":
 		f.Func().Params(Id("t").Op("*").Id("ToolCallUpdate")).Id("Validate").Params().Params(Error()).Block(
@@ -598,13 +603,8 @@ func emitValidateJen(f *File, name string, def *load.Definition) {
 			return
 		}
 		f.Func().Params(Id("v").Op("*").Id(name)).Id("Validate").Params().Params(Error()).BlockFunc(func(g *Group) {
-			pkeys := make([]string, 0, len(def.Properties))
-			for pk := range def.Properties {
-				pkeys = append(pkeys, pk)
-			}
-			sort.Strings(pkeys)
-			for _, propName := range pkeys {
-				pDef := def.Properties[propName]
+			for _, propName := range sortedPropertyKeys(fields) {
+				pDef := fields[propName]
 				required := slices.Contains(def.Required, propName)
 				field := util.ToExportedField(propName)
 				if required {

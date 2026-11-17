@@ -373,6 +373,13 @@ cmd_g5() {
 	tracked env "ACP_HARNESS_TAG=$TAG/$label" timeout --kill-after=30 "$limit" \
 		env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" ${select[@]+"${select[@]}"} -budget-usd "$left" \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
+	if [ "$rc" = 2 ]; then
+		# The driver exits 2 only for a usage error, such as an unknown
+		# scenario, before it starts an agent. Free the label, so that report
+		# shows no INCOMPLETE run for it.
+		rm -rf "$out" "$cwd"
+		die "the driver rejected its arguments; no run was recorded"
+	fi
 	# timeout exits 124 after SIGTERM, or 137 when the driver ignored it and
 	# got SIGKILL 30 s later. The elapsed time tells a timeout from another kill.
 	if { [ "$rc" = 124 ] || [ "$rc" = 137 ]; } && [ $((SECONDS - began)) -ge "$limit" ]; then

@@ -132,10 +132,10 @@ Name the scenarios after the adapter, separated by commas:
 
 ```bash
 "$V" g5 claude cancel
-"$V" g5 codex session/list,session/close
+"$V" g5 codex prompt,session/list
 ```
 
-The run gets its own label, such as `g5-claude.2`, and `g5` tracks, budgets and reports it like a full run. The driver rejects a name that is not a scenario of the live profile. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and every other scenario is a `SKIP` with `not selected by -only`. A scenario that needs the state of a left-out one can fail, or skip with `blocked`, which fails `known-skips`. For example, `config-option` without `prompt` has no model to compare with, and `session/delete` without a permission or cancel scenario has no session B.
+The run gets its own label, such as `g5-claude.2`, and `g5` tracks, budgets and reports it like a full run. The driver rejects a name that is not a scenario of the live profile, and `g5` then records no run. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and every other scenario is a `SKIP` with `not selected by -only`. A scenario that needs the state of a left-out one can fail, or skip with `blocked`, which fails `known-skips`. For example, `config-option` without `prompt` has no model to compare with, `session/delete` without a permission or cancel scenario has no session B, and codex-acp does not list session A in `session/list` until `prompt` has run a turn in it.
 
 Do not run `acpharness` by hand against a real adapter. Outside `g5`, nothing records its process groups for `cleanup`, passes it the budget that is left, or counts its cost in `report`.
 

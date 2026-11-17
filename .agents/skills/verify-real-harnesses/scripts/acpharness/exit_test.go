@@ -65,7 +65,11 @@ while [ $# -gt 0 ]; do
 	[ "$1" = -out ] && out=$2
 	shift
 done
-printf '%s\n' '{"t_ms":1,"conn":1,"scenario":"prompt","dir":"agent->client","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":1,"size":2,"cost":{"amount":0.42,"currency":"USD"}}}}}' >"$out/transcript.jsonl"
+# The last two lines are malformed, as a broken agent might send them.
+printf '%s\n' '{"t_ms":1,"conn":1,"scenario":"prompt","dir":"agent->client","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":1,"size":2,"cost":{"amount":0.42,"currency":"USD"}}}}}' \
+	'{"t_ms":2,"conn":1,"scenario":"prompt","dir":"agent->client","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":"bad"}}}' \
+	'{"t_ms":3,"conn":1,"scenario":"prompt","dir":"agent->client","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"usage_update","cost":{"amount":"9","currency":"USD"}}}}}' \
+	>"$out/transcript.jsonl"
 sleep 30 </dev/null >/dev/null 2>&1 &
 echo $! >"$out/agent.pid"
 [ "$STUB_EXIT" = hang ] && exec sleep 30
@@ -216,8 +220,9 @@ func TestHarnessG5_StopsTheRunWhenInterrupted(t *testing.T) {
 	if code := cmd.ProcessState.ExitCode(); code != 130 {
 		t.Errorf("interrupted g5 exited %d, want 130; output:\n%s", code, out.String())
 	}
-	// A killed process can take a moment to be reaped.
-	for start := time.Now(); syscall.Kill(agent, 0) == nil; time.Sleep(100 * time.Millisecond) {
+	// A killed process can take a moment to be reaped, and a container
+	// whose PID 1 does not reap leaves it a zombie, which runs no more.
+	for start := time.Now(); running(agent); time.Sleep(100 * time.Millisecond) {
 		if time.Since(start) > 5*time.Second {
 			_ = syscall.Kill(agent, syscall.SIGKILL)
 			t.Fatalf("the agent, pid %d, still ran after g5 exited; output:\n%s", agent, out.String())
@@ -226,4 +231,15 @@ func TestHarnessG5_StopsTheRunWhenInterrupted(t *testing.T) {
 	if got := readFile(t, filepath.Join(ev, "leftovers.txt")); got == "" {
 		t.Errorf("leftovers.txt does not name the processes that g5 stopped")
 	}
+}
+
+// running reports whether pid is a live process that is not a zombie.
+func running(pid int) bool {
+	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	}
+	// The state follows the command name, which ends with the last ")".
+	i := bytes.LastIndexByte(stat, ')')
+	return i < 0 || i+2 >= len(stat) || stat[i+2] != 'Z'
 }

@@ -543,6 +543,27 @@ func includesNull(d *load.Definition) bool {
 	return false
 }
 
+// acceptsNull reports whether JSON null is a valid value of d. A nil d stands
+// for a property without a schema, which accepts every value.
+func acceptsNull(schema *load.Schema, d *load.Definition) bool {
+	switch {
+	case d == nil:
+		return true
+	case d.Ref != "":
+		return acceptsNull(schema, schema.Defs[strings.TrimPrefix(d.Ref, "#/$defs/")])
+	case d.Type != nil:
+		return d.Type == "null" || includesNull(d)
+	case d.Const != nil || len(d.Enum) > 0:
+		return false
+	}
+	alternatives := append(append([]*load.Definition{}, d.AnyOf...), d.OneOf...)
+	if slices.ContainsFunc(alternatives, func(alt *load.Definition) bool { return acceptsNull(schema, alt) }) {
+		return true
+	}
+	rejects := func(part *load.Definition) bool { return !acceptsNull(schema, part) }
+	return len(alternatives) == 0 && !slices.ContainsFunc(d.AllOf, rejects)
+}
+
 // expandAllOf merges JSON Schema allOf nodes into a shallow composite definition.
 //
 // ACP's schema frequently uses `allOf: [{"$ref": "#/$defs/Type"}]` so a property or union
@@ -873,9 +894,11 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		fieldName         string
 		typeName          string
 		required          []string
+		props             map[string]*load.Definition
 		isObject          bool
 		isArray           bool
 		arrayItemRequired []string
+		arrayItemProps    map[string]*load.Definition
 		discValue         string
 		constPairs        [][2]string
 		// openDiscriminator says that the discriminator of this variant is a
@@ -894,6 +917,16 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	// never by the order of the variants.
 	matchesByKeys := func(vi variantInfo) bool {
 		return vi.isObject && (len(vi.required) > 0 || len(vi.constPairs) > 0 || len(vi.nullKeys) > 0)
+	}
+	// requireKey returns the statement that clears match unless the JSON object
+	// obj has the required key. A null value counts only when def, the schema
+	// of the key, accepts null.
+	requireKey := func(obj, key string, def *load.Definition) Code {
+		noMatch := Id("match").Op("=").Lit(false)
+		if acceptsNull(schema, def) {
+			return If(List(Id("_"), Id("ok")).Op(":=").Id(obj).Index(Lit(key)), Op("!").Id("ok")).Block(noMatch)
+		}
+		return If(Id("raw").Op(":=").Id("string").Call(Id(obj).Index(Lit(key))), Id("raw").Op("==").Lit("").Op("||").Id("raw").Op("==").Lit("null")).Block(noMatch)
 	}
 	variants := []variantInfo{}
 	discKey := ""
@@ -998,6 +1031,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		isObj := len(v.Properties) > 0
 		isArray := ir.PrimaryType(v) == "array"
 		arrayItemRequired := []string{}
+		var arrayItemProps map[string]*load.Definition
 		if isArray && v.Items != nil {
 			item := v.Items
 			if item.Ref != "" && strings.HasPrefix(item.Ref, "#/$defs/") {
@@ -1009,6 +1043,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			if ir.PrimaryType(item) == "object" && len(item.Required) > 0 {
 				arrayItemRequired = append(arrayItemRequired, item.Required...)
 				sort.Strings(arrayItemRequired)
+				arrayItemProps = item.Properties
 			}
 		}
 		// collect const properties (e.g., type, outcome), in sorted key order so
@@ -1105,9 +1140,11 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			fieldName:         fieldName,
 			typeName:          tname,
 			required:          v.Required,
+			props:             v.Properties,
 			isObject:          isObj,
 			isArray:           isArray,
 			arrayItemRequired: arrayItemRequired,
+			arrayItemProps:    arrayItemProps,
 			discValue:         dv,
 			constPairs:        consts,
 			openDiscriminator: openDiscriminator,
@@ -1203,8 +1240,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			}
 			// A variant matches when the object has its required keys, each
 			// const property that is present holds its value, and each
-			// null-only property is absent or null. The switch above settled
-			// a variant whose only const is the required discriminator.
+			// null-only property is absent or null. A required key that is
+			// null counts as absent unless its schema accepts null. The switch
+			// above settled a variant whose only const is the required
+			// discriminator.
 			for _, vi := range variants {
 				switchSettled := vi.discValue != "" && len(vi.constPairs) == 1 && slices.Contains(vi.required, discKey)
 				if matchesByKeys(vi) && !switchSettled {
@@ -1216,7 +1255,11 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 								h.If(Op("!").Qual("strings", "HasPrefix").Call(Id("string").Call(Id("m").Index(Lit(rk))), Lit("\""))).Block(Id("match").Op("=").Lit(false))
 								continue
 							}
-							h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+							def, ok := vi.props[rk]
+							if !ok && parentDef != nil {
+								def = parentDef.Properties[rk]
+							}
+							h.Add(requireKey("m", rk, def))
 						}
 						for _, pair := range vi.constPairs {
 							h.If(List(Id("raw"), Id("ok")).Op(":=").Id("m").Index(Lit(pair[0])), Id("ok")).Block(
@@ -1251,7 +1294,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					h.Var().Id("match").Bool().Op("=").Lit(true)
 					h.For(List(Id("_"), Id("elem")).Op(":=").Range().Id("arr")).BlockFunc(func(loop *Group) {
 						for _, rk := range vi.arrayItemRequired {
-							loop.If(List(Id("_"), Id("ok")).Op(":=").Id("elem").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+							loop.Add(requireKey("elem", rk, vi.arrayItemProps[rk]))
 						}
 					})
 					h.If(Id("match")).Block(

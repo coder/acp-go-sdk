@@ -77,6 +77,42 @@ func TestUnion_UnmarshalJSON_VariantWithoutAConstTakesAnUnknownDiscriminator(t *
 	}
 }
 
+func TestUnion_UnmarshalJSON_NullRequiredKeySelectsNoVariant(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		into any
+		in   string
+	}{
+		{"stdio MCP server with a null command", new(McpServer), `{"name":"n","command":null,"args":[],"env":[]}`},
+		{"embedded resource with a null text", new(EmbeddedResourceResource), `{"uri":"file:///a","text":null}`},
+		{"agent auth method with a null name", new(AuthMethod), `{"id":"a","name":null}`},
+		{"select options with a null name", new(SessionConfigSelectOptions), `[{"value":"v","name":null}]`},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := json.Unmarshal([]byte(tt.in), tt.into); err == nil {
+				t.Fatalf("unmarshal %s gives %+v, want an error", tt.in, tt.into)
+			}
+		})
+	}
+}
+
+func TestUnion_UnmarshalJSON_NullRequiredKeyLeavesTheOtherVariants(t *testing.T) {
+	t.Parallel()
+	var resource EmbeddedResourceResource
+	if err := json.Unmarshal([]byte(`{"uri":"file:///a","text":null,"blob":"b"}`), &resource); err != nil || resource.BlobResourceContents == nil {
+		t.Errorf("resource with a null text and a blob = %+v (error %v), want the blob variant", resource, err)
+	}
+	var mode UnstableElicitationFormMode
+	in := `{"requestedSchema":{"type":"object","properties":{}},"requestId":null}`
+	if err := json.Unmarshal([]byte(in), &mode); err != nil || mode.Request == nil {
+		t.Errorf("form mode with a null requestId, which accepts null, = %+v (error %v), want the request scope", mode, err)
+	}
+}
+
 func TestToolCall_UnmarshalJSON_DropsContentOfAnUnknownType(t *testing.T) {
 	t.Parallel()
 	var call ToolCall

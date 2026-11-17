@@ -5,6 +5,9 @@ import "testing"
 // discriminatedUnionSchema has the union shapes of the released schemas that
 // have a const: Outcome like RequestPermissionOutcome, Server like McpServer,
 // whose stdio variant has no const, and Shape, whose const key is optional.
+// Reply is AgentResponse, whose required id and result accept null, and
+// Options is SessionConfigSelectOptions, two arrays told apart by the required
+// keys of their items.
 const discriminatedUnionSchema = `{"$defs": {
   "Stdio": {"type": "object", "required": ["name", "command"], "properties": {
     "name": {"type": "string"}, "command": {"type": "string"}}},
@@ -25,6 +28,19 @@ const discriminatedUnionSchema = `{"$defs": {
       "kind": {"type": "string", "const": "circle"}, "radius": {"type": "number"}}},
     {"title": "square", "type": "object", "required": ["side"], "properties": {
       "kind": {"type": "string", "const": "square"}, "side": {"type": "number"}}}
+  ]},
+  "Id": {"anyOf": [{"title": "null", "type": "null"}, {"title": "number", "type": "integer"}]},
+  "Reply": {"anyOf": [
+    {"title": "result", "type": "object", "required": ["id", "result"], "properties": {
+      "id": {"$ref": "#/$defs/Id"}, "result": {}}},
+    {"title": "error", "type": "object", "required": ["id", "error"], "properties": {
+      "id": {"type": ["integer", "null"]}, "error": {"type": "string"}}}
+  ]},
+  "Option": {"type": "object", "required": ["value"], "properties": {"value": {"type": "string"}}},
+  "Group": {"type": "object", "required": ["group"], "properties": {"group": {"type": "string"}}},
+  "Options": {"anyOf": [
+    {"title": "flat", "type": "array", "items": {"$ref": "#/$defs/Option"}},
+    {"title": "grouped", "type": "array", "items": {"$ref": "#/$defs/Group"}}
   ]}
 }}`
 
@@ -54,6 +70,16 @@ func TestUnion_UnmarshalJSON_MatchesAVariantOnlyWithItsConstValue(t *testing.T) 
 		{func() any { return new(Shape) }, ` + "`" + `{"side":2}` + "`" + `, ` + "`" + `{"kind":"square","side":2}` + "`" + `},
 		{func() any { return new(Shape) }, ` + "`" + `{"kind":"bogus","side":2}` + "`" + `, ""},
 		{func() any { return new(Shape) }, ` + "`" + `{"kind":7,"side":2}` + "`" + `, ""},
+		{func() any { return new(Server) }, ` + "`" + `{"name":"n","command":null}` + "`" + `, ""},
+		{func() any { return new(Server) }, ` + "`" + `{"name":null,"command":"c"}` + "`" + `, ""},
+		{func() any { return new(Reply) }, ` + "`" + `{"id":null,"result":null}` + "`" + `, ` + "`" + `{"id":null,"result":null}` + "`" + `},
+		{func() any { return new(Reply) }, ` + "`" + `{"id":7,"result":{"ok":true}}` + "`" + `, ` + "`" + `{"id":7,"result":{"ok":true}}` + "`" + `},
+		{func() any { return new(Reply) }, ` + "`" + `{"id":null,"error":"boom"}` + "`" + `, ` + "`" + `{"error":"boom","id":null}` + "`" + `},
+		{func() any { return new(Reply) }, ` + "`" + `{"id":null,"error":null}` + "`" + `, ""},
+		{func() any { return new(Options) }, ` + "`" + `[{"value":"v"}]` + "`" + `, ` + "`" + `[{"value":"v"}]` + "`" + `},
+		{func() any { return new(Options) }, ` + "`" + `[{"group":"g"}]` + "`" + `, ` + "`" + `[{"group":"g"}]` + "`" + `},
+		{func() any { return new(Options) }, ` + "`" + `[{"value":null}]` + "`" + `, ""},
+		{func() any { return new(Options) }, ` + "`" + `[{"value":null,"group":"g"}]` + "`" + `, ` + "`" + `[{"group":"g"}]` + "`" + `},
 	}
 	for _, tt := range tests {
 		v := tt.into()

@@ -219,7 +219,7 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 			if _, ok := m["id"]; !ok {
 				match = false
 			}
-			if _, ok := m["error"]; !ok {
+			if raw := string(m["error"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -543,10 +543,10 @@ func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 		{
 			var v AuthMethodAgent
 			var match bool = true
-			if _, ok := m["id"]; !ok {
+			if raw := string(m["id"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["name"]; !ok {
+			if raw := string(m["name"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -765,7 +765,7 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstructuredCommandInput
 			var match bool = true
-			if _, ok := m["hint"]; !ok {
+			if raw := string(m["hint"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -1084,7 +1084,7 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 			if _, ok := m["id"]; !ok {
 				match = false
 			}
-			if _, ok := m["error"]; !ok {
+			if raw := string(m["error"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -1781,10 +1781,10 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 		{
 			var v TextResourceContents
 			var match bool = true
-			if _, ok := m["text"]; !ok {
+			if raw := string(m["text"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["uri"]; !ok {
+			if raw := string(m["uri"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -1798,10 +1798,10 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 		{
 			var v BlobResourceContents
 			var match bool = true
-			if _, ok := m["blob"]; !ok {
+			if raw := string(m["blob"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["uri"]; !ok {
+			if raw := string(m["uri"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -2765,16 +2765,16 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 		{
 			var v McpServerStdio
 			var match bool = true
-			if _, ok := m["name"]; !ok {
+			if raw := string(m["name"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["command"]; !ok {
+			if raw := string(m["command"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["args"]; !ok {
+			if raw := string(m["args"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["env"]; !ok {
+			if raw := string(m["env"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -4836,10 +4836,10 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 			var v SessionConfigSelectOptionsUngrouped
 			var match bool = true
 			for _, elem := range arr {
-				if _, ok := elem["name"]; !ok {
+				if raw := string(elem["name"]); raw == "" || raw == "null" {
 					match = false
 				}
-				if _, ok := elem["value"]; !ok {
+				if raw := string(elem["value"]); raw == "" || raw == "null" {
 					match = false
 				}
 			}
@@ -4855,13 +4855,13 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 			var v SessionConfigSelectOptionsGrouped
 			var match bool = true
 			for _, elem := range arr {
-				if _, ok := elem["group"]; !ok {
+				if raw := string(elem["group"]); raw == "" || raw == "null" {
 					match = false
 				}
-				if _, ok := elem["name"]; !ok {
+				if raw := string(elem["name"]); raw == "" || raw == "null" {
 					match = false
 				}
-				if _, ok := elem["options"]; !ok {
+				if raw := string(elem["options"]); raw == "" || raw == "null" {
 					match = false
 				}
 			}
@@ -5919,7 +5919,7 @@ func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 		{
 			var v SetSessionConfigOptionValueId
 			var match bool = true
-			if _, ok := m["value"]; !ok {
+			if raw := string(m["value"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -6710,7 +6710,7 @@ func (u *UnstableCreateElicitationForm) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
-			if _, ok := m["sessionId"]; !ok {
+			if raw := string(m["sessionId"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -6822,7 +6822,7 @@ func (u *UnstableCreateElicitationUrl) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
-			if _, ok := m["sessionId"]; !ok {
+			if raw := string(m["sessionId"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -7440,7 +7440,7 @@ func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
-			if _, ok := m["sessionId"]; !ok {
+			if raw := string(m["sessionId"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -7643,7 +7643,7 @@ func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
-			if _, ok := m["sessionId"]; !ok {
+			if raw := string(m["sessionId"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -8039,16 +8039,16 @@ func (u *UnstableMcpServer) UnmarshalJSON(b []byte) error {
 		{
 			var v McpServerStdio
 			var match bool = true
-			if _, ok := m["name"]; !ok {
+			if raw := string(m["name"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["command"]; !ok {
+			if raw := string(m["command"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["args"]; !ok {
+			if raw := string(m["args"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["env"]; !ok {
+			if raw := string(m["env"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {

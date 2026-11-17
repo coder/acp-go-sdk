@@ -392,9 +392,19 @@ cmd_g5() {
 	# stop_groups then stops the agents that the driver left running.
 	# The tag goes on the tracked command only, never on this shell: then
 	# stop_tagged cannot hit the shell's own helpers, such as tee below.
+	# Ctrl-C reaches only this shell, because timeout and the agents run in
+	# process groups of their own. The trap stops them, driver first, so
+	# that no paid turn goes on after g5 exits.
+	trap 'echo "INTERRUPTED: g5 stops the driver and its agents. Its evidence stays in $out."
+		{
+			stop_tagged "$label"
+			stop_groups "$from"
+		} | tee "$out/leftovers.txt"
+		exit 130' INT TERM
 	tracked env "ACP_HARNESS_TAG=$TAG/$label" timeout --kill-after=30 "$limit" \
 		env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" ${select[@]+"${select[@]}"} -budget-usd "$left" \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" 2>"$out/driver.stderr.log" || rc=$?
+	trap - INT TERM
 	# The driver writes to stderr only when something went wrong, such as
 	# the trace of a panic. The file keeps it with the evidence.
 	cat "$out/driver.stderr.log" >&2

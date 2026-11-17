@@ -74,6 +74,10 @@ func (h *harness) runSmoke() {
 			return fail, "stopReason " + string(t.resp.StopReason) + "; " + t.describe()
 		case t.kinds["agent_message_chunk"] == 0:
 			return fail, "no agent_message_chunk; " + t.describe()
+		case len(t.perms) == 0 || allowed(t.perms) < len(t.perms):
+			// Both example agents ask before their edit, so the turn must carry
+			// permission requests, and the client must allow each one.
+			return fail, fmt.Sprintf("%d session/request_permission, %d allowed; %s", len(t.perms), allowed(t.perms), t.describe())
 		}
 		return pass, t.describe()
 	})
@@ -252,7 +256,7 @@ func (h *harness) plainPrompt(a *agentConn) (status, string) {
 		return fail, "session/prompt: " + errText(t.err)
 	case t.resp.StopReason != acp.StopReasonEndTurn:
 		return fail, t.describe()
-	case !strings.Contains(strings.ToLower(t.text), "pong"):
+	case !saysPong(t):
 		return fail, "the reply does not say pong; " + t.describe()
 	}
 	h.defaultModels = t.models
@@ -289,13 +293,13 @@ func (h *harness) switchModel(a *agentConn) (status, string) {
 	switch {
 	case on.err != nil:
 		return fail, "session/prompt after the switch: " + errText(on.err) + "; " + detail
-	case on.resp.StopReason != acp.StopReasonEndTurn:
+	case on.resp.StopReason != acp.StopReasonEndTurn || !saysPong(on):
 		return fail, "turn after the switch: " + on.describe() + "; " + detail
 	case back != nil:
 		return fail, fmt.Sprintf("set %s back to %s: %v; %s", sel.Id, orig, back, detail)
 	case off.err != nil:
 		return fail, "session/prompt after the switch back: " + errText(off.err) + "; " + detail
-	case off.resp.StopReason != acp.StopReasonEndTurn:
+	case off.resp.StopReason != acp.StopReasonEndTurn || !saysPong(off):
 		return fail, "turn after the switch back: " + off.describe() + "; " + detail
 	}
 	if problem := switchProblem(h.defaultModels, on.models, off.models); problem != "" {
@@ -303,6 +307,19 @@ func (h *harness) switchModel(a *agentConn) (status, string) {
 	}
 	return pass, detail
 }
+
+// allowed counts the requests that got an allow_* option.
+func allowed(perms []permission) int {
+	n := 0
+	for _, p := range perms {
+		if strings.HasPrefix(p.Answer, answerAllow+"_") {
+			n++
+		}
+	}
+	return n
+}
+
+func saysPong(t turn) bool { return strings.Contains(strings.ToLower(t.text), "pong") }
 
 // switchProblem says why the model ids on the wire do not prove a model
 // switch and the switch back, or returns "" when they do. before, on and off

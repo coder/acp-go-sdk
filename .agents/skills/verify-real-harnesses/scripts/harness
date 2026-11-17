@@ -296,6 +296,11 @@ cmd_g5() {
 	for v in "${NEEDS[@]}"; do
 		[ -n "${!v:-}" ] || die "$v is not set; g5 $name needs it"
 	done
+	# One g5 at a time per run folder: two runs that both read the spend
+	# before either one pays would each get the whole remaining budget.
+	mkdir "$WORK/g5.lock" 2>/dev/null ||
+		die "another g5 runs in this run folder. If none does, remove $WORK/g5.lock"
+	trap 'rmdir "$WORK/g5.lock"' EXIT
 	local budget left
 	budget=${HARNESS_BUDGET_USD:-25}
 	left=$(jq -n --argjson b "$budget" --argjson s "$(spent)" '$b - $s')
@@ -309,6 +314,7 @@ cmd_g5() {
 	local out=$EVIDENCE/$label cwd=$WORK/cwd/$label home=$WORK/home/$name
 	local agent=$WORK/npm/$name/node_modules/.bin/$BIN_NAME
 	mkdir -p "$out" "$cwd"
+	echo "$budget" >"$out/budget.txt"
 	[ "$name" = codex ] && write_codex_config
 	echo "cd $cwd && $HOME_VAR=$home $BIN/acpharness ${FLAGS[*]} -budget-usd $left -out $out -cwd $cwd -- $agent" >"$out/command.txt"
 	cd "$cwd"
@@ -419,7 +425,8 @@ cmd_report() {
 					"$(if jq -e '.costUsd > 0' "$f" >/dev/null; then printf 'reported cost $%.2f' "$cost"; else echo 'no cost reported'; fi)" \
 					"$(jq -r '.tokens | to_entries | map("\(.key) \(.value)") | join(", ")' "$f")"
 			done
-			printf -- '- Total reported cost: $%.2f of the $%s budget.\n' "$total" "${HARNESS_BUDGET_USD:-25}"
+			printf -- '- Total reported cost: $%.2f of the $%s budget.\n' "$total" \
+				"$(cat "$EVIDENCE"/g5-*/budget.txt 2>/dev/null | sort -u | paste -sd/ -)"
 			echo
 			echo "### Failures and skips"
 			echo
@@ -515,7 +522,12 @@ stop_groups() {
 			echo "stopped process group $pid ($cmd)"
 			continue
 		fi
-		left=$(leftovers "$pid")
+		# A child can take a moment to exit after its leader. Give it 3 s.
+		for _ in 1 2 3 4 5 6; do
+			left=$(leftovers "$pid")
+			[ -n "$left" ] || break
+			sleep 0.5
+		done
 		for p in $left; do
 			stop "$p" alive "$p"
 			echo "stopped pid $p, left behind in process group $pid ($cmd)"

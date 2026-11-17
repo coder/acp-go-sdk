@@ -258,7 +258,7 @@ func (h *harness) finish() int {
 	// Missing proof fails the run: a gate must not pass without its evidence.
 	var lost []string
 	if err := h.rec.close(); err != nil {
-		lost = append(lost, "transcript.jsonl: "+err.Error())
+		lost = append(lost, err.Error())
 	}
 	b, _ := json.MarshalIndent(summary, "", "  ")
 	if err := os.WriteFile(filepath.Join(h.opts.out, "summary.json"), append(b, '\n'), 0o600); err != nil {

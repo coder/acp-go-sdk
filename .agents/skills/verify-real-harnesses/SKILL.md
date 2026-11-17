@@ -65,7 +65,7 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 "$V" scan          # exit 1 when a credential value is in evidence/
 ```
 
-`g4` runs two drives. First, `scripts/g4/ts-client.mjs` uses the TypeScript SDK to run one prompt turn against `acp-example-agent`, and answers its permission request with allow. Second, `acpharness -profile smoke` runs `initialize`, `session/new` and one prompt turn against the TypeScript example agent. A drive fails when protocol version 1 is not negotiated, when the turn does not end with `end_turn`, when an error response or a non-JSON line crosses the wire, when the SDK logs a "Method not found" or decode error, when the agent does not exit 0 after its input closes, or when the agent's stderr has an error or warning line. Each `g4` replaces its two evidence folders, so a failed rerun leaves no stale PASS behind.
+`g4` runs two drives. First, `scripts/g4/ts-client.mjs` uses the TypeScript SDK to run one prompt turn against `acp-example-agent`, and answers its permission request with allow. Second, `acpharness -profile smoke` runs `initialize`, `session/new` and one prompt turn against the TypeScript example agent. A drive fails when protocol version 1 is not negotiated, when the turn does not end with `end_turn`, when the agent's permission request does not arrive or is not allowed, when an error response or a non-JSON line crosses the wire, when the SDK logs a "Method not found" or decode error, when the agent does not exit 0 after its input closes, or when the agent's stderr has an error or warning line. Each `g4` replaces its two evidence folders, so a failed rerun leaves no stale PASS behind.
 
 `g5 ADAPTER` runs every scenario in the next section, under a 1800 s limit (`HARNESS_G5_TIMEOUT`) that ends a driver stuck on an agent that stopped reading. After the driver exits, `g5` stops any agent process that it left running. Each adapter gets a private config folder in `work/home/`:
 
@@ -74,7 +74,7 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 | `claude` | `CLAUDE_CONFIG_DIR=work/home/claude` | `-ask-mode default` |
 | `codex` | `CODEX_HOME=work/home/codex` | `-auth api-key -ask-mode read-only` |
 
-Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `work/home/codex/config.toml` with a `model_provider` whose `base_url` is the variable's value, `env_key = "OPENAI_API_KEY"` and `wire_api = "responses"`. That file stays in `work/` and never goes into the evidence. Running `g5` again for the same adapter writes a new label, such as `g5-claude.2`. `report` shows a label whose driver did not finish as `INCOMPLETE`.
+Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `work/home/codex/config.toml` with a `model_provider` whose `base_url` is the variable's value, `env_key = "OPENAI_API_KEY"` and `wire_api = "responses"`. That file stays in `work/` and never goes into the evidence. Run one `g5` at a time per run folder. A second one refuses to start, because both would read the same remaining budget. Running `g5` again for the same adapter writes a new label, such as `g5-claude.2`. `report` shows a label whose driver did not finish as `INCOMPLETE`.
 
 ### Cost and budget
 
@@ -90,7 +90,7 @@ The driver plays an editor. Connection 1 creates session A for the plain turns a
 | `authenticate` | 1 | With `-auth`, the agent advertises that method and `authenticate` succeeds. Without `-auth`, it is a `SKIP`. |
 | `session/new` | 1 | Session A gets a session id in its own empty cwd. |
 | `prompt` | 1 | Session A answers "Reply with exactly the single word pong" with `end_turn` and a reply that contains `pong`. |
-| `config-option` | 1 | The driver sets the `model` option to another model, runs a pong turn, sets it back and runs another. Each response reports the new value. Both pong turns end with `end_turn` and name their model ids on the wire. The turn after the switch runs on a model id that the first turn did not use, and the turn after the switch back does not run on it. |
+| `config-option` | 1 | The driver sets the `model` option to another model, runs a pong turn, sets it back and runs another. Each response reports the new value. Both pong turns end with `end_turn`, say `pong`, and name their model ids on the wire. The turn after the switch runs on a model id that the first turn did not use, and the turn after the switch back does not run on it. |
 | `permission-allow` | 1 | Session B, in the `-ask-mode` mode, asks to write `allow-check.txt`. At least one `session/request_permission` arrives, every request gets an `allow_*` option, and the file exists with its marker line afterwards. |
 | `permission-reject` | 1 | The same with `reject-check.txt` and a `reject_*` option for every request. The file does not exist afterwards. Any stop reason passes. |
 | `cancel` | 1 | Session B starts a long essay. The driver sends `session/cancel` after the first streamed update, or after 90 s without one while the turn still runs. The turn ends with `cancelled` within 60 s of the cancel. The detail says which case happened. |
@@ -120,7 +120,7 @@ cd "$HARNESS_RUN/work/cwd" && CLAUDE_CONFIG_DIR="$HARNESS_RUN/work/home/claude" 
 
 Each gate writes a folder in `evidence/` of the run:
 
-- `g5-<adapter>/`: `transcript.jsonl` (every JSON-RPC line in both directions, with `t_ms`, `conn`, `scenario` and `dir`), `sdk.log` (the SDK's slog records as JSON, tagged with `conn` and `scenario`), `agent-<conn>.stderr.log` (each line prefixed with milliseconds and the scenario), `summary.json`, `result.txt` and `command.txt`.
+- `g5-<adapter>/`: `transcript.jsonl` (every JSON-RPC line in both directions, with `t_ms`, `conn`, `scenario` and `dir`), `sdk.log` (the SDK's slog records as JSON, tagged with `conn` and `scenario`), `agent-<conn>.stderr.log` (each line prefixed with milliseconds and the scenario), `summary.json`, `result.txt`, `command.txt` and `budget.txt`. The driver exits 1 when it cannot write any of these files, because a gate must not pass without its proof.
 - `g4-ts-client-go-agent/`: the TypeScript client's `transcript.jsonl`, `summary.json` and `result.txt`, plus `agent.stderr.log` and `client.stderr.log`.
 - `g4-go-client-ts-agent/`: the same files as a `g5` folder.
 - `versions.json` and, after `report`, `report.md`.

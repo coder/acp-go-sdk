@@ -45,7 +45,7 @@ type recorder struct {
 
 	mu         sync.Mutex
 	transcript *os.File
-	writeErr   error // the first failed transcript write
+	writeErr   error // the first evidence write that failed
 	findings   []finding
 	inbound    map[string]int // agent->client methods by name
 }
@@ -85,7 +85,7 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, err := r.transcript.Write(append(b, '\n')); err != nil && r.writeErr == nil {
-		r.writeErr = err
+		r.writeErr = fmt.Errorf("transcript.jsonl: %w", err)
 	}
 	if dir == agentToClient && msg.Method != "" {
 		r.inbound[msg.Method]++
@@ -132,13 +132,25 @@ func (r *recorder) logged(conn int, text string) {
 	r.findings = append(r.findings, finding{Kind: kind, Source: "sdk-log", Conn: conn, Scenario: r.current(), Text: text})
 }
 
-// close closes the transcript and returns the first error that it hit.
-func (r *recorder) close() error {
+// lost records an evidence write that failed. The run fails on it.
+func (r *recorder) lost(err error) {
+	if err == nil {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if err := r.transcript.Close(); err != nil && r.writeErr == nil {
+	if r.writeErr == nil {
 		r.writeErr = err
 	}
+}
+
+// close closes the transcript and returns the first evidence error.
+func (r *recorder) close() error {
+	if err := r.transcript.Close(); err != nil {
+		r.lost(fmt.Errorf("transcript.jsonl: %w", err))
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return r.writeErr
 }
 
@@ -176,7 +188,11 @@ func (h *logTap) Handle(ctx context.Context, rec slog.Record) error {
 	})
 	h.rec.logged(h.conn, text.String())
 	rec.AddAttrs(slog.Int("conn", h.conn), slog.String("scenario", h.rec.current()))
-	return h.next.Handle(ctx, rec)
+	if err := h.next.Handle(ctx, rec); err != nil {
+		h.rec.lost(fmt.Errorf("sdk.log: %w", err))
+		return err
+	}
+	return nil
 }
 
 func (h *logTap) WithAttrs(as []slog.Attr) slog.Handler {
@@ -254,11 +270,19 @@ func (h *harness) startAgent() (*agentConn, error) {
 	stderrDone := make(chan struct{})
 	go func() {
 		defer close(stderrDone)
-		defer func() { _ = logFile.Close() }()
+		name := logFile.Name()
 		sc := bufio.NewScanner(stderr)
 		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for sc.Scan() {
-			_, _ = fmt.Fprintf(logFile, "[+%dms %s] %s\n", h.rec.ms(), h.rec.current(), sc.Text())
+			if _, err := fmt.Fprintf(logFile, "[+%dms %s] %s\n", h.rec.ms(), h.rec.current(), sc.Text()); err != nil {
+				h.rec.lost(fmt.Errorf("%s: %w", name, err))
+			}
+		}
+		if err := sc.Err(); err != nil {
+			h.rec.lost(fmt.Errorf("%s: read agent stderr: %w", name, err))
+		}
+		if err := logFile.Close(); err != nil {
+			h.rec.lost(fmt.Errorf("%s: %w", name, err))
 		}
 	}()
 

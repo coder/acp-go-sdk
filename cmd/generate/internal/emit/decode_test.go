@@ -8,6 +8,7 @@ const defaultedStructSchema = `{"$defs": {
     "id": {"type": "string"},
     "limit": {"type": "integer", "default": 10},
     "paging": {"allOf": [{"$ref": "#/$defs/Paging"}], "default": {"limit": 10}},
+    "note": {"type": ["string", "null"], "default": "none"},
     "options": {"type": "object", "properties": {"depth": {"type": "integer", "default": 3}}}
   }},
   "Shape": {"oneOf": [
@@ -51,6 +52,31 @@ func TestQuery_UnmarshalJSON_ReusedValueReadsAnAbsentPropertyAsItsDefault(t *tes
 	}
 	if query.Paging.Limit != 10 || query.Paging.Offset != 0 {
 		t.Errorf("paging of a reused query = %+v, want the default: limit 10 and no offset", query.Paging)
+	}
+}
+
+func TestQuery_UnmarshalJSON_NullablePropertyTakesItsDefaultOnlyWhenAbsent(t *testing.T) {
+	var absent, null Query
+	for in, into := range map[string]*Query{` + "`" + `{"id":"q"}` + "`" + `: &absent, ` + "`" + `{"id":"q","note":null}` + "`" + `: &null} {
+		if err := json.Unmarshal([]byte(in), into); err != nil {
+			t.Fatalf("unmarshal %s: %v", in, err)
+		}
+	}
+	if absent.Note == nil || *absent.Note != "none" {
+		t.Errorf("note of a query without one = %v, want the default \"none\"", absent.Note)
+	}
+	if null.Note != nil {
+		t.Errorf("note of a query with a null note = %q, want nil", *null.Note)
+	}
+}
+
+func TestQuery_UnmarshalJSON_DefaultedPropertyMatchesItsKeyInAnyCase(t *testing.T) {
+	var query Query
+	if err := json.Unmarshal([]byte(` + "`" + `{"id":"q","Limit":5}` + "`" + `), &query); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if query.Limit != 5 {
+		t.Errorf("limit sent as \"Limit\" = %d, want 5", query.Limit)
 	}
 }
 

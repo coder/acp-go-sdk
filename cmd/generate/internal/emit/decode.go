@@ -181,8 +181,9 @@ func (b *typesBuilder) emitSupport() {
 	)
 	f.Line()
 
-	f.Comment("propertyError names the struct and the field in err, from decoding the raw")
-	f.Comment("property prop on its own, as encoding/json names a field of a struct.")
+	f.Comment("propertyError names structName and the path from it in err, which comes from")
+	f.Comment("decoding the raw property prop on its own. encoding/json would name the")
+	f.Comment("innermost struct.")
 	f.Func().Id("propertyError").Params(Id("err").Error(), List(Id("structName"), Id("prop")).String()).Error().Block(
 		If(typeErr(), Id("ok")).Block(
 			Id("typeErr").Dot("Struct").Op("=").Id("structName"),

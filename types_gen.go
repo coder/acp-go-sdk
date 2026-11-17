@@ -10805,8 +10805,9 @@ func plainFieldError(err error) error {
 	return err
 }
 
-// propertyError names the struct and the field in err, from decoding the raw
-// property prop on its own, as encoding/json names a field of a struct.
+// propertyError names structName and the path from it in err, which comes from
+// decoding the raw property prop on its own. encoding/json would name the
+// innermost struct.
 func propertyError(err error, structName, prop string) error {
 	if typeErr, ok := err.(*json.UnmarshalTypeError); ok {
 		typeErr.Struct = structName

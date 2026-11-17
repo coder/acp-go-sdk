@@ -371,6 +371,8 @@ func hasOtherMember(def *load.Definition) bool {
 }
 
 // emitEnum declares the closed string enum name with one constant per member.
+// An enum with the member "other" also gets an UnmarshalJSON that reads every
+// string the enum does not list as that member.
 func (b *typesBuilder) emitEnum(name string, def *load.Definition) {
 	f := b.f
 	f.Type().Id(name).String()

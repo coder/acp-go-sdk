@@ -81,7 +81,8 @@ func TestUnion_UnmarshalJSON_MatchesAVariantOnlyWithItsConstValue(t *testing.T) 
 // "none" variant. Items is MultiSelectItems, whose catch-all comes before a
 // variant without a const. Problem is McpError, a struct that keeps the
 // members the schema does not name. Strict has a "none" variant and a
-// discriminator without the hint.
+// discriminator without the hint. State is StateUpdate, whose idle variant
+// holds Idle.
 const catchAllUnionSchema = `{"$defs": {
   "Failure": {"type": "object", "properties": {
     "error": {"type": ["string", "null"], "x-deserialize-default-on-error": true}}},
@@ -110,6 +111,13 @@ const catchAllUnionSchema = `{"$defs": {
   "Strict": {"anyOf": [
     {"type": "object", "required": ["stopReason"], "properties": {"stopReason": {"type": "string", "const": "done"}}},
     {"title": "none", "type": "object", "properties": {"stopReason": {"type": "null"}}}
+  ]},
+  "State": {"anyOf": [
+    {"type": "object", "required": ["state"], "properties": {"state": {"type": "string", "const": "running"}}},
+    {"type": "object", "required": ["state"], "properties": {"state": {"type": "string", "const": "idle"}},
+      "allOf": [{"$ref": "#/$defs/Idle"}]},
+    {"title": "other", "type": "object", "required": ["state"], "properties": {"state": {"type": "string"}},
+      "additionalProperties": true}
   ]}
 }}`
 
@@ -146,6 +154,13 @@ func TestCatchAllUnions_RoundTrip(t *testing.T) {
 		{func() any { return new(Idle) }, ` + "`" + `{"usage":3}` + "`" + `, ""},
 		{func() any { return new(Idle) }, ` + "`" + `{"stopReason":null,"usage":3}` + "`" + `, ` + "`" + `{"usage":3}` + "`" + `},
 		{func() any { return new(Idle) }, ` + "`" + `{"stopReason":12345,"usage":3}` + "`" + `, ` + "`" + `{"usage":3}` + "`" + `},
+		{func() any { return new(State) }, ` + "`" + `{"state":"running"}` + "`" + `, ""},
+		{func() any { return new(State) }, ` + "`" + `{"state":"idle","stopReason":"end_turn","usage":3}` + "`" + `, ""},
+		{func() any { return new(State) }, ` + "`" + `{"state":"idle","stopReason":"_custom","usage":3,"detail":{"a":[1,2]}}` + "`" + `, ""},
+		{func() any { return new(State) }, ` + "`" + `{"state":"idle","usage":3}` + "`" + `, ""},
+		{func() any { return new(State) }, ` + "`" + `{"state":"idle","stopReason":null,"usage":3}` + "`" + `, ` + "`" + `{"state":"idle","usage":3}` + "`" + `},
+		{func() any { return new(State) }, ` + "`" + `{"state":"idle","stopReason":12345,"usage":3}` + "`" + `, ` + "`" + `{"state":"idle","usage":3}` + "`" + `},
+		{func() any { return new(State) }, ` + "`" + `{"state":"_later","detail":1}` + "`" + `, ""},
 		{func() any { return new(Items) }, ` + "`" + `{"type":"string"}` + "`" + `, ""},
 		{func() any { return new(Items) }, ` + "`" + `{"type":"future","limit":2}` + "`" + `, ""},
 		{func() any { return new(Items) }, ` + "`" + `{"anyOf":["a","b"]}` + "`" + `, ""},

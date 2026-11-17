@@ -162,6 +162,18 @@ func TestFormMode_BadMetaReadsAsAbsentAndNilFieldsEncodesAsEmpty(t *testing.T) {
 	}
 }
 
+func TestFormMode_UnmarshalJSON_ReplacesTheScopeOfAReusedValue(t *testing.T) {
+	var mode FormMode
+	roundTrip(t, &mode, ` + "`" + `{"requestedSchema":{},"fields":[],"sessionId":"s"}` + "`" + `)
+	in := ` + "`" + `{"requestedSchema":{},"fields":[],"requestId":"r"}` + "`" + `
+	if out := roundTrip(t, &mode, in); !sameJSON(t, out, in) {
+		t.Errorf("a FormMode decoded a second time encodes to %s, want %s", out, in)
+	}
+	if mode.Session != nil {
+		t.Errorf("session scope = %+v after a request-scoped payload, want nil", mode.Session)
+	}
+}
+
 func TestCreateElicitationRequest_NeedsAScopeToEncode(t *testing.T) {
 	req := CreateElicitationRequest{Form: &CreateElicitationForm{Message: "m", RequestedSchema: map[string]any{}}}
 	if out, err := json.Marshal(req); err == nil {
@@ -174,6 +186,42 @@ func TestCreateElicitationRequest_NeedsAScopeToEncode(t *testing.T) {
 	}
 	if want := ` + "`" + `{"mode":"form","message":"m","requestedSchema":{},"fields":[],"requestId":"r"}` + "`" + `; !sameJSON(t, string(out), want) {
 		t.Errorf("form mode encodes to %s, want %s", out, want)
+	}
+}
+`
+
+// JSON Schema applies "properties" to objects only, so a Label is a plain
+// string or a Named object with an optional note.
+const mixedUnionSchema = `{"$defs": {
+  "Named": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+  "Label": {"properties": {"note": {"type": "string"}},
+    "anyOf": [
+      {"title": "Text", "type": "string"},
+      {"title": "Named", "allOf": [{"$ref": "#/$defs/Named"}]}]}
+}}`
+
+const mixedUnionTest = `package acp
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestLabel_RoundTripsAStringAndAnObjectWithOwnProperties(t *testing.T) {
+	for _, in := range []string{` + "`" + `"plain"` + "`" + `, ` + "`" + `{"name":"n","note":"x"}` + "`" + `} {
+		var label Label
+		if err := json.Unmarshal([]byte(in), &label); err != nil {
+			t.Errorf("unmarshal %s: %v", in, err)
+			continue
+		}
+		out, err := json.Marshal(label)
+		if err != nil {
+			t.Errorf("marshal the label decoded from %s: %v", in, err)
+			continue
+		}
+		if string(out) != in {
+			t.Errorf("round trip of %s gives %s", in, out)
+		}
 	}
 }
 `
@@ -200,6 +248,11 @@ func TestWriteTypesJen_GeneratedPackagePassesVetAndTests(t *testing.T) {
 			name:   "unions with own properties and a nested scope",
 			schema: scopedUnionSchema,
 			extra:  map[string]string{"scoped_test.go": scopedUnionTest},
+		},
+		{
+			name:   "union with own properties and a string alternative",
+			schema: mixedUnionSchema,
+			extra:  map[string]string{"mixed_test.go": mixedUnionTest},
 		},
 	}
 	for _, tt := range tests {

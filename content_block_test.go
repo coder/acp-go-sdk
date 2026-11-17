@@ -49,3 +49,24 @@ func TestContentBlock_MarshalJSON_WritesMetaSetInGo(t *testing.T) {
 		t.Fatalf("text block with _meta encodes to %s, want %s", got, want)
 	}
 }
+
+func TestContentBlock_UnmarshalJSON_ReusedValueHoldsOnlyTheLastVariant(t *testing.T) {
+	t.Parallel()
+	var block ContentBlock
+	image := `{"type":"image","data":"aGk=","mimeType":"image/png"}`
+	for _, in := range []string{`{"type":"text","text":"hi"}`, image} {
+		if err := json.Unmarshal([]byte(in), &block); err != nil {
+			t.Fatalf("unmarshal %s: %v", in, err)
+		}
+	}
+	if block.Text != nil || block.Image == nil {
+		t.Fatalf("after a text block and then an image block: text = %+v, image = %+v, want only the image", block.Text, block.Image)
+	}
+	got, err := json.Marshal(block)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if ok, got, want := equalJSON(got, []byte(image)); !ok {
+		t.Fatalf("reused block encodes to %s, want %s", got, want)
+	}
+}

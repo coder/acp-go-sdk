@@ -1095,6 +1095,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	f.Line()
 	// Unmarshal
 	f.Func().Params(Id("u").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
+		g.Op("*").Id("u").Op("=").Id(name).Values()
 		// Handle literal null if a null-only variant exists
 		{
 			varNullHandled := false
@@ -1112,11 +1113,11 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				}
 			}
 		}
-		if len(wrapperFields) > 0 {
-			g.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", customDecoded(wrapperPlans)) })
-		}
 		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
 		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
+			if len(wrapperFields) > 0 {
+				obj.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", customDecoded(wrapperPlans)) })
+			}
 			// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
 			if discKey != "" {
 				obj.BlockFunc(func(h *Group) {
@@ -1218,7 +1219,12 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					}
 					// Marshal object variant to map for discriminant injection and shaping.
 					gg.Var().Id("m").Map(String()).Any()
-					gg.If(Qual("encoding/json", "Unmarshal").Call(Id("_b"), Op("&").Id("m")).Op("!=").Nil()).Block(Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload"))))
+					notAnObject := Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload")))
+					if !vi.isObject {
+						// JSON Schema applies the union's own properties to objects only.
+						notAnObject = Return(Id("_b"), Nil())
+					}
+					gg.If(Qual("encoding/json", "Unmarshal").Call(Id("_b"), Op("&").Id("m")).Op("!=").Nil()).Block(notAnObject)
 					// Inject const discriminants
 					if len(vi.constPairs) > 0 {
 						for _, kv := range vi.constPairs {

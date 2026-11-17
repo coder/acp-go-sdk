@@ -193,6 +193,7 @@ type AgentResponse struct {
 }
 
 func (u *AgentResponse) UnmarshalJSON(b []byte) error {
+	*u = AgentResponse{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -528,6 +529,7 @@ type AuthMethod struct {
 }
 
 func (u *AuthMethod) UnmarshalJSON(b []byte) error {
+	*u = AuthMethod{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -835,6 +837,7 @@ type AvailableCommandInput struct {
 }
 
 func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
+	*u = AvailableCommandInput{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1140,6 +1143,7 @@ type ClientResponse struct {
 }
 
 func (u *ClientResponse) UnmarshalJSON(b []byte) error {
+	*u = ClientResponse{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1509,6 +1513,7 @@ type ContentBlock struct {
 }
 
 func (u *ContentBlock) UnmarshalJSON(b []byte) error {
+	*u = ContentBlock{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1998,6 +2003,7 @@ type EmbeddedResourceResource struct {
 }
 
 func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
+	*u = EmbeddedResourceResource{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -2168,6 +2174,7 @@ type ErrorCode struct {
 }
 
 func (u *ErrorCode) UnmarshalJSON(b []byte) error {
+	*u = ErrorCode{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 	} else {
@@ -2965,6 +2972,7 @@ type McpServer struct {
 }
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
+	*u = McpServer{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -4017,6 +4025,7 @@ type PlanUpdateContent struct {
 }
 
 func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
+	*u = PlanUpdateContent{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -4509,6 +4518,7 @@ type RequestId struct {
 }
 
 func (u *RequestId) UnmarshalJSON(b []byte) error {
+	*u = RequestId{}
 	if string(b) == "null" {
 		var v RequestIdNull
 		u.Null = &v
@@ -4607,6 +4617,7 @@ type RequestPermissionOutcome struct {
 }
 
 func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
+	*u = RequestPermissionOutcome{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -5104,6 +5115,7 @@ type SessionConfigOption struct {
 }
 
 func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
+	*u = SessionConfigOption{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -5323,6 +5335,7 @@ type SessionConfigSelectOptions struct {
 }
 
 func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
+	*u = SessionConfigSelectOptions{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 	} else {
@@ -6043,6 +6056,7 @@ type SessionUpdate struct {
 }
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
+	*u = SessionUpdate{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -6726,6 +6740,7 @@ type SetSessionConfigOptionRequest struct {
 }
 
 func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
+	*u = SetSessionConfigOptionRequest{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7154,6 +7169,7 @@ type ToolCallContent struct {
 }
 
 func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
+	*u = ToolCallContent{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7608,18 +7624,19 @@ type UnstableCreateElicitationForm struct {
 }
 
 func (u *UnstableCreateElicitationForm) UnmarshalJSON(b []byte) error {
-	{
-		type plain UnstableCreateElicitationForm
-		type UnstableCreateElicitationForm struct {
-			*plain
-		}
-		raw := UnstableCreateElicitationForm{plain: (*plain)(u)}
-		if err := json.Unmarshal(b, &raw); err != nil {
-			return plainFieldError(err)
-		}
-	}
+	*u = UnstableCreateElicitationForm{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			type plain UnstableCreateElicitationForm
+			type UnstableCreateElicitationForm struct {
+				*plain
+			}
+			raw := UnstableCreateElicitationForm{plain: (*plain)(u)}
+			if err := json.Unmarshal(b, &raw); err != nil {
+				return plainFieldError(err)
+			}
+		}
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
@@ -7733,18 +7750,19 @@ type UnstableCreateElicitationUrl struct {
 }
 
 func (u *UnstableCreateElicitationUrl) UnmarshalJSON(b []byte) error {
-	{
-		type plain UnstableCreateElicitationUrl
-		type UnstableCreateElicitationUrl struct {
-			*plain
-		}
-		raw := UnstableCreateElicitationUrl{plain: (*plain)(u)}
-		if err := json.Unmarshal(b, &raw); err != nil {
-			return plainFieldError(err)
-		}
-	}
+	*u = UnstableCreateElicitationUrl{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			type plain UnstableCreateElicitationUrl
+			type UnstableCreateElicitationUrl struct {
+				*plain
+			}
+			raw := UnstableCreateElicitationUrl{plain: (*plain)(u)}
+			if err := json.Unmarshal(b, &raw); err != nil {
+				return plainFieldError(err)
+			}
+		}
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
@@ -7843,6 +7861,7 @@ type UnstableCreateElicitationRequest struct {
 }
 
 func (u *UnstableCreateElicitationRequest) UnmarshalJSON(b []byte) error {
+	*u = UnstableCreateElicitationRequest{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8030,6 +8049,7 @@ type UnstableCreateElicitationResponse struct {
 }
 
 func (u *UnstableCreateElicitationResponse) UnmarshalJSON(b []byte) error {
+	*u = UnstableCreateElicitationResponse{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8476,18 +8496,19 @@ type UnstableElicitationFormMode struct {
 }
 
 func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
-	{
-		type plain UnstableElicitationFormMode
-		type UnstableElicitationFormMode struct {
-			*plain
-		}
-		raw := UnstableElicitationFormMode{plain: (*plain)(u)}
-		if err := json.Unmarshal(b, &raw); err != nil {
-			return plainFieldError(err)
-		}
-	}
+	*u = UnstableElicitationFormMode{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			type plain UnstableElicitationFormMode
+			type UnstableElicitationFormMode struct {
+				*plain
+			}
+			raw := UnstableElicitationFormMode{plain: (*plain)(u)}
+			if err := json.Unmarshal(b, &raw); err != nil {
+				return plainFieldError(err)
+			}
+		}
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
@@ -8692,18 +8713,19 @@ type UnstableElicitationUrlMode struct {
 }
 
 func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
-	{
-		type plain UnstableElicitationUrlMode
-		type UnstableElicitationUrlMode struct {
-			*plain
-		}
-		raw := UnstableElicitationUrlMode{plain: (*plain)(u)}
-		if err := json.Unmarshal(b, &raw); err != nil {
-			return plainFieldError(err)
-		}
-	}
+	*u = UnstableElicitationUrlMode{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			type plain UnstableElicitationUrlMode
+			type UnstableElicitationUrlMode struct {
+				*plain
+			}
+			raw := UnstableElicitationUrlMode{plain: (*plain)(u)}
+			if err := json.Unmarshal(b, &raw); err != nil {
+				return plainFieldError(err)
+			}
+		}
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
@@ -9082,6 +9104,7 @@ type UnstableMcpServer struct {
 }
 
 func (u *UnstableMcpServer) UnmarshalJSON(b []byte) error {
+	*u = UnstableMcpServer{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -9720,6 +9743,7 @@ type UnstableNesSuggestion struct {
 }
 
 func (u *UnstableNesSuggestion) UnmarshalJSON(b []byte) error {
+	*u = UnstableNesSuggestion{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -10211,6 +10235,7 @@ type UnstableSessionConfigOption struct {
 }
 
 func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
+	*u = UnstableSessionConfigOption{}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{

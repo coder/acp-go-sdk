@@ -107,7 +107,7 @@ The model switch never picks a lesser model. It takes the first option, in the a
 
 A failed scenario is a result. Report it with its evidence. Do not change a prompt or a predicate until the scenario passes, and do not hide a known failure.
 
-To rerun some scenarios, run the driver directly with `-only`. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and a scenario that needs the state of a skipped one can fail:
+To rerun some scenarios, run the driver directly with `-only`. It rejects a name that is not a scenario of the profile. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and a scenario that needs the state of a skipped one can fail. For example, `config-option` without `prompt` has no model to compare with:
 
 ```bash
 cd "$HARNESS_RUN/work/cwd" && CLAUDE_CONFIG_DIR="$HARNESS_RUN/work/home/claude" \
@@ -120,7 +120,7 @@ cd "$HARNESS_RUN/work/cwd" && CLAUDE_CONFIG_DIR="$HARNESS_RUN/work/home/claude" 
 
 Each gate writes a folder in `evidence/` of the run:
 
-- `g5-<adapter>/`: `transcript.jsonl` (every JSON-RPC line in both directions, with `t_ms`, `conn`, `scenario` and `dir`), `sdk.log` (the SDK's slog records as JSON, tagged with `conn` and `scenario`), `agent-<conn>.stderr.log` (each line prefixed with milliseconds and the scenario), `summary.json`, `result.txt`, `command.txt` and `budget.txt`. The driver exits 1 when it cannot write any of these files, because a gate must not pass without its proof.
+- `g5-<adapter>/`: `transcript.jsonl` (every JSON-RPC line in both directions, with `t_ms`, `conn`, `scenario` and `dir`), `sdk.log` (the SDK's slog records as JSON, tagged with `conn` and `scenario`), `agent-<conn>.stderr.log` (each line prefixed with milliseconds and the scenario), `summary.json`, `result.txt`, `command.txt`, `budget.txt` and `leftovers.txt` (the processes that `g5` had to stop after the driver exited). The driver exits 1 when it cannot write any of these files, because a gate must not pass without its proof.
 - `g4-ts-client-go-agent/`: the TypeScript client's `transcript.jsonl`, `summary.json` and `result.txt`, plus `agent.stderr.log` and `client.stderr.log`.
 - `g4-go-client-ts-agent/`: the same files as a `g5` folder.
 - `versions.json` and, after `report`, `report.md`.
@@ -197,5 +197,6 @@ What the results mean:
 - **Codex's reject option ends the turn.** Codex offers `cancel` (kind `reject_once`) as its reject option, and the turn then ends with `cancelled`. The reject predicate accepts any stop reason.
 - **Codex and symlinked cwds.** codex-acp reports each session's cwd as a real path. With a cwd that goes through a symlink, `session/list` filtered by that cwd returns nothing, and an approved edit fails with "Failed to write file". The driver resolves symlinks in `-cwd` to stay clear of this adapter bug. Keep `HARNESS_ROOT` free of symlinks anyway.
 - **Claude resumes on the last model.** A resumed Claude session runs on the model of its last turn, not on the session's `default` option.
+- **Codex can leave processes behind.** In one of five full runs, three processes in codex-acp's process group still ran 3 s after codex-acp exited 0. `g5` stopped them, and `report` lists them. The runs that repeated the same scenarios did not reproduce it, and I did not identify the processes.
 
 To keep this skill true as the adapters change, use the pstack plugin's `maintain-verification-skill` skill. It is hidden from the default skill list, so load it by name. The [feature map](features/README.md) has one recipe per area.

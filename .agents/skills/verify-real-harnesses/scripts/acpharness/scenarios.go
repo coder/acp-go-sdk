@@ -29,6 +29,14 @@ func writePrompt(file, marker string) string {
 
 const rpcTimeout = 2 * time.Minute
 
+// profiles lists the scenarios of each profile in the order they run.
+// runLive and runSmoke must match it; -only accepts only these names.
+var profiles = map[string][]string{
+	"live": {"initialize", "authenticate", "session/new", "prompt", "config-option", "permission-allow",
+		"permission-reject", "cancel", "session/list", "session/close", "session/delete", "session/load", "session/resume"},
+	"smoke": {"initialize", "authenticate", "session/new", "prompt"},
+}
+
 // runLive runs every scenario. Connection 1 creates session A (prompt,
 // config option, list, close) and session B (permissions, cancel, delete).
 // Connections 2 and 3 are new agent processes that reopen session A, the

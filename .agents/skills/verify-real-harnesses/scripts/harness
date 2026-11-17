@@ -134,6 +134,9 @@ cmd_launch() {
 		die "refusing $root: it must be a directory that you own, not a symlink"
 	[ -z "$(find "$root" -maxdepth 0 \( -perm -0020 -o -perm -0002 \))" ] ||
 		die "refusing $root: other users can write to it"
+	# Later commands change directory, so every path must be absolute. -P
+	# resolves symlinks too, which codex-acp needs (see SKILL.md).
+	root=$(cd "$root" && pwd -P)
 	umask 077
 	set_paths "$(mktemp -d "$root/$(date +%Y%m%d-%H%M%S)-XXXXXX")"
 	mkdir -p "$BIN" "$EVIDENCE" "$WORK/home/claude" "$WORK/home/codex" "$WORK/cwd"
@@ -327,7 +330,7 @@ cmd_g5() {
 		env "ACP_HARNESS_TAG=$TAG" "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
 	[ "$rc" = 124 ] && echo "TIMEOUT: the driver ran longer than ${HARNESS_G5_TIMEOUT:-1800}s"
-	stop_groups "$from"
+	stop_groups "$from" | tee "$out/leftovers.txt"
 	echo "evidence $out"
 	return "$rc"
 }
@@ -398,7 +401,7 @@ cmd_report() {
 			echo
 			names=$(for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
-				[ -f "$f" ] && jq -r '.results[].name' "$f"
+				if [ -f "$f" ]; then jq -r '.results[].name' "$f"; fi
 			done | awk '!seen[$0]++')
 			while IFS= read -r n; do
 				row="| $n |"
@@ -432,7 +435,13 @@ cmd_report() {
 			echo
 			for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
-				[ -f "$f" ] && jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$f"
+				if [ -f "$f" ]; then
+					jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$f"
+				fi
+				f=$EVIDENCE/$l/leftovers.txt
+				if [ -s "$f" ]; then
+					echo "- $l: $(wc -l <"$f") process(es) still ran 3 s after their agent exited, and g5 stopped them: $(head -1 "$f")"
+				fi
 			done
 		fi
 		if [ -d "$EVIDENCE/g4-ts-client-go-agent" ] || [ -d "$EVIDENCE/g4-go-client-ts-agent" ]; then

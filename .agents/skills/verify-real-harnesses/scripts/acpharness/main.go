@@ -97,7 +97,12 @@ func main() {
 	if only != "" {
 		o.only = map[string]bool{}
 		for _, s := range strings.Split(only, ",") {
-			o.only[strings.TrimSpace(s)] = true
+			s = strings.TrimSpace(s)
+			if !contains(profiles[o.profile], s) {
+				fmt.Fprintf(os.Stderr, "acpharness: -only names %q, which is not a %s scenario: %s\n", s, o.profile, strings.Join(profiles[o.profile], ", "))
+				os.Exit(2)
+			}
+			o.only[s] = true
 		}
 	}
 	for _, d := range []*string{&o.out, &o.cwd} {

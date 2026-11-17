@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -183,5 +186,31 @@ func TestReplayProblem_NeedsTheAgentsReply(t *testing.T) {
 				t.Fatalf("replayProblem = %q, want ok=%v", got, tc.ok)
 			}
 		})
+	}
+}
+
+// TestProfiles_MatchTheScenariosThatRun keeps -only honest: the steps that
+// runLive and runSmoke call are the names in profiles, in order.
+func TestProfiles_MatchTheScenariosThatRun(t *testing.T) {
+	src, err := os.ReadFile("scenarios.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := regexp.MustCompile(`h\.step\("([^"]+)"`)
+	for profile, fn := range map[string]string{"live": "runLive", "smoke": "runSmoke"} {
+		body := string(src)
+		start := strings.Index(body, "func (h *harness) "+fn+"() {")
+		if start < 0 {
+			t.Fatalf("no %s in scenarios.go", fn)
+		}
+		body = body[start:]
+		body = body[:strings.Index(body, "\n}\n")]
+		got := []string{"initialize", "authenticate"} // connect runs these two
+		for _, m := range step.FindAllStringSubmatch(body, -1) {
+			got = append(got, m[1])
+		}
+		if !reflect.DeepEqual(got, profiles[profile]) {
+			t.Errorf("%s runs %v, profiles lists %v", fn, got, profiles[profile])
+		}
 	}
 }

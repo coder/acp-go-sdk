@@ -59,7 +59,7 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 
 ```bash
 "$V" g4            # free, about 10 s
-"$V" g5 claude     # real model, about 20 s
+"$V" g5 claude     # real model, about 30 s
 "$V" g5 codex      # real model, about 30 s
 "$V" report        # writes evidence/report.md and prints it
 "$V" scan          # exit 1 when a credential value is in evidence/
@@ -214,7 +214,7 @@ Run on 2026-11-17 with the SDK of `main` at `492745b`, again at `a0c38c3` after 
 | `no-refused-calls` | PASS | PASS |
 | `known-skips` | PASS | PASS |
 
-Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.77. Codex reported no cost and used about 46,500 tokens. At `68c27b5`, `g4` took 11 s, `g5 claude` 17 s and `g5 codex` 29 s.
+Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.77 to $0.80. Codex reported no cost and used about 46,500 tokens. In three runs at `68c27b5`, `g4` took 10 to 11 s, `g5 claude` 17 to 34 s and `g5 codex` 29 to 36 s, most of it model time.
 
 What the results mean:
 

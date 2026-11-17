@@ -2038,11 +2038,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.InvalidRequest != nil {
 		_b, _e := json.Marshal(*u.InvalidRequest)
@@ -2050,11 +2045,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.MethodNotFound != nil {
 		_b, _e := json.Marshal(*u.MethodNotFound)
@@ -2062,11 +2052,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.InvalidParams != nil {
 		_b, _e := json.Marshal(*u.InvalidParams)
@@ -2074,11 +2059,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.InternalError != nil {
 		_b, _e := json.Marshal(*u.InternalError)
@@ -2086,11 +2066,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.AuthenticationRequired != nil {
 		_b, _e := json.Marshal(*u.AuthenticationRequired)
@@ -2098,11 +2073,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.ResourceNotFound != nil {
 		_b, _e := json.Marshal(*u.ResourceNotFound)
@@ -2110,11 +2080,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.Other != nil {
 		_b, _e := json.Marshal(*u.Other)
@@ -2122,11 +2087,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	return []byte{}, nil
 }
@@ -4077,11 +4037,6 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.Str != nil {
 		_b, _e := json.Marshal(*u.Str)
@@ -4089,11 +4044,6 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	return []byte{}, nil
 }
@@ -4815,11 +4765,6 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.Grouped != nil {
 		_b, _e := json.Marshal(*u.Grouped)
@@ -4827,11 +4772,6 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	return []byte{}, nil
 }

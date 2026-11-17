@@ -777,6 +777,64 @@ func isPhantomVariant(v *load.Definition, ref string) bool {
 	return len(v.Properties) == 0 && ref == "" && !isNull && v.Title == ""
 }
 
+func variantRef(v *load.Definition) string {
+	// If this is an allOf wrapper around a single $ref with no additional structure, treat it
+	// as a $ref variant (keeps types stable and avoids duplicate structs).
+	if v.Ref == "" &&
+		v.Type == nil &&
+		len(v.Properties) == 0 &&
+		len(v.Required) == 0 &&
+		len(v.Enum) == 0 &&
+		v.Items == nil &&
+		len(v.AnyOf) == 0 &&
+		len(v.OneOf) == 0 &&
+		len(v.AllOf) == 1 &&
+		v.AllOf[0] != nil &&
+		v.AllOf[0].Ref != "" {
+		return v.AllOf[0].Ref
+	}
+	return v.Ref
+}
+
+type unionAlternative struct {
+	index    int
+	ref      string
+	expanded *load.Definition
+}
+
+func unionAlternatives(schema *load.Schema, defs []*load.Definition) []unionAlternative {
+	var alts []unionAlternative
+	for index, v := range defs {
+		if v == nil {
+			continue
+		}
+		ref := variantRef(v)
+		v = expandAllOf(schema, v)
+		if !isPhantomVariant(v, ref) {
+			alts = append(alts, unionAlternative{index: index, ref: ref, expanded: v})
+		}
+	}
+	return alts
+}
+
+func (a unionAlternative) isNull() bool {
+	s, ok := a.expanded.Type.(string)
+	return ok && s == "null"
+}
+
+func (a unionAlternative) isInlineObject() bool {
+	return a.ref == "" && len(a.expanded.Properties) > 0 && !a.isNull()
+}
+
+func allInlineObjects(alts []unionAlternative) bool {
+	for _, alt := range alts {
+		if !alt.isInlineObject() {
+			return false
+		}
+	}
+	return true
+}
+
 // emitUnion emits the union wrapper type name and its variants. With exactlyOne
 // (a oneOf), the wrapper's Validate requires exactly one variant. Validate is
 // emitted when exactlyOne or validate is set. It also checks the union's own
@@ -827,33 +885,16 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			sharedRequired[r] = struct{}{}
 		}
 	}
+	alts := unionAlternatives(schema, defs)
+	var wrapperFields []ir.Field
+	if len(sharedProps) > 0 && !allInlineObjects(alts) {
+		wrapperFields = ir.Fields(parentDef.Properties, parentDef.Required)
+		sharedProps = map[string]*load.Definition{}
+		sharedRequired = map[string]struct{}{}
+	}
 
-	for idx, v := range defs {
-		if v == nil {
-			continue
-		}
-		ref := v.Ref
-		// If this is an allOf wrapper around a single $ref with no additional structure, treat it
-		// as a $ref variant (keeps types stable and avoids duplicate structs).
-		if ref == "" &&
-			v.Type == nil &&
-			len(v.Properties) == 0 &&
-			len(v.Required) == 0 &&
-			len(v.Enum) == 0 &&
-			v.Items == nil &&
-			len(v.AnyOf) == 0 &&
-			len(v.OneOf) == 0 &&
-			len(v.AllOf) == 1 &&
-			v.AllOf[0] != nil &&
-			v.AllOf[0].Ref != "" {
-			ref = v.AllOf[0].Ref
-		}
-		v = expandAllOf(schema, v)
-		// Detect null-only variant
-		isNull := false
-		if s, ok := v.Type.(string); ok && s == "null" {
-			isNull = true
-		}
+	for _, alt := range alts {
+		idx, ref, v, isNull := alt.index, alt.ref, alt.expanded, alt.isNull()
 		// Determine type name: prefer $ref target name when present; do not treat Title as a rename for $ref.
 		tname := ""
 		if ref != "" && strings.HasPrefix(ref, "#/$defs/") {
@@ -931,11 +972,6 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				sort.Strings(arrayItemRequired)
 			}
 		}
-		// Skip phantom variants that have neither $ref nor object shape nor null nor title
-		// (but allow title-only variants like ExtMethodRequest to generate as empty structs)
-		if isPhantomVariant(v, ref) {
-			continue
-		}
 		// collect const properties (e.g., type, outcome), in sorted key order so
 		// that the MarshalJSON injections do not depend on map iteration order
 		consts := [][2]string{}
@@ -981,7 +1017,15 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				if v.Description != "" {
 					emitDocComment(f, v.Description)
 				}
-				b.emitStruct(tname, fields, nil)
+				nested := v.AnyOf
+				if len(nested) == 0 {
+					nested = v.OneOf
+				}
+				if len(nested) > 0 {
+					b.emitUnion(tname, &load.Definition{Properties: mergedProps, Required: required, Discriminator: v.Discriminator}, nested, len(v.OneOf) > 0, false)
+				} else {
+					b.emitStruct(tname, fields, nil)
+				}
 			default:
 				// Title-only variants: check if they're extension types
 				// Extension types should preserve the raw payload, not drop it
@@ -1032,8 +1076,16 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		}
 	}
 	// wrapper
-	st := []Code{}
+	wrapperPlans := b.plansFor(wrapperFields)
+	st := fieldDecls(wrapperPlans, nil)
+	wrapperFieldNames := map[string]bool{}
+	for _, field := range wrapperFields {
+		wrapperFieldNames[field.Name] = true
+	}
 	for _, vi := range variants {
+		if wrapperFieldNames[vi.fieldName] {
+			panic(fmt.Sprintf("BUG: union %q has an own property and a variant that both map to the field %q", name, vi.fieldName))
+		}
 		if vi.description != "" {
 			st = appendDocComments(st, vi.description)
 		}
@@ -1059,6 +1111,9 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					}
 				}
 			}
+		}
+		if len(wrapperFields) > 0 {
+			g.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", customDecoded(wrapperPlans)) })
 		}
 		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
 		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
@@ -1141,6 +1196,13 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	})
 	// Marshal
 	f.Func().Params(Id("u").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
+		if len(wrapperFields) > 0 {
+			g.Type().Id("plain").Id(name)
+			g.Id("own").Op(":=").Id("plain").Call(Id("u"))
+			emitFillNil(g, wrapperPlans, "own")
+			g.List(Id("ownJSON"), Id("err")).Op(":=").Qual("encoding/json", "Marshal").Call(Id("own"))
+			g.If(Id("err").Op("!=").Nil()).Block(Return(Nil(), Id("err")))
+		}
 		for _, vi := range variants {
 			g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).BlockFunc(func(gg *Group) {
 				// Null-only variant encodes to JSON null
@@ -1149,7 +1211,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				} else {
 					gg.List(Id("_b"), Id("_e")).Op(":=").Qual("encoding/json", "Marshal").Call(Op("*").Id("u").Dot(vi.fieldName))
 					gg.If(Id("_e").Op("!=").Nil()).Block(Return(Index().Byte().Values(), Id("_e")))
-					if !vi.isObject {
+					if !vi.isObject && len(wrapperFields) == 0 {
 						// Non-object variants (e.g., arrays/primitives) are already in final wire shape.
 						gg.Return(Id("_b"), Nil())
 						return
@@ -1163,79 +1225,18 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 							gg.Id("m").Index(Lit(kv[0])).Op("=").Lit(kv[1])
 						}
 					}
-					// Special shaping for ContentBlock variants to preserve exact wire JSON
-					if name == "ContentBlock" {
-						switch vi.discValue {
-						case "text":
-							gg.Block(
-								Var().Id("nm").Map(String()).Any(),
-								Id("nm").Op("=").Make(Map(String()).Any()),
-								Id("nm").Index(Lit("type")).Op("=").Lit("text"),
-								Id("nm").Index(Lit("text")).Op("=").Id("m").Index(Lit("text")),
-								Return(Qual("encoding/json", "Marshal").Call(Id("nm"))),
-							)
-						case "image":
-							gg.Block(
-								Var().Id("nm").Map(String()).Any(),
-								Id("nm").Op("=").Make(Map(String()).Any()),
-								Id("nm").Index(Lit("type")).Op("=").Lit("image"),
-								Id("nm").Index(Lit("data")).Op("=").Id("m").Index(Lit("data")),
-								Id("nm").Index(Lit("mimeType")).Op("=").Id("m").Index(Lit("mimeType")),
-								// Only include uri if present; do not emit null
-								If(List(Id("_v"), Id("_ok")).Op(":=").Id("m").Index(Lit("uri")), Id("_ok")).Block(
-									Id("nm").Index(Lit("uri")).Op("=").Id("_v"),
-								),
-								Return(Qual("encoding/json", "Marshal").Call(Id("nm"))),
-							)
-						case "audio":
-							gg.Block(
-								Var().Id("nm").Map(String()).Any(),
-								Id("nm").Op("=").Make(Map(String()).Any()),
-								Id("nm").Index(Lit("type")).Op("=").Lit("audio"),
-								Id("nm").Index(Lit("data")).Op("=").Id("m").Index(Lit("data")),
-								Id("nm").Index(Lit("mimeType")).Op("=").Id("m").Index(Lit("mimeType")),
-								Return(Qual("encoding/json", "Marshal").Call(Id("nm"))),
-							)
-						case "resource_link":
-							gg.BlockFunc(func(b *Group) {
-								b.Var().Id("nm").Map(String()).Any()
-								b.Id("nm").Op("=").Make(Map(String()).Any())
-								b.Id("nm").Index(Lit("type")).Op("=").Lit("resource_link")
-								b.Id("nm").Index(Lit("name")).Op("=").Id("m").Index(Lit("name"))
-								b.Id("nm").Index(Lit("uri")).Op("=").Id("m").Index(Lit("uri"))
-								// Only include optional keys if present
-								b.If(List(Id("v1"), Id("ok1")).Op(":=").Id("m").Index(Lit("description")), Id("ok1")).Block(
-									Id("nm").Index(Lit("description")).Op("=").Id("v1"),
-								)
-								b.If(List(Id("v2"), Id("ok2")).Op(":=").Id("m").Index(Lit("mimeType")), Id("ok2")).Block(
-									Id("nm").Index(Lit("mimeType")).Op("=").Id("v2"),
-								)
-								b.If(List(Id("v3"), Id("ok3")).Op(":=").Id("m").Index(Lit("size")), Id("ok3")).Block(
-									Id("nm").Index(Lit("size")).Op("=").Id("v3"),
-								)
-								b.If(List(Id("v4"), Id("ok4")).Op(":=").Id("m").Index(Lit("title")), Id("ok4")).Block(
-									Id("nm").Index(Lit("title")).Op("=").Id("v4"),
-								)
-								b.Return(Qual("encoding/json", "Marshal").Call(Id("nm")))
-							})
-						case "resource":
-							gg.Block(
-								Var().Id("nm").Map(String()).Any(),
-								Id("nm").Op("=").Make(Map(String()).Any()),
-								Id("nm").Index(Lit("type")).Op("=").Lit("resource"),
-								Id("nm").Index(Lit("resource")).Op("=").Id("m").Index(Lit("resource")),
-								Return(Qual("encoding/json", "Marshal").Call(Id("nm"))),
-							)
-						}
+					if len(wrapperFields) > 0 {
+						gg.If(Qual("encoding/json", "Unmarshal").Call(Id("ownJSON"), Op("&").Id("m")).Op("!=").Nil()).Block(Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload"))))
 					}
-					// default: remarshal possibly with injected discriminant
-					if name != "ContentBlock" {
-						gg.Return(Qual("encoding/json", "Marshal").Call(Id("m")))
-					}
+					gg.Return(Qual("encoding/json", "Marshal").Call(Id("m")))
 				}
 			})
 		}
-		g.Return(Index().Byte().Values(), Nil())
+		if len(wrapperFields) > 0 {
+			g.Return(Nil(), Qual("errors", "New").Call(Lit(name+" has no variant set")))
+		} else {
+			g.Return(Index().Byte().Values(), Nil())
+		}
 	})
 	f.Line()
 
@@ -1249,6 +1250,13 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				g.If(Id("count").Op("!=").Lit(1)).Block(
 					Return(Qual("errors", "New").Call(Lit(name + " must have exactly one variant set"))),
 				)
+			}
+			for _, field := range wrapperFields {
+				if field.Required && field.Def.Const == nil {
+					if check := requiredCheck(field.Prop, field.Def, "u"); check != nil {
+						g.Add(check)
+					}
+				}
 			}
 			for _, vi := range variants {
 				if len(vi.sharedChecks) > 0 {

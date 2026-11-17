@@ -115,3 +115,68 @@ func TestSessionConfigOptionSelect_MetadataUnmarshalAndMarshal(t *testing.T) {
 		t.Fatalf("identity metadata not emitted in json: %s", string(b))
 	}
 }
+
+func TestUnstableElicitation_RoundTripKeepsOwnPropertiesAndScope(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		into func() any
+		json string
+	}{
+		{
+			name: "form mode with a session scope",
+			into: func() any { return new(UnstableElicitationFormMode) },
+			json: `{"requestedSchema":{"type":"object","properties":{"name":{"type":"string"}}},"sessionId":"s","toolCallId":"t"}`,
+		},
+		{
+			name: "url mode with a request scope",
+			into: func() any { return new(UnstableElicitationUrlMode) },
+			json: `{"elicitationId":"e","url":"https://example.com/auth","requestId":7}`,
+		},
+		{
+			name: "form request with a session scope",
+			into: func() any { return new(UnstableCreateElicitationRequest) },
+			json: `{"mode":"form","message":"Your name?","requestedSchema":{"type":"object","properties":{}},"sessionId":"s"}`,
+		},
+		{
+			name: "url request with a request scope",
+			into: func() any { return new(UnstableCreateElicitationRequest) },
+			json: `{"mode":"url","message":"Sign in","elicitationId":"e","url":"https://example.com/auth","requestId":"r"}`,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := tt.into()
+			if err := json.Unmarshal([]byte(tt.json), v); err != nil {
+				t.Fatalf("unmarshal %s: %v", tt.json, err)
+			}
+			got, err := json.Marshal(v)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if ok, got, want := equalJSON(got, []byte(tt.json)); !ok {
+				t.Fatalf("round trip changed the value\n got: %s\nwant: %s", got, want)
+			}
+		})
+	}
+}
+
+func TestUnstableCreateElicitationRequest_FormCarriesItsScope(t *testing.T) {
+	t.Parallel()
+	var req UnstableCreateElicitationRequest
+	in := `{"mode":"form","message":"Your name?","requestedSchema":{"type":"object","properties":{}},"sessionId":"s","toolCallId":"t"}`
+	if err := json.Unmarshal([]byte(in), &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if req.Form == nil || req.Form.Session == nil {
+		t.Fatalf("form = %+v, want a form with a session scope", req.Form)
+	}
+	if req.Form.Session.SessionId != "s" || req.Form.Session.ToolCallId == nil || *req.Form.Session.ToolCallId != "t" {
+		t.Errorf("session scope = %+v, want sessionId s and toolCallId t", req.Form.Session)
+	}
+	if req.Form.Message != "Your name?" {
+		t.Errorf("message = %q, want the request's message", req.Form.Message)
+	}
+}

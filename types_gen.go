@@ -1704,13 +1704,7 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "text"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "text"
-			nm["text"] = m["text"]
-			return json.Marshal(nm)
-		}
+		return json.Marshal(m)
 	}
 	if u.Image != nil {
 		_b, _e := json.Marshal(*u.Image)
@@ -1722,17 +1716,7 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "image"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "image"
-			nm["data"] = m["data"]
-			nm["mimeType"] = m["mimeType"]
-			if _v, _ok := m["uri"]; _ok {
-				nm["uri"] = _v
-			}
-			return json.Marshal(nm)
-		}
+		return json.Marshal(m)
 	}
 	if u.Audio != nil {
 		_b, _e := json.Marshal(*u.Audio)
@@ -1744,14 +1728,7 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "audio"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "audio"
-			nm["data"] = m["data"]
-			nm["mimeType"] = m["mimeType"]
-			return json.Marshal(nm)
-		}
+		return json.Marshal(m)
 	}
 	if u.ResourceLink != nil {
 		_b, _e := json.Marshal(*u.ResourceLink)
@@ -1763,26 +1740,7 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "resource_link"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "resource_link"
-			nm["name"] = m["name"]
-			nm["uri"] = m["uri"]
-			if v1, ok1 := m["description"]; ok1 {
-				nm["description"] = v1
-			}
-			if v2, ok2 := m["mimeType"]; ok2 {
-				nm["mimeType"] = v2
-			}
-			if v3, ok3 := m["size"]; ok3 {
-				nm["size"] = v3
-			}
-			if v4, ok4 := m["title"]; ok4 {
-				nm["title"] = v4
-			}
-			return json.Marshal(nm)
-		}
+		return json.Marshal(m)
 	}
 	if u.Resource != nil {
 		_b, _e := json.Marshal(*u.Resource)
@@ -1794,13 +1752,7 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["type"] = "resource"
-		{
-			var nm map[string]any
-			nm = make(map[string]any)
-			nm["type"] = "resource"
-			nm["resource"] = m["resource"]
-			return json.Marshal(nm)
-		}
+		return json.Marshal(m)
 	}
 	return []byte{}, nil
 }
@@ -7648,6 +7600,114 @@ type UnstableCreateElicitationForm struct {
 	Mode    string `json:"mode"`
 	// A JSON Schema describing the form fields to present to the user.
 	RequestedSchema UnstableElicitationSchema `json:"requestedSchema"`
+	// Tied to a session, optionally to a specific tool call within that session.
+	Session *UnstableElicitationSessionScope `json:"-"`
+	// Tied to a specific JSON-RPC request outside of a session
+	// (e.g., during auth/configuration phases before any session is started).
+	Request *UnstableElicitationRequestScope `json:"-"`
+}
+
+func (u *UnstableCreateElicitationForm) UnmarshalJSON(b []byte) error {
+	{
+		type plain UnstableCreateElicitationForm
+		type UnstableCreateElicitationForm struct {
+			*plain
+		}
+		raw := UnstableCreateElicitationForm{plain: (*plain)(u)}
+		if err := json.Unmarshal(b, &raw); err != nil {
+			return plainFieldError(err)
+		}
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v UnstableElicitationSessionScope
+			var match bool = true
+			if _, ok := m["sessionId"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Session = &v
+				return nil
+			}
+		}
+		{
+			var v UnstableElicitationRequestScope
+			var match bool = true
+			if _, ok := m["requestId"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Request = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
+	{
+		var v UnstableElicitationSessionScope
+		if json.Unmarshal(b, &v) == nil {
+			u.Session = &v
+			return nil
+		}
+	}
+	{
+		var v UnstableElicitationRequestScope
+		if json.Unmarshal(b, &v) == nil {
+			u.Request = &v
+			return nil
+		}
+	}
+	return errors.New("no matching variant for union")
+}
+func (u UnstableCreateElicitationForm) MarshalJSON() ([]byte, error) {
+	type plain UnstableCreateElicitationForm
+	own := plain(u)
+	ownJSON, err := json.Marshal(own)
+	if err != nil {
+		return nil, err
+	}
+	if u.Session != nil {
+		_b, _e := json.Marshal(*u.Session)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]any
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		if json.Unmarshal(ownJSON, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.Request != nil {
+		_b, _e := json.Marshal(*u.Request)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]any
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		if json.Unmarshal(ownJSON, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return nil, errors.New("UnstableCreateElicitationForm has no variant set")
 }
 
 // URL-based elicitation where the client directs the user to a URL.
@@ -7665,6 +7725,114 @@ type UnstableCreateElicitationUrl struct {
 	Mode    string `json:"mode"`
 	// The URL to direct the user to.
 	Url string `json:"url"`
+	// Tied to a session, optionally to a specific tool call within that session.
+	Session *UnstableElicitationSessionScope `json:"-"`
+	// Tied to a specific JSON-RPC request outside of a session
+	// (e.g., during auth/configuration phases before any session is started).
+	Request *UnstableElicitationRequestScope `json:"-"`
+}
+
+func (u *UnstableCreateElicitationUrl) UnmarshalJSON(b []byte) error {
+	{
+		type plain UnstableCreateElicitationUrl
+		type UnstableCreateElicitationUrl struct {
+			*plain
+		}
+		raw := UnstableCreateElicitationUrl{plain: (*plain)(u)}
+		if err := json.Unmarshal(b, &raw); err != nil {
+			return plainFieldError(err)
+		}
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v UnstableElicitationSessionScope
+			var match bool = true
+			if _, ok := m["sessionId"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Session = &v
+				return nil
+			}
+		}
+		{
+			var v UnstableElicitationRequestScope
+			var match bool = true
+			if _, ok := m["requestId"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Request = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
+	{
+		var v UnstableElicitationSessionScope
+		if json.Unmarshal(b, &v) == nil {
+			u.Session = &v
+			return nil
+		}
+	}
+	{
+		var v UnstableElicitationRequestScope
+		if json.Unmarshal(b, &v) == nil {
+			u.Request = &v
+			return nil
+		}
+	}
+	return errors.New("no matching variant for union")
+}
+func (u UnstableCreateElicitationUrl) MarshalJSON() ([]byte, error) {
+	type plain UnstableCreateElicitationUrl
+	own := plain(u)
+	ownJSON, err := json.Marshal(own)
+	if err != nil {
+		return nil, err
+	}
+	if u.Session != nil {
+		_b, _e := json.Marshal(*u.Session)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]any
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		if json.Unmarshal(ownJSON, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.Request != nil {
+		_b, _e := json.Marshal(*u.Request)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]any
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		if json.Unmarshal(ownJSON, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return nil, errors.New("UnstableCreateElicitationUrl has no variant set")
 }
 
 type UnstableCreateElicitationRequest struct {
@@ -8298,6 +8466,8 @@ type UnstableElicitationAcceptAction struct {
 //
 // Form-based elicitation mode where the client renders a form from the provided schema.
 type UnstableElicitationFormMode struct {
+	// A JSON Schema describing the form fields to present to the user.
+	RequestedSchema UnstableElicitationSchema `json:"requestedSchema"`
 	// Tied to a session, optionally to a specific tool call within that session.
 	Session *UnstableElicitationSessionScope `json:"-"`
 	// Tied to a specific JSON-RPC request outside of a session
@@ -8306,6 +8476,16 @@ type UnstableElicitationFormMode struct {
 }
 
 func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
+	{
+		type plain UnstableElicitationFormMode
+		type UnstableElicitationFormMode struct {
+			*plain
+		}
+		raw := UnstableElicitationFormMode{plain: (*plain)(u)}
+		if err := json.Unmarshal(b, &raw); err != nil {
+			return plainFieldError(err)
+		}
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8361,6 +8541,12 @@ func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
 	return errors.New("no matching variant for union")
 }
 func (u UnstableElicitationFormMode) MarshalJSON() ([]byte, error) {
+	type plain UnstableElicitationFormMode
+	own := plain(u)
+	ownJSON, err := json.Marshal(own)
+	if err != nil {
+		return nil, err
+	}
 	if u.Session != nil {
 		_b, _e := json.Marshal(*u.Session)
 		if _e != nil {
@@ -8368,6 +8554,9 @@ func (u UnstableElicitationFormMode) MarshalJSON() ([]byte, error) {
 		}
 		var m map[string]any
 		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		if json.Unmarshal(ownJSON, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		return json.Marshal(m)
@@ -8381,9 +8570,12 @@ func (u UnstableElicitationFormMode) MarshalJSON() ([]byte, error) {
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
+		if json.Unmarshal(ownJSON, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("UnstableElicitationFormMode has no variant set")
 }
 
 // **UNSTABLE**
@@ -8488,6 +8680,10 @@ type UnstableElicitationSessionScope struct {
 //
 // URL-based elicitation mode where the client directs the user to a URL.
 type UnstableElicitationUrlMode struct {
+	// The unique identifier for this elicitation.
+	ElicitationId UnstableElicitationId `json:"elicitationId"`
+	// The URL to direct the user to.
+	Url string `json:"url"`
 	// Tied to a session, optionally to a specific tool call within that session.
 	Session *UnstableElicitationSessionScope `json:"-"`
 	// Tied to a specific JSON-RPC request outside of a session
@@ -8496,6 +8692,16 @@ type UnstableElicitationUrlMode struct {
 }
 
 func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
+	{
+		type plain UnstableElicitationUrlMode
+		type UnstableElicitationUrlMode struct {
+			*plain
+		}
+		raw := UnstableElicitationUrlMode{plain: (*plain)(u)}
+		if err := json.Unmarshal(b, &raw); err != nil {
+			return plainFieldError(err)
+		}
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8551,6 +8757,12 @@ func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
 	return errors.New("no matching variant for union")
 }
 func (u UnstableElicitationUrlMode) MarshalJSON() ([]byte, error) {
+	type plain UnstableElicitationUrlMode
+	own := plain(u)
+	ownJSON, err := json.Marshal(own)
+	if err != nil {
+		return nil, err
+	}
 	if u.Session != nil {
 		_b, _e := json.Marshal(*u.Session)
 		if _e != nil {
@@ -8558,6 +8770,9 @@ func (u UnstableElicitationUrlMode) MarshalJSON() ([]byte, error) {
 		}
 		var m map[string]any
 		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		if json.Unmarshal(ownJSON, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		return json.Marshal(m)
@@ -8571,9 +8786,12 @@ func (u UnstableElicitationUrlMode) MarshalJSON() ([]byte, error) {
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
+		if json.Unmarshal(ownJSON, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("UnstableElicitationUrlMode has no variant set")
 }
 
 // **UNSTABLE**

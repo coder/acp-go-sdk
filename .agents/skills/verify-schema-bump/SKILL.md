@@ -67,7 +67,7 @@ For each value the test decodes it into the def's SDK type, calls its `Validate`
 
 | Token | Meaning |
 | --- | --- |
-| `NO-TYPE` | A message's def has no SDK type. |
+| `NO-TYPE` | A transcript message's def, or any def of `schema.json`, has no SDK type. A def that only `schema.unstable.json` has may lack one: the `SUMMARY instances` line lists it. |
 | `DECODE` | The SDK type cannot decode a value. |
 | `VALIDATE` | The type's `Validate` method rejects a value. |
 | `LOSSY` | The encoded JSON differs from the input. The line lists every differing path and the values at the first. Numbers compare by exact value (`1.0` equals `1`; no digit is rounded away). A member that is `null`, or that equals its property's schema `default`, counts as absent on both sides: the SDK, like the Rust SDK's `#[serde(default)]` fields, reads an absent member as its default and may write the default back. Where the schema gives no default, `{}` and absent differ, because ACP capabilities use `{}` to mean "supported". |
@@ -126,7 +126,7 @@ G1 from 0.13.5 to 1.32.0 (`g1-walk 1.32.0`, 25 releases): every release generate
 
 From 1.24.0 on, `methods` reports only the `$/cancel_request` constant. `apidiff` at 1.32.0 is skipped because the target does not build.
 
-G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; 13 elicitation schema defs have none. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 183 distinct problems:
+G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; the 13 without one are unstable-only elicitation schema defs, listed, not failed. Every stable def at every bump target (1.13.7, 1.20.0, 1.21.0, 1.25.0, 1.32.0) has one. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 183 distinct problems:
 
 - `HINT` 165 (51 in `schema.json`, 114 in `schema.unstable.json`): the SDK honors no hint. 122 `x-deserialize-default-on-error` and 43 `x-deserialize-skip-invalid-items` sites fail to decode a bad value.
 - `LOSSY` 14: `ContentBlock` drops `_meta` and `annotations` (6 lines: also `Content`, `ContentChunk`, `ToolCallContent`, `PromptRequest.prompt` and `SessionUpdate`, which hold one); the unstable elicitation types drop `sessionId`, `toolCallId`, `elicitationId`, `url` and `requestedSchema` (5 lines); the SDK writes the unstable `auth: {}` capability into `ClientCapabilities` built from `schema.json`, which does not define it (3 lines).

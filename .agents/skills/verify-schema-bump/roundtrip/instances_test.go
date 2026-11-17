@@ -231,10 +231,15 @@ func TestInstances(t *testing.T) {
 	s := load(t)
 	var checked, invalid int
 	var noType []string
+	stable := s.files[0].defs
 	for _, f := range s.files {
 		for _, def := range sortedKeys(f.defs) {
 			if _, ok := registry[def]; !ok {
-				if f.name == "unstable" {
+				// A stable def must have a Go type. An unstable-only one may
+				// lack it: it is listed in the summary, not failed.
+				if _, isStable := stable[def]; isStable && f.name == "stable" {
+					t.Errorf("NO-TYPE %s (stable)", def)
+				} else if !isStable {
 					noType = append(noType, def)
 				}
 				continue
@@ -269,6 +274,6 @@ func TestInstances(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("SUMMARY instances: %d checked, %d builder gaps skipped, %d defs without an SDK type %v",
+	t.Logf("SUMMARY instances: %d checked, %d builder gaps skipped, %d unstable-only defs without an SDK type %v",
 		checked, invalid, len(noType), noType)
 }

@@ -54,6 +54,13 @@ type Definition struct {
 	// Discriminator specifies which property name distinguishes union variants.
 	// Part of JSON Schema's discriminator object support.
 	Discriminator *Discriminator `json:"discriminator,omitempty"`
+	// The x-deserialize-* hints ask a reader to tolerate a bad value of this
+	// property instead of failing the message: read a value of the wrong shape
+	// as the default, drop array items of the wrong shape, read null as the
+	// default.
+	DefaultOnError   bool `json:"x-deserialize-default-on-error"`
+	SkipInvalidItems bool `json:"x-deserialize-skip-invalid-items"`
+	DefaultOnNull    bool `json:"x-deserialize-default-on-null"`
 
 	// boolSchema records whether this definition was a boolean schema (true/false).
 	// JSON Schema allows boolean schemas, where true matches anything and false matches nothing.

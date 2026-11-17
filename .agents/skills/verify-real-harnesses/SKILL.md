@@ -168,7 +168,7 @@ The driver uses the SDK's generated types. A schema bump that renames a type, su
 
 ## Known results at schema 0.13.5
 
-Run on 2026-11-17 with the SDK of `main` at `492745b` (schema 0.13.5): claude-agent-acp 0.108.0 (claude-agent-sdk 0.3.326, ACP TypeScript SDK 2.7.0), codex-acp 2.7.0 (Codex CLI 0.166.0, ACP TypeScript SDK 2.6.0), TypeScript SDK 2.7.0.
+Run on 2026-11-17 with the SDK of `main` at `492745b`, and again at `a0c38c3` after #90 regenerated `types_gen.go`, with the same results (schema 0.13.5): claude-agent-acp 0.108.0 (claude-agent-sdk 0.3.326, ACP TypeScript SDK 2.7.0), codex-acp 2.7.0 (Codex CLI 0.166.0, ACP TypeScript SDK 2.6.0), TypeScript SDK 2.7.0.
 
 | Scenario | claude | codex |
 | --- | --- | --- |

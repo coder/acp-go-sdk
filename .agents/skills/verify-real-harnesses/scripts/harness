@@ -434,6 +434,11 @@ g4_quiet() {
 	echo "PASS  $(basename "$1") is clean"
 }
 
+# complete FILE: FILE is a summary.json that parses. A driver killed while
+# it wrote the file leaves partial JSON, and report shows that run as
+# INCOMPLETE instead of failing on it.
+complete() { [ -f "$1" ] && jq -e . "$1" >/dev/null 2>&1; }
+
 cmd_report() {
 	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set"
 	set_paths "$HARNESS_RUN"
@@ -461,7 +466,7 @@ cmd_report() {
 			echo
 			names=$(for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
-				if [ -f "$f" ]; then jq -r '.results[].name' "$f"; fi
+				if complete "$f"; then jq -r '.results[].name' "$f"; fi
 			done | awk '!seen[$0]++')
 			while IFS= read -r n; do
 				[ -n "$n" ] || continue
@@ -469,7 +474,7 @@ cmd_report() {
 				for l in "${labels[@]}"; do
 					f=$EVIDENCE/$l/summary.json
 					s=INCOMPLETE
-					[ -f "$f" ] && s=$(jq -r --arg n "$n" '[.results[] | select(.name == $n) | .status][0] // "-"' "$f")
+					complete "$f" && s=$(jq -r --arg n "$n" '[.results[] | select(.name == $n) | .status][0] // "-"' "$f")
 					row="$row $s |"
 				done
 				echo "$row"
@@ -477,10 +482,10 @@ cmd_report() {
 			echo
 			for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
-				if [ ! -f "$f" ]; then
+				if ! complete "$f"; then
 					cost=0
 					[ -f "$EVIDENCE/$l/transcript.jsonl" ] && cost=$(transcript_cost "$EVIDENCE/$l/transcript.jsonl")
-					printf -- '- %s: INCOMPLETE, no summary.json: the driver did not finish. Its transcript reports $%.2f.\n' "$l" "$cost"
+					printf -- '- %s: INCOMPLETE, no complete summary.json: the driver did not finish. Its transcript reports $%.2f.\n' "$l" "$cost"
 					continue
 				fi
 				cost=$(jq .costUsd "$f")
@@ -498,10 +503,10 @@ cmd_report() {
 			echo
 			for l in "${labels[@]}"; do
 				f=$EVIDENCE/$l/summary.json
-				if [ -f "$f" ]; then
+				if complete "$f"; then
 					jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$f"
 				fi
-				if [ -f "$f" ] && jq -e '(.evidenceErrors // []) | length > 0' "$f" >/dev/null; then
+				if complete "$f" && jq -e '(.evidenceErrors // []) | length > 0' "$f" >/dev/null; then
 					echo "- $l evidence FAIL: $(jq -r '.evidenceErrors | join("; ")' "$f")"
 				fi
 				f=$EVIDENCE/$l/leftovers.txt

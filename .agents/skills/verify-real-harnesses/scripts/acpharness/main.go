@@ -12,8 +12,9 @@
 // The live profile runs every scenario in scenarios.go. The smoke profile
 // runs initialize, session/new and one prompt turn, for agents without a
 // model, such as the TypeScript SDK's example agent. Exit 0: no scenario
-// failed. Exit 1: a scenario failed or the budget stopped the run.
-// Exit 2: usage error.
+// failed. Exit 1: a scenario failed, the budget stopped the run, or the
+// evidence folder could not be set up. Exit 2: usage error, before any agent
+// starts.
 package main
 
 import (
@@ -21,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -150,13 +152,13 @@ func main() {
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "acpharness:", err)
-			os.Exit(2)
+			os.Exit(1)
 		}
 	}
 	h, err := newHarness(o)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "acpharness:", err)
-		os.Exit(2)
+		os.Exit(1)
 	}
 	if o.profile == "smoke" {
 		h.runSmoke()
@@ -213,13 +215,10 @@ func (h *harness) step(name string, fn func() (status, string)) status {
 	return st
 }
 
-func (h *harness) cost() float64 {
-	total := 0.0
-	for _, a := range h.conns {
-		total += a.client.cost()
-	}
-	return total
-}
+// cost is the USD cost that the agents reported on the wire. The budget
+// reads it from the raw usage_update lines, so a cost that the SDK fails to
+// decode still counts; finish reports such a gap as a decode error.
+func (h *harness) cost() float64 { return h.rec.cost() }
 
 func (h *harness) trackPgid(pid int) error {
 	if h.opts.pgids == "" {
@@ -258,6 +257,13 @@ func (h *harness) finish() int {
 		h.row("agent-exit", pass, fmt.Sprintf("%d agent process(es) exited 0 after their input closed", len(exits)))
 	} else {
 		h.row("agent-exit", fail, strings.Join(bad, "; "))
+	}
+	decoded := 0.0
+	for _, a := range h.conns {
+		decoded += a.client.cost()
+	}
+	if wire := h.rec.cost(); math.Abs(wire-decoded) > 1e-9 {
+		h.rec.finding(decodeError, fmt.Sprintf("the usage_update costs on the wire add up to $%.4f, but the SDK decoded $%.4f", wire, decoded))
 	}
 	findings, inbound := h.rec.snapshot()
 	h.globalStep("no-method-not-found", methodNotFound, findings)

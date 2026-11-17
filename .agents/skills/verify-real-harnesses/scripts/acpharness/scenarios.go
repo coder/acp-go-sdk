@@ -392,14 +392,14 @@ func (h *harness) ensureB(a *agentConn) (acp.SessionId, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := modeOffered(sel, h.modes["B"], h.opts.askMode); err != nil {
+		return "", err
+	}
 	if sel != nil {
 		if err := h.setOption(a, sid, sel.Id, acp.SessionConfigValueId(h.opts.askMode)); err != nil {
 			return "", fmt.Errorf("set mode %s: %v", h.opts.askMode, err)
 		}
 		return sid, nil
-	}
-	if h.modes["B"] == nil {
-		return "", fmt.Errorf("agent offers no mode, so -ask-mode %s cannot apply", h.opts.askMode)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
@@ -407,6 +407,29 @@ func (h *harness) ensureB(a *agentConn) (acp.SessionId, error) {
 		return "", fmt.Errorf("session/set_mode %s: %s", h.opts.askMode, errText(err))
 	}
 	return sid, nil
+}
+
+// modeOffered returns an error unless the mode select option, or else the
+// session modes, offer mode. An editor can pick only a mode that the agent
+// lists, so the driver never sends another one.
+func modeOffered(sel *acp.SessionConfigOptionSelect, modes *acp.SessionModeState, mode string) error {
+	var offered []string
+	switch {
+	case sel != nil:
+		for _, o := range selectOptions(sel) {
+			offered = append(offered, string(o.Value))
+		}
+	case modes != nil:
+		for _, m := range modes.AvailableModes {
+			offered = append(offered, string(m.Id))
+		}
+	default:
+		return fmt.Errorf("agent offers no mode, so -ask-mode %s cannot apply", mode)
+	}
+	if !contains(offered, mode) {
+		return fmt.Errorf("the agent offers the modes %v, not -ask-mode %s", offered, mode)
+	}
+	return nil
 }
 
 // permissionTurn asks the agent to write a file in session B's cwd and

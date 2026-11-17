@@ -26,7 +26,7 @@ import (
 // response from the agent.
 type finding struct {
 	Kind     string `json:"kind"`   // methodNotFound, decodeError or agentError
-	Source   string `json:"source"` // sdk-log, sdk-reply or agent-reply
+	Source   string `json:"source"` // sdk-log, sdk-reply, agent-reply or driver
 	Conn     int    `json:"conn"`
 	Scenario string `json:"scenario"`
 	Text     string `json:"text"`
@@ -62,6 +62,10 @@ type recorder struct {
 	// advertised.go compares with what the SDK decoded.
 	sent    map[int]map[string]string
 	results map[int]map[string]json.RawMessage
+	// The highest USD cost of each session on each connection, read from
+	// raw usage_update notifications. The budget counts these, so a cost
+	// that the SDK fails to decode still stops a paid run.
+	costs map[string]float64
 }
 
 func newRecorder(dir string) (*recorder, error) {
@@ -70,7 +74,8 @@ func newRecorder(dir string) (*recorder, error) {
 		return nil, err
 	}
 	r := &recorder{start: time.Now(), transcript: f, inbound: map[string]int{}, notified: map[int]int{}, handled: map[int]int{},
-		requested: map[int]int{}, answered: map[int]int{}, sent: map[int]map[string]string{}, results: map[int]map[string]json.RawMessage{}}
+		requested: map[int]int{}, answered: map[int]int{}, sent: map[int]map[string]string{}, results: map[int]map[string]json.RawMessage{},
+		costs: map[string]float64{}}
 	r.scenario.Store("setup")
 	return r, nil
 }
@@ -102,6 +107,23 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 	defer r.mu.Unlock()
 	if _, err := r.transcript.Write(append(b, '\n')); err != nil && r.writeErr == nil {
 		r.writeErr = fmt.Errorf("transcript.jsonl: %w", err)
+	}
+	if dir == agentToClient && msg.Method == "session/update" {
+		var n struct {
+			Params struct {
+				SessionID string `json:"sessionId"`
+				Update    struct {
+					Cost *struct {
+						Amount   float64 `json:"amount"`
+						Currency string  `json:"currency"`
+					} `json:"cost"`
+				} `json:"update"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(raw, &n) == nil && n.Params.Update.Cost != nil && strings.EqualFold(n.Params.Update.Cost.Currency, "USD") {
+			key := fmt.Sprintf("%d/%s", conn, n.Params.SessionID)
+			r.costs[key] = max(r.costs[key], n.Params.Update.Cost.Amount)
+		}
 	}
 	if dir == agentToClient && msg.Method != "" {
 		r.inbound[msg.Method]++
@@ -162,6 +184,25 @@ func (r *recorder) result(conn int, method string) json.RawMessage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.results[conn][method]
+}
+
+// cost returns the USD cost that the raw usage_update notifications
+// report: the highest cost of each session on each connection, added up.
+func (r *recorder) cost() float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	total := 0.0
+	for _, v := range r.costs {
+		total += v
+	}
+	return total
+}
+
+// finding adds a finding that the driver itself found.
+func (r *recorder) finding(kind, text string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.findings = append(r.findings, finding{Kind: kind, Source: "driver", Scenario: r.current(), Text: text})
 }
 
 // classify returns the global-predicate kind of an SDK log text, or "".

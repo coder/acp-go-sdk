@@ -374,3 +374,47 @@ func TestKnownSkips_AreDocumented(t *testing.T) {
 		}
 	}
 }
+
+func TestRecorder_CountsTheCostOnTheWire(t *testing.T) {
+	r, err := newRecorder(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := func(conn int, sid, cost string) {
+		r.line(conn, agentToClient, []byte(fmt.Sprintf(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":%q,"update":{"sessionUpdate":"usage_update","used":1,"size":2,"cost":%s}}}`, sid, cost)))
+	}
+	update(1, "a", `{"amount":0.1,"currency":"USD"}`)
+	update(1, "a", `{"amount":0.3,"currency":"usd"}`) // cumulative per session
+	update(1, "b", `{"amount":0.05,"currency":"USD"}`)
+	update(2, "a", `{"amount":0.3,"currency":"USD"}`) // a reopened session counts again
+	update(1, "c", `{"amount":9,"currency":"EUR"}`)
+	if got := r.cost(); got < 0.649 || got > 0.651 {
+		t.Fatalf("cost %v, want 0.65", got)
+	}
+}
+
+func TestModeOffered_SendsOnlyAnOfferedMode(t *testing.T) {
+	sel := modelSelect(t, `{"id":"mode","name":"Mode","category":"mode","type":"select","currentValue":"auto","options":[
+		{"value":"auto","name":"Auto"},{"value":"default","name":"Default"}]}`)
+	modes := &acp.SessionModeState{AvailableModes: []acp.SessionMode{{Id: "read-only"}}, CurrentModeId: "read-only"}
+	cases := []struct {
+		name  string
+		sel   *acp.SessionConfigOptionSelect
+		modes *acp.SessionModeState
+		mode  string
+		ok    bool
+	}{
+		{"select offers it", sel, nil, "default", true},
+		{"select lacks it", sel, modes, "read-only", false},
+		{"session modes offer it", nil, modes, "read-only", true},
+		{"session modes lack it", nil, modes, "default", false},
+		{"no modes at all", nil, nil, "default", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := modeOffered(tc.sel, tc.modes, tc.mode); (err == nil) != tc.ok {
+				t.Fatalf("modeOffered(%s) = %v, want ok=%v", tc.mode, err, tc.ok)
+			}
+		})
+	}
+}

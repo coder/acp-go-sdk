@@ -58,8 +58,8 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 ## Run the gates
 
 ```bash
-"$V" g4            # free, about 15 s
-"$V" g5 claude     # real model, about 40 s
+"$V" g4            # free, about 10 s
+"$V" g5 claude     # real model, about 20 s
 "$V" g5 codex      # real model, about 30 s
 "$V" report        # writes evidence/report.md and prints it
 "$V" scan          # exit 1 when a credential value is in evidence/
@@ -190,7 +190,7 @@ The driver uses the SDK's generated types. A schema bump that renames a type, su
 
 ## Known results at schema 0.13.5
 
-Run on 2026-11-17 with the SDK of `main` at `492745b`, and again at `a0c38c3` after #90 regenerated `types_gen.go`, with the same results (schema 0.13.5): claude-agent-acp 0.108.0 (claude-agent-sdk 0.3.326, ACP TypeScript SDK 2.7.0), codex-acp 2.7.0 (Codex CLI 0.166.0, ACP TypeScript SDK 2.6.0), TypeScript SDK 2.7.0.
+Run on 2026-11-17 with the SDK of `main` at `492745b`, again at `a0c38c3` after #90 regenerated `types_gen.go`, and again at `68c27b5` with the wire checks and the `no-refused-calls` and `known-skips` rows, with the same results (schema 0.13.5): claude-agent-acp 0.108.0 (claude-agent-sdk 0.3.326, ACP TypeScript SDK 2.7.0), codex-acp 2.7.0 (Codex CLI 0.166.0, ACP TypeScript SDK 2.6.0), TypeScript SDK 2.7.0.
 
 | Scenario | claude | codex |
 | --- | --- | --- |
@@ -211,12 +211,15 @@ Run on 2026-11-17 with the SDK of `main` at `492745b`, and again at `a0c38c3` af
 | `no-method-not-found` | FAIL | PASS |
 | `no-decode-errors` | PASS | PASS |
 | `no-agent-errors` | PASS | PASS |
+| `no-refused-calls` | PASS | PASS |
+| `known-skips` | PASS | PASS |
 
-Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.77. Codex reported no cost and used about 109,000 tokens.
+Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.77. Codex reported no cost and used about 46,500 tokens. At `68c27b5`, `g4` took 11 s, `g5 claude` 17 s and `g5 codex` 29 s.
 
 What the results mean:
 
 - **Known SDK failure.** The Claude adapter sends the `auth/status_update` notification on every `session/new`, `session/load` and `session/resume`. The SDK at schema 0.13.5 has no handler for it, so it logs `failed to handle notification method=auth/status_update` with `-32601` three times per run. A schema bump that adds the method must turn `no-method-not-found` to PASS. Both adapters also send `_auth/status_update`. That name starts with `_`, so it is an extension notification, and the SDK ignores it without a log line, as the spec says.
+- **A decode bug fails the gate.** With the JSON tag of `SessionCapabilities.List` in `types_gen.go` renamed to `probeList`, `g5 codex` fails `session/list` and `session/delete` with `decode mismatch on connection 1: agentCapabilities.sessionCapabilities.list is {} in the initialize result on the wire, but the SDK decoded it as absent`, and exits 1. Before the wire checks, the same probe made `session/list` a `SKIP` and the run exit 0.
 - **Claude's default mode does not ask.** A new Claude session starts in mode `auto`, which writes files without `session/request_permission`. The driver sets mode `default` on session B.
 - **Codex's reject option ends the turn.** Codex offers `cancel` (kind `reject_once`) as its reject option, and the turn then ends with `cancelled`. The reject predicate accepts any stop reason.
 - **Codex and symlinked cwds.** codex-acp reports each session's cwd as a real path. With a cwd that goes through a symlink, `session/list` filtered by that cwd returns nothing, and an approved edit fails with "Failed to write file". The driver resolves symlinks in `-cwd` to stay clear of this adapter bug. Keep `HARNESS_ROOT` free of symlinks anyway.

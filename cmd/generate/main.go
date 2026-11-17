@@ -31,6 +31,11 @@ func main() {
 		panic(err)
 	}
 
+	schemaVersion, err := load.ReadSchemaVersion(schemaDir)
+	if err != nil {
+		panic(err)
+	}
+
 	meta, err := load.ReadMeta(schemaDir)
 	if err != nil {
 		panic(err)
@@ -61,7 +66,7 @@ func main() {
 		schema = mergedSchema
 	}
 
-	if err := emit.WriteConstantsJen(outDir, meta); err != nil {
+	if err := emit.WriteConstantsJen(outDir, meta, schemaVersion); err != nil {
 		panic(err)
 	}
 

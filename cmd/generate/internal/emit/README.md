@@ -9,7 +9,7 @@ The inputs are `load.Meta` and `load.Schema` from `github.com/coder/acp-go-sdk/c
 
 ## Interface
 
-- `WriteConstantsJen(outDir string, meta *load.Meta) error` writes `ProtocolVersionNumber` and the `AgentMethod<Name>` and `ClientMethod<Name>` constants to `constants_gen.go` [constants.go:WriteConstantsJen]
+- `WriteConstantsJen(outDir string, meta *load.Meta, schemaVersion string) error` writes `ProtocolVersionNumber`, `SchemaVersion` (set to `schemaVersion`), and the `AgentMethod<Name>` and `ClientMethod<Name>` constants to `constants_gen.go` [constants.go:WriteConstantsJen] [constants_test.go:TestWriteConstantsJen_DeclaresSchemaVersion]
 - `WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error` writes every schema type plus the `Agent`, `AgentExperimental`, `Client`, and `ClientExperimental` interfaces to `types_gen.go`. It also writes `AgentLoader` and `ClientTerminal` when they have methods [types.go:WriteTypesJen]
 - `WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error` writes `agent_gen.go` (the `AgentSideConnection.handle` switch and the agent-to-client wrappers) and `client_gen.go` (the `ClientSideConnection.handle` switch and the client-to-agent wrappers) [dispatch.go:WriteDispatchJen]
 - `WriteHelpersJen(outDir string, schema *load.Schema, meta *load.Meta) error` writes one `New<Union><Variant>` constructor per variant of each eligible `oneOf` union to `helpers_gen.go`. It builds the types with `meta`, so `meta` must not be nil: `ir.BuildMethodGroups` dereferences it [helpers.go:WriteHelpersJen] [types.go:buildTypesJen]

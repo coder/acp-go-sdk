@@ -146,6 +146,9 @@ type typesBuilder struct {
 	variants          map[string][]unionVariant
 	validatedEnums    map[string]bool
 	usesDecodeHelpers bool
+	// usesAdditionalProperties says that a struct keeps the members its
+	// schema does not name, so emitSupport declares the helpers for that.
+	usesAdditionalProperties bool
 }
 
 // buildTypesJen builds the types_gen.go file. It also returns, per oneOf union,
@@ -255,7 +258,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			b.emitUnion(name, def, def.OneOf, true, true)
 		case ir.PrimaryType(def) == "object" && len(def.Properties) > 0:
 			fields := ir.Fields(def.Properties, def.Required)
-			b.emitStruct(name, fields, b.emitNestedStructs(name, fields))
+			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), bool(def.AdditionalProperties))
 		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":
 			f.Type().Id(name).Add(primitiveJenType(ir.PrimaryType(def)))
 			f.Line()
@@ -854,11 +857,22 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		arrayItemRequired []string
 		discValue         string
 		constPairs        [][2]string
-		isNull            bool
-		description       string
+		// openDiscriminator says that the discriminator of this variant is a
+		// string without a const, as in a catch-all variant.
+		openDiscriminator bool
+		// nullKeys are the properties whose type is "null" alone, as in a
+		// "none" variant. The variant matches when they are absent or null.
+		nullKeys    []string
+		isNull      bool
+		description string
 		// sharedChecks hold Validate statements for the union's own required
 		// properties, which an inline object variant copies into its struct.
 		sharedChecks []Code
+	}
+	// matchesByKeys says that an object selects the variant by its keys, and
+	// never by the order of the variants.
+	matchesByKeys := func(vi variantInfo) bool {
+		return vi.isObject && (len(vi.required) > 0 || len(vi.constPairs) > 0 || len(vi.nullKeys) > 0)
 	}
 	variants := []variantInfo{}
 	discKey := ""
@@ -986,6 +1000,16 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				}
 			}
 		}
+		openDiscriminator := false
+		if pd := v.Properties[discKey]; pd != nil && pd.Const == nil {
+			openDiscriminator = pd.Type == "string"
+		}
+		var nullKeys []string
+		for _, pk := range sortedPropertyKeys(v.Properties) {
+			if pd := v.Properties[pk]; pd != nil && pd.Type == "null" {
+				nullKeys = append(nullKeys, pk)
+			}
+		}
 		var sharedChecks []Code
 		var nestedVariants []unionVariant
 		// Emit struct for inline variants (non-$ref)
@@ -1029,7 +1053,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				if len(nested) > 0 {
 					nestedVariants = b.emitUnion(tname, &load.Definition{Properties: mergedProps, Required: required, Discriminator: v.Discriminator}, nested, len(v.OneOf) > 0, false)
 				} else {
-					b.emitStruct(tname, fields, nil)
+					b.emitStruct(tname, fields, nil, bool(v.AdditionalProperties))
 				}
 			default:
 				// Title-only variants: check if they're extension types
@@ -1065,6 +1089,8 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			arrayItemRequired: arrayItemRequired,
 			discValue:         dv,
 			constPairs:        consts,
+			openDiscriminator: openDiscriminator,
+			nullKeys:          nullKeys,
 			isNull:            isNull,
 			description:       v.Description,
 			sharedChecks:      sharedChecks,
@@ -1125,6 +1151,14 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			if len(wrapperFields) > 0 {
 				obj.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", customDecoded(wrapperPlans)) })
 			}
+			if parentDef != nil && parentDef.Properties[discKey] != nil && parentDef.Properties[discKey].DefaultOnError {
+				// The discriminator has x-deserialize-default-on-error: a value
+				// that is neither a string nor null reads as absent.
+				obj.If(
+					Id("raw").Op(":=").Id("string").Call(Id("m").Index(Lit(discKey))),
+					Id("raw").Op("!=").Lit("").Op("&&").Id("raw").Op("!=").Lit("null").Op("&&").Op("!").Qual("strings", "HasPrefix").Call(Id("raw"), Lit("\"")),
+				).Block(Id("delete").Call(Id("m"), Lit(discKey)))
+			}
 			// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
 			if discKey != "" {
 				obj.BlockFunc(func(h *Group) {
@@ -1146,17 +1180,21 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					})
 				})
 			}
-			// A variant matches when the object has its required keys and
-			// each const property that is present holds its value. The switch
-			// above settled a variant whose only const is the required
-			// discriminator.
+			// A variant matches when the object has its required keys, each
+			// const property that is present holds its value, and each
+			// null-only property is absent or null. The switch above settled
+			// a variant whose only const is the required discriminator.
 			for _, vi := range variants {
 				switchSettled := vi.discValue != "" && len(vi.constPairs) == 1 && slices.Contains(vi.required, discKey)
-				if vi.isObject && (len(vi.required) > 0 || len(vi.constPairs) > 0) && !switchSettled {
+				if matchesByKeys(vi) && !switchSettled {
 					obj.BlockFunc(func(h *Group) {
 						h.Var().Id("v").Id(vi.typeName)
 						h.Var().Id("match").Bool().Op("=").Lit(true)
 						for _, rk := range vi.required {
+							if rk == discKey && vi.openDiscriminator {
+								h.If(Op("!").Qual("strings", "HasPrefix").Call(Id("string").Call(Id("m").Index(Lit(rk))), Lit("\""))).Block(Id("match").Op("=").Lit(false))
+								continue
+							}
 							h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
 						}
 						for _, pair := range vi.constPairs {
@@ -1164,6 +1202,9 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 								Var().Id("value").String(),
 								If(Qual("encoding/json", "Unmarshal").Call(Id("raw"), Op("&").Id("value")).Op("!=").Nil().Op("||").Id("value").Op("!=").Lit(pair[1])).Block(Id("match").Op("=").Lit(false)),
 							)
+						}
+						for _, nk := range vi.nullKeys {
+							h.If(Id("raw").Op(":=").Id("string").Call(Id("m").Index(Lit(nk))), Id("raw").Op("!=").Lit("").Op("&&").Id("raw").Op("!=").Lit("null")).Block(Id("match").Op("=").Lit(false))
 						}
 						h.If(Id("match")).Block(
 							If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
@@ -1200,10 +1241,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				})
 			}
 		})
-		// A variant with required keys or a const had its turn above, and does
-		// not match an input without them. The others are tried in order.
+		// A variant that matches by its keys had its turn above. The others
+		// are tried in order.
 		for _, vi := range variants {
-			if (vi.isObject && (len(vi.required) > 0 || len(vi.constPairs) > 0)) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
+			if matchesByKeys(vi) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
 				continue
 			}
 			g.Block(

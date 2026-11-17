@@ -60,3 +60,14 @@ func TestFields_PanicsOnSkipInvalidItemsOutsideAnArray(t *testing.T) {
 	}()
 	Fields(def.Properties, def.Required)
 }
+
+func TestFields_SkipsAPropertyWhoseTypeIsOnlyNull(t *testing.T) {
+	def := parseObject(t, `{"type": "object", "properties": {
+		"stopReason": {"type": "null"},
+		"usage": {"type": ["integer", "null"]}
+	}}`)
+	fields := Fields(def.Properties, def.Required)
+	if len(fields) != 1 || fields[0].Prop != "usage" {
+		t.Errorf("Fields() = %+v, want only the usage property", fields)
+	}
+}

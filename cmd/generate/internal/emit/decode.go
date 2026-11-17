@@ -196,6 +196,40 @@ func (b *typesBuilder) emitSupport() {
 		Return(Id("err")),
 	)
 	f.Line()
+
+	if !b.usesAdditionalProperties {
+		return
+	}
+	f.Comment("additionalProperties returns the members of the JSON object b that named")
+	f.Comment("does not list, or nil when there are none. A key matches a name in any case,")
+	f.Comment("as it matches a struct field in encoding/json.")
+	f.Func().Id("additionalProperties").Params(Id("b").Index().Byte(), Id("named").Op("...").String()).Map(String()).Any().Block(
+		Var().Id("members").Map(String()).Any(),
+		Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("members")),
+		For(Id("key").Op(":=").Range().Id("members")).Block(
+			For(List(Id("_"), Id("name")).Op(":=").Range().Id("named")).Block(
+				If(Qual("strings", "EqualFold").Call(Id("key"), Id("name"))).Block(Id("delete").Call(Id("members"), Id("key"))),
+			),
+		),
+		If(Id("len").Call(Id("members")).Op("==").Lit(0)).Block(Return(Nil())),
+		Return(Id("members")),
+	)
+	f.Line()
+
+	f.Comment("withAdditionalProperties adds the members of additional to the JSON object")
+	f.Comment("named. A member that named already has keeps its value.")
+	f.Func().Id("withAdditionalProperties").Params(Id("named").Index().Byte(), Id("additional").Map(String()).Any()).Params(Index().Byte(), Error()).Block(
+		If(Id("len").Call(Id("additional")).Op("==").Lit(0)).Block(Return(Id("named"), Nil())),
+		Id("members").Op(":=").Make(Map(String()).Qual("encoding/json", "RawMessage"), Id("len").Call(Id("additional"))),
+		For(List(Id("key"), Id("value")).Op(":=").Range().Id("additional")).Block(
+			List(Id("raw"), Id("err")).Op(":=").Qual("encoding/json", "Marshal").Call(Id("value")),
+			If(Id("err").Op("!=").Nil()).Block(Return(Nil(), Id("err"))),
+			Id("members").Index(Id("key")).Op("=").Id("raw"),
+		),
+		If(Id("err").Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("named"), Op("&").Id("members")), Id("err").Op("!=").Nil()).Block(Return(Nil(), Id("err"))),
+		Return(Qual("encoding/json", "Marshal").Call(Id("members"))),
+	)
+	f.Line()
 }
 
 func enumValues(def *load.Definition) []string {

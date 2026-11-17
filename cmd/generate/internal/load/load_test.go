@@ -1,6 +1,7 @@
 package load
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,5 +31,26 @@ func TestReadSchemaVersion(t *testing.T) {
 				t.Errorf("ReadSchemaVersion() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDefinition_UnmarshalJSON_AdditionalPropertiesIsSetOnlyByTrue(t *testing.T) {
+	tests := []struct {
+		schema string
+		want   bool
+	}{
+		{`{"type": "object", "additionalProperties": true}`, true},
+		{`{"type": "object", "additionalProperties": false}`, false},
+		{`{"type": "object", "additionalProperties": {"type": "string"}}`, false},
+		{`{"type": "object"}`, false},
+	}
+	for _, tt := range tests {
+		var def Definition
+		if err := json.Unmarshal([]byte(tt.schema), &def); err != nil {
+			t.Fatalf("parse %s: %v", tt.schema, err)
+		}
+		if bool(def.AdditionalProperties) != tt.want {
+			t.Errorf("AdditionalProperties of %s = %v, want %v", tt.schema, def.AdditionalProperties, tt.want)
+		}
 	}
 }

@@ -132,26 +132,58 @@ func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 	return decls
 }
 
-func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeNames map[string]string) {
+// additionalPropertiesField is the field of a struct whose schema says
+// "additionalProperties": true. It holds the members the schema does not name.
+const additionalPropertiesField = "AdditionalProperties"
+
+// emitStruct declares the struct name with one field per entry of fields. open
+// says that the schema has "additionalProperties": true.
+func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeNames map[string]string, open bool) {
 	f := b.f
 	plans := b.plansFor(fields)
-	f.Type().Id(name).Struct(fieldDecls(plans, nestedTypeNames)...)
+	decls := fieldDecls(plans, nestedTypeNames)
+	if open {
+		for _, field := range fields {
+			if field.Name == additionalPropertiesField {
+				panic(fmt.Sprintf("struct %q has additionalProperties and a property that maps to the field %q", name, field.Name))
+			}
+		}
+		b.usesAdditionalProperties = true
+		decls = append(decls,
+			Comment("AdditionalProperties holds the members that the schema does not name."),
+			Id(additionalPropertiesField).Map(String()).Any().Tag(map[string]string{"json": "-"}),
+		)
+	}
+	f.Type().Id(name).Struct(decls...)
 	f.Line()
 
-	if slices.ContainsFunc(plans, fieldPlan.hasFallback) {
+	if open || slices.ContainsFunc(plans, fieldPlan.hasFallback) {
 		f.Func().Params(Id("v").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
 			g.Type().Id("Alias").Id(name)
 			g.Var().Id("a").Id("Alias")
 			g.Id("a").Op("=").Id("Alias").Call(Id("v"))
 			emitFillNil(g, plans, "a")
-			g.Return(Qual("encoding/json", "Marshal").Call(Id("a")))
+			if !open {
+				g.Return(Qual("encoding/json", "Marshal").Call(Id("a")))
+				return
+			}
+			g.List(Id("named"), Id("err")).Op(":=").Qual("encoding/json", "Marshal").Call(Id("a"))
+			g.If(Id("err").Op("!=").Nil()).Block(Return(Nil(), Id("err")))
+			g.Return(Id("withAdditionalProperties").Call(Id("named"), Id("v").Dot(additionalPropertiesField)))
 		})
 		f.Line()
 	}
 
-	if decoded := customDecoded(plans); len(decoded) > 0 {
+	if decoded := customDecoded(plans); open || len(decoded) > 0 {
 		f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
 			b.emitDecodeFields(g, name, "v", decoded)
+			if open {
+				named := []Code{Id("b")}
+				for _, field := range fields {
+					named = append(named, Lit(field.Prop))
+				}
+				g.Id("v").Dot(additionalPropertiesField).Op("=").Id("additionalProperties").Call(named...)
+			}
 			g.Return(Nil())
 		})
 		f.Line()
@@ -195,7 +227,7 @@ func (b *typesBuilder) emitNestedStructs(parent string, fields []ir.Field) map[s
 		if prop.Description != "" {
 			emitDocComment(f, prop.Description)
 		}
-		b.emitStruct(nestedTypeName, ir.Fields(prop.Properties, prop.Required), nil)
+		b.emitStruct(nestedTypeName, ir.Fields(prop.Properties, prop.Required), nil, bool(prop.AdditionalProperties))
 	}
 	return nestedTypeNames
 }

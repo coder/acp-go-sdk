@@ -61,6 +61,9 @@ type Definition struct {
 	DefaultOnError   bool `json:"x-deserialize-default-on-error"`
 	SkipInvalidItems bool `json:"x-deserialize-skip-invalid-items"`
 	DefaultOnNull    bool `json:"x-deserialize-default-on-null"`
+	// AdditionalProperties is set when the schema says
+	// "additionalProperties": true. False or a schema leaves it unset.
+	AdditionalProperties isTrue `json:"additionalProperties"`
 
 	// boolSchema records whether this definition was a boolean schema (true/false).
 	// JSON Schema allows boolean schemas, where true matches anything and false matches nothing.
@@ -69,6 +72,14 @@ type Definition struct {
 }
 
 // UnmarshalJSON allows Definition to decode both object and boolean JSON Schema forms.
+// isTrue decodes the JSON literal true as true and any other value as false.
+type isTrue bool
+
+func (t *isTrue) UnmarshalJSON(b []byte) error {
+	*t = isTrue(bytes.Equal(bytes.TrimSpace(b), []byte("true")))
+	return nil
+}
+
 func (d *Definition) UnmarshalJSON(b []byte) error {
 	// Trim whitespace for simple equality checks
 	tb := bytes.TrimSpace(b)

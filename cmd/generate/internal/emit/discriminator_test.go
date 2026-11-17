@@ -115,8 +115,8 @@ func TestUnion_UnmarshalJSON_MatchesAVariantOnlyWithItsConstValue(t *testing.T) 
 // variant without a const. Problem is McpError, a struct that keeps the
 // members the schema does not name. Strict has a "none" variant and a
 // discriminator without the hint. State is StateUpdate, whose idle variant
-// holds Idle. Marked has a required property that is always null, which no
-// released schema has.
+// holds Idle. No released schema has the last two: Marked has a required
+// property that is always null, and Bag names no property at all.
 const catchAllUnionSchema = `{"$defs": {
   "Failure": {"type": "object", "properties": {
     "error": {"type": ["string", "null"], "x-deserialize-default-on-error": true}}},
@@ -146,6 +146,7 @@ const catchAllUnionSchema = `{"$defs": {
     {"type": "object", "required": ["stopReason"], "properties": {"stopReason": {"type": "string", "const": "done"}}},
     {"title": "none", "type": "object", "properties": {"stopReason": {"type": "null"}}}
   ]},
+  "Bag": {"type": "object", "additionalProperties": true},
   "Marked": {"type": "object", "required": ["marker"], "properties": {
     "marker": {"type": "null"}, "note": {"type": "string"}}},
   "State": {"anyOf": [
@@ -201,6 +202,8 @@ func TestCatchAllUnions_RoundTrip(t *testing.T) {
 		{func() any { return new(Items) }, ` + "`" + `{"type":"future","limit":2}` + "`" + `, ""},
 		{func() any { return new(Items) }, ` + "`" + `{"anyOf":["a","b"]}` + "`" + `, ""},
 		{func() any { return new(Problem) }, ` + "`" + `{"code":1,"data":{"k":"v"},"retry":true}` + "`" + `, ""},
+		{func() any { return new(Bag) }, ` + "`" + `{"a":1,"b":[true]}` + "`" + `, ""},
+		{func() any { return new(Bag) }, ` + "`" + `{}` + "`" + `, ""},
 		{func() any { return new(Marked) }, ` + "`" + `{"marker":null,"note":"n"}` + "`" + `, ""},
 		{func() any { return new(Marked) }, ` + "`" + `{"note":"n"}` + "`" + `, ` + "`" + `{"marker":null,"note":"n"}` + "`" + `},
 	}

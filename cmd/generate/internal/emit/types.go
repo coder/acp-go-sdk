@@ -234,7 +234,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			// Use the same implementation, but require exactly one variant
 			unionWrapper = true
 			b.emitUnion(name, def, def.OneOf, true, true)
-		case ir.PrimaryType(def) == "object" && len(def.Properties) > 0:
+		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || bool(def.AdditionalProperties)):
 			fields := ir.Fields(def.Properties, def.Required)
 			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), bool(def.AdditionalProperties))
 		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":

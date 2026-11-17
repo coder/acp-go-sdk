@@ -48,7 +48,7 @@ type harnessClient struct {
 	other  map[string]float64        // the same in other currencies, by "CUR session"
 	tokens map[acp.SessionId]acp.Usage
 	perms  []permission
-	misc   []string // client methods the agent called that this client does not offer
+	misc   []string // client methods the agent called that this client does not offer, with their scenario
 }
 
 var _ acp.Client = (*harnessClient)(nil)
@@ -197,12 +197,19 @@ func (c *harnessClient) totals() (map[acp.SessionId]acp.Usage, map[string]float6
 }
 
 // The client offers no file system and no terminal, so a well-behaved agent
-// never calls these. A call is recorded and refused.
+// never calls these. A call is recorded, with its scenario, and refused.
+// The no-refused-calls row fails on it.
 func (c *harnessClient) refuse(method string) error {
 	c.mu.Lock()
-	c.misc = append(c.misc, method)
+	c.misc = append(c.misc, method+" in "+c.h.rec.current())
 	c.mu.Unlock()
 	return fmt.Errorf("acpharness offers no %s", method)
+}
+
+func (c *harnessClient) refusedCalls() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.misc...)
 }
 
 func (c *harnessClient) ReadTextFile(context.Context, acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {

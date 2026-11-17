@@ -82,31 +82,49 @@ The Claude adapter reports a cumulative session cost in each `usage_update`. The
 
 ## Scenarios and pass predicates
 
-The driver plays an editor. Connection 1 creates session A for the plain turns and session B for the permission and cancel turns. Connections 2 and 3 are new agent processes that reopen session A, the way an editor does after a restart. The client offers no file system and no terminal, so the agent writes files itself. Each scenario prints one `PASS`, `FAIL` or `SKIP` line. A session method that the agent does not advertise in `initialize` is a `SKIP` with that reason.
+The driver plays an editor. Connection 1 creates session A for the plain turns and session B for the permission and cancel turns. Connections 2 and 3 are new agent processes that reopen session A, the way an editor does after a restart. The client offers no file system and no terminal, so the agent writes files itself. Each scenario prints one `PASS`, `FAIL` or `SKIP` line.
+
+Whether the agent advertises a session method or a model option comes from the raw JSON of its `initialize` and `session/new` results, as `transcript.jsonl` has them, and never from the SDK's decoded types, because those types are the code under test. When the SDK decodes a capability or a config option differently from the wire, the scenario is a `FAIL` with `decode mismatch`. A renamed JSON tag in the generated types then fails the run instead of skipping the method.
 
 | Scenario | Conn | Pass when |
 | --- | --- | --- |
 | `initialize` | 1 | The response has protocol version 1. The detail lists `agentInfo`, the auth methods and the session capabilities that the SDK decoded. |
-| `authenticate` | 1 | With `-auth`, the agent advertises that method and `authenticate` succeeds. Without `-auth`, it is a `SKIP`. |
+| `authenticate` | 1 | With `-auth`, the agent advertises that method and `authenticate` succeeds. Without `-auth`, it is a `SKIP` (`no -auth`). |
 | `session/new` | 1 | Session A gets a session id in its own empty cwd. |
 | `prompt` | 1 | Session A answers "Reply with exactly the single word pong" with `end_turn` and a reply that contains `pong`. |
-| `config-option` | 1 | The driver sets the `model` option to another model, runs a pong turn, sets it back and runs another. Each response reports the new value. Both pong turns end with `end_turn`, say `pong`, and name their model ids on the wire. The turn after the switch runs on a model id that the first turn did not use, and the turn after the switch back does not run on it. |
-| `permission-allow` | 1 | Session B, in the `-ask-mode` mode, asks to write `allow-check.txt`. At least one `session/request_permission` arrives, every request gets an `allow_*` option, and the file exists with its marker line afterwards. |
+| `config-option` | 1 | The `model` select option that the SDK decoded from `session/new` matches the wire: id, current value and every value in order. The driver sets the `model` option to another model, runs a pong turn, sets it back and runs another. Each response reports the new value. Both pong turns end with `end_turn`, say `pong`, and name their model ids on the wire. The turn after the switch runs on a model id that the first turn did not use, and the turn after the switch back does not run on it. |
+| `permission-allow` | 1 | Session B, in the `-ask-mode` mode (set through the `mode` select option when the wire has one, which must decode as it is on the wire), asks to write `allow-check.txt`. At least one `session/request_permission` arrives, every request gets an `allow_*` option, and the file exists with its marker line afterwards. |
 | `permission-reject` | 1 | The same with `reject-check.txt` and a `reject_*` option for every request. The file does not exist afterwards. Any stop reason passes. |
 | `cancel` | 1 | Session B starts a long essay. The driver sends `session/cancel` after the first streamed update, or after 90 s without one while the turn still runs. The turn ends with `cancelled` within 60 s of the cancel. The detail says which case happened. |
 | `session/list` | 1 | `session/list` for session A's cwd, through every page, contains session A. |
 | `session/close` | 1 | `session/close` for session A succeeds. |
-| `session/delete` | 1 | If the agent advertises `session/close`, closing session B succeeds. Then `session/delete` for it succeeds. If the agent lists sessions, session B is no longer in the list for its cwd. |
+| `session/delete` | 1 | If the agent advertises `session/close`, closing session B succeeds. Then `session/delete` for it succeeds, and session B is no longer in the `session/list` result for its cwd. When the agent does not advertise `session/list`, nothing confirms the delete, and the scenario is a `SKIP` (`not advertised`). |
 | `session/load` | 2 | A new process loads session A. Before the response, the agent replays user chunks and agent chunks, and the replayed agent text contains `pong`. The prompt itself says pong, so a replay of the user's chunks alone fails. |
 | `session/resume` | 3 | A new process resumes session A without a replay: no message chunk arrives before the first prompt. A turn that asks for "the single word you replied with" ends with `end_turn` and gets `pong`. |
 | `agent-exit` | all | Every agent process exits 0 within 10 s after the driver closes its stdin. |
 | `no-method-not-found` | all | The SDK logged no "Method not found" (`-32601`) and sent no `-32601` reply to the agent. |
 | `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, and sent no `-32602` or `-32700` reply. |
 | `no-agent-errors` | all | The agent sent no JSON-RPC error response, including one that the SDK drops because no request waits for it. |
+| `no-refused-calls` | all | The agent called no `fs/*` or `terminal/*` method. The client offers neither, so it refuses such a call, and `summary.json` lists it under `refusedCalls`. |
+| `known-skips` | all | Every `SKIP` has one of the documented reasons below. |
 
 The model switch never picks a lesser model. It takes the first option, in the agent's order, that is not the current value, not `default`, not named in the current option's name or description (Claude's `default` says `Opus`, so `opus` is an alias), and has no word such as `legacy`, `older`, `fast`, `affordable` or `efficient` in its name or description. `pickSwitchTarget` in `scripts/acpharness/scenarios.go` holds the rule.
 
 A failed scenario is a result. Report it with its evidence. Do not change a prompt or a predicate until the scenario passes, and do not hide a known failure.
+
+### Skip reasons
+
+A `SKIP` detail starts with its reason. These are the documented reasons:
+
+| Reason | Scenarios | When |
+| --- | --- | --- |
+| `no -auth` | `authenticate` | The adapter table gives the adapter no `-auth` flag (claude). |
+| `not advertised` | `session/list`, `session/close`, `session/delete`, `session/load`, `session/resume` | The raw `initialize` result lacks the capability, or has it as `null` or `false`. `session/delete` also skips after a successful delete when the agent does not advertise `session/list`, because nothing confirms the delete. |
+| `no model option` | `config-option` | The raw `session/new` result has no select option with category or id `model`. |
+| `no other model` | `config-option` | Every other model is the current one, an alias of it or a lesser model, by the rule above. |
+| `not selected by -only` | all but `initialize`, `authenticate` and `session/new` | The driver's `-only` list left the scenario out. |
+
+Any other `SKIP` fails `known-skips`, so the run exits 1: a scenario blocked by an earlier failure (`blocked: ...`), or a scenario that the budget stopped (`budget: ...`).
 
 To rerun some scenarios, run the driver directly with `-only`. It rejects a name that is not a scenario of the profile. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and a scenario that needs the state of a skipped one can fail. For example, `config-option` without `prompt` has no model to compare with:
 

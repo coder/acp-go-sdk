@@ -57,6 +57,11 @@ type recorder struct {
 	// Agent requests per connection, and the SDK's replies to them.
 	requested map[int]int
 	answered  map[int]int
+	// Client requests that wait for a response, by connection and id, and
+	// the raw result of the last response to each method, which
+	// advertised.go compares with what the SDK decoded.
+	sent    map[int]map[string]string
+	results map[int]map[string]json.RawMessage
 }
 
 func newRecorder(dir string) (*recorder, error) {
@@ -65,7 +70,7 @@ func newRecorder(dir string) (*recorder, error) {
 		return nil, err
 	}
 	r := &recorder{start: time.Now(), transcript: f, inbound: map[string]int{}, notified: map[int]int{}, handled: map[int]int{},
-		requested: map[int]int{}, answered: map[int]int{}}
+		requested: map[int]int{}, answered: map[int]int{}, sent: map[int]map[string]string{}, results: map[int]map[string]json.RawMessage{}}
 	r.scenario.Store("setup")
 	return r, nil
 }
@@ -80,6 +85,7 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 	var msg struct {
 		ID     json.RawMessage `json:"id"`
 		Method string          `json:"method"`
+		Result json.RawMessage `json:"result"`
 		Error  *struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
@@ -111,6 +117,23 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 	if dir == clientToAgent && msg.Method == "" && len(msg.ID) > 0 {
 		r.answered[conn]++
 	}
+	if dir == clientToAgent && msg.Method != "" && len(msg.ID) > 0 {
+		if r.sent[conn] == nil {
+			r.sent[conn] = map[string]string{}
+		}
+		r.sent[conn][string(msg.ID)] = msg.Method
+	}
+	if dir == agentToClient && msg.Method == "" && len(msg.ID) > 0 {
+		if method, ok := r.sent[conn][string(msg.ID)]; ok {
+			delete(r.sent[conn], string(msg.ID))
+			if len(msg.Result) > 0 {
+				if r.results[conn] == nil {
+					r.results[conn] = map[string]json.RawMessage{}
+				}
+				r.results[conn][method] = msg.Result
+			}
+		}
+	}
 	// The SDK drops an error response whose request no longer waits, so
 	// every error response from the agent is recorded here.
 	if dir == agentToClient && msg.Method == "" && msg.Error != nil {
@@ -130,6 +153,15 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 			r.findings = append(r.findings, finding{Kind: kind, Source: "sdk-reply", Conn: conn, Scenario: r.current(), Text: string(raw)})
 		}
 	}
+}
+
+// result returns the raw result of the last response to method on conn, or
+// nil when none arrived. The forwarder records each agent line before the
+// SDK reads it, so the result is here once the SDK call returns.
+func (r *recorder) result(conn int, method string) json.RawMessage {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.results[conn][method]
 }
 
 // classify returns the global-predicate kind of an SDK log text, or "".
@@ -282,7 +314,10 @@ type agentConn struct {
 	waitErr error
 	ended   string // how close ended the agent; empty while it runs
 	rec     *recorder
-	init    acp.InitializeResponse // set by reconnect
+	// The initialize result as the SDK decoded it and as it crossed the
+	// wire. Scenarios decide what the agent advertises from raw.
+	init    acp.InitializeResponse
+	rawInit json.RawMessage
 }
 
 // startAgent starts the agent command in its own process group, so that

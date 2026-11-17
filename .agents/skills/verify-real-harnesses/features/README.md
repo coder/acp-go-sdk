@@ -20,7 +20,8 @@ This folder lists what the live gates prove about the ACP Go SDK as a client of 
 
 - A G5 proof is the label's `result.txt`, `transcript.jsonl`, `sdk.log` and `agent-<conn>.stderr.log`. `summary.json` has the models, cost and permission answers.
 - A failed scenario is a failure, also when the skill's known results predict it. Report it with its evidence.
-- A `SKIP` names its reason: the agent does not advertise the method, an earlier scenario failed, `-only` left it out, or the budget ran out. A budget skip is not a pass.
+- A `SKIP` detail starts with its reason. SKILL.md lists the documented reasons, and the `known-skips` row fails the run on any other, such as a scenario blocked by an earlier failure or stopped by the budget. A budget skip is not a pass.
+- What the agent advertises comes from the raw `initialize` and `session/new` results, not from the SDK's decoded types. A `decode mismatch` failure means that the SDK read the wire wrong, which is a finding against the SDK, not a reason to skip.
 
 ## Feature entry contract
 

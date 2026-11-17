@@ -35,7 +35,7 @@ Steps:
 
 ## Gotchas
 
-- `initialize` shows only the capabilities that the SDK decodes. An agent can advertise more, such as `sessionCapabilities.status` from a newer schema. Read the raw response in `transcript.jsonl` to see them.
+- The `initialize` line shows only the capabilities that the SDK decodes. An agent can advertise more, such as `sessionCapabilities.status` from a newer schema. Read the raw response in `transcript.jsonl` to see them. The session scenarios decide from that raw response, so a capability that the SDK loses is a `decode mismatch` failure, not a skip.
 - Codex needs no `authenticate` when `config.toml` names a model provider, but the adapter table sends it anyway, so the gate covers the method.
 - `session/delete` deletes session B after `session/close`, while `session/close` closes session A. Session A must stay on disk for `session/load` and `session/resume`.
 - codex-acp compares the `session/list` cwd filter to the real path of each session's cwd. The driver resolves symlinks in `-cwd`. A cwd that goes through a symlink lists nothing.

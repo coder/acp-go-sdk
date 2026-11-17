@@ -114,7 +114,7 @@ func (h *harness) connect() (*agentConn, bool) {
 		if err != nil {
 			return fail, "initialize: " + errText(err)
 		}
-		h.init = resp
+		h.init, a.init, a.rawInit = resp, resp, h.rec.result(a.n, "initialize")
 		if resp.ProtocolVersion != acp.ProtocolVersionNumber {
 			return fail, fmt.Sprintf("protocolVersion %d, want %d", resp.ProtocolVersion, acp.ProtocolVersionNumber)
 		}
@@ -125,7 +125,7 @@ func (h *harness) connect() (*agentConn, bool) {
 	}
 	h.step("authenticate", func() (status, string) {
 		if h.opts.auth == "" {
-			return skip, "agent needs no authentication here (no -auth method for this adapter)"
+			return skip, skipNoAuth + ": this adapter runs without -auth, so the driver does not authenticate"
 		}
 		ids := authIDs(h.init.AuthMethods)
 		if !contains(ids, h.opts.auth) {
@@ -154,7 +154,7 @@ func (h *harness) reconnect() (*agentConn, error) {
 	if err != nil {
 		return a, fmt.Errorf("initialize on connection %d: %s", a.n, errText(err))
 	}
-	a.init = resp
+	a.init, a.rawInit = resp, h.rec.result(a.n, "initialize")
 	if resp.ProtocolVersion != acp.ProtocolVersionNumber {
 		return a, fmt.Errorf("initialize on connection %d: protocolVersion %d, want %d", a.n, resp.ProtocolVersion, acp.ProtocolVersionNumber)
 	}
@@ -186,6 +186,7 @@ func (h *harness) newSession(a *agentConn, name string) (status, string) {
 	h.sessions[name] = resp.SessionId
 	h.cwds[name] = cwd
 	h.configs[name] = resp.ConfigOptions
+	h.newResults[name] = h.rec.result(a.n, "session/new")
 	h.modes[name] = resp.Modes
 	return pass, fmt.Sprintf("session %s %s; config options: %s", name, resp.SessionId, describeOptions(resp.ConfigOptions))
 }
@@ -282,14 +283,17 @@ func (h *harness) switchModel(a *agentConn) (status, string) {
 	if !ok {
 		return skip, "blocked: session/new failed"
 	}
-	sel := findSelect(h.configs["A"], acp.SessionConfigOptionCategoryModel, "model")
+	sel, err := configSelect(h.newResults["A"], h.configs["A"], acp.SessionConfigOptionCategoryModel, "model")
+	if err != nil {
+		return fail, "session/new: " + err.Error()
+	}
 	if sel == nil {
-		return skip, "session/new offered no model config option"
+		return skip, skipNoModelOption + ": session/new on the wire offered no select option with category or id model"
 	}
 	orig := sel.CurrentValue
 	target, why := pickSwitchTarget(sel)
 	if target == "" {
-		return skip, "no other model to switch to: " + why
+		return skip, skipNoOtherModel + ": " + why
 	}
 	if err := h.setOption(a, sid, sel.Id, target); err != nil {
 		return fail, fmt.Sprintf("set %s to %s: %v", sel.Id, target, err)
@@ -384,7 +388,11 @@ func (h *harness) ensureB(a *agentConn) (acp.SessionId, error) {
 	if h.opts.askMode == "" {
 		return sid, nil
 	}
-	if sel := findSelect(h.configs["B"], acp.SessionConfigOptionCategoryMode, "mode"); sel != nil {
+	sel, err := configSelect(h.newResults["B"], h.configs["B"], acp.SessionConfigOptionCategoryMode, "mode")
+	if err != nil {
+		return "", err
+	}
+	if sel != nil {
 		if err := h.setOption(a, sid, sel.Id, acp.SessionConfigValueId(h.opts.askMode)); err != nil {
 			return "", fmt.Errorf("set mode %s: %v", h.opts.askMode, err)
 		}
@@ -517,8 +525,8 @@ wait:
 }
 
 func (h *harness) listSessions(a *agentConn) (status, string) {
-	if h.init.AgentCapabilities.SessionCapabilities.List == nil {
-		return skip, "agent does not advertise sessionCapabilities.list"
+	if st, detail := need(a, capList); st != "" {
+		return st, detail
 	}
 	sid, ok := h.sessions["A"]
 	if !ok {
@@ -559,8 +567,8 @@ func listContains(a *agentConn, cwd string, sid acp.SessionId) (bool, int, error
 }
 
 func (h *harness) closeSession(a *agentConn) (status, string) {
-	if h.init.AgentCapabilities.SessionCapabilities.Close == nil {
-		return skip, "agent does not advertise sessionCapabilities.close"
+	if st, detail := need(a, capClose); st != "" {
+		return st, detail
 	}
 	sid, ok := h.sessions["A"]
 	if !ok {
@@ -575,9 +583,19 @@ func (h *harness) closeSession(a *agentConn) (status, string) {
 }
 
 func (h *harness) deleteSession(a *agentConn) (status, string) {
-	caps := h.init.AgentCapabilities.SessionCapabilities
-	if caps.Delete == nil {
-		return skip, "agent does not advertise sessionCapabilities.delete"
+	if st, detail := need(a, capDelete); st != "" {
+		return st, detail
+	}
+	// The delete depends on close and list. Each one's wire truth decides,
+	// and a decode mismatch fails here too, so the list check is never
+	// dropped because the SDK lost the capability.
+	canClose, err := a.advertises(capClose)
+	if err != nil {
+		return fail, err.Error()
+	}
+	canList, err := a.advertises(capList)
+	if err != nil {
+		return fail, err.Error()
 	}
 	sid, ok := h.sessions["B"]
 	if !ok {
@@ -585,7 +603,7 @@ func (h *harness) deleteSession(a *agentConn) (status, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-	if caps.Close != nil {
+	if canClose {
 		if _, err := a.conn.CloseSession(ctx, acp.CloseSessionRequest{SessionId: sid}); err != nil {
 			return fail, "session/close of B before the delete: " + errText(err)
 		}
@@ -593,8 +611,8 @@ func (h *harness) deleteSession(a *agentConn) (status, string) {
 	if _, err := a.conn.UnstableDeleteSession(ctx, acp.UnstableDeleteSessionRequest{SessionId: sid}); err != nil {
 		return fail, "session/delete: " + errText(err)
 	}
-	if caps.List == nil {
-		return pass, "deleted session B; no session/list to confirm"
+	if !canList {
+		return skip, skipNotAdvertised + ": deleted session B, but the initialize result on the wire has no " + capList.path + ", so nothing confirms the delete"
 	}
 	found, n, err := listContains(a, h.cwds["B"], sid)
 	switch {
@@ -609,8 +627,8 @@ func (h *harness) deleteSession(a *agentConn) (status, string) {
 // loadSession reopens session A in a new agent process and expects the
 // agent to replay the conversation before it answers.
 func (h *harness) loadSession() (status, string) {
-	if !h.init.AgentCapabilities.LoadSession {
-		return skip, "agent does not advertise loadSession"
+	if st, detail := need(h.conns[0], capLoadSession); st != "" {
+		return st, detail
 	}
 	sid, ok := h.sessions["A"]
 	if !ok {
@@ -625,7 +643,11 @@ func (h *harness) loadSession() (status, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-	if !b.init.AgentCapabilities.LoadSession {
+	on, err := b.advertises(capLoadSession)
+	switch {
+	case err != nil:
+		return fail, err.Error()
+	case !on:
 		return fail, fmt.Sprintf("connection %d does not advertise loadSession, though connection 1 did", b.n)
 	}
 	if _, err := b.conn.LoadSession(ctx, acp.LoadSessionRequest{SessionId: sid, Cwd: h.cwds["A"], McpServers: []acp.McpServer{}}); err != nil {
@@ -662,9 +684,8 @@ func replayProblem(evs []event) string {
 // resumeSession reopens session A in a new agent process without a replay
 // and asks the agent what it said before.
 func (h *harness) resumeSession() (status, string) {
-	caps := h.init.AgentCapabilities.SessionCapabilities
-	if caps.Resume == nil {
-		return skip, "agent does not advertise sessionCapabilities.resume"
+	if st, detail := need(h.conns[0], capResume); st != "" {
+		return st, detail
 	}
 	sid, ok := h.sessions["A"]
 	if !ok {
@@ -679,7 +700,11 @@ func (h *harness) resumeSession() (status, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-	if c.init.AgentCapabilities.SessionCapabilities.Resume == nil {
+	on, err := c.advertises(capResume)
+	switch {
+	case err != nil:
+		return fail, err.Error()
+	case !on:
 		return fail, fmt.Sprintf("connection %d does not advertise sessionCapabilities.resume, though connection 1 did", c.n)
 	}
 	if _, err := c.conn.ResumeSession(ctx, acp.ResumeSessionRequest{SessionId: sid, Cwd: h.cwds["A"]}); err != nil {
@@ -695,7 +720,8 @@ func (h *harness) resumeSession() (status, string) {
 		}
 	}
 	t := h.prompt(c, sid, recallPrompt)
-	if caps.Close != nil {
+	// Cleanup only: the session/close scenario reports a decode mismatch.
+	if on, _ := c.advertises(capClose); on {
 		_, _ = c.conn.CloseSession(ctx, acp.CloseSessionRequest{SessionId: sid})
 	}
 	detail := fmt.Sprintf("connection %d, %d updates and %d message chunks before the first prompt; recall turn: %s", c.n, replayed, messages, t.describe())

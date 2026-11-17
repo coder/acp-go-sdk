@@ -39,6 +39,38 @@ const (
 	skip status = "SKIP"
 )
 
+// The documented reasons for a SKIP. Each SKIP detail starts with one, and
+// SKILL.md lists them all. A SKIP for any other reason, such as a scenario
+// blocked by an earlier failure or by the budget, fails the known-skips row.
+const (
+	skipNotSelected   = "not selected by -only"
+	skipNoAuth        = "no -auth"
+	skipNotAdvertised = "not advertised"
+	skipNoModelOption = "no model option"
+	skipNoOtherModel  = "no other model"
+)
+
+var knownSkips = []string{skipNotSelected, skipNoAuth, skipNotAdvertised, skipNoModelOption, skipNoOtherModel}
+
+// undocumentedSkips returns each SKIP whose detail does not start with a
+// documented reason, as "name (detail)".
+func undocumentedSkips(results []result) []string {
+	var out []string
+next:
+	for _, r := range results {
+		if r.Status != skip {
+			continue
+		}
+		for _, reason := range knownSkips {
+			if r.Detail == reason || strings.HasPrefix(r.Detail, reason+": ") {
+				continue next
+			}
+		}
+		out = append(out, fmt.Sprintf("%s (%s)", r.Name, clip(r.Detail, 120)))
+	}
+	return out
+}
+
 type result struct {
 	Name   string `json:"name"`
 	Status status `json:"status"`
@@ -73,6 +105,7 @@ type harness struct {
 	sessions      map[string]acp.SessionId
 	cwds          map[string]string
 	configs       map[string][]acp.SessionConfigOption
+	newResults    map[string]json.RawMessage // raw session/new results, the wire truth for configs
 	modes         map[string]*acp.SessionModeState
 }
 
@@ -143,15 +176,16 @@ func newHarness(o options) (*harness, error) {
 		return nil, err
 	}
 	return &harness{
-		opts:     o,
-		rec:      rec,
-		sdkLog:   slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}),
-		sdkFile:  logFile,
-		models:   map[string]bool{},
-		sessions: map[string]acp.SessionId{},
-		cwds:     map[string]string{},
-		configs:  map[string][]acp.SessionConfigOption{},
-		modes:    map[string]*acp.SessionModeState{},
+		opts:       o,
+		rec:        rec,
+		sdkLog:     slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		sdkFile:    logFile,
+		models:     map[string]bool{},
+		sessions:   map[string]acp.SessionId{},
+		cwds:       map[string]string{},
+		configs:    map[string][]acp.SessionConfigOption{},
+		newResults: map[string]json.RawMessage{},
+		modes:      map[string]*acp.SessionModeState{},
 	}, nil
 }
 
@@ -167,7 +201,7 @@ func (h *harness) step(name string, fn func() (status, string)) status {
 	var detail string
 	switch {
 	case h.opts.only != nil && !h.opts.only[name] && !setupSteps[name]:
-		st, detail = skip, "not selected by -only"
+		st, detail = skip, skipNotSelected
 	case h.budgetHit || h.cost() >= h.opts.budget:
 		h.budgetHit = true
 		st, detail = skip, fmt.Sprintf("budget: reported cost $%.2f reached -budget-usd %.2f", h.cost(), h.opts.budget)
@@ -229,16 +263,30 @@ func (h *harness) finish() int {
 	h.globalStep("no-method-not-found", methodNotFound, findings)
 	h.globalStep("no-decode-errors", decodeError, findings)
 	h.globalStep("no-agent-errors", agentError, findings)
+	var refused []string
+	for _, a := range h.conns {
+		refused = append(refused, a.client.refusedCalls()...)
+	}
+	if len(refused) == 0 {
+		h.row("no-refused-calls", pass, "the agent called no file system or terminal method, which the client does not offer")
+	} else {
+		h.row("no-refused-calls", fail, fmt.Sprintf("the agent called %d method(s) that the client does not offer: %s",
+			len(refused), clip(strings.Join(refused, ", "), 240)))
+	}
+	if odd := undocumentedSkips(h.results); len(odd) == 0 {
+		h.row("known-skips", pass, "every SKIP has a reason that SKILL.md lists")
+	} else {
+		h.row("known-skips", fail, fmt.Sprintf("%d SKIP(s) for a reason that SKILL.md does not list: %s",
+			len(odd), strings.Join(odd, "; ")))
+	}
 
 	var perms []permission
-	var refused []string
 	// A session reopened on a later connection reports the same cumulative
 	// usage again, so usage merges by session before it adds up.
 	usage := map[acp.SessionId]acp.Usage{}
 	other := map[string]float64{}
 	for _, a := range h.conns {
 		perms = append(perms, a.client.permissionsSince(0)...)
-		refused = append(refused, a.client.misc...)
 		u, o := a.client.totals()
 		for sid, t := range u {
 			m := usage[sid]

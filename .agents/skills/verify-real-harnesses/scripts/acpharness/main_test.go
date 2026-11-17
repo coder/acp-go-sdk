@@ -232,3 +232,145 @@ func TestProfiles_MatchTheScenariosThatRun(t *testing.T) {
 		}
 	}
 }
+
+func TestRecorder_KeepsTheRawResultOfEachMethod(t *testing.T) {
+	r, err := newRecorder(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.line(1, clientToAgent, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+	r.line(2, clientToAgent, []byte(`{"jsonrpc":"2.0","id":1,"method":"session/new","params":{}}`))
+	r.line(1, agentToClient, []byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}`))
+	r.line(2, agentToClient, []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"boom"}}`))
+	if got := string(r.result(1, "initialize")); got != `{"protocolVersion":1}` {
+		t.Fatalf("initialize result on conn 1 = %q", got)
+	}
+	if got := r.result(2, "session/new"); got != nil {
+		t.Fatalf("an error response left a result: %q", got)
+	}
+}
+
+// decodeInit decodes a raw initialize result with the SDK, as the driver
+// does.
+func decodeInit(t *testing.T, raw string) acp.InitializeResponse {
+	t.Helper()
+	var r acp.InitializeResponse
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		t.Fatalf("decode initialize: %v", err)
+	}
+	return r
+}
+
+// TestAdvertises_DecidesByTheWire covers the bug that a probe found: with
+// the generated JSON tag of SessionCapabilities.List renamed, the SDK
+// decodes list as absent, and session/list must fail, not skip.
+func TestAdvertises_DecidesByTheWire(t *testing.T) {
+	const withList = `{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"sessionCapabilities":{"list":{},"close":{}}}}`
+	const without = `{"protocolVersion":1,"agentCapabilities":{"loadSession":false,"sessionCapabilities":{"list":null}}}`
+	lostList := decodeInit(t, withList)
+	lostList.AgentCapabilities.SessionCapabilities.List = nil
+	inventedList := decodeInit(t, without)
+	inventedList.AgentCapabilities.SessionCapabilities.List = &acp.SessionListCapabilities{}
+	lostLoad := decodeInit(t, withList)
+	lostLoad.AgentCapabilities.LoadSession = false
+
+	cases := []struct {
+		name    string
+		raw     string
+		decoded acp.InitializeResponse
+		c       capability
+		want    status
+	}{
+		{"advertised and decoded", withList, decodeInit(t, withList), capList, ""},
+		{"null on the wire", without, decodeInit(t, without), capList, skip},
+		{"missing on the wire", without, decodeInit(t, without), capResume, skip},
+		{"loadSession false", without, decodeInit(t, without), capLoadSession, skip},
+		{"SDK lost list", withList, lostList, capList, fail},
+		{"SDK invented list", without, inventedList, capList, fail},
+		{"SDK lost loadSession", withList, lostLoad, capLoadSession, fail},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &agentConn{n: 1, init: tc.decoded, rawInit: json.RawMessage(tc.raw)}
+			st, detail := need(a, tc.c)
+			if st != tc.want {
+				t.Fatalf("need(%s) = %q %q, want %q", tc.c.path, st, detail, tc.want)
+			}
+			if st == fail && !strings.Contains(detail, "decode mismatch") {
+				t.Fatalf("a FAIL without a decode mismatch: %s", detail)
+			}
+			if st == skip && !strings.HasPrefix(detail, skipNotAdvertised+": ") {
+				t.Fatalf("a SKIP without the documented reason: %s", detail)
+			}
+		})
+	}
+	if st, _ := need(&agentConn{n: 1}, capList); st != fail {
+		t.Fatalf("no recorded initialize result gave %q, want FAIL", st)
+	}
+}
+
+func TestConfigSelect_ComparesTheWireWithTheDecodedOption(t *testing.T) {
+	decodeNew := func(raw string) []acp.SessionConfigOption {
+		var r acp.NewSessionResponse
+		if err := json.Unmarshal([]byte(raw), &r); err != nil {
+			t.Fatalf("decode session/new: %v", err)
+		}
+		return r.ConfigOptions
+	}
+	codex := `{"sessionId":"s","configOptions":[` + codexModels + `]}`
+	grouped := `{"sessionId":"s","configOptions":[{"id":"model","name":"Model","type":"select","currentValue":"a","options":[
+		{"group":"g1","name":"One","options":[{"value":"a","name":"A"},{"value":"b","name":"B"}]},
+		{"group":"g2","name":"Two","options":[{"value":"c","name":"C"}]}]}]}`
+	none := `{"sessionId":"s","configOptions":[{"id":"fast","name":"Fast","type":"boolean","currentValue":false}]}`
+
+	if sel, err := configSelect(json.RawMessage(codex), decodeNew(codex), acp.SessionConfigOptionCategoryModel, "model"); err != nil || sel == nil || sel.CurrentValue != "gpt-6.1-sol" {
+		t.Fatalf("codex options: %v, %v", sel, err)
+	}
+	if sel, err := configSelect(json.RawMessage(grouped), decodeNew(grouped), acp.SessionConfigOptionCategoryModel, "model"); err != nil || len(selectOptions(sel)) != 3 {
+		t.Fatalf("grouped options: %v, %v", sel, err)
+	}
+	if sel, err := configSelect(json.RawMessage(none), decodeNew(none), acp.SessionConfigOptionCategoryModel, "model"); err != nil || sel != nil {
+		t.Fatalf("no model option: %v, %v", sel, err)
+	}
+
+	lost := decodeNew(codex)
+	lost[0].Select = nil
+	noValues := decodeNew(codex)
+	noValues[0].Select.Options = acp.SessionConfigSelectOptions{}
+	for name, cfg := range map[string][]acp.SessionConfigOption{"SDK lost the option": lost, "SDK lost its values": noValues} {
+		if _, err := configSelect(json.RawMessage(codex), cfg, acp.SessionConfigOptionCategoryModel, "model"); err == nil || !strings.Contains(err.Error(), "decode mismatch") {
+			t.Errorf("%s: err %v, want a decode mismatch", name, err)
+		}
+	}
+}
+
+func TestUndocumentedSkips_FlagsEveryOtherReason(t *testing.T) {
+	results := []result{
+		{Name: "initialize", Status: pass},
+		{Name: "authenticate", Status: skip, Detail: skipNoAuth + ": this adapter runs without -auth"},
+		{Name: "cancel", Status: skip, Detail: skipNotSelected},
+		{Name: "session/list", Status: skip, Detail: skipNotAdvertised + ": no list"},
+		{Name: "config-option", Status: skip, Detail: skipNoOtherModel + ": current x"},
+		{Name: "prompt", Status: skip, Detail: "blocked: session/new failed"},
+		{Name: "session/load", Status: skip, Detail: "budget: reported cost $25.00 reached -budget-usd 25.00"},
+		{Name: "session/close", Status: skip, Detail: "not advertisedx"},
+	}
+	got := undocumentedSkips(results)
+	if len(got) != 3 || !strings.HasPrefix(got[0], "prompt ") || !strings.HasPrefix(got[1], "session/load ") || !strings.HasPrefix(got[2], "session/close ") {
+		t.Fatalf("undocumentedSkips = %v, want prompt, session/load and session/close", got)
+	}
+}
+
+// TestKnownSkips_AreDocumented keeps SKILL.md's list of SKIP reasons in
+// step with the driver's.
+func TestKnownSkips_AreDocumented(t *testing.T) {
+	doc, err := os.ReadFile("../../SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reason := range knownSkips {
+		if !strings.Contains(string(doc), "`"+reason+"`") {
+			t.Errorf("SKILL.md does not list the SKIP reason `%s`", reason)
+		}
+	}
+}

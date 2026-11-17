@@ -139,6 +139,12 @@ func checkHint(site hintSite) (skip, problem string) {
 	var input, want []byte
 	switch site.hint {
 	case "x-deserialize-default-on-error":
+		// The value with a good property must be schema-valid, so that a
+		// bad value is what makes it invalid.
+		good, ok := instanceGen{defs: site.file.defs}.value(site.schema, 1, -1)
+		if !ok || site.file.validate(site.def, with(good)) != nil {
+			return "no schema-valid instance with the property set", ""
+		}
 		bad, ok := invalid(with)
 		if !ok {
 			return "the property accepts every tried value", ""
@@ -176,7 +182,17 @@ func checkHint(site hintSite) (skip, problem string) {
 	if diffs := append(c.lost, c.unknown...); len(diffs) > 0 {
 		return "", fmt.Sprintf("decoded %s differently from %s: %s", oneLine(string(input), 160), oneLine(string(want), 160), describe(diffs))
 	}
+	// compareJSON counts null as absent, so check that null was not kept.
+	if site.hint == "x-deserialize-default-on-null" && isNullMember(got, site.prop) && !isNullMember(expected, site.prop) {
+		return "", fmt.Sprintf("decoded %s and kept %s as null", oneLine(string(input), 160), site.prop)
+	}
 	return "", ""
+}
+
+// isNullMember reports whether the JSON object doc has prop set to null.
+func isNullMember(doc []byte, prop string) bool {
+	var m map[string]json.RawMessage
+	return json.Unmarshal(doc, &m) == nil && string(m[prop]) == "null"
 }
 
 func decodeEncode(def string, data []byte) ([]byte, error) {
@@ -216,5 +232,52 @@ func TestFindHints_KeepsEachSchemaFile(t *testing.T) {
 	}}
 	if got := len(findHints(s)); got != 2 {
 		t.Errorf("findHints found %d sites, want one per schema file (2)", got)
+	}
+}
+
+func TestCheckHint(t *testing.T) {
+	f, err := newSchemaFile("test", "test.json", []byte(`{"$defs": {
+		"N": {"type": "object", "properties": {
+			"p": {"type": ["string", "null"], "x-deserialize-default-on-null": true}}},
+		"E": {"type": "object", "required": ["name"], "properties": {
+			"name": {"type": "string", "minLength": 20},
+			"p": {"type": "string", "x-deserialize-default-on-error": true}}}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type keepsNull struct {
+		P json.RawMessage `json:"p,omitempty"`
+	}
+	type readsNullAsAbsent struct {
+		P *string `json:"p,omitempty"`
+	}
+	type plain struct {
+		Name string `json:"name"`
+		P    string `json:"p,omitempty"`
+	}
+	sites := map[string]hintSite{}
+	for _, site := range findHints(&suite{files: []*schemaFile{f}}) {
+		sites[site.def] = site
+	}
+	for _, tc := range []struct {
+		name, def   string
+		sdkType     func() any
+		skip, fails bool
+	}{
+		{"null kept as null", "N", func() any { return new(keepsNull) }, false, true},
+		{"null read as absent", "N", func() any { return new(readsNullAsAbsent) }, false, false},
+		{"no schema-valid baseline", "E", func() any { return new(plain) }, true, false},
+	} {
+		saved, had := registry[tc.def]
+		registry[tc.def] = tc.sdkType
+		skip, problem := checkHint(sites[tc.def])
+		if had {
+			registry[tc.def] = saved
+		} else {
+			delete(registry, tc.def)
+		}
+		if (skip != "") != tc.skip || (problem != "") != tc.fails {
+			t.Errorf("%s: checkHint = skip %q, problem %q; want skip %v, fails %v", tc.name, skip, problem, tc.skip, tc.fails)
+		}
 	}
 }

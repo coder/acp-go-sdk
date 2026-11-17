@@ -77,9 +77,9 @@ For each value the test decodes it into the def's SDK type, calls its `Validate`
 
 `TestHints` finds each property that carries a hint, in a def or in one of its top-level alternatives, in each schema file (a def that both files share is checked once per file, because the files can define it differently), and builds a value of the def around it:
 
-- `x-deserialize-default-on-error`: the property gets the first of `"malformed"`, `12345`, `true`, `{"malformed":true}`, `["malformed"]` that the schema rejects. The SDK must decode it without an error, to the same JSON as the value without the property.
+- `x-deserialize-default-on-error`: the value with a good property must be schema-valid, else the site is skipped. Then the property gets the first of `"malformed"`, `12345`, `true`, `{"malformed":true}`, `["malformed"]` that the schema rejects. The SDK must decode it without an error, to the same JSON as the value without the property.
 - `x-deserialize-skip-invalid-items`: the array gets one good item and one bad one. The SDK must decode it to the same JSON as the array with the good item only.
-- `x-deserialize-default-on-null` (schema 1.27.0 and later): the property is `null`. The SDK must decode it to the same JSON as the value without the property.
+- `x-deserialize-default-on-null` (schema 1.27.0 and later): the property is `null`. The SDK must decode it to the same JSON as the value without the property, and must not write the property back as `null` unless it does so for the value without it too.
 
 A schema without hints logs `SUMMARY hints: no hints in this schema`.
 

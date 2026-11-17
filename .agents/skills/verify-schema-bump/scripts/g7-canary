@@ -74,8 +74,9 @@ for repo in "$@"; do
 			while [ ! -f "$m/go.mod" ] && [ "$m" != / ]; do m=$(dirname "$m"); done
 			if [ "$m" = "$mdir" ] || [ "$m" = "$mdir/." ]; then pkgs+=("./$d"); fi
 		done < <(git -C "$mdir" grep -l -E "\"$sdk(/[^\"]*)?\"" -- '*.go' ':!*_test.go' | xargs -r -n1 dirname | sort -u)
-		names=$(git -C "$mdir" grep -h -o -E "^[[:space:]]*[A-Za-z0-9_]*[[:space:]]*\"$sdk\"" -- '*.go' |
-			awk 'NF == 2 { print $1 }' | sort -u | paste -sd'|' -)
+		# Import names of the SDK; none (a dot import, a subpackage) is fine.
+		names=$({ git -C "$mdir" grep -h -o -E "^[[:space:]]*[A-Za-z0-9_]*[[:space:]]*\"$sdk\"" -- '*.go' || true; } |
+			awk 'NF == 2 && $1 != "import" { print $1 }' | sort -u | paste -sd'|' -)
 		names=${names:+$names|}acp
 		status=ok
 		if [ ${#pkgs[@]} -gt 0 ]; then

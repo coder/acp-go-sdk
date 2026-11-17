@@ -71,30 +71,12 @@ func loadSuite() (*suite, error) {
 		if err != nil {
 			return nil, err
 		}
-		dec := json.NewDecoder(bytes.NewReader(b))
-		dec.UseNumber()
-		var raw struct {
-			Defs map[string]any `json:"$defs"`
-		}
-		if err := dec.Decode(&raw); err != nil {
-			return nil, fmt.Errorf("%s: %w", f.file, err)
-		}
-		doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(b))
+		sf, err := newSchemaFile(f.name, f.file, b)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", f.file, err)
-		}
-		sf := &schemaFile{
-			name:     f.name,
-			url:      "file:///" + f.file,
-			defs:     raw.Defs,
-			compiler: jsonschema.NewCompiler(),
-			compiled: map[string]*jsonschema.Schema{},
-		}
-		if err := sf.compiler.AddResource(sf.url, doc); err != nil {
 			return nil, err
 		}
 		s.files = append(s.files, sf)
-		for def, node := range raw.Defs {
+		for def, node := range sf.defs {
 			m, _ := node.(map[string]any)
 			method, _ := m["x-method"].(string)
 			for _, kind := range []string{"Request", "Response", "Notification"} {
@@ -108,6 +90,33 @@ func loadSuite() (*suite, error) {
 		}
 	}
 	return s, nil
+}
+
+// newSchemaFile parses one schema document named file.
+func newSchemaFile(name, file string, b []byte) (*schemaFile, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var raw struct {
+		Defs map[string]any `json:"$defs"`
+	}
+	if err := dec.Decode(&raw); err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
+	}
+	sf := &schemaFile{
+		name:     name,
+		url:      "file:///" + file,
+		defs:     raw.Defs,
+		compiler: jsonschema.NewCompiler(),
+		compiled: map[string]*jsonschema.Schema{},
+	}
+	if err := sf.compiler.AddResource(sf.url, doc); err != nil {
+		return nil, err
+	}
+	return sf, nil
 }
 
 // validate checks data against $defs/def. It returns a one-line error.

@@ -9,7 +9,8 @@
 # Each repo is a shallow clone of its default branch, cached and reset on
 # every run. In each Go module of the repo that names the SDK, the script
 # adds `replace github.com/coder/acp-go-sdk => <this checkout>` and runs
-# `go build` on the module's packages whose non-test files import the SDK.
+# `go build` (GOWORK=off, so no go.work replace wins) on the module's
+# packages whose non-test files import the SDK.
 # Exit 0 when every build passes. Needs network.
 set -euo pipefail
 
@@ -81,7 +82,7 @@ for repo in "$@"; do
 		status=ok
 		if [ ${#pkgs[@]} -gt 0 ]; then
 			echo "# go build -gcflags=-e ${pkgs[*]}" >"$log"
-			(cd "$mdir" && go mod edit -replace "$sdk=$root" && GOFLAGS=-mod=mod go build -gcflags=-e "${pkgs[@]}") >>"$log" 2>&1 || status=FAIL
+			(cd "$mdir" && go mod edit -replace "$sdk=$root" && GOWORK=off GOFLAGS=-mod=mod go build -gcflags=-e "${pkgs[@]}") >>"$log" 2>&1 || status=FAIL
 		else
 			status="no importing package"
 		fi

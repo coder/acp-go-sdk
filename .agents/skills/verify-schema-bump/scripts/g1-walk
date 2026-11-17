@@ -97,6 +97,9 @@ while read -r v tag <&3; do
 	out=$run/$v
 	mkdir -p "$out"
 	git -C "$wt" reset -q --hard && git -C "$wt" clean -fdq
+	# Start from no generated files, so an output the generator stops writing
+	# is missing rather than left over from the ref.
+	rm -f "$wt"/*_gen.go
 	for f in "${FILES[@]}"; do cp "$cache/$tag/$f" "$wt/schema/$f"; done
 	echo "$v" >"$wt/schema/version"
 	g=FAIL i=- b=- ge=- he=- t=- m=- a=-

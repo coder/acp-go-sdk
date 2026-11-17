@@ -34,7 +34,7 @@ S=.agents/skills/verify-schema-bump/scripts
 "$S"/g1-walk [--from VERSION] [--ref REF] [--base-tag TAG] TARGET
 ```
 
-It lists the upstream releases that carry schema files (0.x releases on tags `v<version>`, 1.x and later on `schema-v<version>`, prereleases left out) and keeps those from `--from` to `TARGET`. It adds a throwaway worktree of `--ref` (default `HEAD`). For each release it resets the worktree, copies that release's `meta.json`, `schema.json`, `meta.unstable.json` and `schema.unstable.json` into `schema/`, runs the generator (`cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .`) and `gofmt -w *_gen.go`, and checks:
+It lists the upstream releases that carry schema files (0.x releases on tags `v<version>`, 1.x and later on `schema-v<version>`, prereleases left out) and keeps those from `--from` to `TARGET`. It adds a throwaway worktree of `--ref` (default `HEAD`). For each release it resets the worktree, deletes the `*_gen.go` files, copies that release's `meta.json`, `schema.json`, `meta.unstable.json` and `schema.unstable.json` into `schema/`, runs the generator (`cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .`) and `gofmt -w *_gen.go`, and checks:
 
 | Column | Check |
 | --- | --- |
@@ -96,7 +96,7 @@ G2 needs an SDK that compiles. At a schema version where the generated code does
 "$S"/g7-canary coder/coder           # or any OWNER/REPO list
 ```
 
-For each repo it makes or resets a shallow clone of the default branch in `$VSB_ROOT/cache/consumers/`. In each Go module of the repo whose `go.mod` names `github.com/coder/acp-go-sdk`, it runs `go mod edit -replace github.com/coder/acp-go-sdk=<this checkout>` and `go build -gcflags=-e` on the module's packages whose non-test files import the SDK. It prints one line per module and, for a failed build, the compile errors grouped under the SDK symbol that each names (`acp.TerminalId (3)`, or `acp.Type.Field` for a missing field or method). Test files that import the SDK are not built.
+For each repo it makes or resets a shallow clone of the default branch in `$VSB_ROOT/cache/consumers/`. In each Go module of the repo whose `go.mod` names `github.com/coder/acp-go-sdk`, it runs `go mod edit -replace github.com/coder/acp-go-sdk=<this checkout>` and `GOWORK=off go build -gcflags=-e` on the module's packages whose non-test files import the SDK. It prints one line per module and, for a failed build, the compile errors grouped under the SDK symbol that each names (`acp.TerminalId (3)`, or `acp.Type.Field` for a missing field or method). Test files that import the SDK are not built.
 
 Pass: exit 0 and `G7 PASS`. On a bump PR, a failure passes review when each symbol group is a break that the release notes name, with its migration.
 

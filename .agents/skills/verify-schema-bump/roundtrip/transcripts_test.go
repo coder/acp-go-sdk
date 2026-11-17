@@ -57,15 +57,7 @@ func TestTranscripts(t *testing.T) {
 			if err := json.Unmarshal(line.Msg, &msg); err != nil {
 				t.Fatalf("%s:%d: %v", path, n, err)
 			}
-			hasID := len(msg.ID) > 0 && string(msg.ID) != "null"
-			method, kind, payload := msg.Method, "Notification", msg.Params
-			switch {
-			case method != "" && hasID:
-				kind = "Request"
-				pending[reverse(line.Dir)+string(msg.ID)] = method
-			case method == "":
-				method, kind, payload = pending[line.Dir+string(msg.ID)], "Response", msg.Result
-			}
+			method, kind, payload := route(line.Dir, msg, pending)
 			def := s.methodDefs[method][kind]
 			if len(msg.Error) > 0 {
 				def, payload = "Error", msg.Error
@@ -95,6 +87,42 @@ func TestTranscripts(t *testing.T) {
 	sort.Strings(names)
 	t.Logf("SUMMARY transcripts: %d messages checked, %d extension (_*) skipped, %d not in the schema skipped %v",
 		checked, extension, len(names), names)
+}
+
+// route returns the method, kind ("Request", "Response" or "Notification")
+// and payload of msg, which travelled in direction dir. A request records
+// its method in pending under the direction and id of its response. A
+// message with an id member is a request even when the id is null, which
+// RequestId allows.
+func route(dir string, msg rpcMessage, pending map[string]string) (method, kind string, payload json.RawMessage) {
+	hasID := len(msg.ID) > 0
+	switch {
+	case msg.Method != "" && hasID:
+		pending[reverse(dir)+string(msg.ID)] = msg.Method
+		return msg.Method, "Request", msg.Params
+	case msg.Method != "":
+		return msg.Method, "Notification", msg.Params
+	}
+	return pending[dir+string(msg.ID)], "Response", msg.Result
+}
+
+func TestRoute(t *testing.T) {
+	pending := map[string]string{}
+	for _, tc := range []struct{ dir, msg, method, kind string }{
+		{"client->agent", `{"id":null,"method":"session/new","params":{}}`, "session/new", "Request"},
+		{"agent->client", `{"id":null,"result":{}}`, "session/new", "Response"},
+		{"client->agent", `{"id":1,"method":"initialize","params":{}}`, "initialize", "Request"},
+		{"agent->client", `{"method":"session/update","params":{}}`, "session/update", "Notification"},
+		{"agent->client", `{"id":1,"result":{}}`, "initialize", "Response"},
+	} {
+		var msg rpcMessage
+		if err := json.Unmarshal([]byte(tc.msg), &msg); err != nil {
+			t.Fatal(err)
+		}
+		if method, kind, _ := route(tc.dir, msg, pending); method != tc.method || kind != tc.kind {
+			t.Errorf("route(%s) = %s %s, want %s %s", tc.msg, method, kind, tc.method, tc.kind)
+		}
+	}
 }
 
 func reverse(dir string) string {

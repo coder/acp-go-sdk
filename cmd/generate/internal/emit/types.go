@@ -921,10 +921,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	}
 	// requireKey returns the statement that clears match unless the JSON object
 	// obj has the required key. A null value counts only when def, the schema
-	// of the key, accepts null.
+	// of the key, accepts null or has a hint that reads null as the default.
 	requireKey := func(obj, key string, def *load.Definition) Code {
 		noMatch := Id("match").Op("=").Lit(false)
-		if acceptsNull(schema, def) {
+		if acceptsNull(schema, def) || def.DefaultOnNull || def.DefaultOnError {
 			return If(List(Id("_"), Id("ok")).Op(":=").Id(obj).Index(Lit(key)), Op("!").Id("ok")).Block(noMatch)
 		}
 		return If(Id("raw").Op(":=").Id("string").Call(Id(obj).Index(Lit(key))), Id("raw").Op("==").Lit("").Op("||").Id("raw").Op("==").Lit("null")).Block(noMatch)
@@ -1236,9 +1236,9 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			// A variant matches when the object has its required keys, each
 			// const property that is present holds its value, and each
 			// null-only property is absent or null. A required key that is
-			// null counts as absent unless its schema accepts null. The switch
-			// above settled a variant whose only const is the required
-			// discriminator.
+			// null counts as absent unless its schema accepts null or a hint
+			// reads null as the default. The switch above settled a variant
+			// whose only const is the required discriminator.
 			for _, vi := range variants {
 				switchSettled := vi.discValue != "" && len(vi.constPairs) == 1 && slices.Contains(vi.required, discKey)
 				if matchesByKeys(vi) && !switchSettled {

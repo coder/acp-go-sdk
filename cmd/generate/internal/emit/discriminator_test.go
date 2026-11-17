@@ -7,7 +7,9 @@ import "testing"
 // whose stdio variant has no const, and Shape, whose const key is optional.
 // Reply is AgentResponse, whose required id and result accept null, and
 // Options is SessionConfigSelectOptions, two arrays told apart by the required
-// keys of their items.
+// keys of their items. Runner and Runners select Launch by required keys that
+// have a hint, as McpServer selects its stdio variant from schema 1.27.0 and
+// SessionConfigSelectOptions its groups from 1.17.0.
 const discriminatedUnionSchema = `{"$defs": {
   "Stdio": {"type": "object", "required": ["name", "command"], "properties": {
     "name": {"type": "string"}, "command": {"type": "string"}}},
@@ -41,6 +43,19 @@ const discriminatedUnionSchema = `{"$defs": {
   "Options": {"anyOf": [
     {"title": "flat", "type": "array", "items": {"$ref": "#/$defs/Option"}},
     {"title": "grouped", "type": "array", "items": {"$ref": "#/$defs/Group"}}
+  ]},
+  "Launch": {"type": "object", "required": ["command", "args", "env"], "properties": {
+    "command": {"type": "string"},
+    "args": {"type": "array", "items": {"type": "string"}, "x-deserialize-default-on-null": true},
+    "env": {"type": "array", "items": {"type": "string"},
+      "x-deserialize-default-on-error": true, "x-deserialize-skip-invalid-items": true}}},
+  "Runner": {"anyOf": [
+    {"title": "remote", "type": "object", "required": ["url"], "properties": {"url": {"type": "string"}}},
+    {"title": "local", "allOf": [{"$ref": "#/$defs/Launch"}]}
+  ]},
+  "Runners": {"anyOf": [
+    {"title": "flat", "type": "array", "items": {"$ref": "#/$defs/Option"}},
+    {"title": "local", "type": "array", "items": {"$ref": "#/$defs/Launch"}}
   ]}
 }}`
 
@@ -80,6 +95,12 @@ func TestUnion_UnmarshalJSON_MatchesAVariantOnlyWithItsConstValue(t *testing.T) 
 		{func() any { return new(Options) }, ` + "`" + `[{"group":"g"}]` + "`" + `, ` + "`" + `[{"group":"g"}]` + "`" + `},
 		{func() any { return new(Options) }, ` + "`" + `[{"value":null}]` + "`" + `, ""},
 		{func() any { return new(Options) }, ` + "`" + `[{"value":null,"group":"g"}]` + "`" + `, ` + "`" + `[{"group":"g"}]` + "`" + `},
+		{func() any { return new(Runner) }, ` + "`" + `{"command":"c","args":null,"env":[]}` + "`" + `, ` + "`" + `{"args":[],"command":"c","env":[]}` + "`" + `},
+		{func() any { return new(Runner) }, ` + "`" + `{"command":"c","args":[],"env":null}` + "`" + `, ` + "`" + `{"args":[],"command":"c","env":[]}` + "`" + `},
+		{func() any { return new(Runner) }, ` + "`" + `{"command":null,"args":[],"env":[]}` + "`" + `, ""},
+		{func() any { return new(Runner) }, ` + "`" + `{"command":"c","env":[]}` + "`" + `, ""},
+		{func() any { return new(Runners) }, ` + "`" + `[{"command":"c","args":null,"env":null}]` + "`" + `, ` + "`" + `[{"args":[],"command":"c","env":[]}]` + "`" + `},
+		{func() any { return new(Runners) }, ` + "`" + `[{"command":null,"args":[],"env":[]}]` + "`" + `, ""},
 		{func() any { return new(Id) }, ` + "`" + `null` + "`" + `, ` + "`" + `null` + "`" + `},
 		{func() any { return new(Id) }, ` + "`" + `7` + "`" + `, ` + "`" + `7` + "`" + `},
 		{func() any { return new(Id) }, ` + "`" + `{}` + "`" + `, ""},

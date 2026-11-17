@@ -1,0 +1,311 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+
+	acp "github.com/coder/acp-go-sdk"
+)
+
+// event is one session/update as the scenarios need it.
+type event struct {
+	Kind   string
+	Text   string // text of a message or thought chunk
+	Model  string // model id that a usage_update names in _meta
+	Status string // status that a tool_call or tool_call_update sets
+}
+
+// permission is one session/request_permission and the answer it got.
+type permission struct {
+	Scenario string   `json:"scenario"`
+	Conn     int      `json:"conn"`
+	Title    string   `json:"title"`
+	Options  []string `json:"options"`
+	Answer   string   `json:"answer"`
+}
+
+// Permission policies: how the client answers session/request_permission.
+const (
+	answerAllow  = "allow"
+	answerReject = "reject"
+	answerCancel = "cancel"
+)
+
+// harnessClient is the client side of one connection. It answers
+// permission requests by the current policy and keeps every session update
+// so that a scenario can read what arrived during its own calls.
+type harnessClient struct {
+	h    *harness
+	conn int
+
+	mu     sync.Mutex
+	policy string
+	events map[acp.SessionId][]event
+	costs  map[acp.SessionId]float64 // highest cumulative USD cost per session
+	other  map[string]float64        // the same in other currencies, by "CUR session"
+	tokens map[acp.SessionId]acp.Usage
+	perms  []permission
+	misc   []string // client methods the agent called that this client does not offer, with their scenario
+}
+
+var _ acp.Client = (*harnessClient)(nil)
+
+func newHarnessClient(h *harness, conn int) *harnessClient {
+	return &harnessClient{h: h, conn: conn, policy: answerCancel, events: map[acp.SessionId][]event{},
+		costs: map[acp.SessionId]float64{}, other: map[string]float64{}, tokens: map[acp.SessionId]acp.Usage{}}
+}
+
+func (c *harnessClient) setPolicy(p string) {
+	c.mu.Lock()
+	c.policy = p
+	c.mu.Unlock()
+}
+
+// mark returns a position in the session's updates for since.
+func (c *harnessClient) mark(s acp.SessionId) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.events[s])
+}
+
+func (c *harnessClient) since(s acp.SessionId, mark int) []event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]event(nil), c.events[s][mark:]...)
+}
+
+func (c *harnessClient) permissionsSince(mark int) []permission {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]permission(nil), c.perms[mark:]...)
+}
+
+func (c *harnessClient) cost() float64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	total := 0.0
+	for _, v := range c.costs {
+		total += v
+	}
+	return total
+}
+
+func (c *harnessClient) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	c.mu.Lock()
+	policy := c.policy
+	c.mu.Unlock()
+
+	want := map[string][]acp.PermissionOptionKind{
+		answerAllow:  {acp.PermissionOptionKindAllowOnce, acp.PermissionOptionKindAllowAlways},
+		answerReject: {acp.PermissionOptionKindRejectOnce, acp.PermissionOptionKindRejectAlways},
+	}[policy]
+	rec := permission{Scenario: c.h.rec.current(), Conn: c.conn, Answer: "cancelled"}
+	if p.ToolCall.Title != nil {
+		rec.Title = *p.ToolCall.Title
+	}
+	for _, o := range p.Options {
+		rec.Options = append(rec.Options, fmt.Sprintf("%s:%s", o.Kind, o.OptionId))
+	}
+	resp := acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}}}
+pick:
+	for _, kind := range want {
+		for _, o := range p.Options {
+			if o.Kind == kind {
+				resp = acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: o.OptionId}}}
+				rec.Answer = fmt.Sprintf("%s:%s", o.Kind, o.OptionId)
+				break pick
+			}
+		}
+	}
+	c.mu.Lock()
+	c.perms = append(c.perms, rec)
+	c.mu.Unlock()
+	return resp, nil
+}
+
+func (c *harnessClient) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+	u := n.Update
+	ev := event{Kind: updateKind(u)}
+	switch {
+	case u.AgentMessageChunk != nil:
+		ev.Text = blockText(u.AgentMessageChunk.Content)
+	case u.UserMessageChunk != nil:
+		ev.Text = blockText(u.UserMessageChunk.Content)
+	case u.AgentThoughtChunk != nil:
+		ev.Text = blockText(u.AgentThoughtChunk.Content)
+	case u.ToolCall != nil:
+		ev.Status = string(u.ToolCall.Status)
+	case u.ToolCallUpdate != nil && u.ToolCallUpdate.Status != nil:
+		ev.Status = string(*u.ToolCallUpdate.Status)
+	case u.UsageUpdate != nil:
+		if models := metaModels(u.UsageUpdate.Meta); len(models) > 0 {
+			ev.Model = models[0]
+		}
+	}
+	// Count the notification as routed only once its state is stored, so
+	// that close never returns before the last update is in the summary.
+	defer c.h.rec.handledOne(c.conn)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.events[n.SessionId] = append(c.events[n.SessionId], ev)
+	if u.UsageUpdate != nil && u.UsageUpdate.Cost != nil {
+		cost := u.UsageUpdate.Cost
+		if strings.EqualFold(cost.Currency, "USD") {
+			c.costs[n.SessionId] = max(c.costs[n.SessionId], cost.Amount)
+		} else {
+			// The budget is in USD, so another currency is kept apart and
+			// reported, never added to the USD total.
+			key := strings.ToUpper(cost.Currency) + " " + string(n.SessionId)
+			c.other[key] = max(c.other[key], cost.Amount)
+		}
+	}
+	return nil
+}
+
+// usage records a prompt response's usage. The schema defines its fields
+// as totals across the session's turns, so the highest value counts.
+func (c *harnessClient) usage(sid acp.SessionId, u *acp.Usage) {
+	if u == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := c.tokens[sid]
+	t.InputTokens = max(t.InputTokens, u.InputTokens)
+	t.OutputTokens = max(t.OutputTokens, u.OutputTokens)
+	t.TotalTokens = max(t.TotalTokens, u.TotalTokens)
+	c.tokens[sid] = t
+}
+
+// totals returns the usage of this connection's sessions and its costs in
+// currencies other than USD.
+func (c *harnessClient) totals() (map[acp.SessionId]acp.Usage, map[string]float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	usage := make(map[acp.SessionId]acp.Usage, len(c.tokens))
+	for sid, t := range c.tokens {
+		usage[sid] = t
+	}
+	other := map[string]float64{}
+	for key, v := range c.other {
+		other[strings.Fields(key)[0]] += v
+	}
+	return usage, other
+}
+
+// The client offers no file system and no terminal, so a well-behaved agent
+// never calls these. A call is recorded, with its scenario, and refused.
+// The no-refused-calls row fails on it.
+func (c *harnessClient) refuse(method string) error {
+	c.mu.Lock()
+	c.misc = append(c.misc, method+" in "+c.h.rec.current())
+	c.mu.Unlock()
+	return fmt.Errorf("acpharness offers no %s", method)
+}
+
+func (c *harnessClient) refusedCalls() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.misc...)
+}
+
+func (c *harnessClient) ReadTextFile(context.Context, acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {
+	return acp.ReadTextFileResponse{}, c.refuse("fs/read_text_file")
+}
+
+func (c *harnessClient) WriteTextFile(context.Context, acp.WriteTextFileRequest) (acp.WriteTextFileResponse, error) {
+	return acp.WriteTextFileResponse{}, c.refuse("fs/write_text_file")
+}
+
+func (c *harnessClient) CreateTerminal(context.Context, acp.CreateTerminalRequest) (acp.CreateTerminalResponse, error) {
+	return acp.CreateTerminalResponse{}, c.refuse("terminal/create")
+}
+
+func (c *harnessClient) KillTerminal(context.Context, acp.KillTerminalRequest) (acp.KillTerminalResponse, error) {
+	return acp.KillTerminalResponse{}, c.refuse("terminal/kill")
+}
+
+func (c *harnessClient) TerminalOutput(context.Context, acp.TerminalOutputRequest) (acp.TerminalOutputResponse, error) {
+	return acp.TerminalOutputResponse{}, c.refuse("terminal/output")
+}
+
+func (c *harnessClient) ReleaseTerminal(context.Context, acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error) {
+	return acp.ReleaseTerminalResponse{}, c.refuse("terminal/release")
+}
+
+func (c *harnessClient) WaitForTerminalExit(context.Context, acp.WaitForTerminalExitRequest) (acp.WaitForTerminalExitResponse, error) {
+	return acp.WaitForTerminalExitResponse{}, c.refuse("terminal/wait_for_exit")
+}
+
+func updateKind(u acp.SessionUpdate) string {
+	switch {
+	case u.UserMessageChunk != nil:
+		return "user_message_chunk"
+	case u.AgentMessageChunk != nil:
+		return "agent_message_chunk"
+	case u.AgentThoughtChunk != nil:
+		return "agent_thought_chunk"
+	case u.ToolCall != nil:
+		return "tool_call"
+	case u.ToolCallUpdate != nil:
+		return "tool_call_update"
+	case u.Plan != nil:
+		return "plan"
+	case u.PlanUpdate != nil:
+		return "plan_update"
+	case u.PlanRemoved != nil:
+		return "plan_removed"
+	case u.AvailableCommandsUpdate != nil:
+		return "available_commands_update"
+	case u.CurrentModeUpdate != nil:
+		return "current_mode_update"
+	case u.ConfigOptionUpdate != nil:
+		return "config_option_update"
+	case u.SessionInfoUpdate != nil:
+		return "session_info_update"
+	case u.UsageUpdate != nil:
+		return "usage_update"
+	}
+	return "unknown"
+}
+
+func blockText(b acp.ContentBlock) string {
+	if b.Text != nil {
+		return b.Text.Text
+	}
+	return ""
+}
+
+// metaModels returns every model id in a _meta object: string values under a
+// key named "model" or ending in "/model", at any depth. Claude names its
+// model in usage_update as "_claude/model"; both adapters list
+// quota.model_usage[].model in the prompt response.
+func metaModels(meta map[string]any) []string {
+	seen := map[string]bool{}
+	var walk func(v any)
+	walk = func(v any) {
+		switch t := v.(type) {
+		case map[string]any:
+			for k, x := range t {
+				if s, ok := x.(string); ok && (k == "model" || strings.HasSuffix(k, "/model")) && s != "" {
+					seen[s] = true
+				}
+				walk(x)
+			}
+		case []any:
+			for _, x := range t {
+				walk(x)
+			}
+		}
+	}
+	walk(meta)
+	out := make([]string, 0, len(seen))
+	for s := range seen {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}

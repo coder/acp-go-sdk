@@ -150,8 +150,12 @@ func (h *harness) reconnect() (*agentConn, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-	if _, err := a.conn.Initialize(ctx, initRequest()); err != nil {
+	resp, err := a.conn.Initialize(ctx, initRequest())
+	if err != nil {
 		return a, fmt.Errorf("initialize on connection %d: %s", a.n, errText(err))
+	}
+	if resp.ProtocolVersion != acp.ProtocolVersionNumber {
+		return a, fmt.Errorf("initialize on connection %d: protocolVersion %d, want %d", a.n, resp.ProtocolVersion, acp.ProtocolVersionNumber)
 	}
 	if h.opts.auth != "" {
 		if _, err := a.conn.Authenticate(ctx, acp.AuthenticateRequest{MethodId: h.opts.auth}); err != nil {
@@ -411,8 +415,11 @@ func (h *harness) permissionTurn(a *agentConn, policy string) (status, string) {
 	t := h.prompt(a, sid, writePrompt(file, marker))
 	a.client.setPolicy(answerCancel)
 
-	body, readErr := os.ReadFile(path)
-	exists := readErr == nil
+	// Lstat, not ReadFile: a directory or an unreadable file at the path
+	// also counts as created.
+	_, statErr := os.Lstat(path)
+	exists := statErr == nil
+	body, _ := os.ReadFile(path)
 	var answers []string
 	answered := 0
 	for _, p := range t.perms {

@@ -122,6 +122,7 @@ if (!exit.startsWith("still")) await new Promise((r) => (agentLog.writableFinish
 
 const checks = [
   [`protocol version ${acp.PROTOCOL_VERSION} negotiated`, outcome?.protocolVersion === acp.PROTOCOL_VERSION],
+  ["session/new returned a session id", typeof outcome?.sessionId === "string" && outcome.sessionId !== ""],
   ["turn ended with end_turn", outcome?.stopReason === "end_turn"],
   ["at least one agent_message_chunk", (kinds.agent_message_chunk ?? 0) > 0],
   ["every permission request allowed", permissions.length > 0 && permissions.every((p) => p.answer !== "cancelled")],

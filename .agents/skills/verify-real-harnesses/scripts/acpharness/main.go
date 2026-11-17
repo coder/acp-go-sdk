@@ -187,19 +187,25 @@ func (h *harness) cost() float64 {
 	return total
 }
 
-func (h *harness) trackPgid(pid int) {
+func (h *harness) trackPgid(pid int) error {
 	if h.opts.pgids == "" {
-		return
+		return nil
 	}
 	// The start time lets cleanup tell this process from a later one that
 	// reuses the pid.
-	start, _ := exec.Command("ps", "-o", "lstart=", "-p", fmt.Sprint(pid)).Output()
+	start, err := exec.Command("ps", "-o", "lstart=", "-p", fmt.Sprint(pid)).Output()
+	if err != nil {
+		return fmt.Errorf("read the start time of pid %d: %w", pid, err)
+	}
 	f, err := os.OpenFile(h.opts.pgids, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
-		return
+		return err
 	}
-	defer func() { _ = f.Close() }()
-	_, _ = fmt.Fprintf(f, "%d\t%s\t%s\n", pid, strings.Join(strings.Fields(string(start)), " "), strings.Join(h.opts.agent, " "))
+	_, err = fmt.Fprintf(f, "%d\t%s\t%s\n", pid, strings.Join(strings.Fields(string(start)), " "), strings.Join(h.opts.agent, " "))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // finish closes every agent, adds the global predicate, and writes

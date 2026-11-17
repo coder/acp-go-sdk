@@ -20,7 +20,7 @@ Preconditions:
 
 Steps:
 
-- **Run both directions.** Run `"$V" g4`. The first block prints six PASS lines from the TypeScript client (protocol version, `end_turn`, an agent message, the allowed permission request, a clean wire, and the agent's exit 0) and two `is clean` lines for the stderr files. The second block prints PASS for `initialize`, `session/new`, `prompt`, `agent-exit`, `no-method-not-found` and `no-decode-errors`.
+- **Run both directions.** Run `"$V" g4`. The first block prints seven PASS lines from the TypeScript client (protocol version, a session id, `end_turn`, an agent message, the allowed permission request, a clean wire, and the agent's exit 0) and two `is clean` lines for the stderr files. The second block prints PASS for `initialize`, `session/new`, `prompt`, `agent-exit`, `no-method-not-found` and `no-decode-errors`.
 - **Check the turn.** Run `jq -c '{outcome, kinds, permissions}' "$HARNESS_RUN/evidence/g4-ts-client-go-agent/summary.json"`. `outcome.stopReason` is `end_turn`, and the Go agent's permission request was answered `allow`.
 
 ## Gotchas

@@ -264,7 +264,13 @@ func (h *harness) startAgent() (*agentConn, error) {
 		_ = logFile.Close()
 		return nil, fmt.Errorf("start %s: %w", h.opts.agent[0], err)
 	}
-	h.trackPgid(cmd.Process.Pid)
+	// An agent that cleanup could not find must not run: stop it at once.
+	if err := h.trackPgid(cmd.Process.Pid); err != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = cmd.Wait()
+		_ = logFile.Close()
+		return nil, fmt.Errorf("record the process group of %s: %w", h.opts.agent[0], err)
+	}
 
 	a := &agentConn{n: n, cmd: cmd, stdin: stdin, exited: make(chan struct{})}
 	stderrDone := make(chan struct{})
@@ -332,6 +338,12 @@ func (h *harness) startAgent() (*agentConn, error) {
 func (a *agentConn) close(grace time.Duration) string {
 	if a.ended == "" {
 		a.ended = a.stop(grace)
+		// The SDK may still be parsing the agent's last lines. Let it finish,
+		// so that their decode errors reach the findings.
+		select {
+		case <-a.conn.Done():
+		case <-time.After(5 * time.Second):
+		}
 	}
 	return a.ended
 }

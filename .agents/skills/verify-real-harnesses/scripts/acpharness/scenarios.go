@@ -648,7 +648,7 @@ func (h *harness) deleteSession(a *agentConn) (status, string) {
 			return fail, "session/close of B before the delete: " + errText(err)
 		}
 	}
-	if _, err := a.conn.UnstableDeleteSession(ctx, acp.UnstableDeleteSessionRequest{SessionId: sid}); err != nil {
+	if _, err := a.conn.DeleteSession(ctx, acp.DeleteSessionRequest{SessionId: sid}); err != nil {
 		return fail, "session/delete: " + errText(err)
 	}
 	if !canList {

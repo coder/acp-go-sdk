@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sort"
 	"sync"
 	"time"
 
@@ -17,12 +18,15 @@ import (
 )
 
 type agentSession struct {
+	cwd    string
+	seq    uint64
 	cancel context.CancelFunc
 }
 
 type exampleAgent struct {
 	conn     *acp.AgentSideConnection
 	sessions map[string]*agentSession
+	nextSeq  uint64
 	mu       sync.Mutex
 }
 
@@ -46,9 +50,39 @@ func (a *exampleAgent) UnstableForkSession(ctx context.Context, params acp.Unsta
 	return acp.UnstableForkSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionFork)
 }
 
-// ListSessions implements acp.Agent.
+// ListSessions implements acp.Agent. It returns every session, or those in
+// params.Cwd when it is set, in creation order on one page.
 func (a *exampleAgent) ListSessions(ctx context.Context, params acp.ListSessionsRequest) (acp.ListSessionsResponse, error) {
-	return acp.ListSessionsResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionList)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	sessions := []acp.SessionInfo{}
+	for id, s := range a.sessions {
+		if params.Cwd != nil && *params.Cwd != s.cwd {
+			continue
+		}
+		sessions = append(sessions, acp.SessionInfo{SessionId: acp.SessionId(id), Cwd: s.cwd})
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return a.sessions[string(sessions[i].SessionId)].seq < a.sessions[string(sessions[j].SessionId)].seq
+	})
+	return acp.ListSessionsResponse{Sessions: sessions}, nil
+}
+
+// DeleteSession implements acp.Agent. It cancels the session's running turn
+// and drops the session, so session/list no longer returns it. An unknown
+// session ID succeeds, as the protocol asks.
+func (a *exampleAgent) DeleteSession(ctx context.Context, params acp.DeleteSessionRequest) (acp.DeleteSessionResponse, error) {
+	var cancel context.CancelFunc
+	a.mu.Lock()
+	if s, ok := a.sessions[string(params.SessionId)]; ok {
+		cancel = s.cancel
+	}
+	delete(a.sessions, string(params.SessionId))
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return acp.DeleteSessionResponse{}, nil
 }
 
 // ResumeSession implements acp.Agent.
@@ -131,11 +165,6 @@ func (a *exampleAgent) UnstableSetProvider(ctx context.Context, params acp.Unsta
 	return acp.UnstableSetProviderResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersSet)
 }
 
-// UnstableDeleteSession implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDeleteSession(ctx context.Context, params acp.UnstableDeleteSessionRequest) (acp.UnstableDeleteSessionResponse, error) {
-	return acp.UnstableDeleteSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionDelete)
-}
-
 // CloseSession implements acp.Agent.
 func (a *exampleAgent) CloseSession(ctx context.Context, params acp.CloseSessionRequest) (acp.CloseSessionResponse, error) {
 	return acp.CloseSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionClose)
@@ -149,6 +178,10 @@ func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequ
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		AgentCapabilities: acp.AgentCapabilities{
 			LoadSession: false,
+			SessionCapabilities: acp.SessionCapabilities{
+				List:   &acp.SessionListCapabilities{},
+				Delete: &acp.SessionDeleteCapabilities{},
+			},
 		},
 	}, nil
 }
@@ -156,7 +189,8 @@ func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequ
 func (a *exampleAgent) NewSession(ctx context.Context, params acp.NewSessionRequest) (acp.NewSessionResponse, error) {
 	sid := randomID()
 	a.mu.Lock()
-	a.sessions[sid] = &agentSession{}
+	a.nextSeq++
+	a.sessions[sid] = &agentSession{cwd: params.Cwd, seq: a.nextSeq}
 	a.mu.Unlock()
 	return acp.NewSessionResponse{SessionId: acp.SessionId(sid)}, nil
 }

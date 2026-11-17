@@ -125,7 +125,7 @@ func (h *harness) connect() (*agentConn, bool) {
 	}
 	h.step("authenticate", func() (status, string) {
 		if h.opts.auth == "" {
-			return skip, skipNoAuth + ": this adapter runs without -auth, so the driver does not authenticate"
+			return skip, skipNoAuth + ": the driver runs this agent without -auth, so it does not authenticate"
 		}
 		ids := authIDs(h.init.AuthMethods)
 		if !contains(ids, h.opts.auth) {
@@ -391,6 +391,13 @@ func (h *harness) ensureB(a *agentConn) (acp.SessionId, error) {
 	sel, err := configSelect(h.newResults["B"], h.configs["B"], acp.SessionConfigOptionCategoryMode, "mode")
 	if err != nil {
 		return "", err
+	}
+	// Without a mode select option the driver falls back to the session
+	// modes, so they must decode as they are on the wire too.
+	if sel == nil {
+		if err := checkModes(h.newResults["B"], h.modes["B"]); err != nil {
+			return "", err
+		}
 	}
 	if err := modeOffered(sel, h.modes["B"], h.opts.askMode); err != nil {
 		return "", err

@@ -348,7 +348,7 @@ func TestConfigSelect_ComparesTheWireWithTheDecodedOption(t *testing.T) {
 func TestUndocumentedSkips_FlagsEveryOtherReason(t *testing.T) {
 	results := []result{
 		{Name: "initialize", Status: pass},
-		{Name: "authenticate", Status: skip, Detail: skipNoAuth + ": this adapter runs without -auth"},
+		{Name: "authenticate", Status: skip, Detail: skipNoAuth + ": the driver runs this agent without -auth"},
 		{Name: "cancel", Status: skip, Detail: skipNotSelected},
 		{Name: "session/list", Status: skip, Detail: skipNotAdvertised + ": no list"},
 		{Name: "config-option", Status: skip, Detail: skipNoOtherModel + ": current x"},
@@ -417,6 +417,38 @@ func TestModeOffered_SendsOnlyAnOfferedMode(t *testing.T) {
 				t.Fatalf("modeOffered(%s) = %v, want ok=%v", tc.mode, err, tc.ok)
 			}
 		})
+	}
+}
+
+func TestCheckModes_ComparesTheWireWithTheDecodedModes(t *testing.T) {
+	decodeModes := func(raw string) *acp.SessionModeState {
+		var r acp.NewSessionResponse
+		if err := json.Unmarshal([]byte(raw), &r); err != nil {
+			t.Fatalf("decode session/new: %v", err)
+		}
+		return r.Modes
+	}
+	modes := `{"sessionId":"s","modes":{"currentModeId":"auto","availableModes":[{"id":"auto","name":"Auto"},{"id":"read-only","name":"Read only"}]}}`
+	none := `{"sessionId":"s"}`
+	if err := checkModes(json.RawMessage(modes), decodeModes(modes)); err != nil {
+		t.Fatalf("modes that decode as on the wire: %v", err)
+	}
+	if err := checkModes(json.RawMessage(none), decodeModes(none)); err != nil {
+		t.Fatalf("no modes on the wire and none decoded: %v", err)
+	}
+
+	lostOne := decodeModes(modes)
+	lostOne.AvailableModes = lostOne.AvailableModes[:1]
+	otherCurrent := decodeModes(modes)
+	otherCurrent.CurrentModeId = "read-only"
+	cases := map[string]*acp.SessionModeState{"SDK lost the modes": nil, "SDK lost a mode": lostOne, "SDK changed the current mode": otherCurrent}
+	for name, decoded := range cases {
+		if err := checkModes(json.RawMessage(modes), decoded); err == nil || !strings.Contains(err.Error(), "decode mismatch") {
+			t.Errorf("%s: err %v, want a decode mismatch", name, err)
+		}
+	}
+	if err := checkModes(json.RawMessage(none), decodeModes(modes)); err == nil {
+		t.Error("modes that the wire does not have passed")
 	}
 }
 

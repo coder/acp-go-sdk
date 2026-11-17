@@ -171,3 +171,35 @@ func configSelect(raw json.RawMessage, cfg []acp.SessionConfigOption, category a
 	}
 	return sel, nil
 }
+
+// checkModes returns an error when the SDK decoded the session modes of a
+// raw session/new result otherwise than the wire has them: the current
+// mode and every mode id, in order.
+func checkModes(raw json.RawMessage, modes *acp.SessionModeState) error {
+	if raw == nil {
+		return fmt.Errorf("no raw result with the session modes was recorded")
+	}
+	var wire, decoded *selectOption
+	var m *struct {
+		CurrentModeID  string `json:"currentModeId"`
+		AvailableModes []struct {
+			ID string `json:"id"`
+		} `json:"availableModes"`
+	}
+	if json.Unmarshal(jsonAt(raw, "modes"), &m) == nil && m != nil {
+		wire = &selectOption{ID: "modes", CurrentValue: m.CurrentModeID}
+		for _, x := range m.AvailableModes {
+			wire.Values = append(wire.Values, x.ID)
+		}
+	}
+	if modes != nil {
+		decoded = &selectOption{ID: "modes", CurrentValue: string(modes.CurrentModeId)}
+		for _, x := range modes.AvailableModes {
+			decoded.Values = append(decoded.Values, string(x.Id))
+		}
+	}
+	if !reflect.DeepEqual(wire, decoded) {
+		return fmt.Errorf("decode mismatch: the session modes on the wire are %v, but the SDK decoded %v", wire, decoded)
+	}
+	return nil
+}

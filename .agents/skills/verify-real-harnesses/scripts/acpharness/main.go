@@ -269,6 +269,9 @@ func (h *harness) finish() int {
 	} else {
 		h.row("agent-exit", fail, strings.Join(bad, "; "))
 	}
+	// The cost check gets its own scenario label, so that its finding does
+	// not name the last scenario, agent-exit.
+	h.rec.scenario.Store("cost")
 	decoded := 0.0
 	for _, a := range h.conns {
 		decoded += a.client.cost()

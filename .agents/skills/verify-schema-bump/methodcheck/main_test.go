@@ -79,6 +79,15 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
 		},
 		{
+			name: "case in a switch on a shadowing method variable",
+			files: map[string]string{
+				"constants_gen.go": constants,
+				"agent_gen.go":     "package acp\n\nfunc (a *AgentSideConnection) handle(method string) {\n\t{\n\t\tmethod := \"\"\n\t\tswitch method {\n\t\tcase AgentMethodSessionNew:\n\t\t}\n\t}\n}\n",
+				"connection.go":    receive(`"$/cancel_request"`),
+			},
+			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
+		},
+		{
 			name: "constant only in hand-written code",
 			files: map[string]string{
 				"constants_gen.go": "package acp\n\nconst AgentMethodSessionNew = \"session/new\"\n",

@@ -163,7 +163,7 @@ func parsePackage(dir string) (*pkg, error) {
 					if !ok {
 						return true
 					}
-					if tag, ok := sw.Tag.(*ast.Ident); !ok || tag.Name != param {
+					if tag, ok := sw.Tag.(*ast.Ident); !ok || tag.Obj == nil || tag.Obj != param {
 						return true
 					}
 					for _, stmt := range sw.Body.List {
@@ -254,15 +254,16 @@ func decodedVars(body *ast.BlockStmt) map[*ast.Object]token.Pos {
 	return vars
 }
 
-// methodParam is the name of the handler's first string parameter, the
-// incoming method name.
-func methodParam(ft *ast.FuncType) string {
+// methodParam is the parser object of the handler's first string
+// parameter, the incoming method name, so a shadowing variable of the same
+// name does not match it.
+func methodParam(ft *ast.FuncType) *ast.Object {
 	for _, field := range ft.Params.List {
 		if id, ok := field.Type.(*ast.Ident); ok && id.Name == "string" && len(field.Names) > 0 {
-			return field.Names[0].Name
+			return field.Names[0].Obj
 		}
 	}
-	return ""
+	return nil
 }
 
 func receiverType(e ast.Expr) string {

@@ -21,33 +21,31 @@ func WriteConstantsJen(outDir string, meta *load.Meta, schemaVersion string) err
 	f.Comment("SchemaVersion is the ACP schema release that this SDK's generated code targets.")
 	f.Const().Id("SchemaVersion").Op("=").Lit(schemaVersion)
 
-	// Agent methods
-	amKeys := make([]string, 0, len(meta.AgentMethods))
-	for k := range meta.AgentMethods {
-		amKeys = append(amKeys, k)
+	// One const block of wire method names per meta method map, in sorted key order.
+	groups := []struct {
+		prefix, comment string
+		methods         map[string]string
+	}{
+		{"AgentMethod", "Agent method names", meta.AgentMethods},
+		{"ClientMethod", "Client method names", meta.ClientMethods},
+		{"ProtocolMethod", "Protocol method names, which either side can send", meta.ProtocolMethods},
 	}
-	sort.Strings(amKeys)
-	var agentDefs []Code
-	for _, k := range amKeys {
-		wire := meta.AgentMethods[k]
-		agentDefs = append(agentDefs, Id("AgentMethod"+toExportedConst(k)).Op("=").Lit(wire))
+	for _, g := range groups {
+		if len(g.methods) == 0 {
+			continue
+		}
+		keys := make([]string, 0, len(g.methods))
+		for k := range g.methods {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var defs []Code
+		for _, k := range keys {
+			defs = append(defs, Id(g.prefix+toExportedConst(k)).Op("=").Lit(g.methods[k]))
+		}
+		f.Comment(g.comment)
+		f.Const().Defs(defs...)
 	}
-	f.Comment("Agent method names")
-	f.Const().Defs(agentDefs...)
-
-	// Client methods
-	cmKeys := make([]string, 0, len(meta.ClientMethods))
-	for k := range meta.ClientMethods {
-		cmKeys = append(cmKeys, k)
-	}
-	sort.Strings(cmKeys)
-	var clientDefs []Code
-	for _, k := range cmKeys {
-		wire := meta.ClientMethods[k]
-		clientDefs = append(clientDefs, Id("ClientMethod"+toExportedConst(k)).Op("=").Lit(wire))
-	}
-	f.Comment("Client method names")
-	f.Const().Defs(clientDefs...)
 
 	var buf bytes.Buffer
 	if err := f.Render(&buf); err != nil {

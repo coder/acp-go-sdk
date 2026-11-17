@@ -57,3 +57,8 @@ const (
 	ClientMethodTerminalRelease          = "terminal/release"
 	ClientMethodTerminalWaitForExit      = "terminal/wait_for_exit"
 )
+
+// Protocol method names, which either side can send
+const (
+	ProtocolMethodCancelRequest = "$/cancel_request"
+)

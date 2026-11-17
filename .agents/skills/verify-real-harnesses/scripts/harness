@@ -180,6 +180,14 @@ cmd_launch() {
 	# Later commands change directory, so every path must be absolute. -P
 	# resolves symlinks too, which codex-acp needs (see SKILL.md).
 	root=$(cd "$root" && pwd -P)
+	# source_id hashes each untracked file that git does not ignore, so a
+	# run folder there would change it during the build.
+	case "$root/" in
+	"$(cd "$REPO" && pwd -P)"/*)
+		git -C "$REPO" check-ignore -q "$root" ||
+			die "refusing $root: it is inside the checkout, and git does not ignore it"
+		;;
+	esac
 	umask 077
 	set_paths "$(mktemp -d "$root/$(date +%Y%m%d-%H%M%S)-XXXXXX")"
 	mkdir -p "$BIN" "$EVIDENCE" "$WORK/home/claude" "$WORK/home/codex" "$WORK/cwd"
@@ -317,9 +325,12 @@ cmd_doctor() {
 # as the driver adds it. It works on the transcript of a run that died.
 transcript_cost() {
 	# -R with fromjson? skips a last line that a killed driver left unfinished.
-	jq -Rn '[inputs | fromjson? | select(.dir == "agent->client" and .msg.params.update.cost.amount != null
-			and ((.msg.params.update.cost.currency // "") | ascii_upcase) == "USD")
-		| {k: "\(.conn)/\(.msg.params.sessionId)", a: .msg.params.update.cost.amount}]
+	# try skips a line of another shape, such as an update that is a string:
+	# the run reports that as a decode error, and its cost cannot count.
+	jq -Rn '[inputs | fromjson? | try (select(.dir == "agent->client")
+			| {k: "\(.conn)/\(.msg.params.sessionId)", c: .msg.params.update.cost}
+			| select((.c.amount | type) == "number" and (.c.currency | ascii_upcase) == "USD")
+			| {k, a: .c.amount})]
 		| group_by(.k) | map(max_by(.a).a) | add // 0' "$1"
 }
 
@@ -447,6 +458,8 @@ cmd_g4() {
 	stop_tagged g4
 	g4_quiet "$out/agent.stderr.log" 'ERROR|WARN' "the Go agent logged an error" || rc=1
 	g4_quiet "$out/client.stderr.log" '.' "the TS client wrote to stderr" || rc=1
+	# report shows a drive as PASS only after these stderr checks ran.
+	echo "harness-checks=done" >>"$out/result.txt"
 
 	# 2. This repo's SDK as the client, the TypeScript SDK's example agent as the agent.
 	out=$EVIDENCE/g4-go-client-ts-agent
@@ -455,9 +468,11 @@ cmd_g4() {
 	local from
 	from=$(($(wc -l <"$WORK/pgids") + 1))
 	(cd "$WORK/npm/ts" && tracked env "ACP_HARNESS_TAG=$TAG/g4" timeout --kill-after=10 120 "$BIN/acpharness" -profile smoke \
-		-pgids "$WORK/pgids" -out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts") || rc=1
+		-pgids "$WORK/pgids" -out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts" 2>"$out/driver.stderr.log") || rc=1
+	cat "$out/driver.stderr.log" >&2
 	stop_groups "$from"
 	g4_quiet "$out/agent-1.stderr.log" 'error|warn' "the TS agent logged an error" || rc=1
+	echo "harness-checks=done" >>"$out/result.txt"
 	echo "evidence $EVIDENCE/g4-*"
 	return "$rc"
 }
@@ -585,7 +600,7 @@ cmd_report() {
 			for l in g4-ts-client-go-agent g4-go-client-ts-agent; do
 				f=$EVIDENCE/$l/result.txt
 				s=FAIL
-				[ -f "$f" ] && grep -qx 'exit=0' "$f" && ! grep -q '^FAIL' "$f" && s=PASS
+				[ -f "$f" ] && grep -qx 'exit=0' "$f" && grep -qx 'harness-checks=done' "$f" && ! grep -q '^FAIL' "$f" && s=PASS
 				case $l in
 				g4-ts-client-go-agent) echo "| TypeScript SDK client -> Go example agent | $s |" ;;
 				g4-go-client-ts-agent) echo "| Go SDK client (acpharness) -> TypeScript example agent | $s |" ;;

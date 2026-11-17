@@ -181,10 +181,12 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			emitDocComment(f, def.Description)
 		}
 
-		// structFields holds the schema properties that became fields of the
-		// emitted Go type. Only a plain object struct has them: a union wrapper
-		// holds variant pointers, even when its schema also lists properties.
-		var structFields map[string]*load.Definition
+		// Requests, responses, notifications, and ToolCallUpdate get Validate.
+		// The generated dispatch calls it on every request and notification.
+		validated := strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification") || name == "ToolCallUpdate"
+		// A union wrapper holds variant pointers, not the schema's properties,
+		// so emitUnion writes its Validate.
+		unionWrapper := false
 		switch {
 		case len(def.Enum) > 0:
 			f.Type().Id(name).String()
@@ -232,13 +234,14 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			}
 			f.Line()
 		case len(def.AnyOf) > 0:
-			emitUnion(f, name, schema, def, def.AnyOf, false, usedTypeNames, emitted)
+			unionWrapper = true
+			emitUnion(f, name, schema, def, def.AnyOf, false, validated && ir.PrimaryType(def) == "object", usedTypeNames, emitted)
 		case len(def.OneOf) > 0 && !isStringConstUnion(def):
 			// Generic union generation for non-enum oneOf
 			// Use the same implementation, but require exactly one variant
-			emitUnion(f, name, schema, def, def.OneOf, true, usedTypeNames, emitted)
+			unionWrapper = true
+			emitUnion(f, name, schema, def, def.OneOf, true, true, usedTypeNames, emitted)
 		case ir.PrimaryType(def) == "object" && len(def.Properties) > 0:
-			structFields = def.Properties
 			st := []Code{}
 			req := map[string]struct{}{}
 			for _, r := range def.Required {
@@ -435,12 +438,8 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			f.Line()
 		}
 
-		// validators for selected types
-		// Note: oneOf union wrappers get a generic Validate emitted in emitUnion,
-		// so skip emitValidateJen for types that already have a union Validate.
-		hasUnionValidate := len(def.OneOf) > 0 && !isStringConstUnion(def)
-		if !hasUnionValidate && (strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification") || name == "ToolCallUpdate") {
-			emitValidateJen(f, name, def, structFields)
+		if validated && !unionWrapper {
+			emitValidateJen(f, name, def)
 		}
 	}
 
@@ -587,9 +586,9 @@ func isOpenStringEnum(def *load.Definition) bool {
 	return sawConst
 }
 
-// emitValidateJen generates validators for selected types. It checks only the
-// required properties in fields, the ones the emitted Go type has as fields.
-func emitValidateJen(f *File, name string, def *load.Definition, fields map[string]*load.Definition) {
+// emitValidateJen generates validators for selected types that are not union
+// wrappers. It checks the required properties of def, which are struct fields.
+func emitValidateJen(f *File, name string, def *load.Definition) {
 	switch name {
 	case "ToolCallUpdate":
 		f.Func().Params(Id("t").Op("*").Id("ToolCallUpdate")).Id("Validate").Params().Params(Error()).Block(
@@ -603,22 +602,40 @@ func emitValidateJen(f *File, name string, def *load.Definition, fields map[stri
 			return
 		}
 		f.Func().Params(Id("v").Op("*").Id(name)).Id("Validate").Params().Params(Error()).BlockFunc(func(g *Group) {
-			for _, propName := range sortedPropertyKeys(fields) {
-				pDef := fields[propName]
-				required := slices.Contains(def.Required, propName)
-				field := util.ToExportedField(propName)
-				if required {
-					switch ir.PrimaryType(pDef) {
-					case "string":
-						g.If(Id("v").Dot(field).Op("==").Lit("")).Block(Return(Qual("fmt", "Errorf").Call(Lit(propName + " is required"))))
-					case "array":
-						g.If(Id("v").Dot(field).Op("==").Nil()).Block(Return(Qual("fmt", "Errorf").Call(Lit(propName + " is required"))))
-					}
+			for _, propName := range sortedPropertyKeys(def.Properties) {
+				if !slices.Contains(def.Required, propName) {
+					continue
+				}
+				if check := requiredCheck(propName, def.Properties[propName], "v"); check != nil {
+					g.Add(check)
 				}
 			}
 			g.Return(Nil())
 		})
 	}
+}
+
+// requiredCheck returns the Validate statement that rejects an unset required
+// property propName of the value at path, for example "v" or "u", "Form". Unset
+// means an empty string or a nil array. Other property types get no check, so
+// it returns nil.
+func requiredCheck(propName string, pDef *load.Definition, path ...string) Code {
+	var unset Code
+	switch ir.PrimaryType(pDef) {
+	case "string":
+		unset = Lit("")
+	case "array":
+		unset = Nil()
+	default:
+		return nil
+	}
+	value := Id(path[0])
+	for _, p := range path[1:] {
+		value = value.Dot(p)
+	}
+	return If(value.Dot(util.ToExportedField(propName)).Op("==").Add(unset)).Block(
+		Return(Qual("fmt", "Errorf").Call(Lit(propName + " is required"))),
+	)
 }
 
 func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
@@ -947,10 +964,11 @@ func isPhantomVariant(v *load.Definition, ref string) bool {
 	return len(v.Properties) == 0 && ref == "" && !isNull && v.Title == ""
 }
 
-// emitAvailableCommandInputJen generates a concrete variant type for anyOf and a thin union wrapper
-// that supports JSON unmarshal by probing object shape. Currently the schema defines one variant
-// (title: UnstructuredCommandInput) with a required 'hint' field.
-func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Definition, defs []*load.Definition, exactlyOne bool, usedTypeNames map[string]bool, emitted map[string][]unionVariant) {
+// emitUnion emits the union wrapper type name and its variants. With exactlyOne
+// (a oneOf), the wrapper's Validate requires exactly one variant. Validate is
+// emitted when exactlyOne or validate is set. It also checks the union's own
+// required properties on the set variant.
+func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Definition, defs []*load.Definition, exactlyOne, validate bool, usedTypeNames map[string]bool, emitted map[string][]unionVariant) {
 	type variantInfo struct {
 		fieldName         string
 		typeName          string
@@ -962,6 +980,9 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 		constPairs        [][2]string
 		isNull            bool
 		description       string
+		// sharedChecks hold Validate statements for the union's own required
+		// properties, which an inline object variant copies into its struct.
+		sharedChecks []Code
 	}
 	variants := []variantInfo{}
 	discKey := ""
@@ -1111,6 +1132,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 				}
 			}
 		}
+		var sharedChecks []Code
 		// Emit struct for inline variants (non-$ref)
 		if (isObj || isNull || v.Title != "") && ref == "" {
 			// DEFENSIVE PROGRAMMING: Verify tname is registered before emitting
@@ -1139,6 +1161,13 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 					pkeys = append(pkeys, pk)
 				}
 				sort.Strings(pkeys)
+				for _, pk := range pkeys {
+					if _, shared := sharedRequired[pk]; shared && mergedProps[pk].Const == nil {
+						if check := requiredCheck(pk, mergedProps[pk], "u", fieldName); check != nil {
+							sharedChecks = append(sharedChecks, check)
+						}
+					}
+				}
 				if v.Description != "" {
 					emitDocComment(f, v.Description)
 				}
@@ -1195,6 +1224,7 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 			constPairs:        consts,
 			isNull:            isNull,
 			description:       v.Description,
+			sharedChecks:      sharedChecks,
 		})
 		if exactlyOne {
 			emitted[name] = append(emitted[name], unionVariant{
@@ -1415,16 +1445,22 @@ func emitUnion(f *File, name string, schema *load.Schema, parentDef *load.Defini
 	})
 	f.Line()
 
-	// Generic validator for oneOf unions: exactly one variant must be set
-	if exactlyOne {
+	if exactlyOne || validate {
 		f.Func().Params(Id("u").Op("*").Id(name)).Id("Validate").Params().Params(Error()).BlockFunc(func(g *Group) {
-			g.Var().Id("count").Int()
-			for _, vi := range variants {
-				g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).Block(Id("count").Op("++"))
+			if exactlyOne {
+				g.Var().Id("count").Int()
+				for _, vi := range variants {
+					g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).Block(Id("count").Op("++"))
+				}
+				g.If(Id("count").Op("!=").Lit(1)).Block(
+					Return(Qual("errors", "New").Call(Lit(name + " must have exactly one variant set"))),
+				)
 			}
-			g.If(Id("count").Op("!=").Lit(1)).Block(
-				Return(Qual("errors", "New").Call(Lit(name + " must have exactly one variant set"))),
-			)
+			for _, vi := range variants {
+				if len(vi.sharedChecks) > 0 {
+					g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).Block(vi.sharedChecks...)
+				}
+			}
 			g.Return(Nil())
 		})
 		f.Line()

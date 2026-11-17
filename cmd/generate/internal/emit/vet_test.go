@@ -2,6 +2,7 @@ package emit
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,22 +11,53 @@ import (
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 )
 
-// From ACP schema 1.18.0 on, CreateElicitationRequest is an object with its own
-// required "message" property and an anyOf of modes. emitUnion turns it into a
-// wrapper of variant pointers, so the wrapper has no Message field to check.
-const objectAnyOfRequestSchema = `{"$defs": {
+// objectUnionRequestSchema models CreateElicitationRequest: an object with its
+// own required "message" property and a union of modes (oneOf in schema 0.13.5,
+// anyOf from 1.18.0 on). The %s is the union keyword. emitUnion turns it into a
+// wrapper of variant pointers and copies "message" into each inline variant.
+const objectUnionRequestSchema = `{"$defs": {
   "FormMode": {"type": "object", "required": ["requestedSchema"], "properties": {
     "requestedSchema": {"type": "object"}}},
   "UrlMode": {"type": "object", "required": ["url"], "properties": {"url": {"type": "string"}}},
   "CreateElicitationRequest": {"type": "object", "required": ["message"],
     "properties": {"message": {"type": "string"}},
-    "anyOf": [
+    "%s": [
       {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "form"}},
         "allOf": [{"$ref": "#/$defs/FormMode"}]},
       {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "url"}},
         "allOf": [{"$ref": "#/$defs/UrlMode"}]}
     ]}
 }}`
+
+// The generated dispatch decodes each request and calls Validate, which must
+// reject a request that lacks the required "message".
+const objectUnionRequestTest = `package acp
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestCreateElicitationRequest_Validate(t *testing.T) {
+	tests := []struct {
+		payload string
+		wantErr bool
+	}{
+		{payload: ` + "`" + `{"mode":"url","message":"Sign in","url":"https://example.com"}` + "`" + `},
+		{payload: ` + "`" + `{"mode":"url","url":"https://example.com"}` + "`" + `, wantErr: true},
+		{payload: ` + "`" + `{"mode":"form","requestedSchema":{}}` + "`" + `, wantErr: true},
+	}
+	for _, tt := range tests {
+		var req CreateElicitationRequest
+		if err := json.Unmarshal([]byte(tt.payload), &req); err != nil {
+			t.Fatalf("unmarshal %s: %v", tt.payload, err)
+		}
+		if err := req.Validate(); (err != nil) != tt.wantErr {
+			t.Errorf("Validate() on %s = %v, wantErr %v", tt.payload, err, tt.wantErr)
+		}
+	}
+}
+`
 
 // The variants of RequestId are not objects, so its MarshalJSON returns each
 // encoded variant as it is.
@@ -37,34 +69,37 @@ const scalarUnionSchema = `{"$defs": {
   ]}
 }}`
 
-func TestWriteTypesJen_GeneratedPackagePassesVet(t *testing.T) {
+func TestWriteTypesJen_GeneratedPackagePassesVetAndTests(t *testing.T) {
 	tests := []struct {
 		name   string
 		schema string
-		// extra holds hand-written files to compile with the generated ones.
+		// extra holds hand-written files to build and test with the generated ones.
 		extra map[string]string
 	}{
 		{
 			name:   "object anyOf request",
-			schema: objectAnyOfRequestSchema,
-			// The generated dispatch calls Validate on every request it decodes.
-			extra: map[string]string{"validate.go": "package acp\n\n" +
-				"var _ interface{ Validate() error } = (*CreateElicitationRequest)(nil)\n"},
+			schema: fmt.Sprintf(objectUnionRequestSchema, "anyOf"),
+			extra:  map[string]string{"validate_test.go": objectUnionRequestTest},
+		},
+		{
+			name:   "object oneOf request",
+			schema: fmt.Sprintf(objectUnionRequestSchema, "oneOf"),
+			extra:  map[string]string{"validate_test.go": objectUnionRequestTest},
 		},
 		{name: "union of scalar variants", schema: scalarUnionSchema},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			vetGenerated(t, tt.schema, tt.extra)
+			checkGenerated(t, tt.schema, tt.extra)
 		})
 	}
 }
 
-// vetGenerated writes types_gen.go and helpers_gen.go for schemaJSON, plus the
-// extra files, into a scratch module and runs go vet there. go vet type-checks
-// the package, so it fails when the generated code does not compile or has a
-// vet finding such as unreachable code.
-func vetGenerated(t *testing.T, schemaJSON string, extra map[string]string) {
+// checkGenerated writes types_gen.go and helpers_gen.go for schemaJSON, plus
+// the extra files, into a scratch module, and runs go vet and go test there.
+// go vet type-checks the package, so it fails when the generated code does not
+// compile or has a vet finding such as unreachable code.
+func checkGenerated(t *testing.T, schemaJSON string, extra map[string]string) {
 	t.Helper()
 	goTool, err := exec.LookPath("go")
 	if err != nil {
@@ -90,10 +125,12 @@ func vetGenerated(t *testing.T, schemaJSON string, extra map[string]string) {
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}
-	cmd := exec.Command(goTool, "vet", ".")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOFLAGS=", "GOWORK=off")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go vet on the generated package: %v\n%s", err, out)
+	for _, args := range [][]string{{"vet", "."}, {"test", "-count=1", "."}} {
+		cmd := exec.Command(goTool, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GOFLAGS=", "GOWORK=off")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("go %s on the generated package: %v\n%s", args[0], err, out)
+		}
 	}
 }

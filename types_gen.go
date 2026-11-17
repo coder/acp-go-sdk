@@ -4616,6 +4616,16 @@ func (u *SessionConfigOption) Validate() error {
 	if count != 1 {
 		return errors.New("SessionConfigOption must have exactly one variant set")
 	}
+	if u.Select != nil {
+		if u.Select.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+	}
+	if u.Boolean != nil {
+		if u.Boolean.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+	}
 	return nil
 }
 
@@ -6023,7 +6033,7 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
-func (v *SetSessionConfigOptionRequest) Validate() error {
+func (u *SetSessionConfigOptionRequest) Validate() error {
 	return nil
 }
 
@@ -6872,6 +6882,16 @@ func (u *UnstableCreateElicitationRequest) Validate() error {
 	}
 	if count != 1 {
 		return errors.New("UnstableCreateElicitationRequest must have exactly one variant set")
+	}
+	if u.Form != nil {
+		if u.Form.Message == "" {
+			return fmt.Errorf("message is required")
+		}
+	}
+	if u.Url != nil {
+		if u.Url.Message == "" {
+			return fmt.Errorf("message is required")
+		}
 	}
 	return nil
 }
@@ -8944,6 +8964,16 @@ func (u *UnstableSessionConfigOption) Validate() error {
 	}
 	if count != 1 {
 		return errors.New("UnstableSessionConfigOption must have exactly one variant set")
+	}
+	if u.Select != nil {
+		if u.Select.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+	}
+	if u.Boolean != nil {
+		if u.Boolean.Name == "" {
+			return fmt.Errorf("name is required")
+		}
 	}
 	return nil
 }

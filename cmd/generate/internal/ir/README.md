@@ -39,7 +39,7 @@ The package imports only `fmt`, `sort`, `strings`, and the sibling `load` and `u
 - `DispatchMethodNameForNotification` returns `SessionUpdate` for `session_update` and `Cancel` for `session_cancel`. Otherwise it trims the `Notification` suffix from `typeName` [ir.go:DispatchMethodNameForNotification]
 - `BuildMethodGroups` does not check `schema` or `meta` for nil, so a nil argument panics [ir.go:BuildMethodGroups]
 - `Fields` returns the fields sorted by property name. `Name` is `util.ToExportedField` of the property name, and `Required` is true for a property that `required` lists. `Lenient` copies the three hint fields of the property's `load.Definition` [field.go:Fields] [field_test.go:TestFields_ReadsNamesRequiredAndHints]
-- `Fields` returns no field for a property whose type is `"null"` alone. Such a property can hold no value, as `stopReason` in the `none` variant of `IdleStateUpdate` [field.go:Fields] [field_test.go:TestFields_SkipsAPropertyWhoseTypeIsOnlyNull]
+- `Fields` returns no field for an optional property whose type is `"null"` alone. Such a property can hold no value, as `stopReason` in the `none` variant of `IdleStateUpdate`. A required one keeps its field, so that the struct writes the member as `null`. No schema from 0.13.5 through 1.32.0 has one [field.go:Fields] [field_test.go:TestFields_SkipsAnOptionalPropertyWhoseTypeIsOnlyNull]
 - `Fields` panics when a property that is not an array has `x-deserialize-skip-invalid-items` [field.go:Fields] [field_test.go:TestFields_PanicsOnSkipInvalidItemsOutsideAnArray]
 
 ## Side Effects

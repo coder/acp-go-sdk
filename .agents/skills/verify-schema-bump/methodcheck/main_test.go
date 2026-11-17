@@ -26,11 +26,20 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			wantGaps: []string{"MISSING handler protocol $/cancel_request in hand-written code"},
 		},
 		{
+			name: "protocol method compared on send",
+			files: map[string]string{
+				"constants_gen.go": constants,
+				"agent_gen.go":     dispatch,
+				"connection.go":    "package acp\n\nfunc send(method string) bool { return method == ProtocolMethodCancelRequest }\n",
+			},
+			wantGaps: []string{"MISSING handler protocol $/cancel_request in hand-written code"},
+		},
+		{
 			name: "protocol method compared on receive",
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     dispatch,
-				"connection.go":    "package acp\n\nfunc recv(m string) bool { return m == ProtocolMethodCancelRequest }\n",
+				"connection.go":    receive("ProtocolMethodCancelRequest"),
 			},
 		},
 		{
@@ -38,7 +47,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     "package acp\n\nfunc (a *AgentSideConnection) handle(method string) {}\n",
-				"connection.go":    "package acp\n\nfunc recv(m string) bool { return m == \"$/cancel_request\" }\n",
+				"connection.go":    receive(`"$/cancel_request"`),
 			},
 			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
 		},
@@ -47,7 +56,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     "package acp\n\nfunc (a *AgentSideConnection) handle(method string) {\n\tother := \"\"\n\tswitch other {\n\tcase AgentMethodSessionNew:\n\t}\n}\n",
-				"connection.go":    "package acp\n\nfunc recv(m string) bool { return m == \"$/cancel_request\" }\n",
+				"connection.go":    receive(`"$/cancel_request"`),
 			},
 			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
 		},
@@ -56,7 +65,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": "package acp\n\nconst AgentMethodSessionNew = \"session/new\"\n",
 				"agent_gen.go":     dispatch,
-				"connection.go":    "package acp\n\nconst cancelRequest = \"$/cancel_request\"\n\nfunc recv(m string) bool { return m == cancelRequest }\n",
+				"connection.go":    receive("cancelRequest") + "\nconst cancelRequest = \"$/cancel_request\"\n",
 			},
 			wantGaps: []string{"MISSING constant protocol $/cancel_request"},
 		},
@@ -86,4 +95,10 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			}
 		})
 	}
+}
+
+// receive is a hand-written file whose receive path decodes a message and
+// compares its method with want.
+func receive(want string) string {
+	return "package acp\n\nimport \"encoding/json\"\n\nfunc recv(line []byte) bool {\n\tvar msg struct{ Method string }\n\t_ = json.Unmarshal(line, &msg)\n\treturn msg.Method == " + want + "\n}\n"
 }

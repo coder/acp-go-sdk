@@ -4,9 +4,10 @@
 // it. Agent methods go to (*AgentSideConnection).handle, client methods to
 // (*ClientSideConnection).handle, and a method listed for both sides needs
 // both. Protocol methods ($/...) have no generated dispatcher, so they need a
-// constant and an inbound check in hand-written code: a == or != comparison,
-// or a case clause, against the wire string or its constant. Sending the
-// method does not count.
+// constant and a receive path in hand-written code: a function that decodes
+// a message with json.Unmarshal into a variable x and compares x.Method with
+// the wire string or its constant (==, != or a case of switch x.Method).
+// Sending the method, or comparing any other value with it, does not count.
 //
 // It parses source only, so it works on code that does not build. It prints
 // one MISSING line per gap and exits 1 when there is any.
@@ -37,7 +38,7 @@ type pkg struct {
 	consts    map[string]string          // constant name -> string value
 	generated map[string]bool            // string values of constants in *_gen.go files
 	cases     map[string]map[string]bool // dispatcher receiver -> wire methods with a case
-	inbound   map[string]bool            // wire methods that hand-written code compares an inbound method with
+	inbound   map[string]bool            // wire methods that a hand-written receive path compares a decoded message's Method with
 }
 
 func main() {
@@ -178,15 +179,39 @@ func parsePackage(dir string) (*pkg, error) {
 			if generated {
 				continue
 			}
-			ast.Inspect(decl, func(n ast.Node) bool {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Body == nil {
+				continue
+			}
+			decoded := decodedVars(fd.Body)
+			// isMethod reports whether e is x.Method of a decoded message x.
+			isMethod := func(e ast.Expr) bool {
+				sel, ok := e.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "Method" {
+					return false
+				}
+				x, ok := sel.X.(*ast.Ident)
+				return ok && decoded[x.Name]
+			}
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
 				var operands []ast.Expr
 				switch n := n.(type) {
 				case *ast.BinaryExpr:
-					if n.Op == token.EQL || n.Op == token.NEQ {
-						operands = []ast.Expr{n.X, n.Y}
+					if n.Op != token.EQL && n.Op != token.NEQ {
+						break
 					}
-				case *ast.CaseClause:
-					operands = n.List
+					if isMethod(n.X) {
+						operands = append(operands, n.Y)
+					}
+					if isMethod(n.Y) {
+						operands = append(operands, n.X)
+					}
+				case *ast.SwitchStmt:
+					if n.Tag != nil && isMethod(n.Tag) {
+						for _, stmt := range n.Body.List {
+							operands = append(operands, stmt.(*ast.CaseClause).List...)
+						}
+					}
 				}
 				for _, e := range operands {
 					if s, ok := value(e); ok {
@@ -198,6 +223,31 @@ func parsePackage(dir string) (*pkg, error) {
 		}
 	}
 	return p, nil
+}
+
+// decodedVars returns the variables that body fills with json.Unmarshal(b, &x).
+func decodedVars(body *ast.BlockStmt) map[string]bool {
+	vars := map[string]bool{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) != 2 {
+			return true
+		}
+		fn, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || fn.Sel.Name != "Unmarshal" {
+			return true
+		}
+		if pkg, ok := fn.X.(*ast.Ident); !ok || pkg.Name != "json" {
+			return true
+		}
+		if addr, ok := call.Args[1].(*ast.UnaryExpr); ok && addr.Op == token.AND {
+			if x, ok := addr.X.(*ast.Ident); ok {
+				vars[x.Name] = true
+			}
+		}
+		return true
+	})
+	return vars
 }
 
 // methodParam is the name of the handler's first string parameter, the

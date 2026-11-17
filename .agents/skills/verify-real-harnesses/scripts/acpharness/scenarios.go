@@ -154,6 +154,7 @@ func (h *harness) reconnect() (*agentConn, error) {
 	if err != nil {
 		return a, fmt.Errorf("initialize on connection %d: %s", a.n, errText(err))
 	}
+	a.init = resp
 	if resp.ProtocolVersion != acp.ProtocolVersionNumber {
 		return a, fmt.Errorf("initialize on connection %d: protocolVersion %d, want %d", a.n, resp.ProtocolVersion, acp.ProtocolVersionNumber)
 	}
@@ -415,9 +416,12 @@ func (h *harness) permissionTurn(a *agentConn, policy string) (status, string) {
 	a.client.setPolicy(answerCancel)
 
 	// Lstat, not ReadFile: a directory or an unreadable file at the path
-	// also counts as created.
+	// also counts as created. Only "not exist" proves that it is absent.
 	_, statErr := os.Lstat(path)
 	exists := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return fail, fmt.Sprintf("cannot tell whether %s exists: %v", file, statErr)
+	}
 	body, _ := os.ReadFile(path)
 	var answers []string
 	answered := 0
@@ -622,6 +626,9 @@ func (h *harness) loadSession() (status, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
+	if !b.init.AgentCapabilities.LoadSession {
+		return fail, fmt.Sprintf("connection %d does not advertise loadSession, though connection 1 did", b.n)
+	}
 	if _, err := b.conn.LoadSession(ctx, acp.LoadSessionRequest{SessionId: sid, Cwd: h.cwds["A"], McpServers: []acp.McpServer{}}); err != nil {
 		return fail, "session/load: " + errText(err)
 	}
@@ -673,6 +680,9 @@ func (h *harness) resumeSession() (status, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
+	if c.init.AgentCapabilities.SessionCapabilities.Resume == nil {
+		return fail, fmt.Sprintf("connection %d does not advertise sessionCapabilities.resume, though connection 1 did", c.n)
+	}
 	if _, err := c.conn.ResumeSession(ctx, acp.ResumeSessionRequest{SessionId: sid, Cwd: h.cwds["A"]}); err != nil {
 		return fail, "session/resume: " + errText(err)
 	}

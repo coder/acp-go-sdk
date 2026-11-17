@@ -68,11 +68,31 @@ source_id() {
 # for a process that this run started.
 start_of() { ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//' || true; }
 
-# tagged PID: the process carries this run's ACP_HARNESS_TAG. Without /proc
-# (macOS) the check cannot run and passes.
+# tagged PID [LABEL]: the process carries this run's ACP_HARNESS_TAG, for
+# LABEL if given, else for any label. Without /proc (macOS) the check cannot
+# run and passes.
 tagged() {
 	[ -d /proc/self ] || return 0
-	grep -qzxF "ACP_HARNESS_TAG=$TAG" "/proc/$1/environ" 2>/dev/null
+	if [ -n "${2:-}" ]; then
+		grep -qzxF "ACP_HARNESS_TAG=$TAG/$2" "/proc/$1/environ" 2>/dev/null
+	else
+		grep -qz "^ACP_HARNESS_TAG=$TAG/" "/proc/$1/environ" 2>/dev/null
+	fi
+}
+
+# stop_tagged LABEL: stop every process that still carries LABEL's tag. It
+# catches an agent that a killed client started in a group of its own.
+stop_tagged() {
+	[ -d /proc/self ] || return 0
+	local env p what
+	for env in /proc/[0-9]*/environ; do
+		p=${env#/proc/}
+		p=${p%/environ}
+		if [ "$p" = $$ ] || ! tagged "$p" "$1"; then continue; fi
+		what=$(ps -o args= -p "$p" 2>/dev/null | cut -c1-160 || true)
+		stop "$p" alive "$p"
+		echo "stopped pid $p ($what), left behind by $1"
+	done
 }
 
 # ours PID START: the PID is alive and is still the process recorded. The
@@ -341,12 +361,15 @@ cmd_g5() {
 	# The driver bounds each request, but a write to an agent that stops
 	# reading stdin cannot time out. The outer timeout ends such a hang, and
 	# stop_groups then stops the agents that the driver left running.
-	export ACP_HARNESS_TAG=$TAG
+	export ACP_HARNESS_TAG=$TAG/$label
 	tracked timeout --kill-after=30 "${HARNESS_G5_TIMEOUT:-1800}" \
 		env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" -budget-usd "$left" \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
 	[ "$rc" = 124 ] && echo "TIMEOUT: the driver ran longer than ${HARNESS_G5_TIMEOUT:-1800}s"
-	stop_groups "$from" | tee "$out/leftovers.txt"
+	{
+		stop_groups "$from"
+		stop_tagged "$label"
+	} | tee "$out/leftovers.txt"
 	echo "evidence $out"
 	return "$rc"
 }
@@ -354,7 +377,7 @@ cmd_g5() {
 cmd_g4() {
 	need_run
 	local rc=0 out
-	export ACP_HARNESS_TAG=$TAG
+	export ACP_HARNESS_TAG=$TAG/g4
 	# Both folders go first, so an interrupted rerun leaves no stale PASS.
 	rm -rf "$EVIDENCE/g4-ts-client-go-agent" "$EVIDENCE/g4-go-client-ts-agent"
 	# 1. The TypeScript SDK as the client, this repo's example agent as the agent.
@@ -364,6 +387,8 @@ cmd_g4() {
 	echo "== TS client -> Go example agent"
 	(cd "$WORK/npm/ts" && tracked timeout 120 node ts-client.mjs --out "$out" \
 		--cwd "$WORK/cwd/g4-ts" -- "$BIN/acp-example-agent" 2>"$out/client.stderr.log") || rc=1
+	# A timeout kills the client before it can stop the agent's own group.
+	stop_tagged g4
 	g4_quiet "$out/agent.stderr.log" 'ERROR|WARN' "the Go agent logged an error" || rc=1
 	g4_quiet "$out/client.stderr.log" '.' "the TS client wrote to stderr" || rc=1
 
@@ -456,6 +481,9 @@ cmd_report() {
 				f=$EVIDENCE/$l/summary.json
 				if [ -f "$f" ]; then
 					jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$f"
+				fi
+				if [ -f "$f" ] && jq -e '(.evidenceErrors // []) | length > 0' "$f" >/dev/null; then
+					echo "- $l evidence FAIL: $(jq -r '.evidenceErrors | join("; ")' "$f")"
 				fi
 				f=$EVIDENCE/$l/leftovers.txt
 				if [ -s "$f" ]; then
@@ -565,6 +593,7 @@ stop_groups() {
 	done < <(tail -n "+$1" "$WORK/pgids")
 }
 
+
 cmd_cleanup() {
 	need_run
 	local pid start cmd
@@ -577,6 +606,10 @@ cmd_cleanup() {
 		fi
 	done <"$WORK/pids"
 	stop_groups 1
+	local label
+	for label in g4 $(cd "$EVIDENCE" && ls -d g5-* 2>/dev/null || true); do
+		stop_tagged "$label"
+	done
 	rm -rf "$WORK"
 	rm -f "$RUN/$MARKER"
 	echo "removed $WORK"

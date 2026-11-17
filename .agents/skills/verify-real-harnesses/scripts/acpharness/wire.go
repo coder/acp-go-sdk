@@ -97,7 +97,7 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 		r.inbound[msg.Method]++
 		// The SDK ignores _ extension notifications and handles
 		// $/cancel_request itself, so neither reaches a callback or a log.
-		if len(msg.ID) == 0 && !strings.HasPrefix(msg.Method, "_") && !strings.HasPrefix(msg.Method, "$/") {
+		if len(msg.ID) == 0 && !strings.HasPrefix(msg.Method, "_") && msg.Method != "$/cancel_request" {
 			r.notified[conn]++
 		}
 	}
@@ -271,6 +271,7 @@ type agentConn struct {
 	waitErr error
 	ended   string // how close ended the agent; empty while it runs
 	rec     *recorder
+	init    acp.InitializeResponse // set by reconnect
 }
 
 // startAgent starts the agent command in its own process group, so that

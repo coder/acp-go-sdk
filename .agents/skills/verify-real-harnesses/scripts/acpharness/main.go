@@ -60,6 +60,7 @@ type harness struct {
 	opts      options
 	rec       *recorder
 	sdkLog    slog.Handler
+	sdkFile   *os.File
 	conns     []*agentConn
 	results   []result
 	budgetHit bool
@@ -145,6 +146,7 @@ func newHarness(o options) (*harness, error) {
 		opts:     o,
 		rec:      rec,
 		sdkLog:   slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		sdkFile:  logFile,
 		models:   map[string]bool{},
 		sessions: map[string]acp.SessionId{},
 		cwds:     map[string]string{},
@@ -263,6 +265,9 @@ func (h *harness) finish() int {
 	// Missing proof fails the run: a gate must not pass without its
 	// evidence. A file that cannot be written below fails only the exit code.
 	var lost []string
+	if err := h.sdkFile.Close(); err != nil {
+		h.rec.lost(fmt.Errorf("sdk.log: %w", err))
+	}
 	if err := h.rec.close(); err != nil {
 		lost = append(lost, err.Error())
 	}

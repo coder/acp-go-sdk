@@ -88,7 +88,7 @@ Pass: exit 0 and `G2 PASS`. A bump PR whose base already fails compares its `fai
 
 Evidence, in `$VSB_ROOT/runs/g2-VERSION-TIME/`: `test.log` (`go test -v`, with the subtest of each problem), `failures.txt` (one sorted line per distinct problem), `unknown.txt` (one line per distinct `UNKNOWN`) and `summary.txt`.
 
-G2 needs an SDK that compiles. At a schema version where the generated code does not build (see the G1 results below), it cannot run until the bump fixes the build.
+G2 needs an SDK that compiles. At a schema version where the SDK does not build (see the G1 results below), it cannot run until the bump fixes the build.
 
 ## G7: consumer canary
 
@@ -113,19 +113,18 @@ None of the gates runs in `make test`. G1 and G7 need the network. G2 needs the 
 
 ## Known results at schema 0.13.5
 
-`main` at `492745b`, measured on 2026-11-17.
+`main` at `a0c38c3` (after #90) with this skill merged, measured on 2026-11-17.
 
-G1 at 0.13.5 alone (`g1-walk 0.13.5`): `gen`, `idem`, `drift` and `build` pass; `vet` fails with 12 `unreachable code` findings in `types_gen.go`; `methods` reports 3 gaps: `mcp/message` (`x-side: both`) has no dispatcher case on either side, and `$/cancel_request` has no generated constant. The API diff against `v0.13.5` is empty.
+G1 at 0.13.5 alone (`g1-walk 0.13.5`): `gen`, `idem`, `drift`, `build` and `vet` pass; `methods` reports 2 gaps: `mcp/message` (`x-side: both`) has no dispatcher case on either side. The API diff against `v0.13.5` is empty.
 
 G1 from 0.13.5 to 1.32.0 (`g1-walk 1.32.0`, 25 releases): every release generates and regenerates the same output. The build fails from 0.13.6 on:
 
 | Releases | Generated code | Hand-written code |
 | --- | --- | --- |
 | 0.13.6, 1.13.7 | builds | `example/agent` no longer satisfies `acp.Agent` (5 errors) |
-| 1.14.0 to 1.17.0 | builds | `helpers.go:71`: a `string` where `TerminalId` is now required |
-| 1.18.0 to 1.32.0 | `types_gen.go`: `v.Message undefined` in `Validate` of `CreateElicitationRequest` (`UnstableCreateElicitationRequest` at 1.18.0 to 1.20.0) | `helpers.go:71` as above |
+| 1.14.0 to 1.32.0 | builds | `helpers.go:71`: a `string` where `TerminalId` is now required |
 
-From 1.24.0 on, `methods` reports only the `$/cancel_request` constant. `apidiff` at 1.32.0 is skipped because the target does not build.
+From 1.24.0 on, `methods` passes: the generator dispatches `mcp/message` on both sides. `apidiff` at 1.32.0 is skipped because the target does not build. The `helpers.go:71` failure hides later errors: with it fixed, 1.32.0 has 31 compile errors in `example/` and `go vet` fails on `acp_test.go`.
 
 G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; the 13 without one are unstable-only elicitation schema defs, listed, not failed. Every stable def at every bump target (1.13.7, 1.20.0, 1.21.0, 1.25.0, 1.32.0) has one. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 183 distinct problems:
 

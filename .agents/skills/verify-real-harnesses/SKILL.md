@@ -67,14 +67,14 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 
 `g4` runs two drives. First, `scripts/g4/ts-client.mjs` uses the TypeScript SDK to run one prompt turn against `acp-example-agent`, and answers its permission request with allow. Second, `acpharness -profile smoke` runs `initialize`, `session/new` and one prompt turn against the TypeScript example agent. A drive fails when protocol version 1 is not negotiated, when the turn does not end with `end_turn`, when the agent's permission request does not arrive or is not allowed, when an error response or a non-JSON line crosses the wire, when the SDK logs a "Method not found" or decode error, when the agent does not exit 0 after its input closes, or when the agent's stderr has an error or warning line. Each `g4` replaces its two evidence folders, so a failed rerun leaves no stale PASS behind.
 
-`g5 ADAPTER` runs every scenario in the next section (`g5 ADAPTER SCENARIO,...` runs some of them, see [Rerun some scenarios](#rerun-some-scenarios)), under a 1800 s limit (`HARNESS_G5_TIMEOUT`) that ends a driver stuck on an agent that stopped reading. After the driver exits, `g5` stops any agent process that it left running. Each adapter gets a private config folder in `work/home/`:
+`g5 ADAPTER` runs every scenario in the next section (`g5 ADAPTER SCENARIO,...` runs some of them, see [Rerun some scenarios](#rerun-some-scenarios)), under a 1800 s limit (`HARNESS_G5_TIMEOUT`) that ends a driver stuck on an agent that stopped reading. After the driver exits, `g5` stops any agent process that it left running. A driver that dies, for example on a Go panic in a generated decoder, exits with a code other than 0, 1 and 64. `g5` then keeps the run's evidence, the panic's trace in `driver.stderr.log` included, prints `INCOMPLETE` and passes on the exit code. Each adapter gets a private config folder in `work/home/`:
 
 | Adapter | Private config | Driver flags |
 | --- | --- | --- |
 | `claude` | `CLAUDE_CONFIG_DIR=work/home/claude` | `-ask-mode default` |
 | `codex` | `CODEX_HOME=work/home/codex` | `-auth api-key -ask-mode read-only` |
 
-Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `work/home/codex/config.toml` with a `model_provider` whose `base_url` is the variable's value, `env_key = "OPENAI_API_KEY"` and `wire_api = "responses"`. That file stays in `work/` and never goes into the evidence. Run one `g5` at a time per run folder. A second one refuses to start, because both would read the same remaining budget. Running `g5` again for the same adapter writes a new label, such as `g5-claude.2`. `report` shows a label whose driver did not finish, or left a partial `summary.json` or `result.txt`, as `INCOMPLETE`.
+Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `work/home/codex/config.toml` with a `model_provider` whose `base_url` is the variable's value, `env_key = "OPENAI_API_KEY"` and `wire_api = "responses"`. That file stays in `work/` and never goes into the evidence. Run one `g5` at a time per run folder. A second one refuses to start, because both would read the same remaining budget. Running `g5` again for the same adapter writes a new label, such as `g5-claude.2`. `report` shows a label whose driver did not finish, or left a partial `summary.json` or `result.txt`, as `INCOMPLETE`, with the first line of the driver's stderr, and then exits 1.
 
 ### Cost and budget
 
@@ -135,7 +135,7 @@ Name the scenarios after the adapter, separated by commas:
 "$V" g5 codex prompt,session/list
 ```
 
-The run gets its own label, such as `g5-claude.2`, and `g5` tracks, budgets and reports it like a full run. The driver rejects a name that is not a scenario of the live profile, and `g5` then records no run. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and every other scenario is a `SKIP` with `not selected by -only`. A scenario that needs the state of a left-out one can fail, or skip with `blocked`, which fails `known-skips`. For example, `config-option` without `prompt` has no model to compare with, `session/delete` without a permission or cancel scenario has no session B, and codex-acp does not list session A in `session/list` until `prompt` has run a turn in it.
+The run gets its own label, such as `g5-claude.2`, and `g5` tracks, budgets and reports it like a full run. The driver rejects a name that is not a scenario of the live profile with exit 64, and `g5` then records no run and exits 64. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and every other scenario is a `SKIP` with `not selected by -only`. A scenario that needs the state of a left-out one can fail, or skip with `blocked`, which fails `known-skips`. For example, `config-option` without `prompt` has no model to compare with, `session/delete` without a permission or cancel scenario has no session B, and codex-acp does not list session A in `session/list` until `prompt` has run a turn in it.
 
 Do not run `acpharness` by hand against a real adapter. Outside `g5`, nothing records its process groups for `cleanup`, passes it the budget that is left, or counts its cost in `report`.
 
@@ -143,7 +143,7 @@ Do not run `acpharness` by hand against a real adapter. Outside `g5`, nothing re
 
 Each gate writes a folder in `evidence/` of the run:
 
-- `g5-<adapter>/`: `transcript.jsonl` (every JSON-RPC line in both directions, with `t_ms`, `conn`, `scenario` and `dir`), `sdk.log` (the SDK's slog records as JSON, tagged with `conn` and `scenario`), `agent-<conn>.stderr.log` (each line prefixed with milliseconds and the scenario), `summary.json`, `result.txt`, `command.txt`, `budget.txt` and `leftovers.txt` (the processes that `g5` had to stop after the driver exited). The driver exits 1 when it cannot write any of these files, because a gate must not pass without its proof.
+- `g5-<adapter>/`: `transcript.jsonl` (every JSON-RPC line in both directions, with `t_ms`, `conn`, `scenario` and `dir`), `sdk.log` (the SDK's slog records as JSON, tagged with `conn` and `scenario`), `agent-<conn>.stderr.log` (each line prefixed with milliseconds and the scenario), `summary.json`, `result.txt`, `command.txt`, `budget.txt`, `driver.stderr.log` (the driver's own stderr, empty unless something went wrong, such as a panic) and `leftovers.txt` (the processes that `g5` had to stop after the driver exited). The driver exits 1 when it cannot write any of these files, because a gate must not pass without its proof.
 - `g4-ts-client-go-agent/`: the TypeScript client's `transcript.jsonl`, `summary.json` and `result.txt`, plus `agent.stderr.log` and `client.stderr.log`.
 - `g4-go-client-ts-agent/`: the same files as a `g5` folder.
 - `versions.json` and, after `report`, `report.md`.

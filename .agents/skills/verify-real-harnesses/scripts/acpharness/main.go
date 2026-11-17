@@ -13,12 +13,14 @@
 // runs initialize, session/new and one prompt turn, for agents without a
 // model, such as the TypeScript SDK's example agent. Exit 0: no scenario
 // failed. Exit 1: a scenario failed, the budget stopped the run, or the
-// evidence folder could not be set up. Exit 2: usage error, before any agent
-// starts.
+// evidence folder could not be set up. Exit 64 (EX_USAGE): usage error,
+// before any agent starts. Any other exit means that the driver died, such
+// as 2 for a Go panic, so the run happened and its evidence counts.
 package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -111,23 +113,32 @@ type harness struct {
 	modes         map[string]*acp.SessionModeState
 }
 
+// exitUsage is the exit code of a usage error. g5 reads it as "no run
+// happened". It must differ from 2, which a Go panic exits with.
+const exitUsage = 64
+
 func main() {
 	var o options
 	var only string
-	flag.StringVar(&o.out, "out", "", "evidence folder (created)")
-	flag.StringVar(&o.cwd, "cwd", "", "folder for the sessions' working directories (created)")
-	flag.StringVar(&o.profile, "profile", "live", "live or smoke")
-	flag.StringVar(&o.askMode, "ask-mode", "", "mode that makes the agent ask before it edits a file")
-	flag.StringVar(&o.auth, "auth", "", "authenticate with this method id after initialize")
-	flag.Float64Var(&o.budget, "budget-usd", 25, "stop before the next scenario once the reported cost reaches this")
-	flag.DurationVar(&o.turnTimeout, "turn-timeout", 5*time.Minute, "longest prompt turn")
-	flag.StringVar(&only, "only", "", "comma-separated scenarios to run; setup steps always run")
-	flag.StringVar(&o.pgids, "pgids", "", "append each agent's process group and start time to this file")
-	flag.Parse()
-	o.agent = flag.Args()
+	fs := flag.NewFlagSet("acpharness", flag.ContinueOnError)
+	fs.StringVar(&o.out, "out", "", "evidence folder (created)")
+	fs.StringVar(&o.cwd, "cwd", "", "folder for the sessions' working directories (created)")
+	fs.StringVar(&o.profile, "profile", "live", "live or smoke")
+	fs.StringVar(&o.askMode, "ask-mode", "", "mode that makes the agent ask before it edits a file")
+	fs.StringVar(&o.auth, "auth", "", "authenticate with this method id after initialize")
+	fs.Float64Var(&o.budget, "budget-usd", 25, "stop before the next scenario once the reported cost reaches this")
+	fs.DurationVar(&o.turnTimeout, "turn-timeout", 5*time.Minute, "longest prompt turn")
+	fs.StringVar(&only, "only", "", "comma-separated scenarios to run; setup steps always run")
+	fs.StringVar(&o.pgids, "pgids", "", "append each agent's process group and start time to this file")
+	if err := fs.Parse(os.Args[1:]); errors.Is(err, flag.ErrHelp) {
+		os.Exit(0)
+	} else if err != nil {
+		os.Exit(exitUsage)
+	}
+	o.agent = fs.Args()
 	if o.out == "" || o.cwd == "" || len(o.agent) == 0 || (o.profile != "live" && o.profile != "smoke") {
-		flag.Usage()
-		os.Exit(2)
+		fs.Usage()
+		os.Exit(exitUsage)
 	}
 	if only != "" {
 		o.only = map[string]bool{}
@@ -135,7 +146,7 @@ func main() {
 			s = strings.TrimSpace(s)
 			if !contains(profiles[o.profile], s) {
 				fmt.Fprintf(os.Stderr, "acpharness: -only names %q, which is not a %s scenario: %s\n", s, o.profile, strings.Join(profiles[o.profile], ", "))
-				os.Exit(2)
+				os.Exit(exitUsage)
 			}
 			o.only[s] = true
 		}

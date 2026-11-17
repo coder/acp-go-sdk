@@ -20,6 +20,12 @@
 #   HARNESS_BUDGET_USD  most model cost that the g5 runs of one run folder may
 #                       report in total (default 25)
 #   HARNESS_G5_TIMEOUT  seconds before g5 stops a driver that hangs (default 1800)
+#
+# Exit codes: 64 for a usage error, when nothing ran. g5 passes on the
+# driver's code: 0 when no scenario failed, 1 when one failed, 64 when the
+# driver rejected its arguments and no run was recorded, and any other code
+# when the driver died, such as 2 for a Go panic. A run whose driver died
+# keeps its evidence, and report shows it as INCOMPLETE and exits 1.
 set -euo pipefail
 
 SKILL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -30,6 +36,12 @@ TS_EXAMPLE=https://raw.githubusercontent.com/agentclientprotocol/typescript-sdk
 die() {
 	echo "harness: $*" >&2
 	exit 2
+}
+
+# usage: nothing ran. Exit 64 tells it from a driver that died with 2.
+usage() {
+	echo "harness: $*" >&2
+	exit 64
 }
 
 # adapter NAME sets the adapter's npm package, the variable that points it
@@ -50,7 +62,7 @@ adapter() {
 		NEEDS=(OPENAI_API_KEY)
 		FLAGS=(-auth api-key -ask-mode read-only)
 		;;
-	*) die "unknown adapter '$1': use claude or codex" ;;
+	*) usage "unknown adapter '$1': use claude or codex" ;;
 	esac
 }
 
@@ -340,9 +352,9 @@ write_codex_config() {
 }
 
 cmd_g5() {
+	{ [ "$#" -ge 1 ] && [ "$#" -le 2 ]; } || usage "usage: harness g5 ADAPTER [SCENARIO,...]"
 	need_run
-	local name=${1:?adapter: claude or codex} only=${2:-} v
-	[ "$#" -le 2 ] || die "usage: harness g5 ADAPTER [SCENARIO,...]"
+	local name=$1 only=${2:-} v
 	adapter "$name"
 	# A scenario list goes to the driver's -only, which rejects a name that
 	# is not a scenario. The run stays tracked, budgeted and in the report.
@@ -382,19 +394,25 @@ cmd_g5() {
 	# stop_tagged cannot hit the shell's own helpers, such as tee below.
 	tracked env "ACP_HARNESS_TAG=$TAG/$label" timeout --kill-after=30 "$limit" \
 		env "$HOME_VAR=$home" "$BIN/acpharness" "${FLAGS[@]}" ${select[@]+"${select[@]}"} -budget-usd "$left" \
-		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" || rc=$?
-	if [ "$rc" = 2 ]; then
-		# The driver exits 2 only for a usage error, such as an unknown
+		-pgids "$WORK/pgids" -out "$out" -cwd "$cwd" -- "$agent" 2>"$out/driver.stderr.log" || rc=$?
+	# The driver writes to stderr only when something went wrong, such as
+	# the trace of a panic. The file keeps it with the evidence.
+	cat "$out/driver.stderr.log" >&2
+	if [ "$rc" = 64 ]; then
+		# The driver exits 64 only for a usage error, such as an unknown
 		# scenario, before it starts an agent. Free the label, so that report
-		# shows no INCOMPLETE run for it.
+		# shows no INCOMPLETE run for it. Any other exit code, a Go panic's 2
+		# included, means that the run happened: keep its evidence.
 		rm -rf "$out" "$cwd"
-		die "the driver rejected its arguments; no run was recorded"
+		usage "the driver rejected its arguments; no run was recorded"
 	fi
 	# timeout exits 124 after SIGTERM, or 137 when the driver ignored it and
 	# got SIGKILL 30 s later. The elapsed time tells a timeout from another kill.
 	if { [ "$rc" = 124 ] || [ "$rc" = 137 ]; } && [ $((SECONDS - began)) -ge "$limit" ]; then
 		echo "TIMEOUT: the driver ran longer than ${limit}s (exit $rc)"
 	fi
+	complete "$out" ||
+		echo "INCOMPLETE: the driver exited $rc before it finished summary.json and result.txt. Its evidence stays, and report shows the run as INCOMPLETE."
 	{
 		stop_groups "$from"
 		stop_tagged "$label"
@@ -469,9 +487,11 @@ cmd_report() {
 	[ -n "${HARNESS_RUN:-}" ] || die "HARNESS_RUN is not set"
 	set_paths "$HARNESS_RUN"
 	[ -f "$EVIDENCE/versions.json" ] || die "no evidence in $RUN"
-	local labels=() l f names n row s cost
+	local labels=() incomplete=() l f names n row s cost
 	for f in "$EVIDENCE"/g5-*; do
-		[ -d "$f" ] && labels+=("$(basename "$f")")
+		[ -d "$f" ] || continue
+		labels+=("$(basename "$f")")
+		complete "$f" || incomplete+=("$(basename "$f")")
 	done
 	{
 		echo "# ACP Go SDK live gates"
@@ -531,6 +551,11 @@ cmd_report() {
 				f=$EVIDENCE/$l/summary.json
 				if complete "$EVIDENCE/$l"; then
 					jq -r --arg l "$l" '.results[] | select(.status != "PASS") | "- \($l) \(.name) \(.status): \(.detail | .[0:400])"' "$f"
+				else
+					f=$EVIDENCE/$l/driver.stderr.log
+					s="its stderr is empty"
+					[ -s "$f" ] && s="its stderr starts with: $(sed -n '/./{p;q}' "$f" | cut -c1-200)"
+					echo "- $l INCOMPLETE: the driver did not finish; $s"
 				fi
 				if complete "$EVIDENCE/$l" && jq -e '(.evidenceErrors // []) | length > 0' "$f" >/dev/null; then
 					echo "- $l evidence FAIL: $(jq -r '.evidenceErrors | join("; ")' "$f")"
@@ -559,6 +584,10 @@ cmd_report() {
 		fi
 	} >"$EVIDENCE/report.md"
 	cat "$EVIDENCE/report.md"
+	if [ "${#incomplete[@]}" -gt 0 ]; then
+		echo "harness: INCOMPLETE: ${incomplete[*]}: the driver did not finish" >&2
+		return 1
+	fi
 }
 
 # scanned RC: grep's exit code 1 means no match. Any other code means that
@@ -686,7 +715,7 @@ report) cmd_report ;;
 scan) cmd_scan ;;
 cleanup) cmd_cleanup ;;
 *)
-	sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-	exit 2
+	sed -n '2,/^set /{/^#/p}' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	exit 64
 	;;
 esac

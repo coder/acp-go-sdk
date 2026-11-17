@@ -70,9 +70,10 @@ For each value the test decodes it into the def's SDK type, calls its `Validate`
 | `NO-TYPE` | A message's def has no SDK type. |
 | `DECODE` | The SDK type cannot decode a value. |
 | `VALIDATE` | The type's `Validate` method rejects a value. |
-| `LOSSY` | The encoded JSON differs from the input. The line lists every differing path and the values at the first. Numbers compare by exact value (`1.0` equals `1`; no digit is rounded away), and an object member set to `null` counts as absent. `{}` and absent differ, because ACP capabilities use `{}` to mean "supported". |
+| `LOSSY` | The encoded JSON differs from the input. The line lists every differing path and the values at the first. Numbers compare by exact value (`1.0` equals `1`; no digit is rounded away). A member that is `null`, or that equals its property's schema `default`, counts as absent on both sides: the SDK, like the Rust SDK's `#[serde(default)]` fields, reads an absent member as its default and may write the default back. Where the schema gives no default, `{}` and absent differ, because ACP capabilities use `{}` to mean "supported". |
 | `SCHEMA` | A schema file accepts the input but rejects the encoded JSON. |
 | `HINT` | The SDK ignores an `x-deserialize-*` hint. |
+| `UNKNOWN` | Logged, not a failure: the input has a member that no node of the schema defines, such as a field from a newer schema version, and the SDK drops it. Listed in `unknown.txt`. |
 
 `TestHints` finds each property that carries a hint, in a def or in one of its top-level alternatives, in each schema file (a def that both files share is checked once per file, because the files can define it differently), and builds a value of the def around it:
 
@@ -84,7 +85,7 @@ A schema without hints logs `SUMMARY hints: no hints in this schema`.
 
 Pass: exit 0 and `G2 PASS`. A bump PR whose base already fails compares its `failures.txt` with the base's run (`diff BASE_RUN/failures.txt BUMP_RUN/failures.txt`): a new line is a regression unless the PR explains it, and a line that the bump fixes goes away.
 
-Evidence, in `$VSB_ROOT/runs/g2-VERSION-TIME/`: `test.log` (`go test -v`, with the subtest of each problem), `failures.txt` (one sorted line per distinct problem) and `summary.txt`.
+Evidence, in `$VSB_ROOT/runs/g2-VERSION-TIME/`: `test.log` (`go test -v`, with the subtest of each problem), `failures.txt` (one sorted line per distinct problem), `unknown.txt` (one line per distinct `UNKNOWN`) and `summary.txt`.
 
 G2 needs an SDK that compiles. At a schema version where the generated code does not build (see the G1 results below), it cannot run until the bump fixes the build.
 
@@ -125,10 +126,11 @@ G1 from 0.13.5 to 1.32.0 (`g1-walk 1.32.0`, 25 releases): every release generate
 
 From 1.24.0 on, `methods` reports only the `$/cancel_request` constant. `apidiff` at 1.32.0 is skipped because the target does not build.
 
-G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; 13 elicitation schema defs have none. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 194 distinct problems:
+G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; 13 elicitation schema defs have none. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 183 distinct problems:
 
 - `HINT` 165 (51 in `schema.json`, 114 in `schema.unstable.json`): the SDK honors no hint. 122 `x-deserialize-default-on-error` and 43 `x-deserialize-skip-invalid-items` sites fail to decode a bad value.
-- `LOSSY` 25: `ContentBlock` drops `_meta` and `annotations` (so do `Content`, `ContentChunk`, `ToolCallContent`, `PromptRequest.prompt` and `SessionUpdate`, which hold one); absent `auth` capabilities come back as `{}`, and an absent `agentCapabilities` or `clientCapabilities` comes back filled with defaults; `AuthEnvVar.secret` comes back as `true` when absent; the unstable elicitation types drop `sessionId`, `toolCallId`, `elicitationId`, `url` and parts of `requestedSchema`; transcripts lose capability flags set to `false` (such as `mcpCapabilities.acp`) and fields that 0.13.5 does not define (`agentCapabilities.auth.status`, `sessionCapabilities.status`, `NewSessionResponse.models`).
+- `LOSSY` 14: `ContentBlock` drops `_meta` and `annotations` (6 lines: also `Content`, `ContentChunk`, `ToolCallContent`, `PromptRequest.prompt` and `SessionUpdate`, which hold one); the unstable elicitation types drop `sessionId`, `toolCallId`, `elicitationId`, `url` and `requestedSchema` (5 lines); the SDK writes the unstable `auth: {}` capability into `ClientCapabilities` built from `schema.json`, which does not define it (3 lines).
 - `SCHEMA` 4: the encoded `CreateElicitationRequest`, `ElicitationFormMode` and `ElicitationUrlMode` miss required properties.
+- `UNKNOWN` 3 (not failures): the adapters send fields that 0.13.5 does not define, and the SDK drops them: `agentCapabilities.auth.status`, `agentCapabilities.sessionCapabilities.options`, `.status`, `.systemPrompt` and `.title`, and `NewSessionResponse.models`.
 
 G7 (`g7-canary`): passes. `docker/docker-agent` at `19a7356` (1 package), `jaegertracing/jaeger` at `f141f57` (3 packages) and `coder/coder` at `a3f25a4` (2 packages: `agent/x/agentacp`, `coderd/x/chatd`) build against `main`. A checkout with `NewInvalidParams` and `PromptResponse.StopReason` renamed fails docker-agent with two groups, `acp.NewInvalidParams (29)` and `acp.PromptResponse.StopReason (5)`.

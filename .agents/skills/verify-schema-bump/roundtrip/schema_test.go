@@ -11,6 +11,8 @@
 //	DECODE    json.Unmarshal into the SDK type failed on a schema-valid value
 //	VALIDATE  the SDK type's Validate method rejected a schema-valid value
 //	LOSSY     the re-encoded JSON differs from the input
+//	UNKNOWN   (logged, not an error) the SDK dropped an input member that the
+//	          schema does not define
 //	SCHEMA    the schema accepts the input but not the re-encoded JSON
 //	HINT      the SDK does not honor an x-deserialize-* hint
 package roundtrip
@@ -19,10 +21,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -133,8 +133,9 @@ func (f *schemaFile) validate(def string, data []byte) error {
 
 // checkRoundTrip decodes data into the SDK type for def, runs its Validate
 // method when it has one, encodes it again, and checks the result against
-// data. The result must also be valid in each file of files whose $defs/def
-// accepts data: an input that the schema rejects says nothing about the SDK.
+// data (see compareJSON). The result must also be valid in each file of
+// files whose $defs/def accepts data: an input that the schema rejects says
+// nothing about the SDK.
 func checkRoundTrip(t *testing.T, def string, data []byte, files []*schemaFile) {
 	t.Helper()
 	newValue, ok := registry[def]
@@ -157,8 +158,16 @@ func checkRoundTrip(t *testing.T, def string, data []byte, files []*schemaFile) 
 		t.Errorf("DECODE %s: re-encode: %v", def, err)
 		return
 	}
-	if d := diffJSON(data, out); d != "" {
-		t.Errorf("LOSSY %s: %s", def, d)
+	c, err := compareJSON(data, out, defRefs(def, files))
+	if err != nil {
+		t.Errorf("LOSSY %s: %v", def, err)
+		return
+	}
+	if len(c.lost) > 0 {
+		t.Errorf("LOSSY %s: %s", def, describe(c.lost))
+	}
+	if len(c.unknown) > 0 {
+		t.Logf("UNKNOWN %s: dropped %s, not defined in this schema version", def, strings.Join(c.unknown, " "))
 	}
 	for _, f := range files {
 		if _, ok := f.defs[def]; !ok || f.validate(def, data) != nil {
@@ -168,100 +177,6 @@ func checkRoundTrip(t *testing.T, def string, data []byte, files []*schemaFile) 
 			t.Errorf("SCHEMA %s (%s): %v", def, f.name, err)
 		}
 	}
-}
-
-// diffJSON compares two JSON documents after normalizing them: numbers
-// compare by exact value (1.0 equals 1, and no digit is rounded away) and an
-// object member whose value is null counts as absent. It returns "" when
-// they are equal, else every differing path and the values at the first.
-func diffJSON(in, out []byte) string {
-	a, err := decodeExact(in)
-	if err != nil {
-		return "input: " + err.Error()
-	}
-	b, err := decodeExact(out)
-	if err != nil {
-		return "output: " + err.Error()
-	}
-	var diffs []string
-	walkDiff("", dropNulls(a), dropNulls(b), &diffs)
-	if len(diffs) == 0 {
-		return ""
-	}
-	paths := make([]string, len(diffs))
-	for i, d := range diffs {
-		paths[i], _, _ = strings.Cut(d, ": in=")
-	}
-	return fmt.Sprintf("%d difference(s) at %s; first %s", len(diffs), strings.Join(paths, " "), diffs[0])
-}
-
-func walkDiff(path string, a, b any, diffs *[]string) {
-	am, aok := a.(map[string]any)
-	bm, bok := b.(map[string]any)
-	if aok && bok {
-		keys := map[string]bool{}
-		for k := range am {
-			keys[k] = true
-		}
-		for k := range bm {
-			keys[k] = true
-		}
-		for _, k := range sortedKeys(keys) {
-			walkDiff(path+"/"+k, am[k], bm[k], diffs)
-		}
-		return
-	}
-	as, aok := a.([]any)
-	bs, bok := b.([]any)
-	if aok && bok && len(as) == len(bs) {
-		for i := range as {
-			walkDiff(fmt.Sprintf("%s/%d", path, i), as[i], bs[i], diffs)
-		}
-		return
-	}
-	an, aNum := a.(json.Number)
-	bn, bNum := b.(json.Number)
-	if aNum && bNum && sameNumber(an, bn) || !aNum && reflect.DeepEqual(a, b) {
-		return
-	}
-	if path == "" {
-		path = "/"
-	}
-	*diffs = append(*diffs, fmt.Sprintf("%s: in=%s out=%s", path, short(a), short(b)))
-}
-
-func decodeExact(b []byte) (any, error) {
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.UseNumber()
-	var v any
-	err := dec.Decode(&v)
-	return v, err
-}
-
-func sameNumber(a, b json.Number) bool {
-	x, okA := new(big.Rat).SetString(string(a))
-	y, okB := new(big.Rat).SetString(string(b))
-	return okA && okB && x.Cmp(y) == 0
-}
-
-func dropNulls(v any) any {
-	switch v := v.(type) {
-	case map[string]any:
-		out := map[string]any{}
-		for k, x := range v {
-			if x != nil {
-				out[k] = dropNulls(x)
-			}
-		}
-		return out
-	case []any:
-		out := make([]any, len(v))
-		for i, x := range v {
-			out[i] = dropNulls(x)
-		}
-		return out
-	}
-	return v
 }
 
 func short(v any) string {
@@ -296,27 +211,4 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
-}
-
-func TestDiffJSON_ComparesNumbersExactly(t *testing.T) {
-	for _, tc := range []struct {
-		in, out string
-		equal   bool
-	}{
-		{`{"a":9007199254740993}`, `{"a":9007199254740992}`, false},
-		{`{"a":1.0}`, `{"a":1}`, true},
-		{`{"a":1}`, `{"a":"1"}`, false},
-	} {
-		if got := diffJSON([]byte(tc.in), []byte(tc.out)) == ""; got != tc.equal {
-			t.Errorf("diffJSON(%s, %s) equal = %v, want %v", tc.in, tc.out, got, tc.equal)
-		}
-	}
-}
-
-func TestDiffJSON_NamesEveryPath(t *testing.T) {
-	a := diffJSON([]byte(`{"a":1,"b":1}`), []byte(`{"a":2,"b":2}`))
-	b := diffJSON([]byte(`{"a":1,"c":1}`), []byte(`{"a":2,"c":2}`))
-	if a == b {
-		t.Errorf("losses at /a /b and at /a /c read the same: %q", a)
-	}
 }

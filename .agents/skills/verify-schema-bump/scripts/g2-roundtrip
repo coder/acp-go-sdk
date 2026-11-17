@@ -25,6 +25,9 @@ grep -oE 'SUMMARY .*' "$run/test.log" | tee -a "$run/summary.txt" || true
 sed -nE 's/^ +[a-z_]+_test\.go:[0-9]+: ((NO-TYPE|DECODE|VALIDATE|LOSSY|SCHEMA|HINT) .*)/\1/p' "$run/test.log" | sort -u >"$run/failures.txt"
 echo "distinct problems by kind:" | tee -a "$run/summary.txt"
 awk '{ print $1 }' "$run/failures.txt" | sort | uniq -c | tee -a "$run/summary.txt"
+# Fields newer than this schema version that the SDK dropped: reported, not failures.
+sed -nE 's/^ +[a-z_]+_test\.go:[0-9]+: (UNKNOWN .*)/\1/p' "$run/test.log" | sort -u >"$run/unknown.txt"
+echo "UNKNOWN (not a failure): $(wc -l <"$run/unknown.txt")" | tee -a "$run/summary.txt"
 grep -E '^(FAIL|ok|panic|#)' "$run/test.log" | grep -v '^FAIL$' | tee -a "$run/summary.txt" || true
 echo "evidence: $run"
 if [ $status = 0 ]; then echo "G2 PASS"; else echo "G2 FAIL"; exit 1; fi

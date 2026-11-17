@@ -169,8 +169,12 @@ func checkHint(site hintSite) (skip, problem string) {
 	if err != nil {
 		return "the instance without the bad part does not decode: " + err.Error(), ""
 	}
-	if d := diffJSON(expected, got); d != "" {
-		return "", fmt.Sprintf("decoded %s differently from %s: %s", oneLine(string(input), 160), oneLine(string(want), 160), d)
+	c, err := compareJSON(expected, got, defRefs(site.def, []*schemaFile{site.file}))
+	if err != nil {
+		return "", "compare: " + err.Error()
+	}
+	if diffs := append(c.lost, c.unknown...); len(diffs) > 0 {
+		return "", fmt.Sprintf("decoded %s differently from %s: %s", oneLine(string(input), 160), oneLine(string(want), 160), describe(diffs))
 	}
 	return "", ""
 }

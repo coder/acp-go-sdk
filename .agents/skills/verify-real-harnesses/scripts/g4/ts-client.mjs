@@ -14,6 +14,7 @@
 import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
+import { finished } from "node:stream/promises";
 import * as acp from "@agentclientprotocol/sdk";
 
 const argv = process.argv.slice(2);
@@ -33,6 +34,11 @@ mkdirSync(cwd, { recursive: true });
 
 const start = Date.now();
 const transcript = createWriteStream(`${out}/transcript.jsonl`);
+// A write error fails the drive instead of crashing it.
+const transcriptDone = finished(transcript).then(
+  () => null,
+  (err) => err,
+);
 const problems = [];
 const kinds = {};
 const permissions = [];
@@ -136,6 +142,10 @@ if (exit !== null) {
   exit ??= (await within(died, 5000)) ? "killed after SIGTERM was ignored" : "still running after SIGKILL";
 }
 
+// The transcript closes before result.txt is written, so that result.txt
+// never reports a pass whose transcript is incomplete.
+transcript.end();
+const transcriptErr = await transcriptDone;
 const checks = [
   [`protocol version ${acp.PROTOCOL_VERSION} negotiated`, outcome?.protocolVersion === acp.PROTOCOL_VERSION],
   ["session/new returned a session id", typeof outcome?.sessionId === "string" && outcome.sessionId !== ""],
@@ -144,6 +154,7 @@ const checks = [
   ["every permission request allowed", permissions.length > 0 && permissions.every((p) => p.answer !== "cancelled")],
   ["no error response or non-JSON line on the wire", problems.length === 0],
   ["agent exited 0 after its input closed", exit === "exit 0"],
+  [`transcript.jsonl written${transcriptErr ? `: ${transcriptErr.message}` : ""}`, transcriptErr === null],
 ];
 const pass = checks.every(([, ok]) => ok);
 const summary = { agent, sdk: "@agentclientprotocol/sdk", outcome, kinds, permissions, problems, agentExit: exit, pass };
@@ -151,6 +162,5 @@ writeFileSync(`${out}/summary.json`, JSON.stringify(summary, null, 2) + "\n");
 const lines = checks.map(([name, ok]) => `${ok ? "PASS" : "FAIL"}  ${name}`);
 lines.push(...problems.map((p) => `      ${p}`), `exit=${pass ? 0 : 1}`);
 writeFileSync(`${out}/result.txt`, lines.join("\n") + "\n");
-await new Promise((r) => transcript.end(r));
 console.log(lines.join("\n"));
 process.exit(pass ? 0 : 1);

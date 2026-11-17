@@ -441,7 +441,7 @@ cmd_g4() {
 	mkdir -p "$out"
 	echo "cd $WORK/npm/ts && node ts-client.mjs --out $out --cwd $WORK/cwd/g4-ts -- $BIN/acp-example-agent" >"$out/command.txt"
 	echo "== TS client -> Go example agent"
-	(cd "$WORK/npm/ts" && tracked env "ACP_HARNESS_TAG=$TAG/g4" timeout 120 node ts-client.mjs --out "$out" \
+	(cd "$WORK/npm/ts" && tracked env "ACP_HARNESS_TAG=$TAG/g4" timeout --kill-after=10 120 node ts-client.mjs --out "$out" \
 		--cwd "$WORK/cwd/g4-ts" -- "$BIN/acp-example-agent" 2>"$out/client.stderr.log") || rc=1
 	# A timeout kills the client before it can stop the agent's own group.
 	stop_tagged g4
@@ -454,7 +454,7 @@ cmd_g4() {
 	echo "== Go driver -> TS example agent"
 	local from
 	from=$(($(wc -l <"$WORK/pgids") + 1))
-	(cd "$WORK/npm/ts" && tracked env "ACP_HARNESS_TAG=$TAG/g4" timeout 120 "$BIN/acpharness" -profile smoke \
+	(cd "$WORK/npm/ts" && tracked env "ACP_HARNESS_TAG=$TAG/g4" timeout --kill-after=10 120 "$BIN/acpharness" -profile smoke \
 		-pgids "$WORK/pgids" -out "$out" -cwd "$WORK/cwd/g4-go" -- node "$WORK/npm/ts/agent.ts") || rc=1
 	stop_groups "$from"
 	g4_quiet "$out/agent-1.stderr.log" 'error|warn' "the TS agent logged an error" || rc=1

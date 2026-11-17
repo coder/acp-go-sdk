@@ -34,6 +34,7 @@ skill=$root/.agents/skills/verify-schema-bump
 ref=$(git -C "$root" rev-parse --verify "$ref^{commit}")
 [ -n "$from" ] || from=$(git -C "$root" show "$ref:schema/version")
 [ -n "$base_tag" ] || base_tag=$(git -C "$root" tag --merged "$ref" -l 'v[0-9]*' --sort=-v:refname | head -1)
+[ -n "$base_tag" ] || { echo "no v* release tag is merged into $ref: run 'git fetch --tags origin' or pass --base-tag" >&2; exit 2; }
 module=$(git -C "$root" show "$ref:go.mod" | awk '$1 == "module" { print $2; exit }')
 
 vsb=${VSB_ROOT:-${TMPDIR:-/tmp}/verify-schema-bump}
@@ -113,7 +114,7 @@ while read -r v tag <&3; do
 		fi
 		if [ "$v" = "$target" ]; then
 			a=skip
-			if [ $b = ok ] && [ -n "$base_tag" ]; then
+			if [ $b = ok ]; then
 				git -C "$root" worktree add -q --detach "$base_wt" "$base_tag"
 				if (cd "$base_wt" && "$run/bin/apidiff" -w "$run/base.export" "$module") >"$out/apidiff.txt" 2>&1 &&
 					(cd "$wt" && "$run/bin/apidiff" -incompatible "$run/base.export" "$module") >"$out/apidiff.txt" 2>&1; then

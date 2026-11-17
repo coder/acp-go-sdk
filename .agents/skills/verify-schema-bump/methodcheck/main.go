@@ -4,7 +4,9 @@
 // it. Agent methods go to (*AgentSideConnection).handle, client methods to
 // (*ClientSideConnection).handle, and a method listed for both sides needs
 // both. Protocol methods ($/...) have no generated dispatcher, so they need a
-// constant and a reference in a hand-written file of the package.
+// constant and an inbound check in hand-written code: a == or != comparison,
+// or a case clause, against the wire string or its constant. Sending the
+// method does not count.
 //
 // It parses source only, so it works on code that does not build. It prints
 // one MISSING line per gap and exits 1 when there is any.
@@ -32,24 +34,39 @@ type meta struct {
 
 // pkg is what the check needs from the SDK package source.
 type pkg struct {
-	consts   map[string]string          // constant name -> string value
-	cases    map[string]map[string]bool // dispatcher receiver -> wire methods with a case
-	handRefs map[string]bool            // wire methods named in hand-written code
+	consts  map[string]string          // constant name -> string value
+	cases   map[string]map[string]bool // dispatcher receiver -> wire methods with a case
+	inbound map[string]bool            // wire methods that hand-written code compares an inbound method with
 }
 
 func main() {
 	sdk := flag.String("sdk", ".", "SDK checkout root")
 	flag.Parse()
+	missing, checked, err := check(*sdk)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "methodcheck:", err)
+		os.Exit(2)
+	}
+	for _, line := range missing {
+		fmt.Println(line)
+	}
+	fmt.Printf("methods: %d checked, %d missing\n", checked, len(missing))
+	if len(missing) > 0 {
+		os.Exit(1)
+	}
+}
 
+// check returns one MISSING line per gap and the number of methods checked.
+func check(sdk string) (missing []string, checked int, err error) {
 	sides := map[string]map[string]bool{"agent": {}, "client": {}, "protocol": {}}
 	for _, name := range []string{"meta.json", "meta.unstable.json"} {
-		b, err := os.ReadFile(filepath.Join(*sdk, "schema", name))
+		b, err := os.ReadFile(filepath.Join(sdk, "schema", name))
 		if err != nil {
-			fatal(err)
+			return nil, 0, err
 		}
 		var m meta
 		if err := json.Unmarshal(b, &m); err != nil {
-			fatal(fmt.Errorf("%s: %w", name, err))
+			return nil, 0, fmt.Errorf("%s: %w", name, err)
 		}
 		for side, methods := range map[string]map[string]string{"agent": m.AgentMethods, "client": m.ClientMethods, "protocol": m.ProtocolMethods} {
 			for _, wire := range methods {
@@ -58,9 +75,9 @@ func main() {
 		}
 	}
 
-	p, err := parsePackage(*sdk)
+	p, err := parsePackage(sdk)
 	if err != nil {
-		fatal(err)
+		return nil, 0, err
 	}
 	constFor := map[string]bool{}
 	for _, v := range p.consts {
@@ -68,8 +85,6 @@ func main() {
 	}
 
 	dispatcher := map[string]string{"agent": "AgentSideConnection", "client": "ClientSideConnection"}
-	var missing []string
-	checked := 0
 	for _, side := range []string{"agent", "client", "protocol"} {
 		for _, wire := range sorted(sides[side]) {
 			checked++
@@ -79,18 +94,12 @@ func main() {
 			if recv, ok := dispatcher[side]; ok && !p.cases[recv][wire] {
 				missing = append(missing, fmt.Sprintf("MISSING case %s %s in (*%s).handle", side, wire, recv))
 			}
-			if side == "protocol" && !p.handRefs[wire] {
+			if side == "protocol" && !p.inbound[wire] {
 				missing = append(missing, fmt.Sprintf("MISSING handler protocol %s in hand-written code", wire))
 			}
 		}
 	}
-	for _, line := range missing {
-		fmt.Println(line)
-	}
-	fmt.Printf("methods: %d checked, %d missing\n", checked, len(missing))
-	if len(missing) > 0 {
-		os.Exit(1)
-	}
+	return missing, checked, nil
 }
 
 func parsePackage(dir string) (*pkg, error) {
@@ -111,7 +120,7 @@ func parsePackage(dir string) (*pkg, error) {
 		files[filepath.Base(path)] = f
 	}
 
-	p := &pkg{consts: map[string]string{}, cases: map[string]map[string]bool{}, handRefs: map[string]bool{}}
+	p := &pkg{consts: map[string]string{}, cases: map[string]map[string]bool{}, inbound: map[string]bool{}}
 	for _, f := range files {
 		for _, decl := range f.Decls {
 			gd, ok := decl.(*ast.GenDecl)
@@ -163,13 +172,19 @@ func parsePackage(dir string) (*pkg, error) {
 			if generated {
 				continue
 			}
-			if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok == token.CONST {
-				continue
-			}
 			ast.Inspect(decl, func(n ast.Node) bool {
-				if e, ok := n.(ast.Expr); ok {
+				var operands []ast.Expr
+				switch n := n.(type) {
+				case *ast.BinaryExpr:
+					if n.Op == token.EQL || n.Op == token.NEQ {
+						operands = []ast.Expr{n.X, n.Y}
+					}
+				case *ast.CaseClause:
+					operands = n.List
+				}
+				for _, e := range operands {
 					if s, ok := value(e); ok {
-						p.handRefs[s] = true
+						p.inbound[s] = true
 					}
 				}
 				return true
@@ -205,9 +220,4 @@ func sorted(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "methodcheck:", err)
-	os.Exit(2)
 }

@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -170,15 +171,16 @@ func checkRoundTrip(t *testing.T, def string, data []byte, files []*schemaFile) 
 }
 
 // diffJSON compares two JSON documents after normalizing them: numbers
-// compare by value and an object member whose value is null counts as
-// absent. It returns "" when they are equal, else the number of differing
-// paths and the first one.
+// compare by exact value (1.0 equals 1, and no digit is rounded away) and an
+// object member whose value is null counts as absent. It returns "" when
+// they are equal, else the number of differing paths and the first one.
 func diffJSON(in, out []byte) string {
-	var a, b any
-	if err := json.Unmarshal(in, &a); err != nil {
+	a, err := decodeExact(in)
+	if err != nil {
 		return "input: " + err.Error()
 	}
-	if err := json.Unmarshal(out, &b); err != nil {
+	b, err := decodeExact(out)
+	if err != nil {
 		return "output: " + err.Error()
 	}
 	var diffs []string
@@ -213,12 +215,29 @@ func walkDiff(path string, a, b any, diffs *[]string) {
 		}
 		return
 	}
-	if !reflect.DeepEqual(a, b) {
-		if path == "" {
-			path = "/"
-		}
-		*diffs = append(*diffs, fmt.Sprintf("%s: in=%s out=%s", path, short(a), short(b)))
+	an, aNum := a.(json.Number)
+	bn, bNum := b.(json.Number)
+	if aNum && bNum && sameNumber(an, bn) || !aNum && reflect.DeepEqual(a, b) {
+		return
 	}
+	if path == "" {
+		path = "/"
+	}
+	*diffs = append(*diffs, fmt.Sprintf("%s: in=%s out=%s", path, short(a), short(b)))
+}
+
+func decodeExact(b []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var v any
+	err := dec.Decode(&v)
+	return v, err
+}
+
+func sameNumber(a, b json.Number) bool {
+	x, okA := new(big.Rat).SetString(string(a))
+	y, okB := new(big.Rat).SetString(string(b))
+	return okA && okB && x.Cmp(y) == 0
 }
 
 func dropNulls(v any) any {
@@ -273,4 +292,19 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestDiffJSON_ComparesNumbersExactly(t *testing.T) {
+	for _, tc := range []struct {
+		in, out string
+		equal   bool
+	}{
+		{`{"a":9007199254740993}`, `{"a":9007199254740992}`, false},
+		{`{"a":1.0}`, `{"a":1}`, true},
+		{`{"a":1}`, `{"a":"1"}`, false},
+	} {
+		if got := diffJSON([]byte(tc.in), []byte(tc.out)) == ""; got != tc.equal {
+			t.Errorf("diffJSON(%s, %s) equal = %v, want %v", tc.in, tc.out, got, tc.equal)
+		}
+	}
 }

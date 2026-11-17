@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -178,5 +179,33 @@ func TestUnstableCreateElicitationRequest_FormCarriesItsScope(t *testing.T) {
 	}
 	if req.Form.Message != "Your name?" {
 		t.Errorf("message = %q, want the request's message", req.Form.Message)
+	}
+}
+
+func TestNewUnstableCreateElicitationRequest_EveryConstructorSetsAScope(t *testing.T) {
+	t.Parallel()
+	requestID := RequestIdStr("r")
+	tests := []struct {
+		name string
+		req  UnstableCreateElicitationRequest
+		want string
+	}{
+		{"form in a session", NewUnstableCreateElicitationRequestFormSession(UnstableElicitationSchema{}, "s"), `"sessionId":"s"`},
+		{"form in a request", NewUnstableCreateElicitationRequestFormRequest(UnstableElicitationSchema{}, RequestId{Str: &requestID}), `"requestId":"r"`},
+		{"url in a session", NewUnstableCreateElicitationRequestUrlSession("e", "https://example.com", "s"), `"sessionId":"s"`},
+		{"url in a request", NewUnstableCreateElicitationRequestUrlRequest("e", "https://example.com", RequestId{Str: &requestID}), `"requestId":"r"`},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := json.Marshal(tt.req)
+			if err != nil {
+				t.Fatalf("marshal the result of the constructor: %v", err)
+			}
+			if !strings.Contains(string(out), tt.want) {
+				t.Fatalf("constructor result encodes to %s, want it to hold %s", out, tt.want)
+			}
+		})
 	}
 }

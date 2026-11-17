@@ -59,19 +59,40 @@ func NewSessionConfigOptionBoolean(currentValue bool) SessionConfigOption {
 	}}
 }
 
-// NewUnstableCreateElicitationRequestForm constructs a UnstableCreateElicitationRequest using the 'form' variant.
-func NewUnstableCreateElicitationRequestForm(requestedSchema UnstableElicitationSchema) UnstableCreateElicitationRequest {
+// NewUnstableCreateElicitationRequestFormSession constructs a UnstableCreateElicitationRequest using the 'form' variant with its Session alternative.
+func NewUnstableCreateElicitationRequestFormSession(requestedSchema UnstableElicitationSchema, sessionId SessionId) UnstableCreateElicitationRequest {
 	return UnstableCreateElicitationRequest{Form: &UnstableCreateElicitationForm{
 		Mode:            "form",
+		RequestedSchema: requestedSchema,
+		Session:         &UnstableElicitationSessionScope{SessionId: sessionId},
+	}}
+}
+
+// NewUnstableCreateElicitationRequestFormRequest constructs a UnstableCreateElicitationRequest using the 'form' variant with its Request alternative.
+func NewUnstableCreateElicitationRequestFormRequest(requestedSchema UnstableElicitationSchema, requestId RequestId) UnstableCreateElicitationRequest {
+	return UnstableCreateElicitationRequest{Form: &UnstableCreateElicitationForm{
+		Mode:            "form",
+		Request:         &UnstableElicitationRequestScope{RequestId: requestId},
 		RequestedSchema: requestedSchema,
 	}}
 }
 
-// NewUnstableCreateElicitationRequestUrl constructs a UnstableCreateElicitationRequest using the 'url' variant.
-func NewUnstableCreateElicitationRequestUrl(elicitationId UnstableElicitationId, url string) UnstableCreateElicitationRequest {
+// NewUnstableCreateElicitationRequestUrlSession constructs a UnstableCreateElicitationRequest using the 'url' variant with its Session alternative.
+func NewUnstableCreateElicitationRequestUrlSession(elicitationId UnstableElicitationId, url string, sessionId SessionId) UnstableCreateElicitationRequest {
 	return UnstableCreateElicitationRequest{Url: &UnstableCreateElicitationUrl{
 		ElicitationId: elicitationId,
 		Mode:          "url",
+		Session:       &UnstableElicitationSessionScope{SessionId: sessionId},
+		Url:           url,
+	}}
+}
+
+// NewUnstableCreateElicitationRequestUrlRequest constructs a UnstableCreateElicitationRequest using the 'url' variant with its Request alternative.
+func NewUnstableCreateElicitationRequestUrlRequest(elicitationId UnstableElicitationId, url string, requestId RequestId) UnstableCreateElicitationRequest {
+	return UnstableCreateElicitationRequest{Url: &UnstableCreateElicitationUrl{
+		ElicitationId: elicitationId,
+		Mode:          "url",
+		Request:       &UnstableElicitationRequestScope{RequestId: requestId},
 		Url:           url,
 	}}
 }

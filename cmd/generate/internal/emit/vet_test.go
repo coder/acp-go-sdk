@@ -174,6 +174,32 @@ func TestFormMode_UnmarshalJSON_ReplacesTheScopeOfAReusedValue(t *testing.T) {
 	}
 }
 
+func TestNewCreateElicitationRequest_EveryConstructorSetsAScope(t *testing.T) {
+	tests := []struct {
+		req       CreateElicitationRequest
+		key, want string
+	}{
+		{NewCreateElicitationRequestFormSession(map[string]any{}, []string{}, "s"), "sessionId", "s"},
+		{NewCreateElicitationRequestFormRequest(map[string]any{}, []string{}, "r"), "requestId", "r"},
+		{NewCreateElicitationRequestUrlSession("https://example.com", "s"), "sessionId", "s"},
+		{NewCreateElicitationRequestUrlRequest("https://example.com", "r"), "requestId", "r"},
+	}
+	for _, tt := range tests {
+		out, err := json.Marshal(tt.req)
+		if err != nil {
+			t.Errorf("marshal the result of a constructor with %s %q: %v", tt.key, tt.want, err)
+			continue
+		}
+		var got map[string]any
+		if err := json.Unmarshal(out, &got); err != nil {
+			t.Fatalf("parse %s: %v", out, err)
+		}
+		if got[tt.key] != tt.want {
+			t.Errorf("constructor result encodes to %s, want %s %q", out, tt.key, tt.want)
+		}
+	}
+}
+
 func TestCreateElicitationRequest_NeedsAScopeToEncode(t *testing.T) {
 	req := CreateElicitationRequest{Form: &CreateElicitationForm{Message: "m", RequestedSchema: map[string]any{}}}
 	if out, err := json.Marshal(req); err == nil {

@@ -731,9 +731,10 @@ func jenTypeForOptional(d *load.Definition) Code {
 	return jenTypeFor(d)
 }
 
-// unionVariant is one variant of a oneOf union as emitUnion emitted it:
-// the wrapper field, the variant type, the discriminator, and the variant's
-// own required keys and properties.
+// unionVariant is one variant of a union as emitUnion emitted it: the wrapper
+// field, the variant type, the discriminator, and the variant's own required
+// keys and properties. nested holds the alternatives of an inline variant that
+// is a union in turn, which encodes only with one of them set.
 type unionVariant struct {
 	fieldName string
 	typeName  string
@@ -741,6 +742,7 @@ type unionVariant struct {
 	discValue string
 	required  []string
 	props     map[string]*load.Definition
+	nested    []unionVariant
 }
 
 // sortedPropertyKeys returns the keys of props in sorted order.
@@ -838,9 +840,11 @@ func allInlineObjects(alts []unionAlternative) bool {
 // emitUnion emits the union wrapper type name and its variants. With exactlyOne
 // (a oneOf), the wrapper's Validate requires exactly one variant. Validate is
 // emitted when exactlyOne or validate is set. It also checks the union's own
-// required properties on the set variant.
-func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs []*load.Definition, exactlyOne, validate bool) {
-	f, schema, usedTypeNames, emitted := b.f, b.schema, b.usedTypeNames, b.variants
+// required properties on the set variant. It returns the variants, and records
+// those of a oneOf for WriteHelpersJen.
+func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs []*load.Definition, exactlyOne, validate bool) []unionVariant {
+	f, schema, usedTypeNames := b.f, b.schema, b.usedTypeNames
+	var recorded []unionVariant
 	type variantInfo struct {
 		fieldName         string
 		typeName          string
@@ -983,6 +987,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			}
 		}
 		var sharedChecks []Code
+		var nestedVariants []unionVariant
 		// Emit struct for inline variants (non-$ref)
 		if (isObj || isNull || v.Title != "") && ref == "" {
 			// DEFENSIVE PROGRAMMING: Verify tname is registered before emitting
@@ -1022,7 +1027,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					nested = v.OneOf
 				}
 				if len(nested) > 0 {
-					b.emitUnion(tname, &load.Definition{Properties: mergedProps, Required: required, Discriminator: v.Discriminator}, nested, len(v.OneOf) > 0, false)
+					nestedVariants = b.emitUnion(tname, &load.Definition{Properties: mergedProps, Required: required, Discriminator: v.Discriminator}, nested, len(v.OneOf) > 0, false)
 				} else {
 					b.emitStruct(tname, fields, nil)
 				}
@@ -1064,16 +1069,18 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			description:       v.Description,
 			sharedChecks:      sharedChecks,
 		})
-		if exactlyOne {
-			emitted[name] = append(emitted[name], unionVariant{
-				fieldName: fieldName,
-				typeName:  tname,
-				discKey:   discKey,
-				discValue: dv,
-				required:  append([]string(nil), v.Required...),
-				props:     v.Properties,
-			})
-		}
+		recorded = append(recorded, unionVariant{
+			fieldName: fieldName,
+			typeName:  tname,
+			discKey:   discKey,
+			discValue: dv,
+			required:  append([]string(nil), v.Required...),
+			props:     v.Properties,
+			nested:    nestedVariants,
+		})
+	}
+	if exactlyOne {
+		b.variants[name] = recorded
 	}
 	// wrapper
 	wrapperPlans := b.plansFor(wrapperFields)
@@ -1273,4 +1280,5 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		})
 		f.Line()
 	}
+	return recorded
 }

@@ -1146,14 +1146,24 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					})
 				})
 			}
-			// required-key match
+			// A variant matches when the object has its required keys and
+			// each const property that is present holds its value. The switch
+			// above settled a variant whose only const is the required
+			// discriminator.
 			for _, vi := range variants {
-				if vi.isObject && len(vi.required) > 0 {
+				switchSettled := vi.discValue != "" && len(vi.constPairs) == 1 && slices.Contains(vi.required, discKey)
+				if vi.isObject && (len(vi.required) > 0 || len(vi.constPairs) > 0) && !switchSettled {
 					obj.BlockFunc(func(h *Group) {
 						h.Var().Id("v").Id(vi.typeName)
 						h.Var().Id("match").Bool().Op("=").Lit(true)
 						for _, rk := range vi.required {
 							h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+						}
+						for _, pair := range vi.constPairs {
+							h.If(List(Id("raw"), Id("ok")).Op(":=").Id("m").Index(Lit(pair[0])), Id("ok")).Block(
+								Var().Id("value").String(),
+								If(Qual("encoding/json", "Unmarshal").Call(Id("raw"), Op("&").Id("value")).Op("!=").Nil().Op("||").Id("value").Op("!=").Lit(pair[1])).Block(Id("match").Op("=").Lit(false)),
+							)
 						}
 						h.If(Id("match")).Block(
 							If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
@@ -1190,10 +1200,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				})
 			}
 		})
-		// A variant with required keys had its turn above, and does not match
-		// an input without them. The others are tried in order.
+		// A variant with required keys or a const had its turn above, and does
+		// not match an input without them. The others are tried in order.
 		for _, vi := range variants {
-			if (vi.isObject && len(vi.required) > 0) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
+			if (vi.isObject && (len(vi.required) > 0 || len(vi.constPairs) > 0)) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
 				continue
 			}
 			g.Block(

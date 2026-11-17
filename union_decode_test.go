@@ -40,3 +40,52 @@ func TestToolCall_UnmarshalJSON_DropsContentThatMatchesNoVariant(t *testing.T) {
 		t.Fatalf("content = %s, want only the terminal", out)
 	}
 }
+
+func TestUnion_UnmarshalJSON_RejectsAnUnknownDiscriminator(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		into any
+		in   string
+	}{
+		{"permission outcome", new(RequestPermissionOutcome), `{"outcome":"bogus"}`},
+		{"content block with the keys of a text block", new(ContentBlock), `{"type":"bogus","text":"x"}`},
+		{"content block without a type", new(ContentBlock), `{"text":"x"}`},
+		{"session update", new(SessionUpdate), `{"sessionUpdate":"bogus_update"}`},
+		{"session notification", new(SessionNotification), `{"sessionId":"s","update":{"sessionUpdate":"bogus_update"}}`},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := json.Unmarshal([]byte(tt.in), tt.into); err == nil {
+				t.Fatalf("unmarshal %s gives %+v, want an error", tt.in, tt.into)
+			}
+		})
+	}
+}
+
+func TestUnion_UnmarshalJSON_VariantWithoutAConstTakesAnUnknownDiscriminator(t *testing.T) {
+	t.Parallel()
+	var method AuthMethod
+	if err := json.Unmarshal([]byte(`{"type":"bogus","id":"a","name":"n"}`), &method); err != nil || method.Agent == nil {
+		t.Errorf("auth method with the keys of the agent variant = %+v (error %v), want the agent variant", method, err)
+	}
+	var server McpServer
+	if err := json.Unmarshal([]byte(`{"type":"bogus","name":"n","command":"c","args":[],"env":[]}`), &server); err != nil || server.Stdio == nil {
+		t.Errorf("MCP server with the keys of the stdio variant = %+v (error %v), want the stdio variant", server, err)
+	}
+}
+
+func TestToolCall_UnmarshalJSON_DropsContentOfAnUnknownType(t *testing.T) {
+	t.Parallel()
+	var call ToolCall
+	in := `{"toolCallId":"1","title":"x","content":[{"type":"bogus","content":{"type":"text","text":"x"}},{"type":"terminal","terminalId":"t"}]}`
+	if err := json.Unmarshal([]byte(in), &call); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(call.Content) != 1 || call.Content[0].Terminal == nil {
+		out, _ := json.Marshal(call.Content)
+		t.Fatalf("content = %s, want only the terminal", out)
+	}
+}

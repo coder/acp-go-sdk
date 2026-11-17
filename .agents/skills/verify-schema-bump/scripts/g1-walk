@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# G1: regenerate the SDK at every upstream schema version from FROM to TARGET
+# in a throwaway worktree, and check each one. Prints one row per version.
+#
+# usage: g1-walk [--from VERSION] [--ref REF] [--base-tag TAG] TARGET
+#   --from      first version (default: schema/version at REF)
+#   --ref       commit whose hand-written code is used (default: HEAD)
+#   --base-tag  SDK release to diff the API against (default: newest v* tag
+#               merged into REF)
+# env: VSB_ROOT  run and cache folder (default: ${TMPDIR:-/tmp}/verify-schema-bump)
+#
+# Exit 0 when every row has gen=ok, idem=ok and no drift=FAIL, and the
+# TARGET row has build=ok, vet=ok, methods=ok and an API diff. drift checks
+# the row of REF's own schema/version: REF's schema files and *_gen.go must
+# equal the regenerated ones. Needs network for the release
+# list and for schema files that are not cached yet.
+set -euo pipefail
+
+UPSTREAM=agentclientprotocol/agent-client-protocol
+FILES=(meta.json schema.json meta.unstable.json schema.unstable.json)
+
+from="" ref=HEAD base_tag="" target=""
+while [ $# -gt 0 ]; do
+	case $1 in
+	--from) from=$2; shift 2 ;;
+	--ref) ref=$2; shift 2 ;;
+	--base-tag) base_tag=$2; shift 2 ;;
+	-*) echo "unknown flag $1" >&2; exit 2 ;;
+	*) target=$1; shift ;;
+	esac
+done
+[ -n "$target" ] || { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0" >&2; exit 2; }
+
+root=$(git rev-parse --show-toplevel)
+skill=$root/.agents/skills/verify-schema-bump
+ref=$(git -C "$root" rev-parse --verify "$ref^{commit}")
+ref_version=$(git -C "$root" show "$ref:schema/version")
+[ -n "$from" ] || from=$ref_version
+[ -n "$base_tag" ] || base_tag=$(git -C "$root" tag --merged "$ref" -l 'v[0-9]*' --sort=-v:refname | head -1)
+[ -n "$base_tag" ] || { echo "no v* release tag is merged into $ref: run 'git fetch --tags origin' or pass --base-tag" >&2; exit 2; }
+module=$(git -C "$root" show "$ref:go.mod" | awk '$1 == "module" { print $2; exit }')
+
+vsb=${VSB_ROOT:-${TMPDIR:-/tmp}/verify-schema-bump}
+cache=$vsb/cache/schemas
+run=$vsb/runs/g1-$from-$target-$(date +%Y%m%d-%H%M%S)
+mkdir -p "$cache" "$run/bin"
+wt=$run/wt
+base_wt=$run/base-wt
+cleanup() {
+	git -C "$root" worktree remove --force "$wt" 2>/dev/null || true
+	git -C "$root" worktree remove --force "$base_wt" 2>/dev/null || true
+	rm -rf "${run:?}/bin"
+}
+trap cleanup EXIT
+
+(cd "$skill" && go build -o "$run/bin/methodcheck" ./methodcheck && go build -o "$run/bin/apidiff" golang.org/x/exp/cmd/apidiff)
+
+# Schema assets: 0.x on release tags v<version>, 1.x and later on schema-v<version>.
+gh api --paginate "repos/$UPSTREAM/releases?per_page=100" \
+	-q '.[] | select(.draft == false and .prerelease == false) | select(any(.assets[]; .name == "schema.json")) | .tag_name' |
+	grep -E '^(v0|schema-v[0-9]+)\.[0-9]+\.[0-9]+$' |
+	while read -r tag; do
+		v=${tag#schema-}
+		v=${v#v}
+		lo=$(printf '%s\n%s\n' "$from" "$v" | sort -V | head -1)
+		hi=$(printf '%s\n%s\n' "$v" "$target" | sort -V | tail -1)
+		if [ "$lo" = "$from" ] && [ "$hi" = "$target" ]; then echo "$v $tag"; fi
+	done | sort -V >"$run/versions.txt"
+head -1 "$run/versions.txt" | grep -q "^$from " || { echo "no upstream schema release for --from $from" >&2; exit 2; }
+tail -1 "$run/versions.txt" | grep -q "^$target " || { echo "no upstream schema release for $target" >&2; exit 2; }
+
+fetch() {
+	local tag=$1 dir=$cache/$1 f status
+	[ -f "$dir/.complete" ] && return 0
+	rm -rf "$dir.tmp" && mkdir -p "$dir.tmp"
+	for f in "${FILES[@]}"; do
+		status=$(curl -sS -L -o "$dir.tmp/$f" -w '%{http_code}' "https://github.com/$UPSTREAM/releases/download/$tag/$f")
+		case $status:$f in
+		200:*) ;;
+		404:meta.unstable.json) printf '%s\n' '{"agentMethods":{},"clientMethods":{},"protocolMethods":{}}' >"$dir.tmp/$f" ;;
+		404:schema.unstable.json) printf '%s\n' "{\"\$defs\":{}}" >"$dir.tmp/$f" ;;
+		*) echo "download $tag/$f: http $status" >&2; return 1 ;;
+		esac
+	done
+	touch "$dir.tmp/.complete"
+	rm -rf "$dir" && mv "$dir.tmp" "$dir"
+}
+
+git -C "$root" worktree add -q --detach "$wt" "$ref"
+gen() { (cd "$wt/cmd/generate" && env -u GOPATH -u GOMODCACHE go run .) && (cd "$wt" && gofmt -w ./*_gen.go); }
+first_error() { cat "$@" 2>/dev/null | grep -m1 -E '^[^#].*:[0-9]+:[0-9]+: |panic:|MISSING' | cut -c1-110 || true; }
+
+summary=$run/summary.txt
+row='%-8s %-15s %-4s %-4s %-5s %-5s %-8s %-9s %-4s %-10s %-14s %s\n'
+# shellcheck disable=SC2059 # one format string for every row
+printf "$row" version tag gen idem drift build gen-errs hand-errs vet methods apidiff first-error | tee "$summary"
+pass=1
+while read -r v tag <&3; do
+	fetch "$tag"
+	out=$run/$v
+	mkdir -p "$out"
+	git -C "$wt" reset -q --hard && git -C "$wt" clean -fdq
+	# Start from no generated files, so an output the generator stops writing
+	# is missing rather than left over from the ref.
+	rm -f "$wt"/*_gen.go
+	for f in "${FILES[@]}"; do cp "$cache/$tag/$f" "$wt/schema/$f"; done
+	echo "$v" >"$wt/schema/version"
+	g=FAIL i=- d=- b=- ge=- he=- t=- m=- a=-
+	if gen >"$out/gen.log" 2>&1; then
+		g=ok
+		# Compare whole trees, so a file that only the second run writes counts.
+		first=$(git -C "$wt" add -A && git -C "$wt" write-tree)
+		# At the ref's own schema version, the ref must hold exactly what
+		# regeneration gives: the upstream schema files and *_gen.go.
+		if [ "$v" = "$ref_version" ]; then
+			git -C "$wt" diff --stat "$ref" "$first" -- '*_gen.go' schema >"$out/drift.diff"
+			if [ -s "$out/drift.diff" ]; then d=FAIL; else d=ok; fi
+		fi
+		if gen >>"$out/gen.log" 2>&1; then
+			second=$(git -C "$wt" add -A && git -C "$wt" write-tree)
+			git -C "$wt" diff --stat "$first" "$second" >"$out/idem.diff"
+			[ "$first" = "$second" ] && i=ok || i=FAIL
+		else
+			i=FAIL
+		fi
+		(cd "$wt" && go build -gcflags=-e ./...) >"$out/build.log" 2>&1 && b=ok || b=FAIL
+		ge=$(grep -cE '_gen\.go:[0-9]+:[0-9]+: ' "$out/build.log" || true)
+		he=$(($(grep -cE '\.go:[0-9]+:[0-9]+: ' "$out/build.log" || true) - ge))
+		[ $b = ok ] && { (cd "$wt" && go vet ./...) >"$out/vet.log" 2>&1 && t=ok || t=FAIL; }
+		if "$run/bin/methodcheck" -sdk "$wt" >"$out/methods.txt" 2>&1; then m=ok; else
+			n=$(grep -c '^MISSING' "$out/methods.txt" || true)
+			[ "$n" -gt 0 ] && m=$n-missing || m=FAIL
+		fi
+		if [ "$v" = "$target" ]; then
+			a=skip
+			if [ $b = ok ]; then
+				git -C "$root" worktree add -q --detach "$base_wt" "$base_tag"
+				if (cd "$base_wt" && "$run/bin/apidiff" -w "$run/base.export" "$module") >"$out/apidiff.txt" 2>&1 &&
+					(cd "$wt" && "$run/bin/apidiff" -incompatible "$run/base.export" "$module") >"$out/apidiff.txt" 2>&1; then
+					grep '^- ' "$out/apidiff.txt" >"$run/incompatible.txt" || true
+					a="$(wc -l <"$run/incompatible.txt")-vs-$base_tag"
+				fi
+			fi
+		fi
+	fi
+	err=$(first_error "$out/gen.log" "$out/build.log" "$out/vet.log" "$out/methods.txt")
+	# shellcheck disable=SC2059
+	printf "$row" "$v" "$tag" $g $i $d $b "$ge" "$he" $t "$m" "$a" "$err" | tee -a "$summary"
+	[ $g = ok ] && [ $i = ok ] && [ $d != FAIL ] || pass=0
+	if [ "$v" = "$target" ]; then [ $b = ok ] && [ $t = ok ] && [ "$m" = ok ] && [ "$a" != skip ] || pass=0; fi
+done 3<"$run/versions.txt"
+
+if [ -f "$run/incompatible.txt" ]; then
+	echo
+	echo "Incompatible API changes at $target vs $base_tag (copy into the release notes):"
+	if [ -s "$run/incompatible.txt" ]; then cat "$run/incompatible.txt"; else echo "(none)"; fi
+fi
+echo
+echo "evidence: $run"
+if [ $pass = 1 ]; then echo "G1 PASS"; else echo "G1 FAIL"; exit 1; fi

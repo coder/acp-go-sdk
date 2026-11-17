@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# G7: build the packages of known dependents that import the SDK, against
+# this checkout, and print the compile errors grouped by SDK symbol.
+#
+# usage: g7-canary [OWNER/REPO ...]
+#   default repos: docker/docker-agent jaegertracing/jaeger coder/coder
+# env: VSB_ROOT  run and cache folder (default: ${TMPDIR:-/tmp}/verify-schema-bump)
+#
+# Each repo is a shallow clone of its default branch, cached and reset on
+# every run. In each Go module of the repo that names the SDK, the script
+# adds `replace github.com/coder/acp-go-sdk => <this checkout>` and runs
+# `go build` (GOWORK=off, so no go.work replace wins) on the module's
+# packages whose non-test files import the SDK.
+# Exit 0 when every build passes. Needs network.
+set -euo pipefail
+
+sdk=github.com/coder/acp-go-sdk
+[ $# -gt 0 ] || set -- docker/docker-agent jaegertracing/jaeger coder/coder
+
+root=$(git rev-parse --show-toplevel)
+vsb=${VSB_ROOT:-${TMPDIR:-/tmp}/verify-schema-bump}
+cache=$vsb/cache/consumers
+run=$vsb/runs/g7-$(git -C "$root" rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)
+mkdir -p "$cache" "$run"
+echo "sdk: $root @ $(git -C "$root" rev-parse --short HEAD) (schema $(cat "$root/schema/version"))" | tee "$run/summary.txt"
+
+# group NAMES < build.log: the compile errors under one heading per SDK
+# symbol, such as "acp.TerminalId (3)". NAMES are the import names of the SDK.
+group() {
+	awk -v names="$1" '
+		match($0, /^[^ :]+\.go:[0-9]+:[0-9]+: /) {
+			msg = substr($0, RLENGTH + 1)
+			gsub(/"?github\.com\/coder\/acp-go-sdk"?\./, "acp.", msg)
+			key = "(no SDK symbol)"
+			if (match(msg, "(^|[^A-Za-z0-9_])(" names ")\\.[A-Z][A-Za-z0-9_]*")) {
+				key = substr(msg, RSTART, RLENGTH)
+				sub(/^[^A-Za-z0-9_]/, "", key)
+				sub(/^[A-Za-z0-9_]+\./, "acp.", key)
+				if (match(msg, /(has no field or method|unknown field) [A-Za-z0-9_]+/)) {
+					f = substr(msg, RSTART, RLENGTH)
+					sub(/.* /, "", f)
+					key = key "." f
+				}
+			}
+			print key "\t" $0
+		}' | sort -t$'\t' -k1,1 -s | awk -F'\t' '
+		function flush() { if (n) printf "%s (%d)\n%s", key, n, buf }
+		$1 != key { flush(); key = $1; n = 0; buf = "" }
+		{ n++; buf = buf "    " substr($0, length($1) + 2) "\n" }
+		END { flush() }'
+}
+
+pass=1
+for repo in "$@"; do
+	dir=$cache/${repo//\//__}
+	if [ -d "$dir/.git" ]; then
+		git -C "$dir" fetch -q --depth 1 origin HEAD
+		git -C "$dir" reset -q --hard FETCH_HEAD
+		git -C "$dir" clean -fdq
+	else
+		git clone -q --depth 1 "https://github.com/$repo" "$dir"
+	fi
+	commit=$(git -C "$dir" rev-parse --short HEAD)
+	mods=$(git -C "$dir" grep -l -F "$sdk" -- 'go.mod' '**/go.mod' || true)
+	[ -n "$mods" ] || { echo "== $repo @$commit: no go.mod names $sdk" | tee -a "$run/summary.txt"; continue; }
+	for mod in $mods; do
+		mdir=$dir/$(dirname "$mod")
+		label=$repo/$(dirname "$mod")
+		label=${label%/.}
+		log=$run/${label//\//__}.log
+		# Packages of this module (not of a nested one) whose non-test files import the SDK.
+		pkgs=()
+		while read -r d; do
+			m=$mdir/$d
+			while [ ! -f "$m/go.mod" ] && [ "$m" != / ]; do m=$(dirname "$m"); done
+			if [ "$m" = "$mdir" ] || [ "$m" = "$mdir/." ]; then pkgs+=("./$d"); fi
+		done < <(git -C "$mdir" grep -l -E "\"$sdk(/[^\"]*)?\"" -- '*.go' ':!*_test.go' | xargs -r -n1 dirname | sort -u)
+		# Import names of the SDK; none (a dot import, a subpackage) is fine.
+		names=$({ git -C "$mdir" grep -h -o -E "^[[:space:]]*[A-Za-z0-9_]*[[:space:]]*\"$sdk\"" -- '*.go' || true; } |
+			awk 'NF == 2 && $1 != "import" { print $1 }' | sort -u | paste -sd'|' -)
+		names=${names:+$names|}acp
+		status=ok
+		if [ ${#pkgs[@]} -gt 0 ]; then
+			echo "# go build -gcflags=-e ${pkgs[*]}" >"$log"
+			(cd "$mdir" && go mod edit -replace "$sdk=$root" && GOWORK=off GOFLAGS=-mod=mod go build -gcflags=-e "${pkgs[@]}") >>"$log" 2>&1 || status=FAIL
+		else
+			status="no importing package"
+		fi
+		errs=$(grep -cE '^[^ :]+\.go:[0-9]+:[0-9]+: ' "$log" 2>/dev/null || true)
+		echo "== $label @$commit: ${#pkgs[@]} package(s), build $status, ${errs:-0} error(s)" | tee -a "$run/summary.txt"
+		if [ "$status" = FAIL ]; then
+			pass=0
+			if [ "${errs:-0}" -gt 0 ]; then group "$names" <"$log"; else tail -5 "$log"; fi | tee -a "$run/summary.txt"
+		fi
+	done
+done
+echo "evidence: $run"
+if [ $pass = 1 ]; then echo "G7 PASS"; else echo "G7 FAIL"; exit 1; fi

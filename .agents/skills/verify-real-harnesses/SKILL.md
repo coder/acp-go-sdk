@@ -186,7 +186,7 @@ go build -o /dev/null ./.agents/skills/verify-real-harnesses/scripts/acpharness/
 go test ./.agents/skills/verify-real-harnesses/scripts/acpharness/
 ```
 
-The driver uses the SDK's generated types. A schema bump that renames a type, such as `UnstableDeleteSessionRequest` when `session/delete` becomes stable, breaks this build. Fix the driver in the same pull request, because the driver is part of the gate.
+The driver uses the SDK's generated types. A schema bump that renames a type breaks this build, as schema 1.13.7 did when `session/delete` became stable and `UnstableDeleteSession` became `DeleteSession`. Fix the driver in the same pull request, because the driver is part of the gate.
 
 ## Known results at schema 0.13.5
 

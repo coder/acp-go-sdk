@@ -214,7 +214,7 @@ Run on 2026-11-17 with the SDK of `main` at `492745b`, again at `a0c38c3` after 
 | `no-refused-calls` | PASS | PASS |
 | `known-skips` | PASS | PASS |
 
-Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.77 to $0.80. Codex reported no cost and used about 46,500 tokens. In three runs at `68c27b5`, `g4` took 10 to 11 s, `g5 claude` 17 to 34 s and `g5 codex` 29 to 36 s, most of it model time.
+Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.77 to $0.80. Codex reported no cost and used about 46,500 tokens. In four runs at `68c27b5`, `g4` took 10 to 11 s, `g5 claude` 17 to 34 s and `g5 codex` 24 to 36 s, most of it model time.
 
 What the results mean:
 

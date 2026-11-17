@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory holds a `package main` example that connects the `github.com/coder/acp-go-sdk` client side to the Claude Code ACP server. It starts `npx -y @zed-industries/claude-code-acp@latest` as a subprocess and talks ACP over the subprocess stdin and stdout. It sends `Initialize` with file system read and write capabilities, creates one session in the current working directory, and then sends each non-empty stdin line as a prompt. The `:cancel` command sends a cancel notification, and `:exit` or `:quit` ends the program.
+This directory holds a `package main` example that connects the `github.com/coder/acp-go-sdk` client side to the Claude Code ACP server. It starts `npx -y @agentclientprotocol/claude-agent-acp@latest` (the adapter formerly published as `@zed-industries/claude-code-acp`) as a subprocess and talks ACP over the subprocess stdin and stdout. It sends `Initialize` with file system read and write capabilities, creates one session in the current working directory, and then sends each non-empty stdin line as a prompt. The `:cancel` command sends a cancel notification, and `:exit` or `:quit` ends the program.
 
 ## Interface
 

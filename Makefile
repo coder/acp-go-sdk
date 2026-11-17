@@ -1,24 +1,30 @@
 ARCH := $(shell uname -m)
 GO_FILES := $(shell find . -name '*.go' -type f)
-ACP_VERSION := $(file < ./schema/version)
+# The top-level version file is the SDK's own semver. schema/version pins the
+# ACP schema release that cmd/generate reads. Regeneration never writes version.
+SCHEMA_VERSION := $(file < ./schema/version)
+# Upstream publishes 0.x schemas under v<version> release tags, and 1.0 and
+# later under schema-v<version>.
+SCHEMA_TAG := $(if $(filter 0,$(firstword $(subst ., ,$(SCHEMA_VERSION)))),v,schema-v)$(SCHEMA_VERSION)
+SCHEMA_URL := https://github.com/agentclientprotocol/agent-client-protocol/releases/download/$(SCHEMA_TAG)
+SCHEMA_FILES := schema/meta.json schema/schema.json schema/meta.unstable.json schema/schema.unstable.json
 GOCACHE ?= $(CURDIR)/.gocache
-MDSH ?= mdsh
 
-version: README.md schema/meta.json schema/schema.json schema/meta.unstable.json schema/schema.unstable.json
+# Download the schema files when schema/version is newer, then regenerate the
+# *_gen.go files from them.
+.PHONY: generate
+generate: $(SCHEMA_FILES)
 	cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .
-	gofumpt -w .
-	touch $@
-	echo $(ACP_VERSION) > $@
 
 schema/meta.json: schema/version
-	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/meta.json
+	curl -o $@ --fail -L $(SCHEMA_URL)/meta.json
 
 schema/schema.json: schema/version
-	curl -o $@ --fail -L https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/schema.json
+	curl -o $@ --fail -L $(SCHEMA_URL)/schema.json
 
 schema/meta.unstable.json: schema/version
 	@set -e; \
-		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/meta.unstable.json; \
+		url=$(SCHEMA_URL)/meta.unstable.json; \
 		tmp=$@.tmp; \
 		status=$$(curl -sS -L -o "$$tmp" -w '%{http_code}' "$$url") || { rm -f "$$tmp"; exit 1; }; \
 		if [ "$$status" = "200" ]; then \
@@ -34,7 +40,7 @@ schema/meta.unstable.json: schema/version
 
 schema/schema.unstable.json: schema/version
 	@set -e; \
-		url=https://github.com/agentclientprotocol/agent-client-protocol/releases/download/v$(ACP_VERSION)/schema.unstable.json; \
+		url=$(SCHEMA_URL)/schema.unstable.json; \
 		tmp=$@.tmp; \
 		status=$$(curl -sS -L -o "$$tmp" -w '%{http_code}' "$$url") || { rm -f "$$tmp"; exit 1; }; \
 		if [ "$$status" = "200" ]; then \
@@ -47,10 +53,6 @@ schema/schema.unstable.json: schema/version
 			echo "failed to download $$url (http $$status)" 1>&2; \
 			exit 1; \
 		fi
-
-README.md: schema/version
-	@command -v $(MDSH) >/dev/null || { echo "mdsh not found; run 'mise install' or install it." 1>&2; exit 1; }
-	$(MDSH) --input README.md
 
 .PHONY: fmt
 fmt:
@@ -69,28 +71,37 @@ check:
 
 .PHONY: test
 test: $(GO_FILES)
+	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
 	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
 	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go build ./example/...
+	# cmd/generate is its own module, so ./... above does not reach it.
+	cd cmd/generate && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
+	cd cmd/generate && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
 	# ./... skips dot directories, so name the verification driver directly.
 	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./.agents/skills/verify-acp-go-sdk/scripts/acpwire/
 
 .PHONY: clean
 clean:
-	rm -f schema/meta.json schema/schema.json schema/meta.unstable.json schema/schema.unstable.json version
-	mdsh --clean --input README.md
-	touch schema/version # Touching the schema version file ensures that the README.md is regenerated on next make.
+	rm -f $(SCHEMA_FILES)
 
+# Prepare a release PR: write the SDK version to version (and the schema pin to
+# schema/version when SCHEMA is set), regenerate, format, and test. It makes no
+# commit or tag. RELEASING.md lists the manual steps that follow.
 .PHONY: release
 release:
-	@if [ -z "$(VERSION)" ]; then \
-		echo "VERSION is required (e.g. 'make release VERSION=0.4.4')" 1>&2; \
+	@printf '%s\n' "$(VERSION)" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { \
+		echo "VERSION must be the SDK semver without a v (e.g. 'make release VERSION=0.14.0 SCHEMA=1.18.0')" 1>&2; \
 		exit 1; \
-	fi
-	@printf '%s\n' "$(VERSION)" > schema/version
-	$(MAKE) version
+	}
+	@[ -z "$(SCHEMA)" ] || printf '%s\n' "$(SCHEMA)" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { \
+		echo "SCHEMA must be an ACP schema version without a v (e.g. 1.18.0)" 1>&2; \
+		exit 1; \
+	}
+	@printf '%s\n' "$(VERSION)" > version
+	@[ -z "$(SCHEMA)" ] || printf '%s\n' "$(SCHEMA)" > schema/version
+	$(MAKE) generate
 	$(MAKE) fmt
 	GOCACHE=$(GOCACHE) $(MAKE) test
-	$(MAKE) check
-	@cmp -s schema/version version || (echo "schema/version and version differ; rerun 'make version'" 1>&2; exit 1)
 	@echo
-	@echo "Release candidate for $(VERSION) is ready. Review changes, commit, then tag v$(VERSION)."
+	@echo "Release candidate v$(VERSION) (ACP schema $$(cat schema/version)) is ready."
+	@echo "Commit it, run 'make check', and open a PR. After it merges, tag it as RELEASING.md describes."

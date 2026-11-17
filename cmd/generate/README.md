@@ -4,8 +4,8 @@
 
 `cmd/generate` is the code generator for the ACP Go SDK. It is a separate Go module, `github.com/coder/acp-go-sdk/cmd/generate`, with Go 1.21 and one dependency, `github.com/dave/jennifer v1.7.1`.
 `main.go` reads the ACP meta and schema inputs, merges the unstable inputs when they exist, and calls the four `emit` writers in a fixed order.
-The root `Makefile` target `version` runs it with `cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .`, so the output goes to the repository root by default.
-After the generator, that target runs `gofumpt -w .` over the whole repository and writes the `version` stamp file [Makefile:version].
+The root `Makefile` target `generate` runs it with `cd cmd/generate && env -u GOPATH -u GOMODCACHE go run .`, so the output goes to the repository root by default.
+The target first downloads the schema files of the release in `schema/version` when they are older than that file. It never writes the top-level `version` file, which holds the SDK's own semver [Makefile:generate].
 
 ## Interface
 
@@ -29,7 +29,7 @@ After the generator, that target runs `gofumpt -w .` over the whole repository a
 - Parses command-line flags with `flag.Parse` [main.go:main]
 - Reads the working directory with `os.Getwd`. In each ancestor it calls `os.Stat` on `schema/meta.json`, and on `schema/schema.json` only when `schema/meta.json` exists [main.go:findRepoRoot, hasSchema, fileExists]
 - Creates the output directory and any missing parents with `os.MkdirAll` and mode `0o755` (before umask). An existing directory keeps its permissions [main.go:main]
-- Reads the meta, schema, and unstable files through `load.ReadMeta`, `load.ReadSchema`, `load.ReadMetaUnstable`, and `load.ReadSchemaUnstable` [main.go:main]
+- Reads the schema version, meta, schema, and unstable files through `load.ReadSchemaVersion`, `load.ReadMeta`, `load.ReadSchema`, `load.ReadMetaUnstable`, and `load.ReadSchemaUnstable`. The schema version becomes the `SchemaVersion` constant [main.go:main]
 - Overwrites `constants_gen.go`, `types_gen.go`, `agent_gen.go`, `client_gen.go`, and `helpers_gen.go` in the output directory through the `emit` writers [main.go:main]
 - Ends the process with exit status 2 on a flag parse error, and with a panic on any later error [main.go:main]
 

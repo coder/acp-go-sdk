@@ -178,7 +178,7 @@ func main() {
 	// Invoke Claude Code via npx
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "npx", "-y", "@zed-industries/claude-code-acp@latest")
+	cmd := exec.CommandContext(ctx, "npx", "-y", "@agentclientprotocol/claude-agent-acp@latest")
 	cmd.Stderr = os.Stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

@@ -2038,11 +2038,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.InvalidRequest != nil {
 		_b, _e := json.Marshal(*u.InvalidRequest)
@@ -2050,11 +2045,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.MethodNotFound != nil {
 		_b, _e := json.Marshal(*u.MethodNotFound)
@@ -2062,11 +2052,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.InvalidParams != nil {
 		_b, _e := json.Marshal(*u.InvalidParams)
@@ -2074,11 +2059,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.InternalError != nil {
 		_b, _e := json.Marshal(*u.InternalError)
@@ -2086,11 +2066,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.AuthenticationRequired != nil {
 		_b, _e := json.Marshal(*u.AuthenticationRequired)
@@ -2098,11 +2073,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.ResourceNotFound != nil {
 		_b, _e := json.Marshal(*u.ResourceNotFound)
@@ -2110,11 +2080,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.Other != nil {
 		_b, _e := json.Marshal(*u.Other)
@@ -2122,11 +2087,6 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	return []byte{}, nil
 }
@@ -4077,11 +4037,6 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.Str != nil {
 		_b, _e := json.Marshal(*u.Str)
@@ -4089,11 +4044,6 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	return []byte{}, nil
 }
@@ -4666,6 +4616,16 @@ func (u *SessionConfigOption) Validate() error {
 	if count != 1 {
 		return errors.New("SessionConfigOption must have exactly one variant set")
 	}
+	if u.Select != nil {
+		if u.Select.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+	}
+	if u.Boolean != nil {
+		if u.Boolean.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+	}
 	return nil
 }
 
@@ -4815,11 +4775,6 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	if u.Grouped != nil {
 		_b, _e := json.Marshal(*u.Grouped)
@@ -4827,11 +4782,6 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 			return []byte{}, _e
 		}
 		return _b, nil
-		var m map[string]any
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
 	}
 	return []byte{}, nil
 }
@@ -6083,7 +6033,7 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
-func (v *SetSessionConfigOptionRequest) Validate() error {
+func (u *SetSessionConfigOptionRequest) Validate() error {
 	return nil
 }
 
@@ -6932,6 +6882,16 @@ func (u *UnstableCreateElicitationRequest) Validate() error {
 	}
 	if count != 1 {
 		return errors.New("UnstableCreateElicitationRequest must have exactly one variant set")
+	}
+	if u.Form != nil {
+		if u.Form.Message == "" {
+			return fmt.Errorf("message is required")
+		}
+	}
+	if u.Url != nil {
+		if u.Url.Message == "" {
+			return fmt.Errorf("message is required")
+		}
 	}
 	return nil
 }
@@ -9004,6 +8964,16 @@ func (u *UnstableSessionConfigOption) Validate() error {
 	}
 	if count != 1 {
 		return errors.New("UnstableSessionConfigOption must have exactly one variant set")
+	}
+	if u.Select != nil {
+		if u.Select.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+	}
+	if u.Boolean != nil {
+		if u.Boolean.Name == "" {
+			return fmt.Errorf("name is required")
+		}
 	}
 	return nil
 }

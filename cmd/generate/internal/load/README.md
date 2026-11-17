@@ -2,7 +2,7 @@
 
 ## Overview
 
-Package `load` reads the generator inputs from the schema directory into minimal Go structs: `meta.json`, `schema.json`, and the optional `meta.unstable.json` and `schema.unstable.json`.
+Package `load` reads the generator inputs from the schema directory into minimal Go structs: `version`, `meta.json`, `schema.json`, and the optional `meta.unstable.json` and `schema.unstable.json`.
 `Definition` models only the JSON Schema fields the generator uses, and it accepts boolean schemas.
 `MergeStableAndUnstable` builds a new combined `Meta` and `Schema` from the stable and unstable inputs. It adds the unstable-only methods and `Unstable`-prefixed copies of their types and of the new or changed definitions those types reach. It also writes the unstable version, under the same name, of each definition that stable methods reach through unstable `$ref`s and that is new or differs from stable.
 
@@ -13,6 +13,7 @@ Package `load` reads the generator inputs from the schema directory into minimal
 - `type Discriminator struct { PropertyName string }` [load.go:Discriminator]
 - `type Definition struct` with JSON-tagged fields `Description`, `Type`, `Properties`, `Required`, `Enum`, `Items`, `Ref`, `AnyOf`, `OneOf`, `AllOf`, `DocsIgnore` (`x-docs-ignore`), `Title`, `Const`, `XSide` (`x-side`), `XMethod` (`x-method`), `Default`, and `Discriminator` [load.go:Definition]
 - `func (d *Definition) UnmarshalJSON(b []byte) error` decodes the object and boolean JSON Schema forms [load.go:Definition.UnmarshalJSON]
+- `func ReadSchemaVersion(schemaDir string) (string, error)` reads `version`, the ACP schema release, without surrounding whitespace. An empty file is an error [load.go:ReadSchemaVersion] [load_test.go:TestReadSchemaVersion]
 - `func ReadMeta(schemaDir string) (*Meta, error)` reads `meta.json` [load.go:ReadMeta]
 - `func ReadSchema(schemaDir string) (*Schema, error)` reads `schema.json` [load.go:ReadSchema]
 - `func ReadMetaUnstable(schemaDir string) (*Meta, bool, error)` reads `meta.unstable.json`. The `bool` reports whether the file exists [load.go:ReadMetaUnstable]

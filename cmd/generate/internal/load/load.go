@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Meta mirrors schema/meta.json for method maps and version.
@@ -92,6 +93,20 @@ func ReadMeta(schemaDir string) (*Meta, error) {
 		return nil, fmt.Errorf("parse meta.json: %w", err)
 	}
 	return &meta, nil
+}
+
+// ReadSchemaVersion loads schema/version, the ACP schema release that the
+// schema files come from.
+func ReadSchemaVersion(schemaDir string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(schemaDir, "version"))
+	if err != nil {
+		return "", fmt.Errorf("read version: %w", err)
+	}
+	version := strings.TrimSpace(string(b))
+	if version == "" {
+		return "", fmt.Errorf("read version: %s is empty", filepath.Join(schemaDir, "version"))
+	}
+	return version, nil
 }
 
 // ReadSchema loads schema/schema.json.

@@ -7,6 +7,6 @@
 ## Subdirectories & Boundaries
 
 - agent: [./agent/README.md](./agent/README.md) - Scripted demo agent. It implements `acp.Agent`, `acp.AgentLoader`, and `acp.AgentExperimental`. Each prompt streams text, reports two tool calls, and sends one permission request. It uses no AI model. With no arguments it speaks ACP on its own stdin and stdout. With arguments it starts the named client program and speaks ACP over that program's pipes.
-- claude-code: [./claude-code/README.md](./claude-code/README.md) - REPL client for the Claude Code ACP server, which it starts with `npx -y @zed-industries/claude-code-acp@latest`. Flag `-yolo` auto-approves permission prompts.
+- claude-code: [./claude-code/README.md](./claude-code/README.md) - REPL client for the Claude Code ACP server, which it starts with `npx -y @agentclientprotocol/claude-agent-acp@latest`. Flag `-yolo` auto-approves permission prompts.
 - client: [./client/README.md](./client/README.md) - Demo client. It starts the agent named on the command line, or `go run` of `../agent`, then sends one `Initialize`, `NewSession`, and `Prompt` and prints the session updates.
 - gemini: [./gemini/README.md](./gemini/README.md) - REPL client for the Gemini CLI, which it starts with `--experimental-acp`. Flags: `-gemini`, `-model`, `-sandbox`, `-yolo`, `-debug`.

@@ -23,6 +23,7 @@ var (
 	Nil           = jen.Nil
 	String        = jen.String
 	Int           = jen.Int
+	Int64         = jen.Int64
 	Float64       = jen.Float64
 	Bool          = jen.Bool
 	Any           = jen.Any

@@ -309,7 +309,7 @@ func NewElicitationContentValueString(s string) ElicitationContentValue {
 }
 
 // NewElicitationContentValueInteger returns the elicitation content value n.
-func NewElicitationContentValueInteger(n int) ElicitationContentValue {
+func NewElicitationContentValueInteger(n int64) ElicitationContentValue {
 	v := ElicitationContentValueInteger(n)
 	return ElicitationContentValue{Integer: &v}
 }

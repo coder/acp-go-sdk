@@ -48,6 +48,9 @@ type Definition struct {
 	Const       any                    `json:"const"`
 	XSide       string                 `json:"x-side"`
 	XMethod     string                 `json:"x-method"`
+	// Format is the format keyword, such as "int64" for an integer that must
+	// hold any 64-bit value.
+	Format string `json:"format"`
 	// Default holds the JSON Schema default value, when present.
 	// Used by generators to synthesize defaulting behavior.
 	Default any `json:"default"`

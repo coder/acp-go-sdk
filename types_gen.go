@@ -9283,6 +9283,9 @@ type SessionInfoUpdate struct {
 	// these keys.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Meta Patch[Meta] `json:"_meta"`
 	// Human-readable title for the session. Set to null to clear.
 	Title Patch[string] `json:"title"`
@@ -10008,12 +10011,24 @@ type SessionToolCallUpdate struct {
 	// these keys.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
@@ -10021,13 +10036,25 @@ type SessionToolCallUpdate struct {
 	// the existing name is left unchanged.
 	Name Patch[string] `json:"name"`
 	// Update the raw input.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	RawOutput     Patch[json.RawMessage] `json:"rawOutput"`
 	SessionUpdate string                 `json:"sessionUpdate"`
 	// Update the execution status.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
@@ -10320,6 +10347,9 @@ type SessionSessionInfoUpdate struct {
 	// these keys.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Meta          Patch[Meta] `json:"_meta"`
 	SessionUpdate string      `json:"sessionUpdate"`
 	// Human-readable title for the session. Set to null to clear.
@@ -13397,12 +13427,24 @@ type ToolCallUpdate struct {
 	// these keys.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
@@ -13410,12 +13452,24 @@ type ToolCallUpdate struct {
 	// the existing name is left unchanged.
 	Name Patch[string] `json:"name"`
 	// Update the raw input.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	RawOutput Patch[json.RawMessage] `json:"rawOutput"`
 	// Update the execution status.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
 	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`

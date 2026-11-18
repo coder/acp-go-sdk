@@ -46,3 +46,37 @@ func TestPatchFields_ReadsTheDescriptions(t *testing.T) {
 		t.Errorf("patch fields = %v, want %s", got, want)
 	}
 }
+
+// A field of an object that says only that it carries the changed fields,
+// and whose own description says nothing about null, has no clear: ACP v1
+// reads null there as absent.
+func TestNullAsAbsent_ReadsTheDescriptions(t *testing.T) {
+	var schema load.Schema
+	if err := json.Unmarshal([]byte(`{"$defs": {
+		"Update": {"description": "All fields except the id are optional - only changed fields need to be included.", "type": "object", "required": ["id"],
+			"properties": {"id": {"type": "string"}, "title": {"type": ["string", "null"]},
+				"name": {"type": ["string", "null"], "description": "Omitting it or sending `+"`null`"+` both leave the name unchanged."}}},
+		"Info": {"description": "All fields are optional to support partial updates.", "type": "object",
+			"properties": {"title": {"type": ["string", "null"], "description": "Set to null to clear."}, "_meta": {"type": ["object", "null"]}}},
+		"Sub": {"description": "Omitted patch fields keep their previous values.", "type": "object",
+			"properties": {"cwd": {"type": ["string", "null"]}}},
+		"Own": {"type": "object", "properties": {
+			"cwd": {"type": ["string", "null"], "description": "Omitted means unchanged."}}}
+	}}`), &schema); err != nil {
+		t.Fatal(err)
+	}
+	keep := NullAsAbsent(&schema)
+	var got []string
+	for name, def := range schema.Defs {
+		for prop, d := range def.Properties {
+			if keep[d] {
+				got = append(got, name+"."+prop)
+			}
+		}
+	}
+	sort.Strings(got)
+	const want = "Info._meta Update.title"
+	if strings.Join(got, " ") != want {
+		t.Errorf("null-as-absent fields = %v, want %s", got, want)
+	}
+}

@@ -12,12 +12,15 @@ import (
 // a value replaces it. The schema says so only in its text, so these
 // patterns read the descriptions.
 var (
-	// patchType matches the description of an object whose optional
-	// properties are all patch fields, such as ToolCallUpdate ("only changed
-	// fields need to be included"), SessionInfoUpdate ("optional to support
-	// partial updates"), and SubagentUpdate ("Omitted patch fields keep their
-	// previous values").
-	patchType = regexp.MustCompile(`(?i)only changed fields|partial updates?\b|omitted patch fields`)
+	// changedOnly and patchedObject match the description of an object whose
+	// optional properties are all patch fields. changedOnly says only that
+	// the object carries the changed fields, as ToolCallUpdate ("only changed
+	// fields need to be included") and SessionInfoUpdate ("optional to
+	// support partial updates") do; patchedObject says that they are patch
+	// fields, as SubagentUpdate ("Omitted patch fields keep their previous
+	// values") does.
+	changedOnly   = regexp.MustCompile(`(?i)only changed fields|partial updates?\b`)
+	patchedObject = regexp.MustCompile(`(?i)omitted patch fields`)
 	// patchSemantics matches the sentence of an object description that names
 	// its patch fields, as CompactionUpdate does: "`summary`, `error`, and
 	// `_meta` have patch semantics".
@@ -27,6 +30,8 @@ var (
 	// field on its own: "Omitted means unchanged. `null` clears it.", "Set to
 	// null to clear."
 	patchProperty = regexp.MustCompile("(?i)omitt(?:ed|ing)[^.]*\\bunchanged\\b|\\bnull`? (?:clears|removes)\\b|set to null to clear")
+	// mentionsNull matches a property description that says what null does.
+	mentionsNull = regexp.MustCompile(`(?i)\bnull\b`)
 )
 
 // PatchFields returns the patch fields of the object definitions in schema,
@@ -45,7 +50,7 @@ func PatchFields(schema *load.Schema) map[*load.Definition]bool {
 				named[m[1]] = true
 			}
 		}
-		allOptional := patchType.MatchString(def.Description)
+		allOptional := changedOnly.MatchString(def.Description) || patchedObject.MatchString(def.Description)
 		for name, prop := range def.Properties {
 			if prop == nil || slices.Contains(def.Required, name) {
 				continue
@@ -56,4 +61,28 @@ func PatchFields(schema *load.Schema) map[*load.Definition]bool {
 		}
 	}
 	return patch
+}
+
+// NullAsAbsent returns the patch fields of schema for which the schema
+// defines no clear: the optional properties of an object that says only that
+// it carries the changed fields (changedOnly, and neither patchedObject nor a
+// "have patch semantics" sentence), whose own description does not say what
+// null does. ACP v1 peers, the Rust SDK among them, read null in these fields
+// as absent: all of ToolCallUpdate except name, and _meta of
+// SessionInfoUpdate.
+func NullAsAbsent(schema *load.Schema) map[*load.Definition]bool {
+	out := map[*load.Definition]bool{}
+	for _, def := range schema.Defs {
+		if def == nil || !changedOnly.MatchString(def.Description) ||
+			patchedObject.MatchString(def.Description) || patchSemantics.MatchString(def.Description) {
+			continue
+		}
+		for name, prop := range def.Properties {
+			if prop == nil || slices.Contains(def.Required, name) || mentionsNull.MatchString(prop.Description) {
+				continue
+			}
+			out[prop] = true
+		}
+	}
+	return out
 }

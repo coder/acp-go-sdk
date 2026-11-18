@@ -17,6 +17,9 @@ type fieldPlan struct {
 	// patch says that the field is a patch field (ir.PatchFields), a
 	// Patch of patchValueType.
 	patch bool
+	// nullAsAbsent says that the field is a patch field for which the schema
+	// defines no clear (ir.NullAsAbsent), so its doc says how to read null.
+	nullAsAbsent bool
 	// shape is the shapeID constant that a lenient decoder checks the
 	// decoded value, or each decoded item, against; nil for none.
 	shape Code
@@ -52,7 +55,7 @@ func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 }
 
 func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
-	p := fieldPlan{field: field, patch: b.patch[field.Def]}
+	p := fieldPlan{field: field, patch: b.patch[field.Def], nullAsAbsent: b.nullAsAbsent[field.Def]}
 	def, lenient := field.Def, field.Lenient
 	if p.patch {
 		// A patch field reads absent, null, and a value apart, so it has no
@@ -98,6 +101,11 @@ func mapsToSliceOrMap(d *load.Definition) bool {
 	return false
 }
 
+// nullAsAbsentNote is the doc of a patch field for which the schema defines
+// no clear (ir.NullAsAbsent).
+const nullAsAbsentNote = "ACP v1 does not say that null clears this field, and the Rust SDK\n" +
+	"reads null here as absent: treat IsNull like IsUnset."
+
 func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 	decls := []Code{}
 	for _, p := range plans {
@@ -110,6 +118,12 @@ func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 				decls = append(decls, Comment(""))
 			}
 			decls = append(decls, Comment(fmt.Sprintf("Defaults to %s if unset.", p.fallbackJSON)))
+		}
+		if p.patch && p.nullAsAbsent {
+			if field.Def.Description != "" {
+				decls = append(decls, Comment(""))
+			}
+			decls = appendDocComments(decls, nullAsAbsentNote)
 		}
 		decls = append(decls, fieldDecl(p, nestedTypeNames, false))
 	}

@@ -8,8 +8,11 @@ import (
 )
 
 // RequestError represents a JSON-RPC error response. Data holds the JSON of
-// the error's data as it was read, so a number keeps every digit. The New*
-// constructors encode their data argument into it.
+// the error's data as it was read, so a number keeps every digit, and a
+// "data": null stays null. The generated Error type reads "data": null as no
+// data instead, as its schema asks. The New* constructors encode their data
+// argument into Data. A request handler whose error has a Data that is not
+// valid JSON answers with an internal error (-32603).
 type RequestError struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`

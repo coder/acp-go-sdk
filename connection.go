@@ -687,6 +687,13 @@ func (c *Connection) handleInbound(ctx context.Context, req *anyMessage) {
 	}
 	if err != nil {
 		res.Error = err
+		if _, mErr := json.Marshal(err); mErr != nil {
+			// The handler's error does not encode, as when its Data is not
+			// valid JSON. Answer with an internal error, so that the peer does
+			// not wait for a response that never comes.
+			c.loggerOrDefault().Error("failed to encode the error of a request handler", "method", req.Method, "err", mErr)
+			res.Error = NewInternalError(map[string]any{"error": mErr.Error()})
+		}
 	} else {
 		// marshal result
 		b, mErr := json.Marshal(result)

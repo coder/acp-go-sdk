@@ -72,3 +72,37 @@ func TestNewRequestError_EncodesData(t *testing.T) {
 		t.Errorf("NewMethodNotFound Error() = %s", got)
 	}
 }
+
+// A handler error that does not encode still answers the request, with an
+// internal error, so that the caller does not wait until its ctx ends.
+func TestRequestError_DataThatIsNotJSONAnswersWithAnInternalError(t *testing.T) {
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+	NewAgentSideConnection(agentFuncs{
+		DeleteSessionFunc: func(context.Context, DeleteSessionRequest) (DeleteSessionResponse, error) {
+			return DeleteSessionResponse{}, &RequestError{Code: -32002, Message: "Resource not found", Data: json.RawMessage("not json")}
+		},
+	}, a2cW, c2aR)
+	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := c.DeleteSession(ctx, DeleteSessionRequest{SessionId: "s"})
+	var re *RequestError
+	if !errors.As(err, &re) || re.Code != -32603 || ctx.Err() != nil {
+		t.Fatalf("DeleteSession error = %v (ctx %v), want a -32603 response for a handler error that does not encode", err, ctx.Err())
+	}
+}
+
+// RequestError keeps "data": null; the generated Error, whose data has
+// x-deserialize-default-on-error, reads it as no data, as the Rust SDK does.
+func TestRequestError_KeepsNullDataThatErrorDrops(t *testing.T) {
+	const in = `{"code":1,"message":"m","data":null}`
+	var re RequestError
+	if err := json.Unmarshal([]byte(in), &re); err != nil || string(re.Data) != "null" {
+		t.Fatalf("RequestError data = %q (error %v), want null", re.Data, err)
+	}
+	var e Error
+	if err := json.Unmarshal([]byte(in), &e); err != nil || e.Data != nil {
+		t.Fatalf("Error data = %q (error %v), want none", e.Data, err)
+	}
+}

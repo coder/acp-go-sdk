@@ -10,7 +10,7 @@ Unit tests and `verify-acp-go-sdk` drive this repository's own example agent. Re
 | Gate | Client -> agent | Model | Cost per run |
 | --- | --- | --- | --- |
 | G4 | TypeScript SDK client -> `example/agent`, and `acpharness` -> the TypeScript SDK's example agent | none | free |
-| G5 | `acpharness` -> `@agentclientprotocol/claude-agent-acp` | the adapter's default (`claude-opus-5-5` on 2026-11-17) | about $0.80 |
+| G5 | `acpharness` -> `@agentclientprotocol/claude-agent-acp` | the adapter's default (`claude-opus-5-5` on 2026-11-17) | $0.60 to $0.90 |
 | G5 | `acpharness` -> `@agentclientprotocol/codex-acp` | the adapter's default (`gpt-6.1-sol` on 2026-11-17) | not reported |
 
 `acpharness` is the driver in `scripts/acpharness`: an ACP client built on the SDK in this checkout. It imports the SDK by module path, so it tests the code in the checkout and not a released version.
@@ -59,8 +59,8 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 
 ```bash
 "$V" g4            # free, about 10 s
-"$V" g5 claude     # real model, about 30 s
-"$V" g5 codex      # real model, about 30 s
+"$V" g5 claude     # real model, about 50 s
+"$V" g5 codex      # real model, about 35 s
 "$V" report        # writes evidence/report.md and prints it
 "$V" scan          # exit 1 when a credential value is in evidence/
 ```
@@ -226,6 +226,8 @@ Run on 2026-11-17 with the SDK of `main` at `492745b`, again at `a0c38c3` after 
 At schema 1.20.0 (`e330c1e`, 2026-11-18), with the same adapter versions, the driver advertises boolean config options, and both adapters then offer them in category `model_config`: Claude `fast` and `ultracode`, Codex `fast-mode`. `config-boolean` passes on both, and every other row is as above.
 
 At schema 1.21.0 (`449d328`, 2026-11-18), with the same adapter versions, the driver advertises `auth.terminal` and elicitation. Claude then lists two terminal auth methods, `claude-login` and `console-login`, with `args`; it lists none without the capability. Codex lists three agent methods (`api-key`, `chat-gpt`, `chat-gpt-device-code`) and no terminal method. Both adapters send `elicitation/create` in `form` mode for the `elicitation` prompt, and the scenario passes on both: Claude for its AskUserQuestion tool, tied to the tool call, with fields `question_0` and `question_0_custom`; Codex as an async question (`_meta.codex.delivery` `async`) with fields `question_0` and `question_0_note`. Neither sends a `url` elicitation or `elicitation/complete`. Every other row is as at 1.20.0. Claude cost $0.88.
+
+At schema 1.25.0 (`997fac8`, 2026-11-18), with the same adapter versions, the driver advertises `session.notices` and `session.compaction`, and has three new rows. `tool-call-name`: Claude names every `tool_call` (3 of 3) and every permission request's `toolCall` (2 of 2), with the names `AskUserQuestion` and `Write`, and no `tool_call_update` (0 of 10), and each name decodes as on the wire. Codex names none of its 3 tool calls, 1 update and 2 permission requests, which are file edits and the failed MCP server start, and each decodes without a name. At `61493fe` that failed the row, so the adapter table now gives codex `-sends-none tool-call-name`, and the row is a `SKIP` (`adapter sends none`). `notice`: Claude sends one notice for session N, with severity `warning`, title `MCP server "harness-broken" failed to start` and description `Its tools are unavailable in this session. Run /mcp for the error.`. Codex sends none. It reports the server as a `tool_call` with status `failed`, kind `other`, title `mcp__harness-broken__startup`, no name, and a text that ends with `MCP startup failed: No such file or directory (os error 2)`, before or during the pong turn, so its `notice` row is a `SKIP` (`adapter sends none`). `compaction`: `/compact` ends with `end_turn` on both. Claude sends one compaction id, a UUID, as `in_progress`, then `completed` with one summary text block of 2,800 to 3,400 characters, then `completed` again without a summary, and no `compaction_summary_chunk`. Codex sends one id, its item id, as `in_progress`, then `completed`, without a summary. Every other row is as at 1.21.0. Claude cost $0.88 at `61493fe` and $0.58 at `997fac8`. Codex reported no cost and used about 96,000 tokens.
 
 Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.46 to $0.80. Codex reported no cost and used about 46,500 tokens. In four runs at `68c27b5` and three at `84bbc4c`, `g4` took 10 to 11 s, `g5 claude` 17 to 34 s and `g5 codex` 24 to 36 s, most of it model time.
 

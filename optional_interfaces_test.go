@@ -3,6 +3,7 @@ package acp
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -61,8 +62,9 @@ func wantMethodNotFound(t *testing.T, err error, method string) {
 	if !errors.As(err, &re) || re.Code != -32601 {
 		t.Fatalf("%s: got error %v, want -32601 (method not found)", method, err)
 	}
-	if data, _ := re.Data.(map[string]any); data["method"] != method {
-		t.Errorf("%s: error data %v, want the method name", method, re.Data)
+	var data struct{ Method string }
+	if err := json.Unmarshal(re.Data, &data); err != nil || data.Method != method {
+		t.Errorf("%s: error data %s, want the method name", method, re.Data)
 	}
 }
 

@@ -170,8 +170,8 @@ func WithStartLocations(l []ToolCallLocation) ToolCallStartOpt {
 }
 
 // WithStartRawInput sets rawInput for a tool_call start update to v, encoded
-// with json.Marshal, so a json.RawMessage keeps its JSON. A value that
-// json.Marshal cannot encode leaves rawInput unset.
+// with json.Marshal, so a json.RawMessage keeps its JSON. A nil v, or one
+// that json.Marshal cannot encode, leaves rawInput unset.
 func WithStartRawInput(v any) ToolCallStartOpt {
 	return func(tc *SessionUpdateToolCall) {
 		tc.RawInput = encodeRaw(v)
@@ -273,9 +273,12 @@ func StartEditToolCall(id ToolCallId, title string, path string, content any, op
 	return StartToolCall(id, title, args...)
 }
 
-// encodeRaw returns v encoded as JSON, or nil when json.Marshal cannot encode
-// it.
+// encodeRaw returns v encoded as JSON, or nil when v is nil or json.Marshal
+// cannot encode it.
 func encodeRaw(v any) json.RawMessage {
+	if v == nil {
+		return nil
+	}
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return nil

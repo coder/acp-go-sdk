@@ -636,13 +636,13 @@ func TestExampleAgent_LoadSession(t *testing.T) {
 	} {
 		_, err := load(tc.req)
 		var re *acp.RequestError
-		if !errors.As(err, &re) || re.Code != -32602 || fmt.Sprint(re.Data) != fmt.Sprint(map[string]any{"error": tc.want}) {
+		if !errors.As(err, &re) || re.Code != -32602 || string(re.Data) != mustJSON(t, map[string]any{"error": tc.want}) {
 			t.Errorf("%s: session/load error = %v, want -32602 %q", tc.name, err, tc.want)
 		}
 	}
 	_, err = c.LoadSession(ctx, acp.LoadSessionRequest{SessionId: "sess_unknown", Cwd: "/w", McpServers: []acp.McpServer{}})
 	var re *acp.RequestError
-	if !errors.As(err, &re) || re.Code != -32002 || fmt.Sprint(re.Data) != fmt.Sprint(map[string]any{"sessionId": "sess_unknown"}) {
+	if !errors.As(err, &re) || re.Code != -32002 || string(re.Data) != `{"sessionId":"sess_unknown"}` {
 		t.Errorf("session/load of an unknown session = %v, want -32002 with the sessionId", err)
 	}
 	if got := client.take(); len(got) != 0 {
@@ -705,4 +705,14 @@ func TestExampleAgent_LoadSessionDuringTurn(t *testing.T) {
 	if live := append(append([]acp.SessionUpdate(nil), seen[:k]...), seen[2*k+1:]...); enc(live) != enc(full[1:]) {
 		t.Fatalf("live updates = %s, want %s", enc(live), enc(full[1:]))
 	}
+}
+
+// mustJSON returns v encoded as JSON.
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

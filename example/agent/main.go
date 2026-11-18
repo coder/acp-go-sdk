@@ -303,7 +303,7 @@ func (a *exampleAgent) LoadSession(ctx context.Context, params acp.LoadSessionRe
 	}
 	// An unknown session gets -32002 (resource not found) with the requested
 	// sessionId in data, as the protocol asks of the session methods.
-	notFound := &acp.RequestError{Code: -32002, Message: "Resource not found", Data: map[string]any{"sessionId": params.SessionId}}
+	notFound := acp.NewRequestError(-32002, "Resource not found", map[string]any{"sessionId": params.SessionId})
 	sid := string(params.SessionId)
 	a.mu.Lock()
 	s := a.sessions[sid]

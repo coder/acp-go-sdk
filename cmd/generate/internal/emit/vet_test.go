@@ -109,6 +109,60 @@ const scopedUnionSchema = `{"$defs": {
     ]}
 }}`
 
+// openUnionSchema has open unions whose variants are a direct $ref, or
+// come from an allOf.
+const openUnionSchema = `{"$defs": {
+  "SessionScope": {"type": "object", "required": ["sessionId"], "properties": {"sessionId": {"type": "string"}}},
+  "RequestScope": {"type": "object", "required": ["requestId"], "properties": {"requestId": {"type": "string"}}},
+  "Scope": {"anyOf": [{"$ref": "#/$defs/SessionScope"}, {"$ref": "#/$defs/RequestScope"}], "unevaluatedProperties": true},
+  "TitledScope": {"anyOf": [
+    {"title": "Session", "allOf": [{"$ref": "#/$defs/SessionScope"}]},
+    {"title": "Request", "allOf": [{"$ref": "#/$defs/RequestScope"}]}], "unevaluatedProperties": true},
+  "Mode": {"oneOf": [
+    {"title": "other", "type": "object", "required": ["mode"], "properties": {"mode": {"type": "string"}},
+      "allOf": [{"$ref": "#/$defs/TitledScope"}]}]}
+}}`
+
+const openUnionTest = `package acp
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestOpenUnions_KeepUnnamedMembers(t *testing.T) {
+	for _, tt := range []struct {
+		into func() any
+		in   string
+	}{
+		{func() any { return new(Scope) }, ` + "`" + `{"sessionId":"s","extra":1}` + "`" + `},
+		{func() any { return new(Mode) }, ` + "`" + `{"mode":"m","requestId":"r","extra":{"k":[1]}}` + "`" + `},
+	} {
+		v := tt.into()
+		if err := json.Unmarshal([]byte(tt.in), v); err != nil {
+			t.Fatalf("unmarshal %s: %v", tt.in, err)
+		}
+		out, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", tt.in, err)
+		}
+		var a, b any
+		json.Unmarshal(out, &a)
+		json.Unmarshal([]byte(tt.in), &b)
+		if ja, _ := json.Marshal(a); string(ja) != func() string { jb, _ := json.Marshal(b); return string(jb) }() {
+			t.Errorf("round trip of %s gives %s", tt.in, out)
+		}
+	}
+	var scope Scope
+	if err := json.Unmarshal([]byte(` + "`" + `{"sessionId":"s","extra":1}` + "`" + `), &scope); err != nil {
+		t.Fatal(err)
+	}
+	if len(scope.AdditionalProperties) != 1 {
+		t.Errorf("AdditionalProperties = %s, want only extra", scope.AdditionalProperties)
+	}
+}
+`
+
 const scopedUnionTest = `package acp
 
 import (
@@ -308,6 +362,11 @@ func TestWriteTypesJen_GeneratedPackagePassesVetAndTests(t *testing.T) {
 			name:   "unions with own properties and a nested scope",
 			schema: scopedUnionSchema,
 			extra:  map[string]string{"scoped_test.go": scopedUnionTest},
+		},
+		{
+			name:   "open unions with referenced variants",
+			schema: openUnionSchema,
+			extra:  map[string]string{"open_test.go": openUnionTest},
 		},
 		{
 			name:   "union with own properties and a string alternative",

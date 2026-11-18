@@ -76,6 +76,16 @@ func TestCreateElicitationOther_KeepsOnlyTheMembersThatNoPartNames(t *testing.T)
 		t.Errorf("AdditionalProperties = %s, want only extra", got)
 	}
 
+	// toolCallId belongs to the session scope, so a request-scoped mode
+	// drops it, as the Rust SDK does.
+	var scoped CreateElicitationRequest
+	if err := json.Unmarshal([]byte(`{"mode":"_x","message":"m","requestId":"r","toolCallId":"t"}`), &scoped); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if scoped.Other == nil || scoped.Other.Request == nil || scoped.Other.AdditionalProperties != nil {
+		t.Errorf("decoded %+v, want the request scope and no unnamed member", scoped.Other)
+	}
+
 	// A member that the union names keeps its value.
 	req.Other.AdditionalProperties["mode"] = json.RawMessage(`"_y"`)
 	out, err := json.Marshal(req)

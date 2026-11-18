@@ -594,6 +594,8 @@ func expandAllOf(schema *load.Schema, d *load.Definition) *load.Definition {
 		if len(merged.OneOf) == 0 && len(resolved.OneOf) > 0 {
 			merged.OneOf = resolved.OneOf
 		}
+		// The alternatives above take their unnamed members along.
+		merged.UnevaluatedProperties = merged.UnevaluatedProperties || resolved.UnevaluatedProperties
 
 		if len(resolved.Properties) > 0 {
 			if merged.Properties == nil {
@@ -1191,8 +1193,12 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			Id(additionalPropertiesField).Map(String()).Qual("encoding/json", "RawMessage").Tag(map[string]string{"json": "-"}),
 		)
 		keys := sortedPropertyKeys(parentDef.Properties)
-		for _, vi := range variants {
-			keys = append(keys, sortedPropertyKeys(vi.props)...)
+		for _, alt := range alts {
+			props := alt.expanded.Properties
+			if def := schema.Defs[strings.TrimPrefix(alt.ref, "#/$defs/")]; def != nil {
+				props = expandAllOf(schema, def).Properties
+			}
+			keys = append(keys, sortedPropertyKeys(props)...)
 		}
 		sort.Strings(keys)
 		for _, k := range slices.Compact(keys) {
@@ -1356,7 +1362,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				} else {
 					gg.List(Id("_b"), Id("_e")).Op(":=").Qual("encoding/json", "Marshal").Call(Op("*").Id("u").Dot(vi.fieldName))
 					gg.If(Id("_e").Op("!=").Nil()).Block(Return(Index().Byte().Values(), Id("_e")))
-					if !vi.isObject && len(wrapperFields) == 0 {
+					if !vi.isObject && len(wrapperFields) == 0 && !open {
 						// Non-object variants (e.g., arrays/primitives) are already in final wire shape.
 						gg.Return(Id("_b"), Nil())
 						return

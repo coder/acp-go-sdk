@@ -135,11 +135,18 @@ These compile after the migration and behave differently. Find them with `grep`,
    text := flattenToolResultContent(out)
    ```
 
-2. **Elicitation `Content` passed to `func(v any)`**, such as a JSON Schema validator, gets `ElicitationContentValue` structs where it got strings and numbers. Encode the map and decode it into `map[string]any` first. docker/docker-agent passes it to `jsonschema.Resolved.Validate`.
-3. **A `Patch` passed to `func(v any)`.** `json.Marshal` of it writes the same JSON, but a type switch on `*T` or `[]T` no longer matches. Read it with `Value()` first.
-4. **`fmt` prints a `Patch` as a struct**, such as `{[...] 2}`. Print `Value()` instead.
-5. **`WithUpdateContent` and `WithUpdateLocations` with an empty non-nil slice** now send `[]`, which clears the stored list. v0.19.0 left it out. A nil slice still leaves the field out.
-6. **An integer field passed through `any`** and asserted as `int` (`v.(int)`, `case int:`) no longer matches: it is an `int64`.
-7. **A value that does not encode** given to `WithStartRawInput`, `WithStartRawOutput` or an error constructor is left out, and the send succeeds. v0.19.0 failed the send.
-8. **Re-wrapping a `Patch` from `WithUpdateRawInput` or `WithUpdateRawOutput` whose value did not encode**, as `PatchSet(p.Value())` or `PatchFromPtr(p.Ptr())`, drops its error and writes `null`. Only its `MarshalJSON` returns the error.
-9. **Stricter decoding** of elicitation schemas and content, `env` and `headers`: see [Typed maps](#typed-maps).
+1. **Elicitation `Content` passed to `func(v any)`**, such as a JSON Schema validator, gets `ElicitationContentValue` structs where it got strings and numbers. Encode the map and decode it into `map[string]any` first. docker/docker-agent passes it to `jsonschema.Resolved.Validate`.
+
+1. **A `Patch` passed to `func(v any)`.** `json.Marshal` of it writes the same JSON, but a type switch on `*T` or `[]T` no longer matches. Read it with `Value()` first.
+
+1. **`fmt` prints a `Patch` as a struct**, such as `{[...] 2}`. Print `Value()` instead.
+
+1. **`WithUpdateContent` and `WithUpdateLocations` with an empty non-nil slice** now send `[]`, which clears the stored list. v0.19.0 left it out. A nil slice still leaves the field out.
+
+1. **An integer field passed through `any`** and asserted as `int` (`v.(int)`, `case int:`) no longer matches: it is an `int64`.
+
+1. **A value that does not encode** given to `WithStartRawInput`, `WithStartRawOutput` or an error constructor is left out, and the send succeeds. v0.19.0 failed the send.
+
+1. **Re-wrapping a `Patch` from `WithUpdateRawInput` or `WithUpdateRawOutput` whose value did not encode**, as `PatchSet(p.Value())` or `PatchFromPtr(p.Ptr())`, drops its error and writes `null`. Only its `MarshalJSON` returns the error.
+
+1. **Stricter decoding** of elicitation schemas and content, `env` and `headers`: see [Typed maps](#typed-maps).

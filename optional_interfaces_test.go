@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -146,5 +147,56 @@ func TestOptionalInterface_ImplementedMethodIsDispatched(t *testing.T) {
 	}
 	if log := agentLog.String(); log != "" {
 		t.Errorf("agent logged %q, want nothing", log)
+	}
+}
+
+// Every agent and client implements Agent or Client, so a method that either
+// gains, loses or changes breaks them all. Both are frozen at the stable
+// methods of schema 1.25.0 (cmd/generate/internal/ir/baseline.go): a method
+// that a later schema adds or makes stable gets its own optional interface.
+// The lists are literal, so a shrunk baseline or a renamed request type fails
+// here instead of in an implementer's build.
+func TestAgentAndClient_KeepTheirMethods(t *testing.T) {
+	tests := []struct {
+		iface reflect.Type
+		want  []string
+	}{
+		{reflect.TypeOf((*Agent)(nil)).Elem(), []string{
+			"Authenticate func(context.Context, acp.AuthenticateRequest) (acp.AuthenticateResponse, error)",
+			"Cancel func(context.Context, acp.CancelNotification) error",
+			"CloseSession func(context.Context, acp.CloseSessionRequest) (acp.CloseSessionResponse, error)",
+			"DeleteSession func(context.Context, acp.DeleteSessionRequest) (acp.DeleteSessionResponse, error)",
+			"Initialize func(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error)",
+			"ListSessions func(context.Context, acp.ListSessionsRequest) (acp.ListSessionsResponse, error)",
+			"Logout func(context.Context, acp.LogoutRequest) (acp.LogoutResponse, error)",
+			"NewSession func(context.Context, acp.NewSessionRequest) (acp.NewSessionResponse, error)",
+			"Prompt func(context.Context, acp.PromptRequest) (acp.PromptResponse, error)",
+			"ResumeSession func(context.Context, acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error)",
+			"SetSessionConfigOption func(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error)",
+			"SetSessionMode func(context.Context, acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error)",
+		}},
+		{reflect.TypeOf((*Client)(nil)).Elem(), []string{
+			"CompleteElicitation func(context.Context, acp.CompleteElicitationNotification) error",
+			"CreateElicitation func(context.Context, acp.CreateElicitationRequest) (acp.CreateElicitationResponse, error)",
+			"CreateTerminal func(context.Context, acp.CreateTerminalRequest) (acp.CreateTerminalResponse, error)",
+			"KillTerminal func(context.Context, acp.KillTerminalRequest) (acp.KillTerminalResponse, error)",
+			"ReadTextFile func(context.Context, acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error)",
+			"ReleaseTerminal func(context.Context, acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error)",
+			"RequestPermission func(context.Context, acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error)",
+			"SessionUpdate func(context.Context, acp.SessionNotification) error",
+			"TerminalOutput func(context.Context, acp.TerminalOutputRequest) (acp.TerminalOutputResponse, error)",
+			"WaitForTerminalExit func(context.Context, acp.WaitForTerminalExitRequest) (acp.WaitForTerminalExitResponse, error)",
+			"WriteTextFile func(context.Context, acp.WriteTextFileRequest) (acp.WriteTextFileResponse, error)",
+		}},
+	}
+	for _, tt := range tests {
+		got := make([]string, 0, tt.iface.NumMethod())
+		for i := 0; i < tt.iface.NumMethod(); i++ {
+			m := tt.iface.Method(i)
+			got = append(got, m.Name+" "+m.Type.String())
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s has the methods\n%s\nwant\n%s", tt.iface.Name(), strings.Join(got, "\n"), strings.Join(tt.want, "\n"))
+		}
 	}
 }

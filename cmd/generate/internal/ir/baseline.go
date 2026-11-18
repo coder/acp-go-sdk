@@ -36,8 +36,9 @@ var requiredMethods = map[string]bool{
 	"client|terminal/wait_for_exit":     true,
 }
 
-// optionalNames keeps the name of an optional interface that predates the
-// rule <Side><Method>, such as AgentUnstableForkSession.
+// optionalNames keeps the names of optional interfaces that are older than
+// the rule <Side><Method>: AgentLoader, which the rule would call
+// AgentLoadSession.
 var optionalNames = map[string]string{
 	"agent|session/load": "AgentLoader",
 }

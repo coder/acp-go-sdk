@@ -227,7 +227,7 @@ func (c *harnessClient) RequestPermission(_ context.Context, p acp.RequestPermis
 		answerReject: {acp.PermissionOptionKindRejectOnce, acp.PermissionOptionKindRejectAlways},
 	}[policy]
 	rec := permission{Scenario: c.h.rec.current(), Conn: c.conn, Answer: "cancelled"}
-	c.addToolName("session/request_permission", p.SessionId, p.ToolCall.ToolCallId, patchPtr(p.ToolCall.Name))
+	c.addToolName("session/request_permission", p.SessionId, p.ToolCall.ToolCallId, p.ToolCall.Name.Ptr())
 	rec.Title, _ = p.ToolCall.Title.Value()
 	for _, o := range p.Options {
 		rec.Options = append(rec.Options, fmt.Sprintf("%s:%s", o.Kind, o.OptionId))
@@ -259,7 +259,7 @@ func (c *harnessClient) SessionUpdate(_ context.Context, n acp.SessionNotificati
 	case u.ToolCall != nil:
 		c.addToolName("tool_call", n.SessionId, u.ToolCall.ToolCallId, u.ToolCall.Name)
 	case u.ToolCallUpdate != nil:
-		c.addToolName("tool_call_update", n.SessionId, u.ToolCallUpdate.ToolCallId, patchPtr(u.ToolCallUpdate.Name))
+		c.addToolName("tool_call_update", n.SessionId, u.ToolCallUpdate.ToolCallId, u.ToolCallUpdate.Name.Ptr())
 	}
 	switch {
 	case u.AgentMessageChunk != nil:
@@ -294,15 +294,6 @@ func (c *harnessClient) SessionUpdate(_ context.Context, n acp.SessionNotificati
 			key := strings.ToUpper(cost.Currency) + " " + string(n.SessionId)
 			c.other[key] = max(c.other[key], cost.Amount)
 		}
-	}
-	return nil
-}
-
-// patchPtr returns the value of a set patch, and nil for an unset or null one:
-// a tool_call_update name that is null leaves the name unchanged.
-func patchPtr[T any](p acp.Patch[T]) *T {
-	if v, ok := p.Value(); ok {
-		return &v
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -49,6 +50,25 @@ type harnessClient struct {
 	tokens map[acp.SessionId]acp.Usage
 	perms  []permission
 	misc   []string // client methods the agent called that this client does not offer, with their scenario
+	// elicit is the word that the client picks in a form elicitation. When
+	// it is empty, the client cancels every elicitation.
+	elicit       string
+	elicitations []elicitation
+}
+
+// elicitation is one elicitation/create or elicitation/complete from the
+// agent, and the answer that the client gave.
+type elicitation struct {
+	Scenario string   `json:"scenario"`
+	Conn     int      `json:"conn"`
+	Method   string   `json:"method"`
+	Mode     string   `json:"mode,omitempty"`
+	Message  string   `json:"message,omitempty"`
+	Fields   []string `json:"fields,omitempty"`
+	Answer   string   `json:"answer,omitempty"`
+	// decoded is the request as the SDK decoded it, encoded again. The
+	// elicitation scenario compares it with the request on the wire.
+	decoded json.RawMessage
 }
 
 var _ acp.Client = (*harnessClient)(nil)
@@ -56,6 +76,103 @@ var _ acp.Client = (*harnessClient)(nil)
 func newHarnessClient(h *harness, conn int) *harnessClient {
 	return &harnessClient{h: h, conn: conn, policy: answerCancel, events: map[acp.SessionId][]event{},
 		costs: map[acp.SessionId]float64{}, other: map[string]float64{}, tokens: map[acp.SessionId]acp.Usage{}}
+}
+
+func (c *harnessClient) setElicit(word string) {
+	c.mu.Lock()
+	c.elicit = word
+	c.mu.Unlock()
+}
+
+func (c *harnessClient) elicitationsSince(mark int) []elicitation {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]elicitation(nil), c.elicitations[mark:]...)
+}
+
+// CreateElicitation answers a form with the field values that fillForm
+// picks, or cancels when no word is set. It cancels every url elicitation,
+// because the driver opens no browser.
+func (c *harnessClient) CreateElicitation(_ context.Context, p acp.CreateElicitationRequest) (acp.CreateElicitationResponse, error) {
+	c.mu.Lock()
+	word := c.elicit
+	c.mu.Unlock()
+	rec := elicitation{Scenario: c.h.rec.current(), Conn: c.conn, Method: "elicitation/create", Answer: "cancel"}
+	rec.decoded, _ = json.Marshal(p)
+	resp := acp.CreateElicitationResponse{Cancel: &acp.CreateElicitationCancel{Action: "cancel"}}
+	switch {
+	case p.Form != nil:
+		rec.Mode, rec.Message = "form", p.Form.Message
+		for name := range p.Form.RequestedSchema.Properties {
+			rec.Fields = append(rec.Fields, name)
+		}
+		sort.Strings(rec.Fields)
+		if content := fillForm(p.Form.RequestedSchema, word); word != "" && len(content) > 0 {
+			resp = acp.CreateElicitationResponse{Accept: &acp.CreateElicitationAccept{Action: "accept", Content: content}}
+			b, _ := json.Marshal(content)
+			rec.Answer = "accept " + string(b)
+		}
+	case p.Url != nil:
+		rec.Mode, rec.Message = "url", p.Url.Message
+	case p.Other != nil:
+		rec.Mode, rec.Message = p.Other.Mode, p.Other.Message
+	}
+	c.mu.Lock()
+	c.elicitations = append(c.elicitations, rec)
+	c.mu.Unlock()
+	return resp, nil
+}
+
+// CompleteElicitation records the notification.
+func (c *harnessClient) CompleteElicitation(_ context.Context, p acp.CompleteElicitationNotification) error {
+	defer c.h.rec.handledOne(c.conn)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.elicitations = append(c.elicitations, elicitation{Scenario: c.h.rec.current(), Conn: c.conn,
+		Method: "elicitation/complete", Answer: string(p.ElicitationId)})
+	return nil
+}
+
+// fillForm answers each field of a form that offers choices with the choice
+// whose value or title contains word, else with its first choice. It gives
+// word itself to a required string field without choices, and leaves every
+// other field out.
+func fillForm(schema acp.ElicitationSchema, word string) map[string]any {
+	content := map[string]any{}
+	for name, raw := range schema.Properties {
+		// Properties holds each field's schema as decoded JSON. Read it into
+		// the SDK's union to see the field's type.
+		var field acp.ElicitationPropertySchema
+		b, err := json.Marshal(raw)
+		if err == nil {
+			err = json.Unmarshal(b, &field)
+		}
+		if err != nil || field.String == nil {
+			continue
+		}
+		var choices []string
+		for _, o := range field.String.OneOf {
+			if strings.Contains(strings.ToLower(o.Const+" "+o.Title), strings.ToLower(word)) {
+				choices = append([]string{o.Const}, choices...)
+			} else {
+				choices = append(choices, o.Const)
+			}
+		}
+		for _, e := range field.String.Enum {
+			if strings.Contains(strings.ToLower(e), strings.ToLower(word)) {
+				choices = append([]string{e}, choices...)
+			} else {
+				choices = append(choices, e)
+			}
+		}
+		switch {
+		case len(choices) > 0:
+			content[name] = choices[0]
+		case contains(schema.Required, name):
+			content[name] = word
+		}
+	}
+	return content
 }
 
 func (c *harnessClient) setPolicy(p string) {

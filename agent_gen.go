@@ -450,11 +450,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return nil, NewMethodNotFound(method)
 	}
 }
-func (c *AgentSideConnection) UnstableCompleteElicitation(ctx context.Context, params UnstableCompleteElicitationNotification) error {
+func (c *AgentSideConnection) CompleteElicitation(ctx context.Context, params CompleteElicitationNotification) error {
 	return c.conn.SendNotification(ctx, ClientMethodElicitationComplete, params)
 }
-func (c *AgentSideConnection) UnstableCreateElicitation(ctx context.Context, params UnstableCreateElicitationRequest) (UnstableCreateElicitationResponse, error) {
-	resp, err := SendRequest[UnstableCreateElicitationResponse](c.conn, ctx, ClientMethodElicitationCreate, params)
+func (c *AgentSideConnection) CreateElicitation(ctx context.Context, params CreateElicitationRequest) (CreateElicitationResponse, error) {
+	resp, err := SendRequest[CreateElicitationResponse](c.conn, ctx, ClientMethodElicitationCreate, params)
 	return resp, err
 }
 func (c *AgentSideConnection) ReadTextFile(ctx context.Context, params ReadTextFileRequest) (ReadTextFileResponse, error) {

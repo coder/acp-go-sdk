@@ -1,0 +1,12 @@
+# Form and url elicitation during a turn, both accepted. Feature: elicitation.md
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"respond":"elicitation/create","where":{"params.mode":"form"},"result":{"action":"accept","content":{"host":"db.internal"}}}
+{"respond":"elicitation/create","where":{"params.mode":"url"},"result":{"action":"accept"}}
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false,"elicitation":{"form":{},"url":{}}}},"save":"init","expect":{"result.protocolVersion":1}}
+{"send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new"}
+{"send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"save":"turn","timeout":"30s","expect":{"result.stopReason":"end_turn"}}
+{"step":"form asks for the host of the edit","waitFor":"elicitation/create","where":{"params.mode":"form","params.sessionId":"{{new.result.sessionId}}","params.toolCallId":"call_2","params.message":"Which database host should the configuration use?","params.requestedSchema":{"type":"object","properties":{"host":{"type":"string","title":"Database host","default":"new-host","minLength":1}},"required":["host"]}},"timeout":"1s"}
+{"step":"edit carries the answer","waitFor":"session/request_permission","where":{"params.toolCall.rawInput.content":"{\"database\": {\"host\": \"db.internal\"}}"},"timeout":"1s"}
+{"step":"url asks for a review","waitFor":"elicitation/create","where":{"params.mode":"url","params.sessionId":"{{new.result.sessionId}}","params.url":"https://example.com/acp-demo/review"},"timeout":"1s"}
+{"step":"review completes","waitFor":"elicitation/complete","timeout":"1s"}
+{"close":true,"expectExit":0}

@@ -4,7 +4,7 @@ An agent built on this SDK must work in an editor built on the official TypeScri
 
 ## Sub-features
 
-- `ts-client-go-agent`: the TypeScript SDK as the client, `example/agent` as the agent.
+- `ts-client-go-agent`: the TypeScript SDK as the client, `example/agent` as the agent. The client advertises form and url elicitation, fills each form field with `ts-host` and accepts the url, so the turn also carries the stable `elicitation/create` in both modes and `elicitation/complete`.
 - `go-client-ts-agent`: `acpharness -profile smoke` as the client, the TypeScript SDK's `src/examples/agent.ts` as the agent.
 
 ## How to get to it (user POV)
@@ -20,8 +20,8 @@ Preconditions:
 
 Steps:
 
-- **Run both directions.** Run `"$V" g4`. The first block prints eight PASS lines from the TypeScript client (protocol version, a session id, `end_turn`, an agent message, the allowed permission request, a clean wire, the agent's exit 0, and the written transcript) and two `is clean` lines for the stderr files. The second block prints PASS for `initialize`, `session/new`, `prompt`, `agent-exit`, `no-method-not-found`, `no-decode-errors` and `no-agent-errors`.
-- **Check the turn.** Run `jq -c '{outcome, kinds, permissions}' "$HARNESS_RUN/evidence/g4-ts-client-go-agent/summary.json"`. `outcome.stopReason` is `end_turn`, and the Go agent's permission request was answered `allow`.
+- **Run both directions.** Run `"$V" g4`. The first block prints ten PASS lines from the TypeScript client (protocol version, a session id, `end_turn`, an agent message, the allowed permission request, a form elicitation whose answer `ts-host` reached the edit, a url elicitation that the agent completed with its id, a clean wire, the agent's exit 0, and the written transcript) and two `is clean` lines for the stderr files. The second block prints PASS for `initialize`, `session/new`, `prompt`, `agent-exit`, `no-method-not-found`, `no-decode-errors` and `no-agent-errors`.
+- **Check the turn.** Run `jq -c '{outcome, kinds, permissions, elicitations}' "$HARNESS_RUN/evidence/g4-ts-client-go-agent/summary.json"`. `outcome.stopReason` is `end_turn`, the Go agent's permission request was answered `allow` and its `content` names `ts-host`, and `elicitations` lists a `form` request for `host` tied to `call_2`, a `url` request, and a `complete` with the url request's `elicitationId`.
 
 ## Gotchas
 

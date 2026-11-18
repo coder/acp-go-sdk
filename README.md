@@ -14,7 +14,7 @@ Learn more about the protocol itself at <https://agentclientprotocol.com>.
 <!-- `$ printf 'go get github.com/coder/acp-go-sdk@v%s\n' "$(cat version)"` as bash -->
 
 ```bash
-go get github.com/coder/acp-go-sdk@v0.15.0
+go get github.com/coder/acp-go-sdk@v0.16.0
 ```
 
 The SDK has its own semver, separate from the ACP schema version.
@@ -56,8 +56,11 @@ If you're building a [Client](https://agentclientprotocol.com/protocol/overview#
 
 - Implement the `acp.Client` interface. It includes the terminal methods
   (`CreateTerminal`, `TerminalOutput`, `ReleaseTerminal`, `WaitForTerminalExit`,
-  `KillTerminal`). Optionally implement `acp.ClientExperimental` for the unstable
-  client methods.
+  `KillTerminal`) and the elicitation methods (`CreateElicitation`,
+  `CompleteElicitation`). A client that does not offer a capability returns
+  `acp.NewMethodNotFound` from its methods and leaves the capability out of
+  `ClientCapabilities`. Optionally implement `acp.ClientExperimental` for the
+  unstable client methods.
 - Launch or connect to your Agent process (stdio), then create a connection with
   `acp.NewClientSideConnection(client, stdin, stdout)`.
 - Call `Initialize`, `NewSession`, and `Prompt` to run a turn and stream updates.

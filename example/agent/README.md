@@ -2,15 +2,15 @@
 
 ## Overview
 
-`example/agent` is a `package main` demo ACP agent built on `github.com/coder/acp-go-sdk`. It keeps sessions in a mutex-guarded map and answers `Initialize` with the SDK protocol version, `LoadSession` disabled, and the `session/list` and `session/delete` capabilities. It lists and deletes the sessions in that map. Each `Prompt` runs a scripted turn: it streams text, reports two tool calls, and sends one permission request to the client. It uses no AI model. `main` connects the agent over stdio, or over the stdio of a child process when you pass a command line, and blocks until the peer disconnects.
+`example/agent` is a `package main` demo ACP agent built on `github.com/coder/acp-go-sdk`. It keeps sessions in a mutex-guarded map and answers `Initialize` with the SDK protocol version, `LoadSession` disabled, and the `session/list` and `session/delete` capabilities. It lists and deletes the sessions in that map. Each `Prompt` runs a scripted turn: it streams text, reports two tool calls, and sends one permission request to the client. A client that advertises form elicitation is asked for the database host of the edit first, and a client that advertises url elicitation is asked to review an allowed edit. It uses no AI model. `main` connects the agent over stdio, or over the stdio of a child process when you pass a command line, and blocks until the peer disconnects.
 
 ## Interface
 
-- No exported top-level symbols. All top-level identifiers are unexported: `agentSession`, `exampleAgent`, `newExampleAgent`, `randomID`, `pause`, `main` [main.go:exampleAgent]
+- No exported top-level symbols. All top-level identifiers are unexported: `agentSession`, `exampleAgent`, `newExampleAgent`, `defaultHost`, `randomID`, `pause`, `main` [main.go:exampleAgent]
 - `exampleAgent` satisfies `acp.Agent`, `acp.AgentLoader`, and `acp.AgentExperimental`, checked by compile-time assertions [main.go:exampleAgent]
 - CLI: no flags are parsed. With no arguments, the agent speaks ACP on its own stdin and stdout. With arguments, `os.Args[1]` is the client program and `os.Args[2:]` are its arguments [main.go:main]
 - Environment variables: this file reads none. With arguments, `exec.CommandContext` looks up the client program through `PATH` when its name has no path separator, and the child inherits the full environment [main.go:main]
-- `Initialize` returns `ProtocolVersion: acp.ProtocolVersionNumber`, `AgentCapabilities.LoadSession: false`, and `SessionCapabilities` with `List` and `Delete` set to `{}` [main.go:Initialize]
+- `Initialize` records whether the client accepts boolean config options and form and url elicitation, and returns `ProtocolVersion: acp.ProtocolVersionNumber`, `AgentCapabilities.LoadSession: false`, and `SessionCapabilities` with `List` and `Delete` set to `{}` [main.go:Initialize]
 - `NewSession` returns a new session ID of the form `sess_<hex>` and records the request's `Cwd` [main.go:NewSession]
 - `ListSessions` returns one page, with no `NextCursor`, of every session in the map, or only those whose `Cwd` equals the request's `Cwd` when it is set, in creation order. Each entry has `SessionId` and `Cwd` [main.go:ListSessions]
 - `DeleteSession` removes the session from the map and returns an empty response and a nil error, also for an unknown session ID [main.go:DeleteSession]
@@ -19,7 +19,8 @@
 - `Authenticate` and `LoadSession` return empty responses and a nil error [main.go:Authenticate, main.go:LoadSession]
 - `SetSessionMode` returns an empty response and a nil error [main.go:SetSessionMode]
 - `UnstableDidOpenDocument`, `UnstableDidChangeDocument`, `UnstableDidCloseDocument`, `UnstableDidFocusDocument`, `UnstableDidSaveDocument`, `UnstableAcceptNes`, and `UnstableRejectNes` return nil and do nothing [main.go:UnstableDidOpenDocument, main.go:UnstableAcceptNes]
-- These methods return `acp.NewMethodNotFound`: `ResumeSession`, `CloseSession`, `SetSessionConfigOption`, `Logout`, `UnstableForkSession`, `UnstableStartNes`, `UnstableSuggestNes`, `UnstableCloseNes`, `UnstableListProviders`, `UnstableSetProvider`, `UnstableDisableProvider` [main.go:ResumeSession, main.go:CloseSession, main.go:UnstableForkSession]
+- `SetSessionConfigOption` sets the `model` select to `demo-fast` or `demo-deep`, or the `web_search` boolean for a client that accepts booleans, and returns every option. Any other id or value returns `acp.NewInvalidParams` [main.go:SetSessionConfigOption]
+- These methods return `acp.NewMethodNotFound`: `ResumeSession`, `CloseSession`, `Logout`, `UnstableForkSession`, `UnstableStartNes`, `UnstableSuggestNes`, `UnstableCloseNes`, `UnstableListProviders`, `UnstableSetProvider`, `UnstableDisableProvider` [main.go:ResumeSession, main.go:CloseSession, main.go:UnstableForkSession]
 - `SetAgentConnection` stores the `*acp.AgentSideConnection` that the turn uses to send updates. `main` calls it after `acp.NewAgentSideConnection` [main.go:SetAgentConnection, main.go:main]
 
 ## Invariants
@@ -34,7 +35,7 @@
 - A `Cancelled` permission outcome ends the turn with a nil error, so `Prompt` returns `StopReasonEndTurn` [main.go:simulateTurn]
 - A permission outcome with no `Selected` option returns the error `unexpected permission outcome` [main.go:simulateTurn]
 - A selected option other than `allow` or `reject` returns the error `unexpected permission option: <id>` [main.go:simulateTurn]
-- `randomID` returns `sess_` plus 24 hex characters, or `sess_<UnixNano>` if `crypto/rand` fails [main.go:randomID]
+- `randomID` returns its prefix (`sess_` or `elic_`) plus 24 hex characters, or the prefix plus `UnixNano` if `crypto/rand` fails [main.go:randomID]
 - `pause` returns `ctx.Err()` when the context ends before the timer fires [main.go:pause]
 
 ## Side Effects
@@ -48,6 +49,8 @@
 - `main` blocks on `<-asc.Done()` until the peer disconnects [main.go:main]
 - A turn that is not cancelled sends `SessionUpdate` notifications with hard-coded text and tool calls `call_1` (read `/project/README.md`) and `call_2` (edit `/project/config.json`). A cancelled turn returns at its next `SessionUpdate`, `pause`, or `RequestPermission` call, so it can end before either tool call. No file is read or written [main.go:simulateTurn, main.go:pause]
 - A turn that is not cancelled sends one `RequestPermission` request for `call_2` (path `/project/config.json`, the same as the tool call) with options `allow` and `reject`, and waits for the client response [main.go:simulateTurn]
+- Before that request, when the client advertises form elicitation, the turn sends `CreateElicitation` in form mode, tied to the session and `call_2`, for one required string `host` (default `new-host`). An accepted non-empty host goes into the request's `rawInput.content`; a decline, a cancel or an empty host keeps `new-host` [main.go:askHost]
+- After an allowed edit, when the client advertises url elicitation, the turn sends `CreateElicitation` in url mode with a new `elic_<hex>` id, and sends `CompleteElicitation` with that id once the client accepts [main.go:askReview]
 - A turn that is not cancelled sleeps between steps: one 250 ms step and several 1 s steps [main.go:simulateTurn, main.go:pause]
 - `NewSession` adds an entry to the sessions map under `a.mu` [main.go:NewSession]
 - `DeleteSession` removes an entry from the sessions map under `a.mu` [main.go:DeleteSession]

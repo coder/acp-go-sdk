@@ -11,14 +11,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/coder/acp-go-sdk"
 )
 
 type exampleClient struct {
-	// input carries the lines of os.Stdin. Every permission prompt reads from
-	// it, so no prompt buffers lines that a later prompt needs.
+	// input carries the lines of os.Stdin. Every permission and elicitation
+	// prompt reads from it, so no prompt buffers lines that a later prompt
+	// needs.
 	input <-chan string
 }
 
@@ -30,6 +33,11 @@ func (e *exampleClient) RequestPermission(ctx context.Context, params acp.Reques
 		title = *params.ToolCall.Title
 	}
 	fmt.Printf("\n🔐 Permission requested: %s\n", title)
+	if params.ToolCall.RawInput != nil {
+		if b, err := json.Marshal(params.ToolCall.RawInput); err == nil {
+			fmt.Printf("   %s\n", b)
+		}
+	}
 	fmt.Println("\nOptions:")
 	for i, opt := range params.Options {
 		fmt.Printf("   %d. %s (%s)\n", i+1, opt.Name, opt.Kind)
@@ -168,6 +176,98 @@ func (c *exampleClient) KillTerminal(ctx context.Context, params acp.KillTermina
 	return acp.KillTerminalResponse{}, nil
 }
 
+// CreateElicitation asks the agent's question on the terminal and reads the
+// answer from stdin. A form asks for each string field in turn, and Enter
+// takes the field's default. A url elicitation asks whether to open the URL.
+// End of input cancels. A form with a field that is not a string is declined,
+// because this client cannot show it.
+func (e *exampleClient) CreateElicitation(ctx context.Context, params acp.CreateElicitationRequest) (acp.CreateElicitationResponse, error) {
+	switch {
+	case params.Form != nil:
+		return e.fillForm(params.Form)
+	case params.Url != nil:
+		return e.openURL(params.Url)
+	default:
+		return acp.CreateElicitationResponse{}, acp.NewInvalidParams(map[string]any{"error": "unsupported elicitation mode"})
+	}
+}
+
+var (
+	elicitationCancel  = acp.CreateElicitationResponse{Cancel: &acp.CreateElicitationCancel{Action: "cancel"}}
+	elicitationDecline = acp.CreateElicitationResponse{Decline: &acp.CreateElicitationDecline{Action: "decline"}}
+)
+
+func (e *exampleClient) fillForm(form *acp.CreateElicitationForm) (acp.CreateElicitationResponse, error) {
+	fmt.Printf("\n📝 %s\n", form.Message)
+	names := make([]string, 0, len(form.RequestedSchema.Properties))
+	for name := range form.RequestedSchema.Properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	content := map[string]any{}
+	for _, name := range names {
+		// Properties holds each field's schema as decoded JSON. Read it
+		// into the SDK's union to see the field's type.
+		var field acp.ElicitationPropertySchema
+		raw, err := json.Marshal(form.RequestedSchema.Properties[name])
+		if err == nil {
+			err = json.Unmarshal(raw, &field)
+		}
+		if err != nil || field.String == nil {
+			fmt.Printf("Cannot show the field %q. Declining.\n", name)
+			return elicitationDecline, nil
+		}
+		label, def := name, ""
+		if field.String.Title != nil {
+			label = *field.String.Title
+		}
+		if field.String.Default != nil {
+			def = *field.String.Default
+		}
+		for {
+			fmt.Printf("%s [%s]: ", label, def)
+			line, ok := <-e.input
+			if !ok {
+				return elicitationCancel, nil
+			}
+			value := strings.TrimSpace(line)
+			if value == "" {
+				value = def
+			}
+			if value == "" && slices.Contains(form.RequestedSchema.Required, name) {
+				fmt.Println("A value is required.")
+				continue
+			}
+			if value != "" {
+				content[name] = value
+			}
+			break
+		}
+	}
+	return acp.CreateElicitationResponse{Accept: &acp.CreateElicitationAccept{Action: "accept", Content: content}}, nil
+}
+
+func (e *exampleClient) openURL(u *acp.CreateElicitationUrl) (acp.CreateElicitationResponse, error) {
+	fmt.Printf("\n🔗 %s\n   %s\n", u.Message, u.Url)
+	fmt.Print("Open this URL? [y/N]: ")
+	line, ok := <-e.input
+	if !ok {
+		return elicitationCancel, nil
+	}
+	if answer := strings.ToLower(strings.TrimSpace(line)); answer != "y" && answer != "yes" {
+		return elicitationDecline, nil
+	}
+	// A real client opens the URL in a browser here.
+	fmt.Printf("[Client] Opening %s\n", u.Url)
+	return acp.CreateElicitationResponse{Accept: &acp.CreateElicitationAccept{Action: "accept"}}, nil
+}
+
+// CompleteElicitation reports that the agent finished a url elicitation.
+func (e *exampleClient) CompleteElicitation(ctx context.Context, params acp.CompleteElicitationNotification) error {
+	fmt.Printf("\n✅ Elicitation %s complete\n", params.ElicitationId)
+	return nil
+}
+
 func main() {
 	// If args provided, treat them as agent program + args. Otherwise run the Go agent example.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -218,6 +318,11 @@ func main() {
 			Session: &acp.ClientSessionCapabilities{ConfigOptions: &acp.SessionConfigOptionsCapabilities{
 				Boolean: &acp.BooleanConfigOptionCapabilities{},
 			}},
+			// Answer elicitation/create in both modes, so the agent may ask.
+			Elicitation: &acp.ElicitationCapabilities{
+				Form: &acp.ElicitationFormCapabilities{},
+				Url:  &acp.ElicitationUrlCapabilities{},
+			},
 		},
 	})
 	if err != nil {

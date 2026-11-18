@@ -44,6 +44,14 @@ func connect(t *testing.T) (*acp.ClientSideConnection, *testClient) {
 // its methods directly.
 func connectAgent(t *testing.T) (*acp.ClientSideConnection, *testClient, *exampleAgent) {
 	t.Helper()
+	client := &testClient{updates: make(chan acp.SessionNotification, 64)}
+	c, ag := connectClient(t, client)
+	return c, client, ag
+}
+
+// connectClient wires the example agent to client over pipes.
+func connectClient(t *testing.T, client acp.Client) (*acp.ClientSideConnection, *exampleAgent) {
+	t.Helper()
 	c2aR, c2aW := io.Pipe()
 	a2cR, a2cW := io.Pipe()
 	t.Cleanup(func() {
@@ -52,8 +60,7 @@ func connectAgent(t *testing.T) (*acp.ClientSideConnection, *testClient, *exampl
 	})
 	ag := newExampleAgent()
 	ag.SetAgentConnection(acp.NewAgentSideConnection(ag, a2cW, c2aR))
-	client := &testClient{updates: make(chan acp.SessionNotification, 64)}
-	return acp.NewClientSideConnection(client, c2aW, a2cR), client, ag
+	return acp.NewClientSideConnection(client, c2aW, a2cR), ag
 }
 
 func newSession(t *testing.T, c *acp.ClientSideConnection, cwd string) acp.SessionId {
@@ -269,6 +276,121 @@ func TestExampleAgent_SetSessionConfigOption(t *testing.T) {
 			}
 			if got := configValues(last.ConfigOptions); !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("config options after the sets = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// elicitClient allows the edit, answers each elicitation with the response for
+// its mode, and records what the agent asked and completed.
+type elicitClient struct {
+	acp.Client
+	answers map[string]acp.CreateElicitationResponse // by mode
+
+	mu        sync.Mutex
+	asked     []acp.CreateElicitationRequest
+	edit      any // rawInput of the permission request
+	completed []acp.ElicitationId
+}
+
+func (c *elicitClient) SessionUpdate(context.Context, acp.SessionNotification) error { return nil }
+
+func (c *elicitClient) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.edit = p.ToolCall.RawInput
+	return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: "allow"}}}, nil
+}
+
+func (c *elicitClient) CreateElicitation(_ context.Context, p acp.CreateElicitationRequest) (acp.CreateElicitationResponse, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.asked = append(c.asked, p)
+	mode := "other"
+	switch {
+	case p.Form != nil:
+		mode = "form"
+	case p.Url != nil:
+		mode = "url"
+	}
+	return c.answers[mode], nil
+}
+
+func (c *elicitClient) CompleteElicitation(_ context.Context, p acp.CompleteElicitationNotification) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.completed = append(c.completed, p.ElicitationId)
+	return nil
+}
+
+func TestExampleAgent_Elicitation(t *testing.T) {
+	both := acp.ClientCapabilities{Elicitation: &acp.ElicitationCapabilities{
+		Form: &acp.ElicitationFormCapabilities{},
+		Url:  &acp.ElicitationUrlCapabilities{},
+	}}
+	accept := func(content map[string]any) acp.CreateElicitationResponse {
+		return acp.CreateElicitationResponse{Accept: &acp.CreateElicitationAccept{Action: "accept", Content: content}}
+	}
+	decline := acp.CreateElicitationResponse{Decline: &acp.CreateElicitationDecline{Action: "decline"}}
+	cancel := acp.CreateElicitationResponse{Cancel: &acp.CreateElicitationCancel{Action: "cancel"}}
+	tests := []struct {
+		name         string
+		caps         acp.ClientCapabilities
+		form, url    acp.CreateElicitationResponse
+		wantAsked    []string // modes, in order
+		wantHost     string
+		wantComplete bool
+	}{
+		{"accept both", both, accept(map[string]any{"host": "db.internal"}), accept(nil), []string{"form", "url"}, "db.internal", true},
+		{"decline both", both, decline, decline, []string{"form", "url"}, "new-host", false},
+		{"cancel both", both, cancel, cancel, []string{"form", "url"}, "new-host", false},
+		{"accept without a host", both, accept(nil), accept(nil), []string{"form", "url"}, "new-host", true},
+		{"form only", acp.ClientCapabilities{Elicitation: &acp.ElicitationCapabilities{Form: &acp.ElicitationFormCapabilities{}}},
+			accept(map[string]any{"host": "db.internal"}), accept(nil), []string{"form"}, "db.internal", false},
+		{"no elicitation capability", acp.ClientCapabilities{}, accept(nil), accept(nil), nil, "new-host", false},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			client := &elicitClient{answers: map[string]acp.CreateElicitationResponse{"form": tt.form, "url": tt.url}}
+			c, _ := connectClient(t, client)
+			if _, err := c.Initialize(ctx, acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber, ClientCapabilities: tt.caps}); err != nil {
+				t.Fatalf("initialize: %v", err)
+			}
+			sid := newSession(t, c, "/w")
+			resp, err := c.Prompt(ctx, acp.PromptRequest{SessionId: sid, Prompt: []acp.ContentBlock{acp.TextBlock("hi")}})
+			if err != nil || resp.StopReason != acp.StopReasonEndTurn {
+				t.Fatalf("session/prompt = %+v, %v; want end_turn", resp, err)
+			}
+			client.mu.Lock()
+			defer client.mu.Unlock()
+			var modes []string
+			for _, req := range client.asked {
+				switch {
+				case req.Form != nil:
+					modes = append(modes, "form")
+					if s := req.Form.Session; s == nil || s.SessionId != sid || s.ToolCallId == nil || *s.ToolCallId != "call_2" {
+						t.Errorf("form scope = %+v, want session %s and tool call call_2", s, sid)
+					}
+				case req.Url != nil:
+					modes = append(modes, "url")
+				}
+			}
+			if !reflect.DeepEqual(modes, tt.wantAsked) {
+				t.Errorf("elicitations = %v, want %v", modes, tt.wantAsked)
+			}
+			wantContent := fmt.Sprintf(`{"database": {"host": %q}}`, tt.wantHost)
+			if edit, _ := client.edit.(map[string]any); edit["content"] != wantContent {
+				t.Errorf("permission rawInput = %v, want content %s", client.edit, wantContent)
+			}
+			var wantCompleted []acp.ElicitationId
+			if tt.wantComplete {
+				wantCompleted = []acp.ElicitationId{client.asked[len(client.asked)-1].Url.ElicitationId}
+			}
+			if !reflect.DeepEqual(client.completed, wantCompleted) {
+				t.Errorf("elicitation/complete ids = %v, want %v", client.completed, wantCompleted)
 			}
 		})
 	}

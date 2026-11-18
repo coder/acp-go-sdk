@@ -107,7 +107,7 @@ const metaProperty = "_meta"
 // A _meta whose members the schema leaves free is a Meta.
 func fieldType(field ir.Field) Code {
 	def := field.Def
-	if field.Prop == metaProperty && ir.PrimaryType(def) == "object" && len(def.Properties) == 0 && def.AdditionalProperties.Schema == nil {
+	if field.Prop == metaProperty && ir.PrimaryType(def) == "object" && len(def.Properties) == 0 && freeMembers(def) {
 		return Id("Meta")
 	}
 	return jenTypeForOptional(def)

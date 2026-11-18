@@ -629,10 +629,18 @@ func rawJSON() *Statement { return Qual("encoding/json", "RawMessage") }
 // memberType is the Go type of each member of d, an object schema without
 // properties: the members that additionalProperties allows.
 func memberType(d *load.Definition) Code {
-	if s := d.AdditionalProperties.Schema; s != nil && !leavesFree(s) {
+	if !freeMembers(d) {
 		return Any()
 	}
 	return rawJSON()
+}
+
+// freeMembers reports whether d takes every value for a member that its
+// properties do not name: additionalProperties is absent, true, or a schema
+// that leaves the value free.
+func freeMembers(d *load.Definition) bool {
+	s := d.AdditionalProperties.Schema
+	return s == nil || leavesFree(s)
 }
 
 // leavesFree reports whether d accepts every JSON value: it has no keyword

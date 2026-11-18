@@ -12,6 +12,9 @@ import (
 // every digit. _meta is the SDK's Meta.
 func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 	src, _ := emitUnionFiles(t, `{"$defs": {
+  "LooseMeta": {"type": "object", "properties": {
+    "_meta": {"type": "object", "additionalProperties": {}}
+  }},
   "Holder": {"type": "object", "properties": {
     "_meta": {"type": ["object", "null"], "additionalProperties": true, "x-deserialize-default-on-error": true},
     "rawInput": {"description": "Anything.", "x-deserialize-default-on-error": true},
@@ -40,6 +43,10 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 		switch spec.Name.Name {
 		case "Free":
 			free = spec
+		case "LooseMeta":
+			if typ := types.ExprString(spec.Type.(*ast.StructType).Fields.List[0].Type); typ != "Meta" {
+				t.Errorf("a _meta whose additionalProperties is {} has type %q, want Meta", typ)
+			}
 		case "Holder":
 			for _, f := range spec.Type.(*ast.StructType).Fields.List {
 				fields[f.Names[0].Name] = types.ExprString(f.Type)

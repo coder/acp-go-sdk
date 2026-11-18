@@ -197,10 +197,10 @@ func TestToolCallUpdate_UnmarshalJSON_KeepsFieldsThatTheJSONOmits(t *testing.T) 
 			t.Fatalf("unmarshal %s: %v", in, err)
 		}
 	}
-	if update.Title == nil || *update.Title != "run" {
+	if title, _ := update.Title.Value(); title != "run" {
 		t.Errorf("title = %v after an update without one, want it kept as %q", update.Title, "run")
 	}
-	if update.Status == nil || *update.Status != ToolCallStatusCompleted {
+	if status, _ := update.Status.Value(); status != ToolCallStatusCompleted {
 		t.Errorf("status = %v, want %q from the second update", update.Status, ToolCallStatusCompleted)
 	}
 }

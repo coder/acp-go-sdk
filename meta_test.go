@@ -145,10 +145,10 @@ func TestWithStartLocations_SetsThePathOfAnObjectRawInput(t *testing.T) {
 func TestWithRawInput_EncodesTheValue(t *testing.T) {
 	t.Parallel()
 	update := UpdateToolCall("t", WithUpdateRawInput(map[string]int{"n": 1}), WithUpdateRawOutput(json.RawMessage(`[9007199254740993]`)))
-	if got := string(update.ToolCallUpdate.RawInput); got != `{"n":1}` {
+	if got, _ := update.ToolCallUpdate.RawInput.Value(); string(got) != `{"n":1}` {
 		t.Errorf("rawInput = %s, want {\"n\":1}", got)
 	}
-	if got := string(update.ToolCallUpdate.RawOutput); got != `[9007199254740993]` {
+	if got, _ := update.ToolCallUpdate.RawOutput.Value(); string(got) != `[9007199254740993]` {
 		t.Errorf("rawOutput = %s, want [9007199254740993]", got)
 	}
 	if got := StartToolCall("t", "x", WithStartRawInput(func() {})).ToolCall.RawInput; got != nil {

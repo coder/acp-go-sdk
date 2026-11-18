@@ -559,10 +559,7 @@ func TestConnectionHandlesMessageOrdering(t *testing.T) {
 			return ReadTextFileResponse{Content: "test content"}, nil
 		},
 		RequestPermissionFunc: func(_ context.Context, req RequestPermissionRequest) (RequestPermissionResponse, error) {
-			title := ""
-			if req.ToolCall.Title != nil {
-				title = *req.ToolCall.Title
-			}
+			title, _ := req.ToolCall.Title.Value()
 			push("requestPermission called: " + title)
 			return RequestPermissionResponse{Outcome: RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{OptionId: "allow"}}}, nil
 		},
@@ -606,11 +603,11 @@ func TestConnectionHandlesMessageOrdering(t *testing.T) {
 	if _, err := as.RequestPermission(context.Background(), RequestPermissionRequest{
 		SessionId: "test-session",
 		ToolCall: ToolCallUpdate{
-			Title:      Ptr("Execute command"),
-			Kind:       ptr(ToolKindExecute),
-			Status:     ptr(ToolCallStatusPending),
+			Title:      PatchSet("Execute command"),
+			Kind:       PatchSet(ToolKindExecute),
+			Status:     PatchSet(ToolCallStatusPending),
 			ToolCallId: "tool-123",
-			Content:    []ToolCallContent{ToolContent(TextBlock("ls -la"))},
+			Content:    PatchSet([]ToolCallContent{ToolContent(TextBlock("ls -la"))}),
 		},
 		Options: []PermissionOption{
 			{Kind: "allow_once", Name: "Allow", OptionId: "allow"},
@@ -1190,7 +1187,7 @@ func TestRequestHandlerCanMakeNestedRequest(t *testing.T) {
 				SessionId: p.SessionId,
 				ToolCall: ToolCallUpdate{
 					ToolCallId: "call_1",
-					Title:      Ptr("Test permission"),
+					Title:      PatchSet("Test permission"),
 				},
 				Options: []PermissionOption{
 					{Kind: PermissionOptionKindAllowOnce, Name: "Allow", OptionId: "allow"},

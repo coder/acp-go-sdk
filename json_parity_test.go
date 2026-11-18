@@ -214,7 +214,7 @@ func TestJSONGolden_SessionUpdates(t *testing.T) {
 			return SessionUpdate{CompactionUpdate: &SessionCompactionUpdate{
 				CompactionId: "cmp_1",
 				Status:       CompactionStatusCompleted,
-				Summary:      []ContentBlock{TextBlock("The user asked for a config change.")},
+				Summary:      PatchSet([]ContentBlock{TextBlock("The user asked for a config change.")}),
 			}}
 		},
 	))
@@ -243,7 +243,7 @@ func TestJSONGolden_SessionUpdates(t *testing.T) {
 	))
 	t.Run("session_update_tool_call_update_content", runGolden(
 		func() SessionUpdate {
-			return SessionUpdate{ToolCallUpdate: &SessionToolCallUpdate{ToolCallId: "call_001", Status: Ptr(ToolCallStatusInProgress), Content: []ToolCallContent{ToolContent(TextBlock("Found 3 configuration files..."))}}}
+			return SessionUpdate{ToolCallUpdate: &SessionToolCallUpdate{ToolCallId: "call_001", Status: PatchSet(ToolCallStatusInProgress), Content: PatchSet([]ToolCallContent{ToolContent(TextBlock("Found 3 configuration files..."))})}}
 		},
 		func() SessionUpdate {
 			return UpdateToolCall("call_001", WithUpdateStatus(ToolCallStatusInProgress), WithUpdateContent([]ToolCallContent{ToolContent(TextBlock("Found 3 configuration files..."))}))

@@ -90,11 +90,11 @@ func (a *agentExample) Prompt(ctx context.Context, p PromptRequest) (PromptRespo
 		SessionId: p.SessionId,
 		ToolCall: ToolCallUpdate{
 			ToolCallId: ToolCallId("call_1"),
-			Title:      Ptr("Modifying configuration"),
-			Kind:       Ptr(ToolKindEdit),
-			Status:     Ptr(ToolCallStatusPending),
-			Locations:  []ToolCallLocation{{Path: "/project/config.json"}},
-			RawInput:   json.RawMessage(`{"path":"/project/config.json"}`),
+			Title:      PatchSet("Modifying configuration"),
+			Kind:       PatchSet(ToolKindEdit),
+			Status:     PatchSet(ToolCallStatusPending),
+			Locations:  PatchSet([]ToolCallLocation{{Path: "/project/config.json"}}),
+			RawInput:   PatchSet(json.RawMessage(`{"path":"/project/config.json"}`)),
 		},
 		Options: []PermissionOption{
 			{Kind: PermissionOptionKindAllowOnce, Name: "Allow", OptionId: PermissionOptionId("allow")},

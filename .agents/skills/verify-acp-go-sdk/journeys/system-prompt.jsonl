@@ -1,0 +1,11 @@
+# A client system prompt in session/new, and the prompts that the agent must refuse. Feature: system-prompt.md
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}},"save":"init","expect":{"result.protocolVersion":1,"result.agentCapabilities.sessionCapabilities.systemPrompt":{}}}
+{"step":"append mode","send":"session/new","params":{"cwd":"/tmp","mcpServers":[],"systemPrompt":{"mode":"append","content":[{"type":"text","text":"Answer like a pirate."}]}},"save":"new"}
+{"send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"save":"turn","timeout":"30s","expect":{"result.stopReason":"end_turn"}}
+{"step":"the turn shows the system prompt","waitFor":"session/update","where":{"params.update.sessionUpdate":"agent_message_chunk","params.update.content.text":"Following your system prompt: Answer like a pirate."},"timeout":"1s"}
+{"step":"override mode is refused","send":"session/new","params":{"cwd":"/tmp","mcpServers":[],"systemPrompt":{"mode":"override","content":[{"type":"text","text":"You are a pirate."}]}},"expect":{"error.code":-32602,"error.data.error":"systemPrompt mode \"override\" is not supported"}}
+{"step":"empty content is refused","send":"session/new","params":{"cwd":"/tmp","mcpServers":[],"systemPrompt":{"mode":"append","content":[]}},"expect":{"error.code":-32602,"error.data.error":"systemPrompt content is empty"}}
+{"step":"a non-text block is refused","send":"session/new","params":{"cwd":"/tmp","mcpServers":[],"systemPrompt":{"mode":"append","content":[{"type":"resource_link","uri":"file:///tmp/a.md","name":"a.md"}]}},"expect":{"error.code":-32602,"error.data.error":"systemPrompt content must be text blocks"}}
+{"step":"a refused prompt creates no session","send":"session/list","params":{},"expect":{"result.sessions":[{"sessionId":"{{new.result.sessionId}}","cwd":"/tmp"}]}}
+{"close":true,"expectExit":0}

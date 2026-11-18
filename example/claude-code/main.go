@@ -129,7 +129,7 @@ func (c *replClient) ReadTextFile(ctx context.Context, params acp.ReadTextFileRe
 		}
 		end := len(lines)
 		if params.Limit != nil && *params.Limit > 0 {
-			end = int(min(int64(start)+*params.Limit, int64(end)))
+			end = start + int(min(*params.Limit, int64(end-start)))
 		}
 		content = strings.Join(lines[start:end], "\n")
 	}

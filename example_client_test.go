@@ -77,7 +77,7 @@ func (clientExample) ReadTextFile(ctx context.Context, p ReadTextFileRequest) (R
 		}
 		end := len(lines)
 		if p.Limit != nil && *p.Limit > 0 {
-			end = int(min(int64(start)+*p.Limit, int64(end)))
+			end = start + int(min(*p.Limit, int64(end-start)))
 		}
 		content = strings.Join(lines[start:end], "\n")
 	}

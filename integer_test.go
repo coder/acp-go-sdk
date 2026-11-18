@@ -1,7 +1,11 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
+	"math"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -31,5 +35,32 @@ func TestIntegers_HoldEveryValueOnA32BitTarget(t *testing.T) {
 				t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", tt.in, out, err)
 			}
 		})
+	}
+}
+
+// The ReadTextFile of example_client_test.go clamps line and limit to the
+// file, so that a request with the largest int64 values reads the end of the
+// file instead of panicking.
+func TestClientExample_ReadTextFileClampsLineAndLimit(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "f.txt")
+	if err := os.WriteFile(path, []byte("a\nb\nc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const huge = int64(math.MaxInt64)
+	tests := []struct {
+		line, limit *int64
+		want        string
+	}{
+		{Ptr[int64](2), Ptr[int64](1), "b"},
+		{Ptr[int64](2), Ptr(huge), "b\nc"},
+		{Ptr(huge), Ptr(huge), ""},
+		{Ptr[int64](-1), nil, "a\nb\nc"},
+	}
+	for _, tt := range tests {
+		got, err := clientExample{}.ReadTextFile(context.Background(), ReadTextFileRequest{Path: path, Line: tt.line, Limit: tt.limit})
+		if err != nil || got.Content != tt.want {
+			t.Errorf("line %v, limit %v: content %q (error %v), want %q", *tt.line, tt.limit, got.Content, err, tt.want)
+		}
 	}
 }

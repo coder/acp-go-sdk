@@ -151,17 +151,10 @@ func (c *harnessClient) CompleteElicitation(_ context.Context, p acp.CompleteEli
 // whose value or title contains word, else with its first choice. It gives
 // word itself to a required string field without choices, and leaves every
 // other field out.
-func fillForm(schema acp.ElicitationSchema, word string) map[string]any {
-	content := map[string]any{}
-	for name, raw := range schema.Properties {
-		// Properties holds each field's schema as decoded JSON. Read it into
-		// the SDK's union to see the field's type.
-		var field acp.ElicitationPropertySchema
-		b, err := json.Marshal(raw)
-		if err == nil {
-			err = json.Unmarshal(b, &field)
-		}
-		if err != nil || field.String == nil {
+func fillForm(schema acp.ElicitationSchema, word string) map[string]acp.ElicitationContentValue {
+	content := map[string]acp.ElicitationContentValue{}
+	for name, field := range schema.Properties {
+		if field.String == nil {
 			continue
 		}
 		var choices []string
@@ -181,9 +174,9 @@ func fillForm(schema acp.ElicitationSchema, word string) map[string]any {
 		}
 		switch {
 		case len(choices) > 0:
-			content[name] = choices[0]
+			content[name] = acp.NewElicitationContentValueString(choices[0])
 		case contains(schema.Required, name):
-			content[name] = word
+			content[name] = acp.NewElicitationContentValueString(word)
 		}
 	}
 	return content

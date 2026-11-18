@@ -97,13 +97,13 @@ func TestJSONGolden_ContentBlocks(t *testing.T) {
 	t.Run("content_resource_link", runGolden(
 		func() ContentBlock {
 			mt := "application/pdf"
-			sz := 1024000
+			sz := int64(1024000)
 			return ContentBlock{ResourceLink: &ContentBlockResourceLink{Type: "resource_link", Uri: "file:///home/user/document.pdf", Name: "document.pdf", MimeType: &mt, Size: &sz}}
 		},
 		func() ContentBlock {
 			cb := ResourceLinkBlock("document.pdf", "file:///home/user/document.pdf")
 			mt := "application/pdf"
-			sz := 1024000
+			sz := int64(1024000)
 			cb.ResourceLink.MimeType = &mt
 			cb.ResourceLink.Size = &sz
 			return cb

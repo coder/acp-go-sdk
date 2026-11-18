@@ -237,7 +237,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			fields := ir.Fields(def.Properties, def.Required)
 			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), opensMembers(def))
 		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":
-			f.Type().Id(name).Add(primitiveJenType(ir.PrimaryType(def)))
+			f.Type().Id(name).Add(primitiveJenType(def))
 			f.Line()
 		case ir.PrimaryType(def) == "object" && len(def.Properties) == 0:
 			// Empty object shape: emit a concrete empty struct so methods can be defined
@@ -482,13 +482,23 @@ func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
 	return ""
 }
 
+// integerType is the Go type of an integer schema: int64 for the format
+// int64, so that a 32-bit target holds every value the schema allows, and
+// int otherwise.
+func integerType(d *load.Definition) *Statement {
+	if d != nil && d.Format == "int64" {
+		return Int64()
+	}
+	return Int()
+}
+
 // Type mapping helpers (unchanged behavior vs original)
-func primitiveJenType(t string) Code {
-	switch t {
+func primitiveJenType(d *load.Definition) Code {
+	switch ir.PrimaryType(d) {
 	case "string":
 		return String()
 	case "integer":
-		return Int()
+		return integerType(d)
 	case "number":
 		return Float64()
 	case "boolean":
@@ -627,12 +637,13 @@ func expandAllOf(schema *load.Schema, d *load.Definition) *load.Definition {
 func rawJSON() *Statement { return Qual("encoding/json", "RawMessage") }
 
 // memberType is the Go type of each member of d, an object schema without
-// properties: the members that additionalProperties allows.
+// properties: the type of the additionalProperties schema, or raw JSON when
+// it leaves the members free.
 func memberType(d *load.Definition) Code {
-	if !freeMembers(d) {
-		return Any()
+	if freeMembers(d) {
+		return rawJSON()
 	}
-	return rawJSON()
+	return jenTypeFor(d.AdditionalProperties.Schema)
 }
 
 // freeMembers reports whether d takes every value for a member that its
@@ -686,7 +697,7 @@ func jenTypeFor(d *load.Definition) Code {
 	case "string":
 		return String()
 	case "integer":
-		return Int()
+		return integerType(d)
 	case "number":
 		return Float64()
 	case "boolean":
@@ -744,7 +755,7 @@ func jenTypeForOptional(d *load.Definition) Code {
 		case "string":
 			return Op("*").String()
 		case "integer":
-			return Op("*").Int()
+			return Op("*").Add(integerType(d))
 		case "number":
 			return Op("*").Float64()
 		case "boolean":
@@ -764,7 +775,7 @@ func jenTypeForOptional(d *load.Definition) Code {
 		case "string":
 			return Op("*").String()
 		case "integer":
-			return Op("*").Int()
+			return Op("*").Add(integerType(nonNull))
 		case "number":
 			return Op("*").Float64()
 		case "boolean":

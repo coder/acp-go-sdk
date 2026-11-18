@@ -2,7 +2,6 @@ package acp
 
 import (
 	"encoding/json"
-	"strconv"
 	"testing"
 )
 
@@ -53,9 +52,6 @@ func TestContentBlock_MarshalJSON_WritesMetaSetInGo(t *testing.T) {
 
 func TestContentBlock_MarshalJSON_KeepsEveryDigitOfAnInteger(t *testing.T) {
 	t.Parallel()
-	if strconv.IntSize < 64 {
-		t.Skip("the size field cannot hold an integer above 2^53 on this platform")
-	}
 	const in = `{"name":"n","size":9007199254740993,"type":"resource_link","uri":"u"}`
 	var block ContentBlock
 	if err := json.Unmarshal([]byte(in), &block); err != nil {

@@ -407,7 +407,7 @@ type AuthMethodTerminalInline struct {
 	Description *string `json:"description,omitempty"`
 	// Additional environment variables to set on the configured agent invocation for terminal auth.
 	// These values override same-named variables in the base launch configuration.
-	Env map[string]any `json:"env,omitempty"`
+	Env map[string]string `json:"env,omitempty"`
 	// Unique identifier for this authentication method.
 	Id AuthMethodId `json:"id"`
 	// Human-readable name of the authentication method.
@@ -574,7 +574,7 @@ type AuthMethodTerminal struct {
 	Description *string `json:"description,omitempty"`
 	// Additional environment variables to set on the configured agent invocation for terminal auth.
 	// These values override same-named variables in the base launch configuration.
-	Env map[string]any `json:"env,omitempty"`
+	Env map[string]string `json:"env,omitempty"`
 	// Unique identifier for this authentication method.
 	Id AuthMethodId `json:"id"`
 	// Human-readable name of the authentication method.
@@ -1650,7 +1650,7 @@ type ContentBlockResourceLink struct {
 	// Human-readable name shown for this protocol object.
 	Name string `json:"name"`
 	// Optional size of the linked resource in bytes, if known.
-	Size *int `json:"size,omitempty"`
+	Size *int64 `json:"size,omitempty"`
 	// Optional display title for end-user UI.
 	Title *string `json:"title,omitempty"`
 	Type  string  `json:"type"`
@@ -2475,7 +2475,7 @@ type CreateElicitationAccept struct {
 	Meta   Meta   `json:"_meta,omitempty"`
 	Action string `json:"action"`
 	// The user-provided content, if any, as an object matching the requested schema.
-	Content map[string]any `json:"content,omitempty"`
+	Content map[string]ElicitationContentValue `json:"content,omitempty"`
 }
 
 func (v *CreateElicitationAccept) UnmarshalJSON(b []byte) error {
@@ -2941,7 +2941,7 @@ func (v *Diff) UnmarshalJSON(b []byte) error {
 // The user accepted the elicitation and provided content.
 type ElicitationAcceptAction struct {
 	// The user-provided content, if any, as an object matching the requested schema.
-	Content map[string]any `json:"content,omitempty"`
+	Content map[string]ElicitationContentValue `json:"content,omitempty"`
 }
 
 // Elicitation capabilities supported by the client.
@@ -2989,7 +2989,7 @@ func (v *ElicitationCapabilities) UnmarshalJSON(b []byte) error {
 type ElicitationContentValueString string
 
 // Integer value accepted in elicitation response content.
-type ElicitationContentValueInteger int
+type ElicitationContentValueInteger int64
 
 // Number value accepted in elicitation response content.
 type ElicitationContentValueNumber float64
@@ -3379,7 +3379,7 @@ type ElicitationPropertySchemaInteger struct {
 	// Default value.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no default value is provided.
-	Default *int `json:"default,omitempty"`
+	Default *int64 `json:"default,omitempty"`
 	// Human-readable description.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no description is provided.
@@ -3387,11 +3387,11 @@ type ElicitationPropertySchemaInteger struct {
 	// Maximum value (inclusive).
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no inclusive upper bound.
-	Maximum *int `json:"maximum,omitempty"`
+	Maximum *int64 `json:"maximum,omitempty"`
 	// Minimum value (inclusive).
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no inclusive lower bound.
-	Minimum *int `json:"minimum,omitempty"`
+	Minimum *int64 `json:"minimum,omitempty"`
 	// Optional title for the property.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
@@ -3762,7 +3762,7 @@ type ElicitationSchema struct {
 	// Property definitions (must be primitive types).
 	//
 	// Defaults to {} if unset.
-	Properties map[string]any `json:"properties"`
+	Properties map[string]ElicitationPropertySchema `json:"properties"`
 	// List of required property names.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no property names are required.
@@ -5376,7 +5376,7 @@ type IntegerPropertySchema struct {
 	// Default value.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no default value is provided.
-	Default *int `json:"default,omitempty"`
+	Default *int64 `json:"default,omitempty"`
 	// Human-readable description.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no description is provided.
@@ -5384,11 +5384,11 @@ type IntegerPropertySchema struct {
 	// Maximum value (inclusive).
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no inclusive upper bound.
-	Maximum *int `json:"maximum,omitempty"`
+	Maximum *int64 `json:"maximum,omitempty"`
 	// Minimum value (inclusive).
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no inclusive lower bound.
-	Minimum *int `json:"minimum,omitempty"`
+	Minimum *int64 `json:"minimum,omitempty"`
 	// Optional title for the property.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
@@ -7924,7 +7924,7 @@ func (v *ReleaseTerminalResponse) Validate() error {
 type RequestIdNull struct{}
 
 // A numeric JSON-RPC request id.
-type RequestIdNumber int
+type RequestIdNumber int64
 
 // A string JSON-RPC request id.
 type RequestIdStr string
@@ -8245,7 +8245,7 @@ type ResourceLink struct {
 	// Human-readable name shown for this protocol object.
 	Name string `json:"name"`
 	// Optional size of the linked resource in bytes, if known.
-	Size *int `json:"size,omitempty"`
+	Size *int64 `json:"size,omitempty"`
 	// Optional display title for end-user UI.
 	Title *string `json:"title,omitempty"`
 	// URI associated with this resource or media payload.
@@ -15174,7 +15174,7 @@ type UnstableSetProviderRequest struct {
 	BaseUrl string `json:"baseUrl"`
 	// Full headers map for this provider.
 	// May include authorization, routing, or other integration-specific headers.
-	Headers map[string]any `json:"headers,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 	// Provider ID to configure.
 	ProviderId UnstableProviderId `json:"providerId"`
 }

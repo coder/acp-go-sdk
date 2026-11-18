@@ -2,8 +2,13 @@ package acp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 )
+
+// ErrMetaKeyNotFound is the error that Meta.Get wraps when the Meta has no
+// value under the key. Test for it with errors.Is.
+var ErrMetaKeyNotFound = errors.New("acp: no such _meta key")
 
 // Meta is the _meta member of an ACP type: data that a client or an agent
 // attaches for its own use. ACP gives its keys no meaning. Each value holds
@@ -26,11 +31,12 @@ func NewMeta(values map[string]any) (Meta, error) {
 }
 
 // Get decodes the value of key into v, as json.Unmarshal does. It returns an
-// error when m has no key or when the value does not decode into v.
+// error that wraps ErrMetaKeyNotFound when m has no key, and the decode error
+// when the value does not decode into v.
 func (m Meta) Get(key string, v any) error {
 	raw, ok := m[key]
 	if !ok {
-		return fmt.Errorf("acp: _meta has no key %q", key)
+		return fmt.Errorf("%w: %q", ErrMetaKeyNotFound, key)
 	}
 	if err := json.Unmarshal(raw, v); err != nil {
 		return fmt.Errorf("acp: _meta key %q: %w", key, err)

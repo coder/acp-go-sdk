@@ -301,3 +301,37 @@ func withPath(rawInput json.RawMessage, path string) json.RawMessage {
 	members["path"] = encodeRaw(path)
 	return encodeRaw(members)
 }
+
+// NewElicitationContentValueString returns the elicitation content value s.
+func NewElicitationContentValueString(s string) ElicitationContentValue {
+	v := ElicitationContentValueString(s)
+	return ElicitationContentValue{String: &v}
+}
+
+// NewElicitationContentValueInteger returns the elicitation content value n.
+func NewElicitationContentValueInteger(n int64) ElicitationContentValue {
+	v := ElicitationContentValueInteger(n)
+	return ElicitationContentValue{Integer: &v}
+}
+
+// NewElicitationContentValueNumber returns the elicitation content value f.
+func NewElicitationContentValueNumber(f float64) ElicitationContentValue {
+	v := ElicitationContentValueNumber(f)
+	return ElicitationContentValue{Number: &v}
+}
+
+// NewElicitationContentValueBoolean returns the elicitation content value b.
+func NewElicitationContentValueBoolean(b bool) ElicitationContentValue {
+	v := ElicitationContentValueBoolean(b)
+	return ElicitationContentValue{Boolean: &v}
+}
+
+// NewElicitationContentValueStringArray returns the elicitation content value
+// that holds values, an array of strings, as a multi-select field takes.
+func NewElicitationContentValueStringArray(values ...string) ElicitationContentValue {
+	v := ElicitationContentValueStringArray(values)
+	if v == nil {
+		v = ElicitationContentValueStringArray{}
+	}
+	return ElicitationContentValue{StringArray: &v}
+}

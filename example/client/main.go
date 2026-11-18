@@ -214,16 +214,10 @@ func (e *exampleClient) fillForm(form *acp.CreateElicitationForm) (acp.CreateEli
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	content := map[string]any{}
+	content := map[string]acp.ElicitationContentValue{}
 	for _, name := range names {
-		// Properties holds each field's schema as decoded JSON. Read it
-		// into the SDK's union to see the field's type.
-		var field acp.ElicitationPropertySchema
-		raw, err := json.Marshal(form.RequestedSchema.Properties[name])
-		if err == nil {
-			err = json.Unmarshal(raw, &field)
-		}
-		if err != nil || field.String == nil {
+		field := form.RequestedSchema.Properties[name]
+		if field.String == nil {
 			fmt.Printf("Cannot show the field %q. Declining.\n", name)
 			return elicitationDecline, nil
 		}
@@ -249,7 +243,7 @@ func (e *exampleClient) fillForm(form *acp.CreateElicitationForm) (acp.CreateEli
 				continue
 			}
 			if value != "" {
-				content[name] = value
+				content[name] = acp.NewElicitationContentValueString(value)
 			}
 			break
 		}

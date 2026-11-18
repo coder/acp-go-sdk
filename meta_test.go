@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -70,15 +71,15 @@ func TestMeta_GetFailsForAMissingKeyOrAnotherType(t *testing.T) {
 	t.Parallel()
 	m := Meta{"n": json.RawMessage("1")}
 	var s string
-	if err := m.Get("missing", &s); err == nil || !strings.Contains(err.Error(), `"missing"`) {
-		t.Errorf("Get of a missing key: error %v, want one that names the key", err)
+	if err := m.Get("missing", &s); !errors.Is(err, ErrMetaKeyNotFound) || !strings.Contains(err.Error(), `"missing"`) {
+		t.Errorf("Get of a missing key: error %v, want ErrMetaKeyNotFound with the key", err)
 	}
-	if err := m.Get("n", &s); err == nil {
-		t.Errorf("Get of a number into a string: no error")
+	if err := m.Get("n", &s); err == nil || errors.Is(err, ErrMetaKeyNotFound) {
+		t.Errorf("Get of a number into a string: error %v, want a decode error", err)
 	}
 	var none Meta
-	if err := none.Get("n", &s); err == nil {
-		t.Errorf("Get on a nil Meta: no error")
+	if err := none.Get("n", &s); !errors.Is(err, ErrMetaKeyNotFound) {
+		t.Errorf("Get on a nil Meta: error %v, want ErrMetaKeyNotFound", err)
 	}
 }
 

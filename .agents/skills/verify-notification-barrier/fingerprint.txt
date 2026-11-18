@@ -12,7 +12,7 @@ b2c8f8f5df90031f3b244b8b997c11ace52b905c1ed69d0d15ecab8a2ee6a3e1  func (c *Conne
 6632b6156f326675dd5e6bc89df29fd2eceb55d061bb61910ee4f3f65d4838a5  func (c *Connection) startPeerWait(
 be2432fed3f96a9cdb62bb48db871289743fb9b467160a218c7ca9041da16113  func (c *Connection) waitInboundBarrier(
 edb3eeb64a845734dc70d72f8447b16ffb70ec435787dba498a715d5a4008a45  func (c *Connection) notificationSeq(
-63c9a701c4c06f0ba33cb575993656dce2c4457ce787b20792d2838c2a1b584d  func (c *Connection) handleInbound(
+1743b41cbb59a80a17b71ecdff9acdbd3d28f3ab9aa8c26ac61cdd14e48995c7  func (c *Connection) handleInbound(
 a3bcc20db02fb595a3adffc6b935b6054783b319699280c7e86c022bb3e45cf2  func (c *Connection) sendInboundRequestError(
 749a42a628c64480a4990309e42137c913044abb2153519dc4fa0d94f976962b  func (c *Connection) cleanupPending(
 7bdb77ebff815328a3a05e6633baa2679b01b569264e94a232e9935f3fa023e3  func (c *Connection) Done(

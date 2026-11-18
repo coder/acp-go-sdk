@@ -28,7 +28,9 @@ type exampleAgent struct {
 	conn     *acp.AgentSideConnection
 	sessions map[string]*agentSession
 	nextSeq  uint64
-	mu       sync.Mutex
+	// mu guards sessions, nextSeq and every field of each agentSession. A
+	// handler never calls the client while it holds mu.
+	mu sync.Mutex
 }
 
 var (
@@ -200,12 +202,17 @@ func (a *exampleAgent) LoadSession(ctx context.Context, _ acp.LoadSessionRequest
 	return acp.LoadSessionResponse{}, nil
 }
 
+// Cancel cancels the session's running turn. It copies the cancel func under
+// a.mu, which guards every agentSession field, and calls it after the unlock.
 func (a *exampleAgent) Cancel(ctx context.Context, params acp.CancelNotification) error {
+	var cancel context.CancelFunc
 	a.mu.Lock()
-	s, ok := a.sessions[string(params.SessionId)]
+	if s, ok := a.sessions[string(params.SessionId)]; ok {
+		cancel = s.cancel
+	}
 	a.mu.Unlock()
-	if ok && s != nil && s.cancel != nil {
-		s.cancel()
+	if cancel != nil {
+		cancel()
 	}
 	return nil
 }

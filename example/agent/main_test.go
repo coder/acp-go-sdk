@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +35,14 @@ func (c *testClient) RequestPermission(context.Context, acp.RequestPermissionReq
 // wires it to stdio.
 func connect(t *testing.T) (*acp.ClientSideConnection, *testClient) {
 	t.Helper()
+	c, client, _ := connectAgent(t)
+	return c, client
+}
+
+// connectAgent is connect that also returns the agent, for a test that calls
+// its methods directly.
+func connectAgent(t *testing.T) (*acp.ClientSideConnection, *testClient, *exampleAgent) {
+	t.Helper()
 	c2aR, c2aW := io.Pipe()
 	a2cR, a2cW := io.Pipe()
 	t.Cleanup(func() {
@@ -43,7 +52,7 @@ func connect(t *testing.T) (*acp.ClientSideConnection, *testClient) {
 	ag := newExampleAgent()
 	ag.SetAgentConnection(acp.NewAgentSideConnection(ag, a2cW, c2aR))
 	client := &testClient{updates: make(chan acp.SessionNotification, 64)}
-	return acp.NewClientSideConnection(client, c2aW, a2cR), client
+	return acp.NewClientSideConnection(client, c2aW, a2cR), client, ag
 }
 
 func newSession(t *testing.T, c *acp.ClientSideConnection, cwd string) acp.SessionId {
@@ -140,5 +149,38 @@ func TestExampleAgent_DeleteSessionCancelsRunningTurn(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the turn did not end after session/delete")
+	}
+}
+
+// TestExampleAgent_CancelDuringPrompts calls Cancel while prompts install and
+// clear their cancel funcs. Run it with -race: Cancel must read the session's
+// cancel func under the lock that Prompt writes it under.
+func TestExampleAgent_CancelDuringPrompts(t *testing.T) {
+	ctx := context.Background()
+	c, _, ag := connectAgent(t)
+	sid := newSession(t, c, "/w")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _ = ag.Prompt(ctx, acp.PromptRequest{SessionId: sid, Prompt: []acp.ContentBlock{acp.TextBlock("hi")}})
+		}()
+		go func() {
+			defer wg.Done()
+			_ = ag.Cancel(ctx, acp.CancelNotification{SessionId: sid})
+		}()
+	}
+	// The last prompt may still run: cancel it until every prompt returns.
+	finished := make(chan struct{})
+	go func() { wg.Wait(); close(finished) }()
+	for {
+		select {
+		case <-finished:
+			return
+		case <-time.After(10 * time.Millisecond):
+			_ = ag.Cancel(ctx, acp.CancelNotification{SessionId: sid})
+		}
 	}
 }

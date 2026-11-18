@@ -14,7 +14,7 @@ This folder lists what the live gates prove about the ACP Go SDK as a client of 
 - Each `g5` run starts new agent processes with private config folders, so runs never share sessions.
 - The adapters and models are whatever is latest and default when `launch` runs. Never pin either one to make a result pass.
 - Treat every command as literal. Keep scenario names, method names and option ids unchanged.
-- Prefer protocol handles over reply text: method names, `sessionUpdate` kinds, `stopReason`, error codes. The only reply texts that the predicates read are `pong` and the marker lines in the written files.
+- Prefer protocol handles over reply text: method names, `sessionUpdate` kinds, `stopReason`, error codes. The only reply texts that the predicates read are `pong`, `BLUE` and the marker lines in the written files.
 
 ## Proof and skip reporting
 
@@ -37,4 +37,5 @@ Each feature file starts with an H1 title and one paragraph about what an editor
 - [Sessions](./sessions.md): connect, authenticate, and create, list, close, delete, load and resume sessions.
 - [Prompt turns](./prompt-turns.md): a plain turn, a model switch, and a cancelled turn.
 - [Permissions](./permissions.md): an edit that the user allows or rejects.
+- [Elicitation](./elicitation.md): the agent asks the user a question through a form, and replies with the answer.
 - [Cross-SDK](./cross-sdk.md): the official TypeScript SDK against this SDK, in both directions.

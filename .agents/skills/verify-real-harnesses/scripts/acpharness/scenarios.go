@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +20,13 @@ const (
 	recallPrompt = "Do not use tools. Earlier in this conversation you replied with a single word. Reply with only that word."
 	essayPrompt  = "Do not use tools. Write a detailed essay of at least 3000 words on the history of computing, from the abacus to today."
 	smokePrompt  = "Hello, agent!"
+	// elicitPrompt makes the agent ask the user a question. The client
+	// answers blue, and only that answer makes the reply BLUE: the question
+	// itself names the colors in lower case.
+	elicitPrompt = "Use your tool for asking the user a question to ask me which color I prefer, with exactly two options: " +
+		"red and blue. Do not choose for me and do not edit any file. After I answer, reply with only the color that I chose, " +
+		"in capital letters."
+	elicitAnswer = "blue"
 )
 
 func writePrompt(file, marker string) string {
@@ -32,7 +40,7 @@ const rpcTimeout = 2 * time.Minute
 // profiles lists the scenarios of each profile in the order they run.
 // runLive and runSmoke must match it; -only accepts only these names.
 var profiles = map[string][]string{
-	"live": {"initialize", "authenticate", "session/new", "prompt", "config-option", "config-boolean", "permission-allow",
+	"live": {"initialize", "authenticate", "session/new", "prompt", "config-option", "config-boolean", "elicitation", "permission-allow",
 		"permission-reject", "cancel", "session/list", "session/close", "session/delete", "session/load", "session/resume"},
 	"smoke": {"initialize", "authenticate", "session/new", "prompt"},
 }
@@ -50,6 +58,7 @@ func (h *harness) runLive() {
 	h.step("prompt", func() (status, string) { return h.plainPrompt(a) })
 	h.step("config-option", func() (status, string) { return h.switchModel(a) })
 	h.step("config-boolean", func() (status, string) { return h.toggleBoolean(a) })
+	h.step("elicitation", func() (status, string) { return h.elicitTurn(a) })
 	h.step("permission-allow", func() (status, string) { return h.permissionTurn(a, answerAllow) })
 	h.step("permission-reject", func() (status, string) { return h.permissionTurn(a, answerReject) })
 	h.step("cancel", func() (status, string) { return h.cancelTurn(a) })
@@ -95,10 +104,16 @@ func (h *harness) runSmoke() {
 func initRequest() acp.InitializeRequest {
 	return acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
-		// Accept boolean config options, so an agent may offer them.
-		ClientCapabilities: acp.ClientCapabilities{Session: &acp.ClientSessionCapabilities{
-			ConfigOptions: &acp.SessionConfigOptionsCapabilities{Boolean: &acp.BooleanConfigOptionCapabilities{}},
-		}},
+		ClientCapabilities: acp.ClientCapabilities{
+			// Accept boolean config options, so an agent may offer them.
+			Session: &acp.ClientSessionCapabilities{
+				ConfigOptions: &acp.SessionConfigOptionsCapabilities{Boolean: &acp.BooleanConfigOptionCapabilities{}},
+			},
+			// Accept terminal auth methods and elicitations, so an agent
+			// may advertise and send them.
+			Auth:        acp.AuthCapabilities{Terminal: true},
+			Elicitation: &acp.ElicitationCapabilities{Form: &acp.ElicitationFormCapabilities{}, Url: &acp.ElicitationUrlCapabilities{}},
+		},
 		ClientInfo: &acp.Implementation{Name: "acpharness", Version: "0"},
 	}
 }
@@ -121,6 +136,9 @@ func (h *harness) connect() (*agentConn, bool) {
 		h.init, a.init, a.rawInit = resp, resp, h.rec.result(a.n, "initialize")
 		if resp.ProtocolVersion != acp.ProtocolVersionNumber {
 			return fail, fmt.Sprintf("protocolVersion %d, want %d", resp.ProtocolVersion, acp.ProtocolVersionNumber)
+		}
+		if err := sameJSON(resp.AuthMethods, jsonAt(a.rawInit, "authMethods")); err != nil {
+			return fail, "decode mismatch in authMethods: " + err.Error()
 		}
 		return pass, describeInit(resp)
 	})
@@ -865,7 +883,7 @@ func describeInit(r acp.InitializeResponse) string {
 			caps = append(caps, "session."+sc.name)
 		}
 	}
-	return fmt.Sprintf("%s, protocol %d, auth methods %v, capabilities %v", name, r.ProtocolVersion, authIDs(r.AuthMethods), caps)
+	return fmt.Sprintf("%s, protocol %d, auth methods %v, capabilities %v", name, r.ProtocolVersion, authTypes(r.AuthMethods), caps)
 }
 
 func authIDs(ms []acp.AuthMethod) []string {
@@ -874,13 +892,25 @@ func authIDs(ms []acp.AuthMethod) []string {
 		switch {
 		case m.Agent != nil:
 			ids = append(ids, string(m.Agent.Id))
-		case m.EnvVar != nil:
-			ids = append(ids, string(m.EnvVar.Id))
 		case m.Terminal != nil:
 			ids = append(ids, string(m.Terminal.Id))
 		}
 	}
 	return ids
+}
+
+// authTypes returns each auth method as id(type).
+func authTypes(ms []acp.AuthMethod) []string {
+	out := []string{}
+	for _, m := range ms {
+		switch {
+		case m.Agent != nil:
+			out = append(out, string(m.Agent.Id)+"(agent)")
+		case m.Terminal != nil:
+			out = append(out, string(m.Terminal.Id)+"(terminal)")
+		}
+	}
+	return out
 }
 
 func describeOptions(cfg []acp.SessionConfigOption) string {
@@ -974,6 +1004,62 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// elicitTurn asks for a question in its own session E, so that sessions A
+// and B keep their history for the later scenarios. The client picks blue in
+// every form, and the reply must show that the agent got the answer.
+func (h *harness) elicitTurn(a *agentConn) (status, string) {
+	if st, detail := h.newSession(a, "E"); st != pass {
+		return fail, "session/new for session E: " + detail
+	}
+	sid := h.sessions["E"]
+	emark, wmark := len(a.client.elicitationsSince(0)), len(h.rec.elicitationsOnWire(a.n))
+	a.client.setElicit(elicitAnswer)
+	defer a.client.setElicit("")
+	t := h.prompt(a, sid, elicitPrompt)
+	var asked []elicitation
+	for _, e := range a.client.elicitationsSince(emark) {
+		if e.Method == "elicitation/create" {
+			asked = append(asked, e)
+		}
+	}
+	wire := h.rec.elicitationsOnWire(a.n)[wmark:]
+	if t.err != nil {
+		return fail, "session/prompt: " + errText(t.err)
+	}
+	if len(asked) == 0 || len(asked) != len(wire) {
+		return fail, fmt.Sprintf("%d elicitation/create on the wire, %d reached the client; %s", len(wire), len(asked), t.describe())
+	}
+	// The SDK handles each request on its own goroutine, so the client can
+	// see them in another order than the wire. Match them as a multiset.
+	left := append([]json.RawMessage(nil), wire...)
+	var answers []string
+	for _, e := range asked {
+		found := false
+		for i, w := range left {
+			if sameJSON(e.decoded, w) == nil {
+				left = append(left[:i], left[i+1:]...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fail, fmt.Sprintf("decode mismatch: the SDK decoded an elicitation/create as %s, and no request on the wire matches it; the wire has %s",
+				clip(string(e.decoded), 300), clip(string(left[0]), 300))
+		}
+		if e.Mode != "form" || !strings.HasPrefix(e.Answer, "accept") {
+			return fail, fmt.Sprintf("the client could not answer the %s elicitation %q with fields %v: %s", e.Mode, e.Message, e.Fields, e.Answer)
+		}
+		answers = append(answers, fmt.Sprintf("%q fields %v -> %s", e.Message, e.Fields, e.Answer))
+	}
+	if t.resp.StopReason != acp.StopReasonEndTurn {
+		return fail, t.describe()
+	}
+	if !strings.Contains(t.text, strings.ToUpper(elicitAnswer)) || strings.Contains(t.text, "RED") {
+		return fail, fmt.Sprintf("the reply does not name the answer %s alone; %s", strings.ToUpper(elicitAnswer), t.describe())
+	}
+	return pass, fmt.Sprintf("%d form elicitation(s): %s; %s", len(asked), strings.Join(answers, "; "), t.describe())
 }
 
 func contains(xs []string, x string) bool {

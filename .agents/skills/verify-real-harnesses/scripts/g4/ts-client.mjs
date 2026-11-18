@@ -2,15 +2,20 @@
 // ts-client.mjs drives an ACP agent with the official TypeScript SDK
 // (@agentclientprotocol/sdk), the way its own example client does: one
 // initialize, one session/new and one prompt turn, with every permission
-// request answered allow. It records every JSON-RPC line in both directions.
+// request answered allow. It advertises form and url elicitation, fills each
+// form field with "ts-host" and accepts each url. It records every JSON-RPC
+// line in both directions.
 //
 //   node ts-client.mjs --out DIR --cwd DIR -- AGENT [ARGS...]
 //
 // It writes DIR/transcript.jsonl, DIR/agent.stderr.log, DIR/summary.json and
 // DIR/result.txt. Exit 0: protocol version 1 was negotiated, the turn ended
 // with end_turn, at least one agent message arrived, the agent asked for
-// permission and got allow, no error response or non-JSON line crossed the
-// wire, and the agent exited 0 after its input closed. Exit 1: otherwise. Run it from a folder whose node_modules holds the SDK.
+// permission and got allow, the agent asked a form elicitation whose answer
+// reached its edit and a url elicitation that it completed, no error
+// response or non-JSON line crossed the wire, and the agent exited 0 after
+// its input closed. Exit 1: otherwise. Run it from a folder whose
+// node_modules holds the SDK.
 import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
@@ -42,6 +47,10 @@ const transcriptDone = finished(transcript).then(
 const problems = [];
 const kinds = {};
 const permissions = [];
+// The client answers the agent's elicitations: a form with tsHost as the
+// value of each field, and a url with accept. elicitations lists each one.
+const tsHost = "ts-host";
+const elicitations = [];
 
 function record(dir, line) {
   const entry = { t_ms: Date.now() - start, dir };
@@ -105,8 +114,25 @@ try {
     .onRequest(acp.methods.client.session.requestPermission, (ctx) => {
       const opts = ctx.params.options;
       const pick = opts.find((o) => o.kind === "allow_once") ?? opts.find((o) => o.kind === "allow_always");
-      permissions.push({ title: ctx.params.toolCall.title ?? "", answer: pick ? pick.optionId : "cancelled" });
+      permissions.push({
+        title: ctx.params.toolCall.title ?? "",
+        content: ctx.params.toolCall.rawInput?.content ?? "",
+        answer: pick ? pick.optionId : "cancelled",
+      });
       return pick ? { outcome: { outcome: "selected", optionId: pick.optionId } } : { outcome: { outcome: "cancelled" } };
+    })
+    .onRequest(acp.methods.client.elicitation.create, (ctx) => {
+      const p = ctx.params;
+      if (p.mode === "form") {
+        const content = Object.fromEntries(Object.keys(p.requestedSchema.properties ?? {}).map((k) => [k, tsHost]));
+        elicitations.push({ mode: "form", fields: Object.keys(content), toolCallId: p.toolCallId ?? null });
+        return { action: "accept", content };
+      }
+      elicitations.push({ mode: p.mode, elicitationId: p.elicitationId ?? null });
+      return p.mode === "url" ? { action: "accept" } : { action: "decline" };
+    })
+    .onNotification(acp.methods.client.elicitation.complete, (ctx) => {
+      elicitations.push({ complete: ctx.params.elicitationId });
     })
     .onNotification(acp.methods.client.session.update, (ctx) => {
       const kind = ctx.params.update.sessionUpdate;
@@ -115,7 +141,7 @@ try {
     .connectWith(stream, async (ctx) => {
       const init = await ctx.request(acp.methods.agent.initialize, {
         protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: {},
+        clientCapabilities: { elicitation: { form: {}, url: {} } },
         clientInfo: { name: "acp-harness-ts-client", version: "0" },
       });
       const session = await ctx.request(acp.methods.agent.session.new, { cwd, mcpServers: [] });
@@ -152,12 +178,23 @@ const checks = [
   ["turn ended with end_turn", outcome?.stopReason === "end_turn"],
   ["at least one agent_message_chunk", (kinds.agent_message_chunk ?? 0) > 0],
   ["every permission request allowed", permissions.length > 0 && permissions.every((p) => p.answer !== "cancelled")],
+  [
+    "form elicitation answered, and the edit carries its value",
+    elicitations[0]?.mode === "form" && permissions.length > 0 && permissions.every((p) => p.content.includes(tsHost)),
+  ],
+  [
+    "url elicitation accepted, then completed with its id",
+    elicitations.length === 3 &&
+      elicitations[1].mode === "url" &&
+      typeof elicitations[1].elicitationId === "string" &&
+      elicitations[2].complete === elicitations[1].elicitationId,
+  ],
   ["no error response or non-JSON line on the wire", problems.length === 0],
   ["agent exited 0 after its input closed", exit === "exit 0"],
   [`transcript.jsonl written${transcriptErr ? `: ${transcriptErr.message}` : ""}`, transcriptErr === null],
 ];
 const pass = checks.every(([, ok]) => ok);
-const summary = { agent, sdk: "@agentclientprotocol/sdk", outcome, kinds, permissions, problems, agentExit: exit, pass };
+const summary = { agent, sdk: "@agentclientprotocol/sdk", outcome, kinds, permissions, elicitations, problems, agentExit: exit, pass };
 writeFileSync(`${out}/summary.json`, JSON.stringify(summary, null, 2) + "\n");
 const lines = checks.map(([name, ok]) => `${ok ? "PASS" : "FAIL"}  ${name}`);
 lines.push(...problems.map((p) => `      ${p}`), `exit=${pass ? 0 : 1}`);

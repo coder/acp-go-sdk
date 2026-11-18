@@ -66,6 +66,10 @@ type recorder struct {
 	// raw usage_update notifications. The budget counts these, so a cost
 	// that the SDK fails to decode still stops a paid run.
 	costs map[string]float64
+	// The raw params of each elicitation/create from the agent, per
+	// connection, which the elicitation scenario compares with what the SDK
+	// decoded.
+	elicitations map[int][]json.RawMessage
 }
 
 func newRecorder(dir string) (*recorder, error) {
@@ -75,7 +79,7 @@ func newRecorder(dir string) (*recorder, error) {
 	}
 	r := &recorder{start: time.Now(), transcript: f, inbound: map[string]int{}, notified: map[int]int{}, handled: map[int]int{},
 		requested: map[int]int{}, answered: map[int]int{}, sent: map[int]map[string]string{}, results: map[int]map[string]json.RawMessage{},
-		costs: map[string]float64{}}
+		costs: map[string]float64{}, elicitations: map[int][]json.RawMessage{}}
 	r.scenario.Store("setup")
 	return r, nil
 }
@@ -135,6 +139,14 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 		if len(msg.ID) > 0 {
 			r.requested[conn]++
 		}
+		if msg.Method == "elicitation/create" {
+			var req struct {
+				Params json.RawMessage `json:"params"`
+			}
+			if json.Unmarshal(raw, &req) == nil {
+				r.elicitations[conn] = append(r.elicitations[conn], req.Params)
+			}
+		}
 	}
 	if dir == clientToAgent && msg.Method == "" && len(msg.ID) > 0 {
 		r.answered[conn]++
@@ -184,6 +196,14 @@ func (r *recorder) result(conn int, method string) json.RawMessage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.results[conn][method]
+}
+
+// elicitationsOnWire returns the raw params of every elicitation/create that
+// the agent on conn sent.
+func (r *recorder) elicitationsOnWire(conn int) []json.RawMessage {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]json.RawMessage(nil), r.elicitations[conn]...)
 }
 
 // cost returns the USD cost that the raw usage_update notifications

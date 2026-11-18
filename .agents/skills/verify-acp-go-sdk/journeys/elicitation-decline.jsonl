@@ -1,0 +1,9 @@
+# Form and url elicitation during a turn, both declined. Feature: elicitation.md
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"respond":"elicitation/create","result":{"action":"decline"}}
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false,"elicitation":{"form":{},"url":{}}}},"save":"init","expect":{"result.protocolVersion":1}}
+{"send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new"}
+{"send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"save":"turn","timeout":"30s","expect":{"result.stopReason":"end_turn"}}
+{"step":"edit keeps the default host","waitFor":"session/request_permission","where":{"params.toolCall.rawInput.content":"{\"database\": {\"host\": \"new-host\"}}"},"timeout":"1s"}
+{"step":"both modes asked","waitFor":"elicitation/create","count":2,"timeout":"1s"}
+{"close":true,"expectExit":0}

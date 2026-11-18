@@ -28,7 +28,7 @@ Steps:
 - **Set options.** Run `"$V" wire config-options.jsonl config-options`. Each step prints PASS. `unknown model` and `boolean without its type` print `error -32602 Invalid params`, and `close stdin` prints `agent exit code 0`.
 - **No boolean capability.** Run `"$V" wire config-options-no-boolean.jsonl config-options-no-boolean`. Each step prints PASS, and `boolean refused` prints `error -32602 Invalid params`.
 - **CLI.** After the `client-allow` drive of [client-cli.md](./client-cli.md), run `grep -F '⚙️' "$ACP_VERIFY_RUN/evidence/client-allow/stdout.txt"`. The output is the two lines of `config-cli`, in that order.
-- **Agent log.** Run `cat "$ACP_VERIFY_RUN/evidence/config-options/agent.stderr.log"`. It is empty.
+- **Agent log.** Run `cat "$ACP_VERIFY_RUN/evidence/config-options/agent.stderr.log"`. It is empty, or has one line: `INFO connection closed cause="peer connection closed"`. The agent exits as soon as its connection reports done, and the SDK logs that line after it reports done, so the line is in some logs and not in others.
 
 ## Gotchas
 

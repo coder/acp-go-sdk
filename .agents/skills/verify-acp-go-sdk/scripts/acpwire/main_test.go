@@ -32,6 +32,10 @@ func fakeAgent(mode string) {
 			continue
 		}
 		resp := map[string]any{"jsonrpc": "2.0", "id": req["id"], "result": map[string]any{"ok": true}}
+		if mode == "asks" {
+			// Ask the client twice, and answer with its two results.
+			resp["result"] = map[string]any{"form": askClient(sc, 100, "form"), "url": askClient(sc, 101, "url")}
+		}
 		if mode == "echo" {
 			resp["result"] = req["params"]
 		}
@@ -41,6 +45,20 @@ func fakeAgent(mode string) {
 		b, _ := json.Marshal(resp)
 		fmt.Println(string(b))
 	}
+}
+
+// askClient sends the client an "ask" request with the given mode, and returns
+// the result of the client's response.
+func askClient(sc *bufio.Scanner, id int, mode string) any {
+	b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": "ask", "params": map[string]any{"mode": mode}})
+	fmt.Println(string(b))
+	for sc.Scan() {
+		var resp map[string]any
+		if json.Unmarshal(sc.Bytes(), &resp) == nil && resp["id"] == float64(id) {
+			return resp["result"]
+		}
+	}
+	return nil
 }
 
 func writeJourney(t *testing.T, lines ...string) string {
@@ -82,6 +100,7 @@ func TestReadJourney_AcceptsEveryAction(t *testing.T) {
 	steps, lines, err := readJourney(writeJourney(t,
 		"# comment",
 		`{"respond":"session/request_permission","result":{"outcome":{"outcome":"cancelled"}}}`,
+		`{"respond":"elicitation/create","where":{"params.mode":"url"},"error":{"code":1}}`,
 		`{"send":"initialize","params":{},"save":"init","async":true,"timeout":"2s"}`,
 		`{"await":"init","expect":{"result.ok":true}}`,
 		`{"notify":"session/cancel","params":{}}`,
@@ -95,8 +114,8 @@ func TestReadJourney_AcceptsEveryAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(steps) != 10 || lines[0] != 2 {
-		t.Fatalf("got %d steps, first at line %d; want 10 steps, first at line 2", len(steps), lines[0])
+	if len(steps) != 11 || lines[0] != 2 {
+		t.Fatalf("got %d steps, first at line %d; want 11 steps, first at line 2", len(steps), lines[0])
 	}
 }
 
@@ -169,6 +188,33 @@ func TestRun_AgentOutput(t *testing.T) {
 				t.Fatalf("results %+v: pass=%v first failure %q; want pass=%v and a failure in %q", results, pass, failed, tt.wantPass, tt.wantStep)
 			}
 		})
+	}
+}
+
+// TestRun_RespondPicksTheNewestMatchingRule checks that a rule with "where"
+// answers only the requests that match it, that a rule without "where" answers
+// the rest, and that "waitFor" sees the agent's requests.
+func TestRun_RespondPicksTheNewestMatchingRule(t *testing.T) {
+	t.Setenv("ACPWIRE_FAKE_AGENT", "asks")
+	steps, lines, err := readJourney(writeJourney(t,
+		`{"respond":"ask","result":{"v":"old"}}`,
+		`{"respond":"ask","result":{"v":"any"}}`,
+		`{"respond":"ask","where":{"params.mode":"url"},"result":{"v":"url"}}`,
+		`{"send":"ping","expect":{"result.form.v":"any","result.url.v":"url"},"timeout":"2s"}`,
+		`{"waitFor":"ask","where":{"params.mode":"form"},"timeout":"1s"}`,
+		`{"close":true,"expectExit":0}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := run(os.Args[0], nil, steps, lines, t.TempDir(), 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if !r.Pass {
+			t.Fatalf("step %q failed: %+v", r.Step, r)
+		}
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -33,8 +34,12 @@ type exampleAgent struct {
 	nextSeq  uint64
 	// booleanConfig is set when the client accepts boolean config options.
 	booleanConfig bool
-	// mu guards sessions, nextSeq, booleanConfig and every field of each
-	// agentSession. A handler never calls the client while it holds mu.
+	// formElicitation and urlElicitation are set when the client accepts
+	// elicitation/create in form and url mode.
+	formElicitation, urlElicitation bool
+	// mu guards sessions, nextSeq, booleanConfig, the elicitation flags and
+	// every field of each agentSession. A handler never calls the client while
+	// it holds mu.
 	mu sync.Mutex
 }
 
@@ -249,8 +254,11 @@ func (a *exampleAgent) SetAgentConnection(conn *acp.AgentSideConnection) { a.con
 
 func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequest) (acp.InitializeResponse, error) {
 	caps := params.ClientCapabilities.Session
+	elicitation := params.ClientCapabilities.Elicitation
 	a.mu.Lock()
 	a.booleanConfig = caps != nil && caps.ConfigOptions != nil && caps.ConfigOptions.Boolean != nil
+	a.formElicitation = elicitation != nil && elicitation.Form != nil
+	a.urlElicitation = elicitation != nil && elicitation.Url != nil
 	a.mu.Unlock()
 	return acp.InitializeResponse{
 		ProtocolVersion: acp.ProtocolVersionNumber,
@@ -265,7 +273,7 @@ func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequ
 }
 
 func (a *exampleAgent) NewSession(ctx context.Context, params acp.NewSessionRequest) (acp.NewSessionResponse, error) {
-	sid := randomID()
+	sid := randomID("sess_")
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.nextSeq++
@@ -420,6 +428,17 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		return err
 	}
 
+	// ask the user for the value that the edit writes
+	host, err := a.askHost(ctx, sid)
+	if err != nil {
+		return err
+	}
+	hostJSON, err := json.Marshal(host)
+	if err != nil {
+		return err
+	}
+	edit := map[string]any{"path": "/project/config.json", "content": fmt.Sprintf(`{"database": {"host": %s}}`, hostJSON)}
+
 	// request permission for sensitive operation
 	permResp, err := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
 		SessionId: acp.SessionId(sid),
@@ -429,7 +448,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 			Kind:       acp.Ptr(acp.ToolKindEdit),
 			Status:     acp.Ptr(acp.ToolCallStatusPending),
 			Locations:  []acp.ToolCallLocation{{Path: "/project/config.json"}},
-			RawInput:   map[string]any{"path": "/project/config.json", "content": "{\"database\": {\"host\": \"new-host\"}}"},
+			RawInput:   edit,
 		},
 		Options: []acp.PermissionOption{
 			{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow this change", OptionId: acp.PermissionOptionId("allow")},
@@ -469,6 +488,9 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		}); err != nil {
 			return err
 		}
+		if err := a.askReview(ctx, sid); err != nil {
+			return err
+		}
 	case "reject":
 		if err := pause(ctx, time.Second); err != nil {
 			return err
@@ -485,13 +507,79 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	return nil
 }
 
-func randomID() string {
+// defaultHost is the database host that the edit writes unless the user
+// gives another one.
+const defaultHost = "new-host"
+
+// askHost asks the user, through a form elicitation tied to the edit's tool
+// call, which database host the edit writes. It returns defaultHost when the
+// client does not accept form elicitation, or when the user declines,
+// cancels, or accepts without a host.
+func (a *exampleAgent) askHost(ctx context.Context, sid string) (string, error) {
+	a.mu.Lock()
+	form := a.formElicitation
+	a.mu.Unlock()
+	if !form {
+		return defaultHost, nil
+	}
+	resp, err := a.conn.CreateElicitation(ctx, acp.CreateElicitationRequest{Form: &acp.CreateElicitationForm{
+		Mode:    "form",
+		Message: "Which database host should the configuration use?",
+		RequestedSchema: acp.ElicitationSchema{
+			Type: acp.ElicitationSchemaTypeObject,
+			Properties: map[string]any{"host": acp.ElicitationPropertySchema{String: &acp.ElicitationPropertySchemaString{
+				Type:      "string",
+				Title:     acp.Ptr("Database host"),
+				Default:   acp.Ptr(defaultHost),
+				MinLength: acp.Ptr(1),
+			}}},
+			Required: []string{"host"},
+		},
+		Session: &acp.ElicitationSessionScope{SessionId: acp.SessionId(sid), ToolCallId: acp.Ptr(acp.ToolCallId("call_2"))},
+	}})
+	if err != nil {
+		return "", err
+	}
+	if resp.Accept != nil {
+		if host, ok := resp.Accept.Content["host"].(string); ok && host != "" {
+			return host, nil
+		}
+	}
+	return defaultHost, nil
+}
+
+// askReview asks the user, through a url elicitation, to review the change in
+// a browser, when the client accepts url elicitation. The demo has no review
+// page, so once the user accepts, the agent reports the review as done with
+// elicitation/complete at once.
+func (a *exampleAgent) askReview(ctx context.Context, sid string) error {
+	a.mu.Lock()
+	url := a.urlElicitation
+	a.mu.Unlock()
+	if !url {
+		return nil
+	}
+	id := acp.ElicitationId(randomID("elic_"))
+	resp, err := a.conn.CreateElicitation(ctx, acp.CreateElicitationRequest{Url: &acp.CreateElicitationUrl{
+		Mode:          "url",
+		ElicitationId: id,
+		Message:       "Review the configuration change in your browser.",
+		Url:           "https://example.com/acp-demo/review",
+		Session:       &acp.ElicitationSessionScope{SessionId: acp.SessionId(sid)},
+	}})
+	if err != nil || resp.Accept == nil {
+		return err
+	}
+	return a.conn.CompleteElicitation(ctx, acp.CompleteElicitationNotification{ElicitationId: id})
+}
+
+func randomID(prefix string) string {
 	var b [12]byte
 	if _, err := io.ReadFull(rand.Reader, b[:]); err != nil {
 		// fallback to time-based
-		return fmt.Sprintf("sess_%d", time.Now().UnixNano())
+		return fmt.Sprintf("%s%d", prefix, time.Now().UnixNano())
 	}
-	return "sess_" + hex.EncodeToString(b[:])
+	return prefix + hex.EncodeToString(b[:])
 }
 
 func pause(ctx context.Context, d time.Duration) error {

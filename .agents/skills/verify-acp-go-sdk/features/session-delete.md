@@ -27,7 +27,7 @@ Steps:
 
 - **Delete sessions.** Run `"$V" wire session-delete.jsonl session-delete`. Each step prints PASS. `prompt A fails` prints `error -32603 Internal error`. `await turn` prints `stopReason cancelled, 3 notifications before the response`, and `close stdin` prints `agent exit code 0`.
 - **Read the order.** Run `jq -r 'select(.dir=="agent->client") | .msg.params.update.sessionUpdate // .msg.method // ("response " + (.msg.id|tostring))' "$ACP_VERIFY_RUN/evidence/session-delete/transcript.jsonl" | paste -sd' '`. The output is exactly `response 1 response 2 response 3 response 4 response 5 response 6 response 7 response 8 response 9 agent_message_chunk agent_message_chunk tool_call response 11 response 10 response 12 response 13`. Request 11 is the delete of B, and request 10 is B's prompt, so the delete answers before the cancelled turn does.
-- **Agent log.** Run `cat "$ACP_VERIFY_RUN/evidence/session-delete/agent.stderr.log"`. It is empty.
+- **Agent log.** Run `cat "$ACP_VERIFY_RUN/evidence/session-delete/agent.stderr.log"`. It is empty, or has one line: `INFO connection closed cause="peer connection closed"`. The agent exits as soon as its connection reports done, and the SDK logs that line after it reports done, so the line is in some logs and not in others.
 
 ## Gotchas
 

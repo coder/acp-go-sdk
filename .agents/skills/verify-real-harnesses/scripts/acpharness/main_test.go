@@ -512,3 +512,56 @@ func TestReplayProblem_NeedsTheReplyAfterTheUserMessage(t *testing.T) {
 		t.Fatal("a replay with the agent's reply before the user's message passed")
 	}
 }
+
+// The two forms are the elicitation/create params that claude-agent-acp
+// 0.108.0 and codex-acp 2.7.0 sent for elicitPrompt on 2026-11-18.
+const (
+	claudeForm = `{"mode":"form","sessionId":"s","toolCallId":"t","message":"Which color do you prefer?","requestedSchema":{"type":"object","properties":{"question_0":{"type":"string","title":"Color","oneOf":[{"const":"Red","title":"Red"},{"const":"Blue","title":"Blue"}]},"question_0_custom":{"type":"string","title":"Other"}}}}`
+	codexForm  = `{"sessionId":"s","toolCallId":"t","mode":"form","message":"Codex needs your input to continue.","requestedSchema":{"type":"object","properties":{"preferred_color":{"title":"Which color do you prefer?","_meta":{"codex":{"isOther":true}},"type":"string","oneOf":[{"const":"red","title":"red"},{"const":"blue","title":"blue"},{"const":"None of the above","title":"None of the above"}]},"preferred_color_note":{"type":"string","title":"Additional answer or note"}},"required":["preferred_color"]},"_meta":{"codex":{"autoResolutionMs":null}}}`
+)
+
+func TestHarnessClient_AnswersElicitationsAndKeepsWhatItDecoded(t *testing.T) {
+	rec, err := newRecorder(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newHarnessClient(&harness{rec: rec}, 1)
+	tests := []struct {
+		name, raw, word, want string
+	}{
+		{"claude picks by title", claudeForm, "blue", `accept {"question_0":"Blue"}`},
+		{"codex picks by value", codexForm, "blue", `accept {"preferred_color":"blue"}`},
+		{"no word cancels", codexForm, "", "cancel"},
+		{"required free text gets the word", `{"mode":"form","sessionId":"s","message":"m","requestedSchema":{"type":"object","properties":{"name":{"type":"string"},"n":{"type":"integer"}},"required":["name","n"]}}`, "blue", `accept {"name":"blue"}`},
+		{"url is cancelled", `{"mode":"url","sessionId":"s","elicitationId":"e","message":"m","url":"https://example.com"}`, "blue", "cancel"},
+	}
+	for i, tt := range tests {
+		var req acp.CreateElicitationRequest
+		if err := json.Unmarshal([]byte(tt.raw), &req); err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		c.setElicit(tt.word)
+		if _, err := c.CreateElicitation(context.Background(), req); err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		got := c.elicitationsSince(i)[0]
+		if got.Answer != tt.want {
+			t.Errorf("%s: answer %s, want %s", tt.name, got.Answer, tt.want)
+		}
+		if err := sameJSON(got.decoded, json.RawMessage(tt.raw)); err != nil {
+			t.Errorf("%s: the SDK did not keep the request: %v", tt.name, err)
+		}
+	}
+}
+
+func TestSameJSON_IgnoresKeyOrderAndEmptyLists(t *testing.T) {
+	if err := sameJSON([]acp.AuthMethod{}, nil); err != nil {
+		t.Errorf("an empty list and an absent one differ: %v", err)
+	}
+	if err := sameJSON(map[string]any{"b": 1, "a": []int{2}}, json.RawMessage(`{"a":[2],"b":1}`)); err != nil {
+		t.Errorf("key order matters: %v", err)
+	}
+	if err := sameJSON(map[string]any{"a": 1}, json.RawMessage(`{"a":1,"b":{}}`)); err == nil {
+		t.Error("a dropped member went unnoticed")
+	}
+}

@@ -302,12 +302,14 @@ func (h *harness) finish() int {
 	}
 
 	var perms []permission
+	var elicitations []elicitation
 	// A session reopened on a later connection reports the same cumulative
 	// usage again, so usage merges by session before it adds up.
 	usage := map[acp.SessionId]acp.Usage{}
 	other := map[string]float64{}
 	for _, a := range h.conns {
 		perms = append(perms, a.client.permissionsSince(0)...)
+		elicitations = append(elicitations, a.client.elicitationsSince(0)...)
 		u, o := a.client.totals()
 		for sid, t := range u {
 			m := usage[sid]
@@ -364,6 +366,7 @@ func (h *harness) finish() int {
 		"otherCosts":      other,
 		"evidenceErrors":  lost,
 		"permissions":     perms,
+		"elicitations":    elicitations,
 		"refusedCalls":    refused,
 		"exits":           exits,
 		"pass":            !failed,

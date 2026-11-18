@@ -17,15 +17,19 @@
 //	{"await":"turn","expect":{"result.stopReason":"cancelled"}}
 //	{"notify":"session/cancel","params":{"sessionId":"{{new.result.sessionId}}"}}
 //	{"respond":"session/request_permission","result":{...}}  (rule for later agent requests)
+//	{"respond":"elicitation/create","where":{"params.mode":"url"},"result":{...}}
 //	{"waitFor":"session/update","where":{"params.update.sessionUpdate":"tool_call"},"count":1}
 //	{"raw":"{not json"}
 //	{"stderrHas":"failed to parse"}   {"stderrLacks":"failed to handle notification"}
 //	{"sleep":"300ms"}
 //	{"close":true,"expectExit":0}
 //
-// "{{name.path}}" inside a JSON string of params or expect is replaced with
-// the string at that path of the message saved as name. Agent requests with
-// no rule get a -32601 error.
+// "{{name.path}}" inside a JSON string of params, expect or the "where" of a
+// "waitFor" is replaced with the string at that path of the message saved as
+// name. An agent request gets the answer of the newest rule for its method
+// whose "where" it matches (a rule without "where" matches every request), or
+// a -32601 error when no rule matches. "waitFor" matches the agent's
+// notifications and its requests.
 package main
 
 import (
@@ -76,7 +80,7 @@ var actionFields = map[string][]string{
 	"send":        {"params", "save", "async", "expect", "timeout"},
 	"notify":      {"params"},
 	"await":       {"expect", "timeout"},
-	"respond":     {"result", "error"},
+	"respond":     {"where", "result", "error"},
 	"waitFor":     {"where", "count", "timeout"},
 	"raw":         nil,
 	"stderrHas":   {"timeout"},
@@ -192,7 +196,8 @@ type driver struct {
 	calls    map[string]*call // by request id
 	saved    map[string]*call // by save name
 	notes    []map[string]any
-	rules    map[string]step
+	requests []map[string]any // requests from the agent, for waitFor
+	rules    map[string][]step
 	stderrSB strings.Builder
 	exited   chan struct{}
 	badOut   []string // agent stdout that is not a JSON-RPC message, or a read error
@@ -322,7 +327,7 @@ func run(agent string, args []string, steps []step, lines []int, out string, lim
 	}
 	d := &driver{
 		start: time.Now(), stdin: stdin, trans: trans, stderr: stderrLog,
-		calls: map[string]*call{}, saved: map[string]*call{}, rules: map[string]step{},
+		calls: map[string]*call{}, saved: map[string]*call{}, rules: map[string][]step{},
 		exited: make(chan struct{}), changed: make(chan struct{}),
 	}
 	if err := cmd.Start(); err != nil {
@@ -471,7 +476,10 @@ func (d *driver) readStdout(r io.Reader) {
 		method, _ := msg["method"].(string)
 		switch {
 		case hasID && method != "":
-			d.answer(id, method)
+			d.mu.Lock()
+			d.requests = append(d.requests, msg)
+			d.mu.Unlock()
+			d.answer(id, msg)
 		case method != "":
 			d.mu.Lock()
 			d.notes = append(d.notes, msg)
@@ -515,10 +523,17 @@ func (d *driver) readStderr(r io.Reader) {
 	}
 }
 
-// answer replies to a request from the agent with the matching rule.
-func (d *driver) answer(id any, method string) {
+// answer replies to a request from the agent with the newest rule for its
+// method that it matches.
+func (d *driver) answer(id any, msg map[string]any) {
+	method, _ := msg["method"].(string)
+	var rule step
+	ok := false
 	d.mu.Lock()
-	rule, ok := d.rules[method]
+	rules := d.rules[method]
+	for i := len(rules) - 1; i >= 0 && !ok; i-- {
+		rule, ok = rules[i], matches(msg, rules[i].Where) == nil
+	}
 	d.mu.Unlock()
 	resp := map[string]any{"jsonrpc": "2.0", "id": id}
 	switch {
@@ -694,7 +709,7 @@ func (d *driver) do(s step, runDeadline time.Time) (string, string, error) {
 		return label("notify " + s.Notify), "", d.write(string(mustJSON(n)))
 	case s.Respond != "":
 		d.mu.Lock()
-		d.rules[s.Respond] = s
+		d.rules[s.Respond] = append(d.rules[s.Respond], s)
 		d.mu.Unlock()
 		return label("rule: answer " + s.Respond), "", nil
 	case s.WaitFor != "":
@@ -702,12 +717,18 @@ func (d *driver) do(s step, runDeadline time.Time) (string, string, error) {
 		if count == 0 {
 			count = 1
 		}
-		what := fmt.Sprintf("%d %s notification(s) matching %v", count, s.WaitFor, s.Where)
-		err := d.waitUntil(deadline, what, func() bool {
+		where, err := d.expandAll(s.Where)
+		if err != nil {
+			return label("wait for " + s.WaitFor), "", err
+		}
+		what := fmt.Sprintf("%d %s message(s) matching %s", count, s.WaitFor, mustJSON(where))
+		err = d.waitUntil(deadline, what, func() bool {
 			n := 0
-			for _, m := range d.notes {
-				if m["method"] == s.WaitFor && matches(m, s.Where) == nil {
-					n++
+			for _, msgs := range [][]map[string]any{d.notes, d.requests} {
+				for _, m := range msgs {
+					if m["method"] == s.WaitFor && matches(m, where) == nil {
+						n++
+					}
 				}
 			}
 			return n >= count

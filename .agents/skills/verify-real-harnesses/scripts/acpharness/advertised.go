@@ -279,3 +279,33 @@ func checkModes(raw json.RawMessage, modes *acp.SessionModeState) error {
 	}
 	return nil
 }
+
+// sameJSON reports how the SDK's value v, encoded again, differs from the
+// raw JSON that crossed the wire. Absent, null and an empty array are equal.
+func sameJSON(v any, wire json.RawMessage) error {
+	norm := func(b []byte) (string, error) {
+		var x any
+		if len(b) > 0 {
+			if err := json.Unmarshal(b, &x); err != nil {
+				return "", err
+			}
+		}
+		if a, ok := x.([]any); ok && len(a) == 0 {
+			x = nil
+		}
+		out, err := json.Marshal(x)
+		return string(out), err
+	}
+	sdk, err := norm(mustMarshal(v))
+	if err != nil {
+		return err
+	}
+	raw, err := norm(wire)
+	if err != nil {
+		return err
+	}
+	if sdk != raw {
+		return fmt.Errorf("the wire has %s, but the SDK encodes what it decoded as %s", clip(raw, 300), clip(sdk, 300))
+	}
+	return nil
+}

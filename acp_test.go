@@ -158,6 +158,7 @@ type agentFuncs struct {
 	UnstableListProvidersFunc     func(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
 	UnstableSetProviderFunc       func(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
 	UnstableForkSessionFunc       func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
+	UnstableMessageMcpFunc        func(context.Context, UnstableMessageMcpNotification) error
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
@@ -265,6 +266,13 @@ func (a agentFuncs) SetSessionConfigOption(ctx context.Context, params SetSessio
 		return a.SetSessionConfigOptionFunc(ctx, params)
 	}
 	return SetSessionConfigOptionResponse{}, nil
+}
+
+func (a agentFuncs) UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpNotification) error {
+	if a.UnstableMessageMcpFunc != nil {
+		return a.UnstableMessageMcpFunc(ctx, params)
+	}
+	return nil
 }
 
 func (a agentFuncs) UnstableDidChangeDocument(ctx context.Context, params UnstableDidChangeDocumentNotification) error {

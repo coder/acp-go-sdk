@@ -428,18 +428,14 @@ func (v *AuthMethodTerminalInline) UnmarshalJSON(b []byte) error {
 	type AuthMethodTerminalInline struct {
 		*plain
 		Meta        json.RawMessage `json:"_meta"`
-		Args        json.RawMessage `json:"args"`
 		Description json.RawMessage `json:"description"`
-		Env         json.RawMessage `json:"env"`
 	}
 	raw := AuthMethodTerminalInline{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Args, &v.Args)
 	decodeLenient(raw.Description, &v.Description)
-	decodeLenient(raw.Env, &v.Env)
 	return nil
 }
 
@@ -598,18 +594,14 @@ func (v *AuthMethodTerminal) UnmarshalJSON(b []byte) error {
 	type AuthMethodTerminal struct {
 		*plain
 		Meta        json.RawMessage `json:"_meta"`
-		Args        json.RawMessage `json:"args"`
 		Description json.RawMessage `json:"description"`
-		Env         json.RawMessage `json:"env"`
 	}
 	raw := AuthMethodTerminal{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Args, &v.Args)
 	decodeLenient(raw.Description, &v.Description)
-	decodeLenient(raw.Env, &v.Env)
 	return nil
 }
 
@@ -1023,6 +1015,17 @@ type ClientCapabilities struct {
 	// Optional. Omitted or 'null' both mean the client does not advertise any
 	// session-related extensions.
 	Session *ClientSessionCapabilities `json:"session,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Whether the client understands exposed subagent sessions.
+	//
+	// Optional and nullable. Omitted or 'null' both mean the client does not
+	// advertise support.
+	// Supplying '{}' means the client understands child associations, work-state
+	// snapshots, session-directed messages, and restricted-session semantics.
+	Subagents *SubagentCapabilities `json:"subagents,omitempty"`
 	// Whether the Client support all 'terminal/*' methods.
 	//
 	// Defaults to false if unset.
@@ -1048,6 +1051,7 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 		Plan              json.RawMessage `json:"plan"`
 		PositionEncodings json.RawMessage `json:"positionEncodings"`
 		Session           json.RawMessage `json:"session"`
+		Subagents         json.RawMessage `json:"subagents"`
 		Terminal          json.RawMessage `json:"terminal"`
 	}
 	raw := ClientCapabilities{plain: (*plain)(v)}
@@ -1066,6 +1070,7 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Plan, &v.Plan)
 	decodeLenientItems(raw.PositionEncodings, &v.PositionEncodings, PositionEncodingKind.valid)
 	decodeLenient(raw.Session, &v.Session)
+	decodeLenient(raw.Subagents, &v.Subagents)
 	if !decodeLenient(raw.Terminal, &v.Terminal) {
 		setDefault(&v.Terminal, "false")
 	}
@@ -1249,10 +1254,6 @@ type ClientSessionCapabilities struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Support for ID-addressed context compaction updates. Omitted or 'null'
 	// means unsupported; '{}' advertises the complete compaction contract.
 	Compaction *CompactionCapabilities `json:"compaction,omitempty"`
@@ -1261,6 +1262,11 @@ type ClientSessionCapabilities struct {
 	// Omitted or 'null' both mean the client does not advertise support for any
 	// config option extensions.
 	ConfigOptions *SessionConfigOptionsCapabilities `json:"configOptions,omitempty"`
+	// Support for live user-facing 'notice' session updates.
+	//
+	// Optional. Omitted or 'null' both mean the client does not advertise support.
+	// Supplying '{}' means the client can present notices to the user.
+	Notices *NoticeCapabilities `json:"notices,omitempty"`
 }
 
 func (v *ClientSessionCapabilities) UnmarshalJSON(b []byte) error {
@@ -1270,6 +1276,7 @@ func (v *ClientSessionCapabilities) UnmarshalJSON(b []byte) error {
 		Meta          json.RawMessage `json:"_meta"`
 		Compaction    json.RawMessage `json:"compaction"`
 		ConfigOptions json.RawMessage `json:"configOptions"`
+		Notices       json.RawMessage `json:"notices"`
 	}
 	raw := ClientSessionCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
@@ -1278,6 +1285,7 @@ func (v *ClientSessionCapabilities) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Compaction, &v.Compaction)
 	decodeLenient(raw.ConfigOptions, &v.ConfigOptions)
+	decodeLenient(raw.Notices, &v.Notices)
 	return nil
 }
 
@@ -1345,24 +1353,12 @@ func (v *CloseSessionResponse) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Client support for ID-addressed context compaction updates.
 type CompactionCapabilities struct{}
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Unique identifier for a context compaction within a session.
 type CompactionId string
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Lifecycle state of a context compaction.
 type CompactionStatus string
 
@@ -1373,14 +1369,10 @@ const (
 	CompactionStatusCancelled  CompactionStatus = "cancelled"
 )
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// A content block appended to the retained summary of an in-progress
-// compaction. Agents send chunks only after an 'in_progress' update and before
-// the terminal update for the same ID. Agents MUST only send this update when
-// the Client advertised ['ClientSessionCapabilities::compaction'].
+// A content block appended to a compaction's summary. A first-seen ID creates
+// an in-progress compaction. Chunks append in receive order.
+// Agents MUST only send this update when the Client advertised
+// ['ClientSessionCapabilities::compaction'].
 type CompactionSummaryChunk struct {
 	// Metadata scoped to this chunk. Omission and 'null' both mean absent.
 	Meta map[string]any `json:"_meta,omitempty"`
@@ -1404,29 +1396,24 @@ func (v *CompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// A context compaction upsert. The first update fixes the compaction's
+// A context compaction upsert. The first notification fixes the compaction's
 // timeline position. Later updates with the same ID patch that entity in place.
 // Agents MUST only send this update when the Client advertised
 // ['ClientSessionCapabilities::compaction'].
 //
 // 'summary', 'error', and '_meta' have patch semantics: omission leaves the
 // stored value unchanged, 'null' clears it, and a concrete value replaces it.
-// 'summary: []' also clears the retained summary. A non-empty summary is only
-// valid with 'completed'; 'error' is only valid with 'failed'.
+// 'summary: []' also clears the summary.
 type CompactionUpdate struct {
 	// Extensible metadata patch for this compaction.
 	Meta map[string]any `json:"_meta,omitempty"`
 	// The Agent-owned ID of this compaction, unique within the session.
 	CompactionId CompactionId `json:"compactionId"`
-	// Human-readable description of why the compaction failed.
+	// Human-readable error details for the compaction.
 	Error *string `json:"error,omitempty"`
 	// Current lifecycle status.
 	Status CompactionStatus `json:"status"`
-	// Complete replacement user-displayable summary retained by the compaction.
+	// Complete replacement user-displayable summary content for the compaction.
 	Summary []ContentBlock `json:"summary,omitempty"`
 }
 
@@ -2790,21 +2777,13 @@ func (v *CreateTerminalRequest) UnmarshalJSON(b []byte) error {
 	type plain CreateTerminalRequest
 	type CreateTerminalRequest struct {
 		*plain
-		Meta            json.RawMessage `json:"_meta"`
-		Args            json.RawMessage `json:"args"`
-		Cwd             json.RawMessage `json:"cwd"`
-		Env             json.RawMessage `json:"env"`
-		OutputByteLimit json.RawMessage `json:"outputByteLimit"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := CreateTerminalRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Args, &v.Args)
-	decodeLenient(raw.Cwd, &v.Cwd)
-	decodeLenientItems(raw.Env, &v.Env)
-	decodeLenient(raw.OutputByteLimit, &v.OutputByteLimit)
 	return nil
 }
 
@@ -4432,6 +4411,33 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Details of a failure that ended a child's foreground work.
+type ErrorStopReason struct {
+	// The failure, as a JSON-RPC error object.
+	//
+	// Optional. Omitted or 'null' both mean the agent is not reporting failure details.
+	// Agents SHOULD include it.
+	Error *Error `json:"error,omitempty"`
+}
+
+func (v *ErrorStopReason) UnmarshalJSON(b []byte) error {
+	type plain ErrorStopReason
+	type ErrorStopReason struct {
+		*plain
+		Error json.RawMessage `json:"error"`
+	}
+	raw := ErrorStopReason{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Error, &v.Error)
+	return nil
+}
+
 // Allows the Agent to send an arbitrary notification that is not part of the ACP spec.
 // Extension notifications provide a way to send one-way messages for custom functionality
 // while maintaining protocol compatibility.
@@ -4531,6 +4537,485 @@ func (v *HttpHeader) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
+}
+
+// The child is ready to process another prompt.
+//
+// An omitted, 'null', or malformed 'stopReason' means not reported.
+// The work ended successfully.
+type IdleStateUpdateEndTurn struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *IdleStateUpdateEndTurn) UnmarshalJSON(b []byte) error {
+	type plain IdleStateUpdateEndTurn
+	type IdleStateUpdateEndTurn struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := IdleStateUpdateEndTurn{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work ended because the agent reached the maximum number of tokens.
+type IdleStateUpdateMaxTokens struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *IdleStateUpdateMaxTokens) UnmarshalJSON(b []byte) error {
+	type plain IdleStateUpdateMaxTokens
+	type IdleStateUpdateMaxTokens struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := IdleStateUpdateMaxTokens{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work ended because the agent reached the maximum number of allowed
+// agent requests.
+type IdleStateUpdateMaxTurnRequests struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *IdleStateUpdateMaxTurnRequests) UnmarshalJSON(b []byte) error {
+	type plain IdleStateUpdateMaxTurnRequests
+	type IdleStateUpdateMaxTurnRequests struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := IdleStateUpdateMaxTurnRequests{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work ended because the agent refused to continue.
+type IdleStateUpdateRefusal struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *IdleStateUpdateRefusal) UnmarshalJSON(b []byte) error {
+	type plain IdleStateUpdateRefusal
+	type IdleStateUpdateRefusal struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := IdleStateUpdateRefusal{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work was cancelled.
+type IdleStateUpdateCancelled struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *IdleStateUpdateCancelled) UnmarshalJSON(b []byte) error {
+	type plain IdleStateUpdateCancelled
+	type IdleStateUpdateCancelled struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := IdleStateUpdateCancelled{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work ended because something failed.
+type IdleStateUpdateError struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The failure, as a JSON-RPC error object.
+	//
+	// Optional. Omitted or 'null' both mean the agent is not reporting failure details.
+	// Agents SHOULD include it.
+	Error      *Error `json:"error,omitempty"`
+	StopReason string `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *IdleStateUpdateError) UnmarshalJSON(b []byte) error {
+	type plain IdleStateUpdateError
+	type IdleStateUpdateError struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Error json.RawMessage `json:"error"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := IdleStateUpdateError{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Error, &v.Error)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// Custom or future stop reason.
+//
+// Values beginning with '_' are reserved for implementation-specific
+// extensions. Other unknown values are reserved for future ACP variants.
+type IdleStateUpdateOther struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Unrecognized stop reason.
+	StopReason string `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+	// AdditionalProperties holds the members that the schema does not name.
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (v IdleStateUpdateOther) MarshalJSON() ([]byte, error) {
+	type Alias IdleStateUpdateOther
+	var a Alias
+	a = Alias(v)
+	named, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return withAdditionalProperties(named, v.AdditionalProperties)
+}
+
+func (v *IdleStateUpdateOther) UnmarshalJSON(b []byte) error {
+	type plain IdleStateUpdateOther
+	type IdleStateUpdateOther struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := IdleStateUpdateOther{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	v.AdditionalProperties = additionalProperties(b, "_meta", "stopReason", "usage")
+	return nil
+}
+
+// No stop reason: 'stopReason' is omitted or 'null'.
+type IdleStateUpdateNone struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *IdleStateUpdateNone) UnmarshalJSON(b []byte) error {
+	type plain IdleStateUpdateNone
+	type IdleStateUpdateNone struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := IdleStateUpdateNone{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+type IdleStateUpdate struct {
+	// The work ended successfully.
+	EndTurn *IdleStateUpdateEndTurn `json:"-"`
+	// The work ended because the agent reached the maximum number of tokens.
+	MaxTokens *IdleStateUpdateMaxTokens `json:"-"`
+	// The work ended because the agent reached the maximum number of allowed
+	// agent requests.
+	MaxTurnRequests *IdleStateUpdateMaxTurnRequests `json:"-"`
+	// The work ended because the agent refused to continue.
+	Refusal *IdleStateUpdateRefusal `json:"-"`
+	// The work was cancelled.
+	Cancelled *IdleStateUpdateCancelled `json:"-"`
+	// The work ended because something failed.
+	Error *IdleStateUpdateError `json:"-"`
+	// Custom or future stop reason.
+	//
+	// Values beginning with '_' are reserved for implementation-specific
+	// extensions. Other unknown values are reserved for future ACP variants.
+	Other *IdleStateUpdateOther `json:"-"`
+	// No stop reason: 'stopReason' is omitted or 'null'.
+	None *IdleStateUpdateNone `json:"-"`
+}
+
+func (u *IdleStateUpdate) UnmarshalJSON(b []byte) error {
+	*u = IdleStateUpdate{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+		if raw := string(m["stopReason"]); raw != "" && raw != "null" && !strings.HasPrefix(raw, "\"") {
+			delete(m, "stopReason")
+		}
+		{
+			var disc string
+			if v, ok := m["stopReason"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "end_turn":
+				var v IdleStateUpdateEndTurn
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.EndTurn = &v
+				return nil
+			case "max_tokens":
+				var v IdleStateUpdateMaxTokens
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.MaxTokens = &v
+				return nil
+			case "max_turn_requests":
+				var v IdleStateUpdateMaxTurnRequests
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.MaxTurnRequests = &v
+				return nil
+			case "refusal":
+				var v IdleStateUpdateRefusal
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Refusal = &v
+				return nil
+			case "cancelled":
+				var v IdleStateUpdateCancelled
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Cancelled = &v
+				return nil
+			case "error":
+				var v IdleStateUpdateError
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Error = &v
+				return nil
+			}
+		}
+		{
+			var v IdleStateUpdateOther
+			var match bool = true
+			if !strings.HasPrefix(string(m["stopReason"]), "\"") {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Other = &v
+				return nil
+			}
+		}
+		{
+			var v IdleStateUpdateNone
+			var match bool = true
+			if raw := string(m["stopReason"]); raw != "" && raw != "null" {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.None = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
+	return errors.New("no matching variant for union")
+}
+func (u IdleStateUpdate) MarshalJSON() ([]byte, error) {
+	if u.EndTurn != nil {
+		_b, _e := json.Marshal(*u.EndTurn)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"end_turn\"")
+		return json.Marshal(m)
+	}
+	if u.MaxTokens != nil {
+		_b, _e := json.Marshal(*u.MaxTokens)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"max_tokens\"")
+		return json.Marshal(m)
+	}
+	if u.MaxTurnRequests != nil {
+		_b, _e := json.Marshal(*u.MaxTurnRequests)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"max_turn_requests\"")
+		return json.Marshal(m)
+	}
+	if u.Refusal != nil {
+		_b, _e := json.Marshal(*u.Refusal)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"refusal\"")
+		return json.Marshal(m)
+	}
+	if u.Cancelled != nil {
+		_b, _e := json.Marshal(*u.Cancelled)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"cancelled\"")
+		return json.Marshal(m)
+	}
+	if u.Error != nil {
+		_b, _e := json.Marshal(*u.Error)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"error\"")
+		return json.Marshal(m)
+	}
+	if u.Other != nil {
+		_b, _e := json.Marshal(*u.Other)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.None != nil {
+		_b, _e := json.Marshal(*u.None)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
 }
 
 // An image provided to or from an LLM.
@@ -4971,19 +5456,13 @@ func (v *LoadSessionRequest) UnmarshalJSON(b []byte) error {
 	type plain LoadSessionRequest
 	type LoadSessionRequest struct {
 		*plain
-		Meta                  json.RawMessage `json:"_meta"`
-		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
-		McpServers            json.RawMessage `json:"mcpServers"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := LoadSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.AdditionalDirectories, &v.AdditionalDirectories)
-	if !decodeLenientItems(raw.McpServers, &v.McpServers) && raw.McpServers != nil {
-		setDefault(&v.McpServers, "[]")
-	}
 	return nil
 }
 
@@ -5460,7 +5939,7 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 // ACP transport configuration for MCP.
 //
 // The MCP server is provided by an ACP component and communicates over the ACP channel
-// using 'mcp/connect', 'mcp/message', and 'mcp/disconnect'.
+// using 'mcp/message'.
 type McpServerAcp struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
@@ -5498,8 +5977,7 @@ func (v *McpServerAcp) UnmarshalJSON(b []byte) error {
 // Unique identifier for an MCP server using the ACP transport.
 //
 // The value is opaque and generated by the ACP component providing the MCP server. It is
-// used by 'mcp/connect' to route connection requests back to the component that declared the
-// server.
+// used by 'mcp/message' to route requests to the component that declared the server.
 type McpServerAcpId string
 
 // HTTP transport configuration for MCP.
@@ -6405,19 +6883,13 @@ func (v *NewSessionRequest) UnmarshalJSON(b []byte) error {
 	type plain NewSessionRequest
 	type NewSessionRequest struct {
 		*plain
-		Meta                  json.RawMessage `json:"_meta"`
-		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
-		McpServers            json.RawMessage `json:"mcpServers"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := NewSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.AdditionalDirectories, &v.AdditionalDirectories)
-	if !decodeLenientItems(raw.McpServers, &v.McpServers) && raw.McpServers != nil {
-		setDefault(&v.McpServers, "[]")
-	}
 	return nil
 }
 
@@ -6474,6 +6946,58 @@ func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
 func (v *NewSessionResponse) Validate() error {
 	return nil
 }
+
+// Fire-and-forget information for the user.
+//
+// Notices are live events rather than session history. Agents must not rely on
+// a notice being received, displayed, or seen by the user.
+// Agents MUST only send notices when the Client advertised
+// ['ClientSessionCapabilities::notices']. Otherwise, Agents may use an agent
+// message when the information should still be surfaced to the user.
+//
+// See RFD: [Session Notices](https://agentclientprotocol.com/rfds/session-notices)
+type Notice struct {
+	// Metadata scoped to this notice.
+	//
+	// Omitted and 'null' are equivalent and mean no metadata was supplied.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Optional plain-text detail or guidance.
+	//
+	// Omitted and 'null' are equivalent and mean no description was supplied.
+	Description *string `json:"description,omitempty"`
+	// Presentation severity hint.
+	Severity NoticeSeverity `json:"severity"`
+	// Required non-empty plain-text title that can stand alone.
+	Title string `json:"title"`
+}
+
+func (v *Notice) UnmarshalJSON(b []byte) error {
+	type plain Notice
+	type Notice struct {
+		*plain
+		Meta        json.RawMessage `json:"_meta"`
+		Description json.RawMessage `json:"description"`
+	}
+	raw := Notice{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Description, &v.Description)
+	return nil
+}
+
+// Client support for presenting live notices to the user.
+type NoticeCapabilities struct{}
+
+// Severity hint for a session notice.
+type NoticeSeverity string
+
+const (
+	NoticeSeverityInfo    NoticeSeverity = "info"
+	NoticeSeverityWarning NoticeSeverity = "warning"
+	NoticeSeverityError   NoticeSeverity = "error"
+)
 
 // Schema for number (floating-point) properties in an elicitation form.
 type NumberPropertySchema struct {
@@ -7351,17 +7875,13 @@ func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
 	type plain ReadTextFileRequest
 	type ReadTextFileRequest struct {
 		*plain
-		Meta  json.RawMessage `json:"_meta"`
-		Limit json.RawMessage `json:"limit"`
-		Line  json.RawMessage `json:"line"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := ReadTextFileRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Limit, &v.Limit)
-	decodeLenient(raw.Line, &v.Line)
 	return nil
 }
 
@@ -7759,6 +8279,28 @@ func (v *RequestPermissionResponse) Validate() error {
 	return nil
 }
 
+// Foreground work is blocked on user action.
+type RequiresActionStateUpdate struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *RequiresActionStateUpdate) UnmarshalJSON(b []byte) error {
+	type plain RequiresActionStateUpdate
+	type RequiresActionStateUpdate struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := RequiresActionStateUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
 // A resource that the server is capable of reading, included in a prompt or tool call result.
 type ResourceLink struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -7839,17 +8381,13 @@ func (v *ResumeSessionRequest) UnmarshalJSON(b []byte) error {
 	type plain ResumeSessionRequest
 	type ResumeSessionRequest struct {
 		*plain
-		Meta                  json.RawMessage `json:"_meta"`
-		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
-		McpServers            json.RawMessage `json:"mcpServers"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := ResumeSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.AdditionalDirectories, &v.AdditionalDirectories)
-	decodeLenientItems(raw.McpServers, &v.McpServers)
 	return nil
 }
 
@@ -7906,6 +8444,28 @@ const (
 	RoleUser      Role = "user"
 )
 
+// Foreground work is in progress.
+type RunningStateUpdate struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *RunningStateUpdate) UnmarshalJSON(b []byte) error {
+	type plain RunningStateUpdate
+	type RunningStateUpdate struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := RunningStateUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
 // The user selected one of the provided options.
 type SelectedPermissionOutcome struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -7954,6 +8514,36 @@ func (v *SessionAdditionalDirectoriesCapabilities) UnmarshalJSON(b []byte) error
 		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := SessionAdditionalDirectoriesCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Capability to cancel work in a subagent session without ending that session.
+//
+// Supplying '{}' advertises support; an omitted or 'null' 'cancel' does not.
+type SessionCancelCapabilities struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *SessionCancelCapabilities) UnmarshalJSON(b []byte) error {
+	type plain SessionCancelCapabilities
+	type SessionCancelCapabilities struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := SessionCancelCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
@@ -8658,6 +9248,85 @@ func (v *SessionListCapabilities) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// An upsert for an inter-session message.
+type SessionMessage struct {
+	// Omitted leaves metadata unchanged; 'null' removes it.
+	//
+	// Implementations MUST NOT make assumptions about values in '_meta'.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Omitted leaves content unchanged; 'null' or '[]' clears it.
+	// A non-empty array replaces all content.
+	Content []ContentBlock `json:"content,omitempty"`
+	// Identifier of this message within the enclosing session's transcript.
+	MessageId MessageId `json:"messageId"`
+	// Optional receiving session identity; omission or 'null' retains a known value.
+	RecipientSessionId *SessionId `json:"recipientSessionId,omitempty"`
+	// Optional sending session identity; omission or 'null' retains a known value.
+	SenderSessionId *SessionId `json:"senderSessionId,omitempty"`
+}
+
+func (v *SessionMessage) UnmarshalJSON(b []byte) error {
+	type plain SessionMessage
+	type SessionMessage struct {
+		*plain
+		Meta               json.RawMessage `json:"_meta"`
+		Content            json.RawMessage `json:"content"`
+		RecipientSessionId json.RawMessage `json:"recipientSessionId"`
+		SenderSessionId    json.RawMessage `json:"senderSessionId"`
+	}
+	raw := SessionMessage{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenient(raw.RecipientSessionId, &v.RecipientSessionId)
+	decodeLenient(raw.SenderSessionId, &v.SenderSessionId)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A streamed content block of an inter-session message.
+type SessionMessageChunk struct {
+	// Optional and nullable chunk-scoped metadata; omitted or 'null' means none.
+	//
+	// Implementations MUST NOT make assumptions about values in '_meta'.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// A single content block appended to the message.
+	Content ContentBlock `json:"content"`
+	// Identifier of this message within the enclosing session's transcript.
+	MessageId MessageId `json:"messageId"`
+	// Optional receiving session identity; omission or 'null' retains a known value.
+	RecipientSessionId *SessionId `json:"recipientSessionId,omitempty"`
+	// Optional sending session identity; omission or 'null' retains a known value.
+	SenderSessionId *SessionId `json:"senderSessionId,omitempty"`
+}
+
+func (v *SessionMessageChunk) UnmarshalJSON(b []byte) error {
+	type plain SessionMessageChunk
+	type SessionMessageChunk struct {
+		*plain
+		Meta               json.RawMessage `json:"_meta"`
+		RecipientSessionId json.RawMessage `json:"recipientSessionId"`
+		SenderSessionId    json.RawMessage `json:"senderSessionId"`
+	}
+	raw := SessionMessageChunk{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.RecipientSessionId, &v.RecipientSessionId)
+	decodeLenient(raw.SenderSessionId, &v.SenderSessionId)
+	return nil
+}
+
 // A mode the agent can operate in.
 //
 // See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
@@ -8922,10 +9591,6 @@ type SessionUpdateToolCall struct {
 	// File locations affected by this tool call.
 	// Enables "follow-along" features in clients.
 	Locations []ToolCallLocation `json:"locations,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that no
@@ -8986,10 +9651,6 @@ type SessionToolCallUpdate struct {
 	Kind *ToolKind `json:"kind,omitempty"`
 	// Replace the locations collection.
 	Locations []ToolCallLocation `json:"locations,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
@@ -9322,10 +9983,42 @@ func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
+// Information for the user that is not part of session history.
 //
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
+// Agents MUST only send this update when the Client advertised
+// ['ClientSessionCapabilities::notices'].
+type SessionUpdateNotice struct {
+	// Metadata scoped to this notice.
+	//
+	// Omitted and 'null' are equivalent and mean no metadata was supplied.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Optional plain-text detail or guidance.
+	//
+	// Omitted and 'null' are equivalent and mean no description was supplied.
+	Description   *string `json:"description,omitempty"`
+	SessionUpdate string  `json:"sessionUpdate"`
+	// Presentation severity hint.
+	Severity NoticeSeverity `json:"severity"`
+	// Required non-empty plain-text title that can stand alone.
+	Title string `json:"title"`
+}
+
+func (v *SessionUpdateNotice) UnmarshalJSON(b []byte) error {
+	type plain SessionUpdateNotice
+	type SessionUpdateNotice struct {
+		*plain
+		Meta        json.RawMessage `json:"_meta"`
+		Description json.RawMessage `json:"description"`
+	}
+	raw := SessionUpdateNotice{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Description, &v.Description)
+	return nil
+}
+
 // A context compaction has been created or updated.
 //
 // Agents MUST only send this update when the Client advertised
@@ -9335,12 +10028,12 @@ type SessionCompactionUpdate struct {
 	Meta map[string]any `json:"_meta,omitempty"`
 	// The Agent-owned ID of this compaction, unique within the session.
 	CompactionId CompactionId `json:"compactionId"`
-	// Human-readable description of why the compaction failed.
+	// Human-readable error details for the compaction.
 	Error         *string `json:"error,omitempty"`
 	SessionUpdate string  `json:"sessionUpdate"`
 	// Current lifecycle status.
 	Status CompactionStatus `json:"status"`
-	// Complete replacement user-displayable summary retained by the compaction.
+	// Complete replacement user-displayable summary content for the compaction.
 	Summary []ContentBlock `json:"summary,omitempty"`
 }
 
@@ -9362,10 +10055,6 @@ func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A content block appended to a context compaction's retained summary.
 //
 // Agents MUST only send this update when the Client advertised
@@ -9391,6 +10080,154 @@ func (v *SessionUpdateCompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Announces a child session created and owned by this session, or updates
+// that ownership association's metadata.
+type SessionSubagentUpdate struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	// Omitted means unchanged; 'null' removes the metadata.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Client-initiated session mutations permitted for this subagent session.
+	//
+	// Omitted means unchanged; 'null' clears the capability set and disables
+	// child mutations. If never supplied, no session mutations are permitted.
+	// Read-only operations retain their normal protocol semantics and capability
+	// requirements. A concrete object replaces the whole capability set.
+	Capabilities *SubagentSessionCapabilities `json:"capabilities,omitempty"`
+	// The parent's human-readable description of the child's role or purpose.
+	//
+	// Omitted means unchanged; 'null' clears it. If unset, the Client chooses
+	// a fallback presentation. This is current display metadata, not the
+	// history of instructions sent to the child.
+	Description *string `json:"description,omitempty"`
+	// The opaque session ID identifying the child in all ACP messages.
+	SessionId     SessionId `json:"sessionId"`
+	SessionUpdate string    `json:"sessionUpdate"`
+	// Current state snapshot for the child session.
+	//
+	// Omitted means unchanged; 'null' clears the current activity without
+	// asserting idle or sending an 'unknown' snapshot. A concrete state
+	// replaces the previous state object wholesale. If never supplied, the
+	// current activity is unset/unconfirmed.
+	State *StateUpdate `json:"state,omitempty"`
+	// The parent's human-readable display title for this child. It need not be unique.
+	//
+	// Omitted means unchanged; 'null' clears it. If unset, the Client chooses
+	// a fallback presentation.
+	Title *string `json:"title,omitempty"`
+}
+
+func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
+	type plain SessionSubagentUpdate
+	type SessionSubagentUpdate struct {
+		*plain
+		Meta         json.RawMessage `json:"_meta"`
+		Capabilities json.RawMessage `json:"capabilities"`
+		Description  json.RawMessage `json:"description"`
+		State        json.RawMessage `json:"state"`
+		Title        json.RawMessage `json:"title"`
+	}
+	raw := SessionSubagentUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Capabilities, &v.Capabilities)
+	decodeLenient(raw.Description, &v.Description)
+	decodeLenient(raw.State, &v.State)
+	decodeLenient(raw.Title, &v.Title)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A message upsert observed in this session's transcript, sent to or
+// received from another session.
+type SessionUpdateSessionMessage struct {
+	// Omitted leaves metadata unchanged; 'null' removes it.
+	//
+	// Implementations MUST NOT make assumptions about values in '_meta'.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Omitted leaves content unchanged; 'null' or '[]' clears it.
+	// A non-empty array replaces all content.
+	Content []ContentBlock `json:"content,omitempty"`
+	// Identifier of this message within the enclosing session's transcript.
+	MessageId MessageId `json:"messageId"`
+	// Optional receiving session identity; omission or 'null' retains a known value.
+	RecipientSessionId *SessionId `json:"recipientSessionId,omitempty"`
+	// Optional sending session identity; omission or 'null' retains a known value.
+	SenderSessionId *SessionId `json:"senderSessionId,omitempty"`
+	SessionUpdate   string     `json:"sessionUpdate"`
+}
+
+func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
+	type plain SessionUpdateSessionMessage
+	type SessionUpdateSessionMessage struct {
+		*plain
+		Meta               json.RawMessage `json:"_meta"`
+		Content            json.RawMessage `json:"content"`
+		RecipientSessionId json.RawMessage `json:"recipientSessionId"`
+		SenderSessionId    json.RawMessage `json:"senderSessionId"`
+	}
+	raw := SessionUpdateSessionMessage{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenient(raw.RecipientSessionId, &v.RecipientSessionId)
+	decodeLenient(raw.SenderSessionId, &v.SenderSessionId)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// One content block appended to a sent or received session message.
+type SessionUpdateSessionMessageChunk struct {
+	// Optional and nullable chunk-scoped metadata; omitted or 'null' means none.
+	//
+	// Implementations MUST NOT make assumptions about values in '_meta'.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// A single content block appended to the message.
+	Content ContentBlock `json:"content"`
+	// Identifier of this message within the enclosing session's transcript.
+	MessageId MessageId `json:"messageId"`
+	// Optional receiving session identity; omission or 'null' retains a known value.
+	RecipientSessionId *SessionId `json:"recipientSessionId,omitempty"`
+	// Optional sending session identity; omission or 'null' retains a known value.
+	SenderSessionId *SessionId `json:"senderSessionId,omitempty"`
+	SessionUpdate   string     `json:"sessionUpdate"`
+}
+
+func (v *SessionUpdateSessionMessageChunk) UnmarshalJSON(b []byte) error {
+	type plain SessionUpdateSessionMessageChunk
+	type SessionUpdateSessionMessageChunk struct {
+		*plain
+		Meta               json.RawMessage `json:"_meta"`
+		RecipientSessionId json.RawMessage `json:"recipientSessionId"`
+		SenderSessionId    json.RawMessage `json:"senderSessionId"`
+	}
+	raw := SessionUpdateSessionMessageChunk{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.RecipientSessionId, &v.RecipientSessionId)
+	decodeLenient(raw.SenderSessionId, &v.SenderSessionId)
 	return nil
 }
 
@@ -9432,24 +10269,41 @@ type SessionUpdate struct {
 	SessionInfoUpdate *SessionSessionInfoUpdate `json:"-"`
 	// Context window and cost update for the session.
 	UsageUpdate *SessionUsageUpdate `json:"-"`
-	// **UNSTABLE**
+	// Information for the user that is not part of session history.
 	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
+	// Agents MUST only send this update when the Client advertised
+	// ['ClientSessionCapabilities::notices'].
+	Notice *SessionUpdateNotice `json:"-"`
 	// A context compaction has been created or updated.
 	//
 	// Agents MUST only send this update when the Client advertised
 	// ['ClientSessionCapabilities::compaction'].
 	CompactionUpdate *SessionCompactionUpdate `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// A content block appended to a context compaction's retained summary.
 	//
 	// Agents MUST only send this update when the Client advertised
 	// ['ClientSessionCapabilities::compaction'].
 	CompactionSummaryChunk *SessionUpdateCompactionSummaryChunk `json:"-"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Announces a child session created and owned by this session, or updates
+	// that ownership association's metadata.
+	SubagentUpdate *SessionSubagentUpdate `json:"-"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// A message upsert observed in this session's transcript, sent to or
+	// received from another session.
+	SessionMessage *SessionUpdateSessionMessage `json:"-"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// One content block appended to a sent or received session message.
+	SessionMessageChunk *SessionUpdateSessionMessageChunk `json:"-"`
 }
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
@@ -9556,6 +10410,13 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 				}
 				u.UsageUpdate = &v
 				return nil
+			case "notice":
+				var v SessionUpdateNotice
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Notice = &v
+				return nil
 			case "compaction_update":
 				var v SessionCompactionUpdate
 				if json.Unmarshal(b, &v) != nil {
@@ -9569,6 +10430,27 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 					return errors.New("invalid variant payload")
 				}
 				u.CompactionSummaryChunk = &v
+				return nil
+			case "subagent_update":
+				var v SessionSubagentUpdate
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.SubagentUpdate = &v
+				return nil
+			case "session_message":
+				var v SessionUpdateSessionMessage
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.SessionMessage = &v
+				return nil
+			case "session_message_chunk":
+				var v SessionUpdateSessionMessageChunk
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.SessionMessageChunk = &v
 				return nil
 			}
 		}
@@ -9739,6 +10621,18 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		m["sessionUpdate"] = json.RawMessage("\"usage_update\"")
 		return json.Marshal(m)
 	}
+	if u.Notice != nil {
+		_b, _e := json.Marshal(*u.Notice)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["sessionUpdate"] = json.RawMessage("\"notice\"")
+		return json.Marshal(m)
+	}
 	if u.CompactionUpdate != nil {
 		_b, _e := json.Marshal(*u.CompactionUpdate)
 		if _e != nil {
@@ -9761,6 +10655,42 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 			return []byte{}, errors.New("invalid variant payload")
 		}
 		m["sessionUpdate"] = json.RawMessage("\"compaction_summary_chunk\"")
+		return json.Marshal(m)
+	}
+	if u.SubagentUpdate != nil {
+		_b, _e := json.Marshal(*u.SubagentUpdate)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["sessionUpdate"] = json.RawMessage("\"subagent_update\"")
+		return json.Marshal(m)
+	}
+	if u.SessionMessage != nil {
+		_b, _e := json.Marshal(*u.SessionMessage)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["sessionUpdate"] = json.RawMessage("\"session_message\"")
+		return json.Marshal(m)
+	}
+	if u.SessionMessageChunk != nil {
+		_b, _e := json.Marshal(*u.SessionMessageChunk)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["sessionUpdate"] = json.RawMessage("\"session_message_chunk\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -9807,10 +10737,22 @@ func (u *SessionUpdate) Validate() error {
 	if u.UsageUpdate != nil {
 		count++
 	}
+	if u.Notice != nil {
+		count++
+	}
 	if u.CompactionUpdate != nil {
 		count++
 	}
 	if u.CompactionSummaryChunk != nil {
+		count++
+	}
+	if u.SubagentUpdate != nil {
+		count++
+	}
+	if u.SessionMessage != nil {
+		count++
+	}
+	if u.SessionMessageChunk != nil {
 		count++
 	}
 	if count != 1 {
@@ -10080,6 +11022,754 @@ func (v *SetSessionModeResponse) Validate() error {
 	return nil
 }
 
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Current foreground-work state of a reusable child session.
+//
+// Each update is a whole-object snapshot. Idle does not terminate the child;
+// the parent can message it again, transitioning it back to running.
+// Background activity may still emit other session updates while idle.
+// Foreground work is in progress.
+type StateUpdateRunning struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta  map[string]any `json:"_meta,omitempty"`
+	State string         `json:"state"`
+}
+
+func (v *StateUpdateRunning) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateRunning
+	type StateUpdateRunning struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := StateUpdateRunning{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+// The child is ready to process another prompt.
+// The work ended successfully.
+type StateUpdateIdleEndTurn struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	State      string         `json:"state"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *StateUpdateIdleEndTurn) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateIdleEndTurn
+	type StateUpdateIdleEndTurn struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := StateUpdateIdleEndTurn{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work ended because the agent reached the maximum number of tokens.
+type StateUpdateIdleMaxTokens struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	State      string         `json:"state"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *StateUpdateIdleMaxTokens) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateIdleMaxTokens
+	type StateUpdateIdleMaxTokens struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := StateUpdateIdleMaxTokens{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work ended because the agent reached the maximum number of allowed
+// agent requests.
+type StateUpdateIdleMaxTurnRequests struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	State      string         `json:"state"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *StateUpdateIdleMaxTurnRequests) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateIdleMaxTurnRequests
+	type StateUpdateIdleMaxTurnRequests struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := StateUpdateIdleMaxTurnRequests{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work ended because the agent refused to continue.
+type StateUpdateIdleRefusal struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	State      string         `json:"state"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *StateUpdateIdleRefusal) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateIdleRefusal
+	type StateUpdateIdleRefusal struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := StateUpdateIdleRefusal{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work was cancelled.
+type StateUpdateIdleCancelled struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta       map[string]any `json:"_meta,omitempty"`
+	State      string         `json:"state"`
+	StopReason string         `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *StateUpdateIdleCancelled) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateIdleCancelled
+	type StateUpdateIdleCancelled struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := StateUpdateIdleCancelled{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// The work ended because something failed.
+type StateUpdateIdleError struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// The failure, as a JSON-RPC error object.
+	//
+	// Optional. Omitted or 'null' both mean the agent is not reporting failure details.
+	// Agents SHOULD include it.
+	Error      *Error `json:"error,omitempty"`
+	State      string `json:"state"`
+	StopReason string `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *StateUpdateIdleError) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateIdleError
+	type StateUpdateIdleError struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Error json.RawMessage `json:"error"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := StateUpdateIdleError{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Error, &v.Error)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+// Custom or future stop reason.
+//
+// Values beginning with '_' are reserved for implementation-specific
+// extensions. Other unknown values are reserved for future ACP variants.
+type StateUpdateIdleOther struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta  map[string]any `json:"_meta,omitempty"`
+	State string         `json:"state"`
+	// Unrecognized stop reason.
+	StopReason string `json:"stopReason"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+	// AdditionalProperties holds the members that the schema does not name.
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (v StateUpdateIdleOther) MarshalJSON() ([]byte, error) {
+	type Alias StateUpdateIdleOther
+	var a Alias
+	a = Alias(v)
+	named, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return withAdditionalProperties(named, v.AdditionalProperties)
+}
+
+func (v *StateUpdateIdleOther) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateIdleOther
+	type StateUpdateIdleOther struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := StateUpdateIdleOther{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	v.AdditionalProperties = additionalProperties(b, "_meta", "state", "stopReason", "usage")
+	return nil
+}
+
+// No stop reason: 'stopReason' is omitted or 'null'.
+type StateUpdateIdleNone struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta  map[string]any `json:"_meta,omitempty"`
+	State string         `json:"state"`
+	// **UNSTABLE** Token usage for completed foreground work.
+	//
+	// Optional; omitted or 'null' means not reported.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+func (v *StateUpdateIdleNone) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateIdleNone
+	type StateUpdateIdleNone struct {
+		*plain
+		Meta  json.RawMessage `json:"_meta"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	raw := StateUpdateIdleNone{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Usage, &v.Usage)
+	return nil
+}
+
+type StateUpdateIdle struct {
+	// The work ended successfully.
+	EndTurn *StateUpdateIdleEndTurn `json:"-"`
+	// The work ended because the agent reached the maximum number of tokens.
+	MaxTokens *StateUpdateIdleMaxTokens `json:"-"`
+	// The work ended because the agent reached the maximum number of allowed
+	// agent requests.
+	MaxTurnRequests *StateUpdateIdleMaxTurnRequests `json:"-"`
+	// The work ended because the agent refused to continue.
+	Refusal *StateUpdateIdleRefusal `json:"-"`
+	// The work was cancelled.
+	Cancelled *StateUpdateIdleCancelled `json:"-"`
+	// The work ended because something failed.
+	Error *StateUpdateIdleError `json:"-"`
+	// Custom or future stop reason.
+	//
+	// Values beginning with '_' are reserved for implementation-specific
+	// extensions. Other unknown values are reserved for future ACP variants.
+	Other *StateUpdateIdleOther `json:"-"`
+	// No stop reason: 'stopReason' is omitted or 'null'.
+	None *StateUpdateIdleNone `json:"-"`
+}
+
+func (u *StateUpdateIdle) UnmarshalJSON(b []byte) error {
+	*u = StateUpdateIdle{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+		if raw := string(m["stopReason"]); raw != "" && raw != "null" && !strings.HasPrefix(raw, "\"") {
+			delete(m, "stopReason")
+		}
+		{
+			var disc string
+			if v, ok := m["stopReason"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "end_turn":
+				var v StateUpdateIdleEndTurn
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.EndTurn = &v
+				return nil
+			case "max_tokens":
+				var v StateUpdateIdleMaxTokens
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.MaxTokens = &v
+				return nil
+			case "max_turn_requests":
+				var v StateUpdateIdleMaxTurnRequests
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.MaxTurnRequests = &v
+				return nil
+			case "refusal":
+				var v StateUpdateIdleRefusal
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Refusal = &v
+				return nil
+			case "cancelled":
+				var v StateUpdateIdleCancelled
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Cancelled = &v
+				return nil
+			case "error":
+				var v StateUpdateIdleError
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Error = &v
+				return nil
+			}
+		}
+		{
+			var v StateUpdateIdleOther
+			var match bool = true
+			if !strings.HasPrefix(string(m["stopReason"]), "\"") {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Other = &v
+				return nil
+			}
+		}
+		{
+			var v StateUpdateIdleNone
+			var match bool = true
+			if raw := string(m["stopReason"]); raw != "" && raw != "null" {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.None = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
+	return errors.New("no matching variant for union")
+}
+func (u StateUpdateIdle) MarshalJSON() ([]byte, error) {
+	if u.EndTurn != nil {
+		_b, _e := json.Marshal(*u.EndTurn)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"end_turn\"")
+		return json.Marshal(m)
+	}
+	if u.MaxTokens != nil {
+		_b, _e := json.Marshal(*u.MaxTokens)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"max_tokens\"")
+		return json.Marshal(m)
+	}
+	if u.MaxTurnRequests != nil {
+		_b, _e := json.Marshal(*u.MaxTurnRequests)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"max_turn_requests\"")
+		return json.Marshal(m)
+	}
+	if u.Refusal != nil {
+		_b, _e := json.Marshal(*u.Refusal)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"refusal\"")
+		return json.Marshal(m)
+	}
+	if u.Cancelled != nil {
+		_b, _e := json.Marshal(*u.Cancelled)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"cancelled\"")
+		return json.Marshal(m)
+	}
+	if u.Error != nil {
+		_b, _e := json.Marshal(*u.Error)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["stopReason"] = json.RawMessage("\"error\"")
+		return json.Marshal(m)
+	}
+	if u.Other != nil {
+		_b, _e := json.Marshal(*u.Other)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.None != nil {
+		_b, _e := json.Marshal(*u.None)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
+// Foreground work is blocked on user action.
+type StateUpdateRequiresAction struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta  map[string]any `json:"_meta,omitempty"`
+	State string         `json:"state"`
+}
+
+func (v *StateUpdateRequiresAction) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateRequiresAction
+	type StateUpdateRequiresAction struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := StateUpdateRequiresAction{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+// The Agent cannot currently determine foreground activity.
+//
+// This replaces previously confirmed activity without ending the work or session.
+type StateUpdateUnknown struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta  map[string]any `json:"_meta,omitempty"`
+	State string         `json:"state"`
+}
+
+func (v *StateUpdateUnknown) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateUnknown
+	type StateUpdateUnknown struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := StateUpdateUnknown{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+// Custom or future state.
+//
+// Values beginning with '_' are reserved for implementation-specific
+// extensions. Other unknown values are reserved for future ACP variants.
+type StateUpdateOther struct {
+	// Unrecognized state discriminator.
+	State string `json:"state"`
+	// AdditionalProperties holds the members that the schema does not name.
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (v StateUpdateOther) MarshalJSON() ([]byte, error) {
+	type Alias StateUpdateOther
+	var a Alias
+	a = Alias(v)
+	named, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return withAdditionalProperties(named, v.AdditionalProperties)
+}
+
+func (v *StateUpdateOther) UnmarshalJSON(b []byte) error {
+	type plain StateUpdateOther
+	type StateUpdateOther struct {
+		*plain
+	}
+	raw := StateUpdateOther{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	v.AdditionalProperties = additionalProperties(b, "state")
+	return nil
+}
+
+type StateUpdate struct {
+	// Foreground work is in progress.
+	Running *StateUpdateRunning `json:"-"`
+	// The child is ready to process another prompt.
+	Idle *StateUpdateIdle `json:"-"`
+	// Foreground work is blocked on user action.
+	RequiresAction *StateUpdateRequiresAction `json:"-"`
+	// The Agent cannot currently determine foreground activity.
+	//
+	// This replaces previously confirmed activity without ending the work or session.
+	Unknown *StateUpdateUnknown `json:"-"`
+	// Custom or future state.
+	//
+	// Values beginning with '_' are reserved for implementation-specific
+	// extensions. Other unknown values are reserved for future ACP variants.
+	Other *StateUpdateOther `json:"-"`
+}
+
+func (u *StateUpdate) UnmarshalJSON(b []byte) error {
+	*u = StateUpdate{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var disc string
+			if v, ok := m["state"]; ok {
+				json.Unmarshal(v, &disc)
+			}
+			switch disc {
+			case "running":
+				var v StateUpdateRunning
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Running = &v
+				return nil
+			case "idle":
+				var v StateUpdateIdle
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Idle = &v
+				return nil
+			case "requires_action":
+				var v StateUpdateRequiresAction
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.RequiresAction = &v
+				return nil
+			case "unknown":
+				var v StateUpdateUnknown
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Unknown = &v
+				return nil
+			}
+		}
+		{
+			var v StateUpdateOther
+			var match bool = true
+			if !strings.HasPrefix(string(m["state"]), "\"") {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Other = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
+	return errors.New("no matching variant for union")
+}
+func (u StateUpdate) MarshalJSON() ([]byte, error) {
+	if u.Running != nil {
+		_b, _e := json.Marshal(*u.Running)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["state"] = json.RawMessage("\"running\"")
+		return json.Marshal(m)
+	}
+	if u.Idle != nil {
+		_b, _e := json.Marshal(*u.Idle)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["state"] = json.RawMessage("\"idle\"")
+		return json.Marshal(m)
+	}
+	if u.RequiresAction != nil {
+		_b, _e := json.Marshal(*u.RequiresAction)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["state"] = json.RawMessage("\"requires_action\"")
+		return json.Marshal(m)
+	}
+	if u.Unknown != nil {
+		_b, _e := json.Marshal(*u.Unknown)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["state"] = json.RawMessage("\"unknown\"")
+		return json.Marshal(m)
+	}
+	if u.Other != nil {
+		_b, _e := json.Marshal(*u.Other)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
+
 // Reasons why an agent stops processing a prompt turn.
 //
 // See protocol docs: [Stop Reasons](https://agentclientprotocol.com/protocol/prompt-turn#stop-reasons)
@@ -10208,6 +11898,154 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
+	decodeLenient(raw.Title, &v.Title)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Capability marker for exposing reusable child sessions as restricted ACP sessions.
+//
+// Supplying '{}' advertises support for child association and state updates,
+// session-directed messages, and restricted-session semantics. The client
+// must advertise this capability before the agent sends subagent updates or
+// session-directed messages.
+type SubagentCapabilities struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *SubagentCapabilities) UnmarshalJSON(b []byte) error {
+	type plain SubagentCapabilities
+	type SubagentCapabilities struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := SubagentCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Client-initiated session mutations permitted for a specific subagent session.
+//
+// A mutation requires an explicit per-child capability; support for the method
+// on ordinary sessions does not grant support on a child.
+type SubagentSessionCapabilities struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Permits the client to cancel this child's current work without ending
+	// the session. Omitted or 'null' means unsupported; an object (including
+	// '{}') means supported.
+	Cancel *SessionCancelCapabilities `json:"cancel,omitempty"`
+}
+
+func (v *SubagentSessionCapabilities) UnmarshalJSON(b []byte) error {
+	type plain SubagentSessionCapabilities
+	type SubagentSessionCapabilities struct {
+		*plain
+		Meta   json.RawMessage `json:"_meta"`
+		Cancel json.RawMessage `json:"cancel"`
+	}
+	raw := SubagentSessionCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Cancel, &v.Cancel)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Notification that the enclosing parent session created and owns a child session.
+//
+// Later updates modify the existing association's metadata, not its ownership.
+//
+// Sent on the immediate parent session. The first update for an unknown
+// ['SubagentUpdate::session_id'] announces the child and MUST be sent
+// before any live child traffic or live message naming the child as sender
+// or recipient. Parents may message and reuse an announced child across
+// multiple operations.
+// Child events are delivered automatically on the same connection; no child
+// load, resume, or subscription is needed.
+//
+// Only the subagent session ID is required. Omitted patch fields keep their
+// previous values; 'null' clears them. Clearing capabilities disables child
+// mutations. Clearing state leaves current activity unset/unconfirmed: it does
+// not imply idle, stop work, or create an 'unknown' state snapshot. A concrete
+// state replaces the entire previous state object, not the session.
+// The title and description provide the parent's display metadata for the
+// child. They do not replace the content of individual messages or operations.
+type SubagentUpdate struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
+	// Omitted means unchanged; 'null' removes the metadata.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Client-initiated session mutations permitted for this subagent session.
+	//
+	// Omitted means unchanged; 'null' clears the capability set and disables
+	// child mutations. If never supplied, no session mutations are permitted.
+	// Read-only operations retain their normal protocol semantics and capability
+	// requirements. A concrete object replaces the whole capability set.
+	Capabilities *SubagentSessionCapabilities `json:"capabilities,omitempty"`
+	// The parent's human-readable description of the child's role or purpose.
+	//
+	// Omitted means unchanged; 'null' clears it. If unset, the Client chooses
+	// a fallback presentation. This is current display metadata, not the
+	// history of instructions sent to the child.
+	Description *string `json:"description,omitempty"`
+	// The opaque session ID identifying the child in all ACP messages.
+	SessionId SessionId `json:"sessionId"`
+	// Current state snapshot for the child session.
+	//
+	// Omitted means unchanged; 'null' clears the current activity without
+	// asserting idle or sending an 'unknown' snapshot. A concrete state
+	// replaces the previous state object wholesale. If never supplied, the
+	// current activity is unset/unconfirmed.
+	State *StateUpdate `json:"state,omitempty"`
+	// The parent's human-readable display title for this child. It need not be unique.
+	//
+	// Omitted means unchanged; 'null' clears it. If unset, the Client chooses
+	// a fallback presentation.
+	Title *string `json:"title,omitempty"`
+}
+
+func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
+	type plain SubagentUpdate
+	type SubagentUpdate struct {
+		*plain
+		Meta         json.RawMessage `json:"_meta"`
+		Capabilities json.RawMessage `json:"capabilities"`
+		Description  json.RawMessage `json:"description"`
+		State        json.RawMessage `json:"state"`
+		Title        json.RawMessage `json:"title"`
+	}
+	raw := SubagentUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Capabilities, &v.Capabilities)
+	decodeLenient(raw.Description, &v.Description)
+	decodeLenient(raw.State, &v.State)
 	decodeLenient(raw.Title, &v.Title)
 	return nil
 }
@@ -10477,10 +12315,6 @@ type ToolCall struct {
 	// File locations affected by this tool call.
 	// Enables "follow-along" features in clients.
 	Locations []ToolCallLocation `json:"locations,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that no
@@ -10810,10 +12644,6 @@ type ToolCallUpdate struct {
 	Kind *ToolKind `json:"kind,omitempty"`
 	// Replace the locations collection.
 	Locations []ToolCallLocation `json:"locations,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
@@ -10904,6 +12734,40 @@ func (v *ToolKind) UnmarshalJSON(b []byte) error {
 	default:
 		*v = ToolKindOther
 	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// The Agent cannot currently determine foreground activity.
+//
+// Report this when activity becomes unobservable, not merely because the child
+// has been quiet. The Client MUST stop presenting the previous state as confirmed
+// current activity, but may retain it as last known. A later state replaces this
+// snapshot normally.
+//
+// This is not a task outcome or session closure. It does not cancel work, resolve
+// pending requests, or revoke capabilities; capabilities are updated separately.
+type UnknownStateUpdate struct {
+	// The _meta property is reserved by ACP for additional metadata.
+	// Implementations MUST NOT make assumptions about values at these keys.
+	// Optional; omitted and 'null' mean no metadata for this state snapshot.
+	Meta map[string]any `json:"_meta,omitempty"`
+}
+
+func (v *UnknownStateUpdate) UnmarshalJSON(b []byte) error {
+	type plain UnknownStateUpdate
+	type UnknownStateUpdate struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnknownStateUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
 
@@ -11000,74 +12864,6 @@ func (v *UnstableCloseNesResponse) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Request parameters for 'mcp/connect'.
-type UnstableConnectMcpRequest struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// The ACP MCP server ID that was provided by the component declaring the MCP server.
-	ServerId UnstableMcpServerAcpId `json:"serverId"`
-}
-
-func (v *UnstableConnectMcpRequest) UnmarshalJSON(b []byte) error {
-	type plain UnstableConnectMcpRequest
-	type UnstableConnectMcpRequest struct {
-		*plain
-		Meta json.RawMessage `json:"_meta"`
-	}
-	raw := UnstableConnectMcpRequest{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	return nil
-}
-
-func (v *UnstableConnectMcpRequest) Validate() error {
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Response to 'mcp/connect'.
-type UnstableConnectMcpResponse struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// The unique identifier for this MCP-over-ACP connection.
-	ConnectionId UnstableMcpConnectionId `json:"connectionId"`
-}
-
-func (v *UnstableConnectMcpResponse) UnmarshalJSON(b []byte) error {
-	type plain UnstableConnectMcpResponse
-	type UnstableConnectMcpResponse struct {
-		*plain
-		Meta json.RawMessage `json:"_meta"`
-	}
-	raw := UnstableConnectMcpResponse{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	return nil
-}
-
-func (v *UnstableConnectMcpResponse) Validate() error {
-	return nil
-}
-
 // Notification sent when a file is edited.
 type UnstableDidChangeDocumentNotification struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -11100,17 +12896,13 @@ func (v *UnstableDidChangeDocumentNotification) UnmarshalJSON(b []byte) error {
 	type plain UnstableDidChangeDocumentNotification
 	type UnstableDidChangeDocumentNotification struct {
 		*plain
-		Meta           json.RawMessage `json:"_meta"`
-		ContentChanges json.RawMessage `json:"contentChanges"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := UnstableDidChangeDocumentNotification{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.ContentChanges, &v.ContentChanges) && raw.ContentChanges != nil {
-		setDefault(&v.ContentChanges, "[]")
-	}
 	return nil
 }
 
@@ -11352,72 +13144,6 @@ func (v *UnstableDisableProviderResponse) Validate() error {
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
 //
-// Request parameters for 'mcp/disconnect'.
-type UnstableDisconnectMcpRequest struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-	// The MCP-over-ACP connection to close.
-	ConnectionId UnstableMcpConnectionId `json:"connectionId"`
-}
-
-func (v *UnstableDisconnectMcpRequest) UnmarshalJSON(b []byte) error {
-	type plain UnstableDisconnectMcpRequest
-	type UnstableDisconnectMcpRequest struct {
-		*plain
-		Meta json.RawMessage `json:"_meta"`
-	}
-	raw := UnstableDisconnectMcpRequest{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	return nil
-}
-
-func (v *UnstableDisconnectMcpRequest) Validate() error {
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Response to 'mcp/disconnect'.
-type UnstableDisconnectMcpResponse struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
-	Meta map[string]any `json:"_meta,omitempty"`
-}
-
-func (v *UnstableDisconnectMcpResponse) UnmarshalJSON(b []byte) error {
-	type plain UnstableDisconnectMcpResponse
-	type UnstableDisconnectMcpResponse struct {
-		*plain
-		Meta json.RawMessage `json:"_meta"`
-	}
-	raw := UnstableDisconnectMcpResponse{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	return nil
-}
-
-func (v *UnstableDisconnectMcpResponse) Validate() error {
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Request parameters for forking an existing session.
 //
 // Creates a new session based on the context of an existing one, allowing
@@ -11449,17 +13175,13 @@ func (v *UnstableForkSessionRequest) UnmarshalJSON(b []byte) error {
 	type plain UnstableForkSessionRequest
 	type UnstableForkSessionRequest struct {
 		*plain
-		Meta                  json.RawMessage `json:"_meta"`
-		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
-		McpServers            json.RawMessage `json:"mcpServers"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := UnstableForkSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.AdditionalDirectories, &v.AdditionalDirectories)
-	decodeLenientItems(raw.McpServers, &v.McpServers)
 	return nil
 }
 
@@ -11615,10 +13337,54 @@ const (
 
 // **UNSTABLE**
 //
+// An inner MCP error, distinct from an outer ACP binding or runtime error.
+//
+// 'code' and 'message' are required and non-null. 'data' is optional;
+// explicit 'null' is preserved separately from an omitted key.
+type UnstableMcpError struct {
+	// Inner MCP error code; never an ACP error code.
+	Code int `json:"code"`
+	// Optional error data; explicit null is retained.
+	Data any `json:"data,omitempty"`
+	// Inner MCP error message.
+	Message string `json:"message"`
+	// AdditionalProperties holds the members that the schema does not name.
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (v UnstableMcpError) MarshalJSON() ([]byte, error) {
+	type Alias UnstableMcpError
+	var a Alias
+	a = Alias(v)
+	named, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return withAdditionalProperties(named, v.AdditionalProperties)
+}
+
+func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
+	type plain UnstableMcpError
+	type UnstableMcpError struct {
+		*plain
+	}
+	raw := UnstableMcpError{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	v.AdditionalProperties = additionalProperties(b, "code", "data", "message")
+	return nil
+}
+
+// **UNSTABLE**
+//
 // This capability is not part of the spec yet, and may be removed or changed at any point.
 //
-// A unique identifier for an active MCP-over-ACP connection.
-type UnstableMcpConnectionId string
+// Identifies an inner MCP request active against a server on this ACP connection.
+//
+// Generated by the caller and preserved unchanged by proxies. This is distinct
+// from the outer ACP JSON-RPC request ID.
+type UnstableMcpRequestId string
 
 // Configuration for connecting to an MCP (Model Context Protocol) server.
 //
@@ -11902,7 +13668,7 @@ func (u UnstableMcpServer) MarshalJSON() ([]byte, error) {
 // ACP transport configuration for MCP.
 //
 // The MCP server is provided by an ACP component and communicates over the ACP channel
-// using 'mcp/connect', 'mcp/message', and 'mcp/disconnect'.
+// using 'mcp/message'.
 type UnstableMcpServerAcp struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
@@ -11940,8 +13706,7 @@ func (v *UnstableMcpServerAcp) UnmarshalJSON(b []byte) error {
 // Unique identifier for an MCP server using the ACP transport.
 //
 // The value is opaque and generated by the ACP component providing the MCP server. It is
-// used by 'mcp/connect' to route connection requests back to the component that declared the
-// server.
+// used by 'mcp/message' to route requests to the component that declared the server.
 type UnstableMcpServerAcpId string
 
 // **UNSTABLE**
@@ -11950,8 +13715,8 @@ type UnstableMcpServerAcpId string
 //
 // Notification parameters for 'mcp/message'.
 //
-// This is used when the wrapped MCP message is a notification and the outer JSON-RPC
-// envelope has no 'id'.
+// Sent by the provider to the consumer for an active request (including
+// subscription acknowledgements and updates); the outer envelope has no 'id'.
 type UnstableMessageMcpNotification struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
@@ -11959,29 +13724,29 @@ type UnstableMessageMcpNotification struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// The MCP-over-ACP connection this message is sent on.
-	ConnectionId UnstableMcpConnectionId `json:"connectionId"`
 	// The inner MCP method name.
 	Method string `json:"method"`
 	// Optional inner MCP params.
 	//
 	// If omitted or set to 'null', the inner MCP message has no params.
 	Params map[string]any `json:"params,omitempty"`
+	// The identifier of the active inner MCP request.
+	RequestId UnstableMcpRequestId `json:"requestId"`
+	// The declared ACP MCP server handling the associated request.
+	ServerId UnstableMcpServerAcpId `json:"serverId"`
 }
 
 func (v *UnstableMessageMcpNotification) UnmarshalJSON(b []byte) error {
 	type plain UnstableMessageMcpNotification
 	type UnstableMessageMcpNotification struct {
 		*plain
-		Meta   json.RawMessage `json:"_meta"`
-		Params json.RawMessage `json:"params"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	raw := UnstableMessageMcpNotification{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Params, &v.Params)
 	return nil
 }
 
@@ -12004,14 +13769,16 @@ type UnstableMessageMcpRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
 	Meta map[string]any `json:"_meta,omitempty"`
-	// The MCP-over-ACP connection this message is sent on.
-	ConnectionId UnstableMcpConnectionId `json:"connectionId"`
 	// The inner MCP method name.
 	Method string `json:"method"`
 	// Optional inner MCP params.
 	//
 	// If omitted or set to 'null', the inner MCP message has no params.
 	Params map[string]any `json:"params,omitempty"`
+	// The caller-generated identifier for the inner MCP request.
+	RequestId UnstableMcpRequestId `json:"requestId"`
+	// The declared ACP MCP server receiving this request.
+	ServerId UnstableMcpServerAcpId `json:"serverId"`
 }
 
 func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
@@ -12037,13 +13804,135 @@ func (v *UnstableMessageMcpRequest) Validate() error {
 
 // **UNSTABLE**
 //
-// This capability is not part of the spec yet, and may be removed or changed at any point.
+// The successful outer ACP 'mcp/message' response carries exactly one
+// inner MCP outcome: an opaque result (including JSON null), or an MCP error.
+// Outer ACP errors are reserved for binding and runtime failures.
 //
-// Response to 'mcp/message'.
-//
-// This is the inner MCP response result payload. Any JSON value is valid.
-// UnstableMessageMcpResponse is a union or complex schema; represented generically.
-type UnstableMessageMcpResponse any
+// Both branches require their carrier key. An error must be a non-null object.
+// Unknown outer fields are ignored; inner result and error fields are preserved.
+// Carrier '_meta' is optional; null or invalid values are treated as absent.
+// Senders must include exactly one outcome; receivers prefer 'result' if both are present.
+// An opaque inner MCP result.
+type UnstableMessageMcpResult struct {
+	// Optional ACP carrier metadata.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Required, even if JSON null.
+	Result any `json:"result"`
+}
+
+func (v *UnstableMessageMcpResult) UnmarshalJSON(b []byte) error {
+	type plain UnstableMessageMcpResult
+	type UnstableMessageMcpResult struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnstableMessageMcpResult{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+// A structured inner MCP error.
+type UnstableMessageMcpError struct {
+	// Optional ACP carrier metadata.
+	Meta map[string]any `json:"_meta,omitempty"`
+	// Required, non-null MCP error object.
+	Error UnstableMcpError `json:"error"`
+}
+
+func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
+	type plain UnstableMessageMcpError
+	type UnstableMessageMcpError struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnstableMessageMcpError{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+type UnstableMessageMcpResponse struct {
+	// An opaque inner MCP result.
+	Result *UnstableMessageMcpResult `json:"-"`
+	// A structured inner MCP error.
+	Error *UnstableMessageMcpError `json:"-"`
+}
+
+func (u *UnstableMessageMcpResponse) UnmarshalJSON(b []byte) error {
+	*u = UnstableMessageMcpResponse{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err == nil {
+		{
+			var v UnstableMessageMcpResult
+			var match bool = true
+			if _, ok := m["result"]; !ok {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Result = &v
+				return nil
+			}
+		}
+		{
+			var v UnstableMessageMcpError
+			var match bool = true
+			if raw := string(m["error"]); raw == "" || raw == "null" {
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) != nil {
+					return errors.New("invalid variant payload")
+				}
+				u.Error = &v
+				return nil
+			}
+		}
+	} else {
+		if _, ok := err.(*json.UnmarshalTypeError); !ok {
+			return err
+		}
+	}
+	var arr []map[string]json.RawMessage
+	if json.Unmarshal(b, &arr) == nil {
+	}
+	return errors.New("no matching variant for union")
+}
+func (u UnstableMessageMcpResponse) MarshalJSON() ([]byte, error) {
+	if u.Result != nil {
+		_b, _e := json.Marshal(*u.Result)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	if u.Error != nil {
+		_b, _e := json.Marshal(*u.Error)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return []byte{}, nil
+}
 
 // A diagnostic (error, warning, etc.).
 type UnstableNesDiagnostic struct {
@@ -13618,6 +15507,15 @@ type AgentExperimental interface {
 	UnstableDidOpenDocument(ctx context.Context, params UnstableDidOpenDocumentNotification) error
 	// Notification sent when a file is saved.
 	UnstableDidSaveDocument(ctx context.Context, params UnstableDidSaveDocumentNotification) error
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Notification parameters for 'mcp/message'.
+	//
+	// Sent by the provider to the consumer for an active request (including
+	// subscription acknowledgements and updates); the outer envelope has no 'id'.
+	UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpNotification) error
 	// Notification sent when a suggestion is accepted.
 	UnstableAcceptNes(ctx context.Context, params UnstableAcceptNesNotification) error
 	// Request to close an NES session.
@@ -13710,14 +15608,8 @@ type ClientExperimental interface {
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
 	//
-	// Request parameters for 'mcp/connect'.
-	UnstableConnectMcp(ctx context.Context, params UnstableConnectMcpRequest) (UnstableConnectMcpResponse, error)
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Request parameters for 'mcp/disconnect'.
-	UnstableDisconnectMcp(ctx context.Context, params UnstableDisconnectMcpRequest) (UnstableDisconnectMcpResponse, error)
+	// Request parameters for 'mcp/message'.
+	UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpRequest) (UnstableMessageMcpResponse, error)
 }
 
 func (v ElicitationSchemaType) valid() bool {

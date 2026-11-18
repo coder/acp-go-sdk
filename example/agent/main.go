@@ -174,6 +174,13 @@ func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.Se
 	return acp.SetSessionConfigOptionResponse{ConfigOptions: a.configOptions(s)}, nil
 }
 
+// UnstableMessageMcp implements acp.AgentExperimental. The example agent
+// sends no mcp/message request, so it has no active request for a client's
+// MCP notification to belong to, and drops it.
+func (a *exampleAgent) UnstableMessageMcp(ctx context.Context, params acp.UnstableMessageMcpNotification) error {
+	return nil
+}
+
 // UnstableDidChangeDocument implements acp.AgentExperimental.
 func (a *exampleAgent) UnstableDidChangeDocument(ctx context.Context, params acp.UnstableDidChangeDocumentNotification) error {
 	return nil

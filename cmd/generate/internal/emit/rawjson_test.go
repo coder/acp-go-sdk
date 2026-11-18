@@ -20,7 +20,8 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
     "open": {"type": "object"},
     "items": {"type": "array", "items": {}},
     "either": {"anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "boolean"}]},
-    "env": {"type": "object", "additionalProperties": {"type": "string"}}
+    "env": {"type": "object", "additionalProperties": {"type": "string"}},
+    "loose": {"type": "object", "additionalProperties": {"description": "Anything."}}
   }},
   "Free": {"description": "A payload of any kind."}
 }}`)
@@ -54,6 +55,7 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 		"Items":    "[]json.RawMessage",
 		"Either":   "json.RawMessage",
 		"Env":      "map[string]any",
+		"Loose":    "map[string]json.RawMessage",
 	}
 	for name, typ := range want {
 		if fields[name] != typ {

@@ -29,6 +29,9 @@ import (
 type Patch[T any] struct {
 	value T
 	state patchState
+	// err is why the value of a set Patch cannot be encoded, which
+	// MarshalJSON returns (see WithUpdateRawInput).
+	err error
 }
 
 type patchState uint8
@@ -86,6 +89,9 @@ func (p Patch[T]) IsUnset() bool { return p.state == patchUnset }
 // MarshalJSON writes the value of a set Patch, and null otherwise. Only the
 // struct that holds an unset Patch can leave the member out (see Patch).
 func (p Patch[T]) MarshalJSON() ([]byte, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
 	if p.state != patchSet {
 		return []byte("null"), nil
 	}

@@ -83,6 +83,32 @@ func TestPatchSet_WritesANilSliceAsEmpty(t *testing.T) {
 	}
 }
 
+// A nil slice or map in an interface is still written as an empty one, and a
+// type that writes itself, such as json.RawMessage, is left to do so.
+func TestPatchSet_WritesANilValueAsItsTypeAsks(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		patch json.Marshaler
+		want  string
+	}{
+		{"nil slice in an interface", PatchSet[any]([]string(nil)), `[]`},
+		{"nil map in an interface", PatchSet[any](map[string]int(nil)), `{}`},
+		{"nil interface", PatchSet[any](nil), `null`},
+		{"nil raw JSON", PatchSet[json.RawMessage](nil), `null`},
+		{"raw JSON", PatchSet(json.RawMessage(`[1]`)), `[1]`},
+	}
+	for _, tt := range tests {
+		tt := tt // the module is Go 1.21, where each iteration shares tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if out, err := json.Marshal(tt.patch); err != nil || string(out) != tt.want {
+				t.Errorf("patch encodes to %s (error %v), want %s", out, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestWithUpdateContent_ClearsWithAnEmptySlice(t *testing.T) {
 	t.Parallel()
 	update := UpdateToolCall("t", WithUpdateContent(nil), WithUpdateLocations([]ToolCallLocation{}))

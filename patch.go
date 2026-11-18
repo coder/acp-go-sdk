@@ -15,8 +15,10 @@ import (
 //   - set: the member holds a value, which replaces the stored one.
 //
 // Make one with PatchSet or PatchNull, and read it with Value, IsNull, and
-// IsUnset. A struct that has a Patch field leaves the member out when the
-// field is unset.
+// IsUnset. The structs of this package leave the member out when the field is
+// unset. In a struct of your own, tag the field omitzero (Go 1.24 or later) to
+// do the same: omitempty never leaves out a struct, so it writes an unset
+// Patch as null.
 type Patch[T any] struct {
 	value T
 	state patchState
@@ -31,7 +33,8 @@ const (
 )
 
 // PatchSet returns the Patch that replaces the stored value with v. A nil
-// slice or map is written as an empty one, so that it does not read as null.
+// slice or map is written as an empty one, so that it does not read as null,
+// unless its type has a MarshalJSON method: a nil json.RawMessage is null.
 func PatchSet[T any](v T) Patch[T] {
 	return Patch[T]{value: v, state: patchSet}
 }
@@ -53,19 +56,34 @@ func (p Patch[T]) IsNull() bool { return p.state == patchNull }
 // IsUnset reports whether p leaves the stored value as it is.
 func (p Patch[T]) IsUnset() bool { return p.state == patchUnset }
 
-// MarshalJSON writes the value of a set Patch, and null otherwise. The struct
-// that holds an unset Patch leaves the member out.
+// MarshalJSON writes the value of a set Patch, and null otherwise. Only the
+// struct that holds an unset Patch can leave the member out (see Patch).
 func (p Patch[T]) MarshalJSON() ([]byte, error) {
 	if p.state != patchSet {
 		return []byte("null"), nil
 	}
-	switch v := reflect.ValueOf(&p.value).Elem(); {
-	case v.Kind() == reflect.Slice && v.IsNil():
-		return []byte("[]"), nil
-	case v.Kind() == reflect.Map && v.IsNil():
-		return []byte("{}"), nil
+	if empty := emptyJSON(reflect.ValueOf(&p.value).Elem()); empty != nil {
+		return empty, nil
 	}
 	return json.Marshal(p.value)
+}
+
+var marshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
+
+// emptyJSON returns [] for a nil slice and {} for a nil map, also one that an
+// interface holds, and nil for any other value or for a type that writes
+// itself.
+func emptyJSON(v reflect.Value) []byte {
+	for v.Kind() == reflect.Interface && !v.IsNil() {
+		v = v.Elem()
+	}
+	if (v.Kind() != reflect.Slice && v.Kind() != reflect.Map) || !v.IsNil() || v.Type().Implements(marshalerType) {
+		return nil
+	}
+	if v.Kind() == reflect.Slice {
+		return []byte("[]")
+	}
+	return []byte("{}")
 }
 
 // UnmarshalJSON reads null as a Patch that clears the stored value, and any

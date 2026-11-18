@@ -11,30 +11,18 @@ import (
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/util"
 )
 
-// MethodBinding describes which interface a method belongs to on each side.
-type MethodBinding int
-
-const (
-	BindUnknown MethodBinding = iota
-	// Agent bindings
-	BindAgent
-	BindAgentLoader
-	BindAgentExperimental
-	// Client bindings
-	BindClient
-	BindClientExperimental
-	BindClientTerminal
-)
-
-// MethodInfo captures association between a wire method and its Go types and binding.
+// MethodInfo captures association between a wire method and its Go types and interface.
 type MethodInfo struct {
-	Side        string // "agent" or "client"
-	Method      string // wire method, e.g., "session/new"
-	MethodKey   string // meta key, e.g., "session_new"
-	Req         string // Go type name of Request
-	Resp        string // Go type name of Response
-	Notif       string // Go type name of Notification
-	Binding     MethodBinding
+	Side   string // "agent" or "client"
+	Method string // wire method, e.g., "session/new"
+	Req    string // Go type name of Request
+	Resp   string // Go type name of Response
+	Notif  string // Go type name of Notification
+	// Name is the Go method that handles the wire method, e.g., "NewSession".
+	Name string
+	// Optional names the method's own optional interface, such as
+	// "AgentLoader". It is empty for a method of the Agent or Client interface.
+	Optional    string
 	DocsIgnored bool
 }
 
@@ -158,38 +146,42 @@ func BuildMethodGroups(schema *load.Schema, meta *load.Meta) Groups {
 			}
 		}
 	}
-	// Post-process bindings and docs-ignore
+	// Post-process names, interfaces and docs-ignore
 	for _, mi := range groups {
-		mi.Binding = classifyBinding(schema, mi)
+		mi.Name = methodName(mi)
+		mi.Optional = optionalInterface(schema, mi)
 		mi.DocsIgnored = isDocsIgnoredMethod(schema, mi)
 	}
 	return groups
 }
 
-// classifyBinding determines interface binding for each method.
-func classifyBinding(schema *load.Schema, mi *MethodInfo) MethodBinding {
-	if mi == nil {
-		return BindUnknown
-	}
-	switch mi.Side {
-	case "agent":
-		if mi.Method == "session/load" {
-			return BindAgentLoader
-		}
-		// Route unstable methods to the experimental interface.
-		if isUnstableMethod(schema, mi) {
-			return BindAgentExperimental
-		}
-		return BindAgent
-	case "client":
-		// Route unstable methods to the experimental interface.
-		if isUnstableMethod(schema, mi) {
-			return BindClientExperimental
-		}
-		return BindClient
+// methodName returns the Go method that handles a wire method: the
+// notification or request type name without its suffix, with two names fixed
+// by the SDK's first release.
+func methodName(mi *MethodInfo) string {
+	switch {
+	case mi.Method == "session/update":
+		return "SessionUpdate"
+	case mi.Method == "session/cancel":
+		return "Cancel"
+	case mi.Notif != "":
+		return strings.TrimSuffix(mi.Notif, "Notification")
 	default:
-		return BindUnknown
+		return strings.TrimSuffix(mi.Req, "Request")
 	}
+}
+
+// optionalInterface returns the name of the method's own optional interface,
+// or "" for a stable method of the frozen Agent and Client interfaces.
+func optionalInterface(schema *load.Schema, mi *MethodInfo) string {
+	k := key(mi.Side, mi.Method)
+	if requiredMethods[k] && !isUnstableMethod(schema, mi) {
+		return ""
+	}
+	if name := optionalNames[k]; name != "" {
+		return name
+	}
+	return util.TitleWord(mi.Side) + mi.Name
 }
 
 // isDocsIgnoredMethod if any associated type (req/resp/notif) marked x-docs-ignore.
@@ -263,21 +255,6 @@ func inferTypeBaseFromMethodKey(methodKey string) string {
 		segs[i] = util.TitleWord(segs[i])
 	}
 	return strings.Join(segs, "")
-}
-
-// DispatchMethodNameForNotification deduces trait method name for notifications.
-func DispatchMethodNameForNotification(methodKey, typeName string) string {
-	switch methodKey {
-	case "session_update":
-		return "SessionUpdate"
-	case "session_cancel":
-		return "Cancel"
-	default:
-		if strings.HasSuffix(typeName, "Notification") {
-			return strings.TrimSuffix(typeName, "Notification")
-		}
-		return typeName
-	}
 }
 
 // SortedKeys returns sorted keys of a map.

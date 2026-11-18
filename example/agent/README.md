@@ -7,7 +7,7 @@
 ## Interface
 
 - No exported top-level symbols. All top-level identifiers are unexported: `agentSession`, `exampleAgent`, `newExampleAgent`, `defaultHost`, `randomID`, `pause`, `main` [main.go:exampleAgent]
-- `exampleAgent` satisfies `acp.Agent`, `acp.AgentLoader`, and `acp.AgentExperimental`, checked by compile-time assertions [main.go:exampleAgent]
+- `exampleAgent` satisfies `acp.Agent` and the optional interfaces `acp.AgentLoader` and `acp.AgentUnstableMessageMcp`, checked by compile-time assertions. It implements no other optional interface, so the SDK answers every other agent method, such as `session/fork`, with `-32601` [main.go:exampleAgent]
 - CLI: no flags are parsed. With no arguments, the agent speaks ACP on its own stdin and stdout. With arguments, `os.Args[1]` is the client program and `os.Args[2:]` are its arguments [main.go:main]
 - Environment variables: this file reads none. With arguments, `exec.CommandContext` looks up the client program through `PATH` when its name has no path separator, and the child inherits the full environment [main.go:main]
 - `Initialize` records whether the client accepts boolean config options, form and url elicitation, notices, and compaction updates, and returns `ProtocolVersion: acp.ProtocolVersionNumber`, `AgentCapabilities.LoadSession: false`, and `SessionCapabilities` with `List` and `Delete` set to `{}` [main.go:Initialize]
@@ -18,9 +18,9 @@
 - `Cancel` cancels the running turn of a session [main.go:Cancel]
 - `Authenticate` and `LoadSession` return empty responses and a nil error [main.go:Authenticate, main.go:LoadSession]
 - `SetSessionMode` returns an empty response and a nil error [main.go:SetSessionMode]
-- `UnstableDidOpenDocument`, `UnstableDidChangeDocument`, `UnstableDidCloseDocument`, `UnstableDidFocusDocument`, `UnstableDidSaveDocument`, `UnstableAcceptNes`, `UnstableRejectNes`, and `UnstableMessageMcp` return nil and do nothing [main.go:UnstableDidOpenDocument, main.go:UnstableAcceptNes, main.go:UnstableMessageMcp]
+- `UnstableMessageMcp` returns nil and does nothing: the agent sends no `mcp/message` request, so no client notification belongs to one [main.go:UnstableMessageMcp]
 - `SetSessionConfigOption` sets the `model` select to `demo-fast` or `demo-deep`, or the `web_search` boolean for a client that accepts booleans, and returns every option. Any other id or value returns `acp.NewInvalidParams` [main.go:SetSessionConfigOption]
-- These methods return `acp.NewMethodNotFound`: `ResumeSession`, `CloseSession`, `Logout`, `UnstableForkSession`, `UnstableStartNes`, `UnstableSuggestNes`, `UnstableCloseNes`, `UnstableListProviders`, `UnstableSetProvider`, `UnstableDisableProvider` [main.go:ResumeSession, main.go:CloseSession, main.go:UnstableForkSession]
+- These methods return `acp.NewMethodNotFound`: `ResumeSession`, `CloseSession`, `Logout` [main.go:ResumeSession, main.go:CloseSession, main.go:Logout]
 - `SetAgentConnection` stores the `*acp.AgentSideConnection` that the turn uses to send updates. `main` calls it after `acp.NewAgentSideConnection` [main.go:SetAgentConnection, main.go:main]
 
 ## Invariants

@@ -164,10 +164,24 @@ type agentFuncs struct {
 }
 
 var (
-	_ Agent                  = (*agentFuncs)(nil)
-	_ AgentLoader            = (*agentFuncs)(nil)
-	_ AgentExperimental      = (*agentFuncs)(nil)
-	_ ExtensionMethodHandler = (*agentFuncs)(nil)
+	_ Agent                          = (*agentFuncs)(nil)
+	_ AgentLoader                    = (*agentFuncs)(nil)
+	_ AgentUnstableAcceptNes         = (*agentFuncs)(nil)
+	_ AgentUnstableCloseNes          = (*agentFuncs)(nil)
+	_ AgentUnstableDidChangeDocument = (*agentFuncs)(nil)
+	_ AgentUnstableDidCloseDocument  = (*agentFuncs)(nil)
+	_ AgentUnstableDidFocusDocument  = (*agentFuncs)(nil)
+	_ AgentUnstableDidOpenDocument   = (*agentFuncs)(nil)
+	_ AgentUnstableDidSaveDocument   = (*agentFuncs)(nil)
+	_ AgentUnstableDisableProvider   = (*agentFuncs)(nil)
+	_ AgentUnstableForkSession       = (*agentFuncs)(nil)
+	_ AgentUnstableListProviders     = (*agentFuncs)(nil)
+	_ AgentUnstableMessageMcp        = (*agentFuncs)(nil)
+	_ AgentUnstableRejectNes         = (*agentFuncs)(nil)
+	_ AgentUnstableSetProvider       = (*agentFuncs)(nil)
+	_ AgentUnstableStartNes          = (*agentFuncs)(nil)
+	_ AgentUnstableSuggestNes        = (*agentFuncs)(nil)
+	_ ExtensionMethodHandler         = (*agentFuncs)(nil)
 )
 
 func (a agentFuncs) Initialize(ctx context.Context, p InitializeRequest) (InitializeResponse, error) {
@@ -236,7 +250,7 @@ func (a agentFuncs) SetSessionMode(ctx context.Context, params SetSessionModeReq
 	return SetSessionModeResponse{}, nil
 }
 
-// UnstableForkSession implements AgentExperimental.
+// UnstableForkSession implements AgentUnstableForkSession.
 func (a agentFuncs) UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
 	if a.UnstableForkSessionFunc != nil {
 		return a.UnstableForkSessionFunc(ctx, params)

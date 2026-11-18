@@ -42,6 +42,15 @@ queue, and then you tag and publish its merge commit.
 1. If the new schema breaks hand-written code, examples, or docs, fix them in
    the same PR, and rerun `make test`.
 
+1. Name every break in the release notes. The `verify-schema-bump` skill lists
+   them (G1). Name each optional interface that the schema renames or removes,
+   with its replacement. A method that becomes stable moves from, for example,
+   `AgentUnstableForkSession` (method `UnstableForkSession`) to
+   `AgentForkSession` (method `ForkSession`). An implementer that does not
+   assert the old interface keeps compiling, and its peer then gets `-32601`
+   for the method. `acp.Agent` and `acp.Client` never change: their methods are
+   frozen in `cmd/generate/internal/ir/baseline.go`.
+
 1. Commit the change. Then run `make check`, which fails on any formatting
    drift.
 

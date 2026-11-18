@@ -42,21 +42,15 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 					Id("a").Dot("cancelPrompt").Call(Id("ctx"), Id("string").Call(Id("p").Dot("SessionId"))),
 				)
 			}
-			callName := ir.DispatchMethodNameForNotification(k, mi.Notif)
-			pre, recv := jAgentAssert(mi.Binding, callName, mi.Notif, "", false)
-			if pre != nil {
-				caseBody = append(caseBody, pre...)
-			}
-			caseBody = append(caseBody, jCallNotification(recv, callName)...)
+			pre, recv := jOptionalAssert("a.agent", mi)
+			caseBody = append(caseBody, pre...)
+			caseBody = append(caseBody, jCallNotification(recv, mi.Name)...)
 		} else if mi.Req != "" {
 			respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
 			nullResp := ir.IsNullResponse(schema.Defs[respName])
 			caseBody = append(caseBody, jUnmarshalValidate(mi.Req)...)
-			methodName := strings.TrimSuffix(mi.Req, "Request")
-			pre, recv := jAgentAssert(mi.Binding, methodName, mi.Req, respName, !nullResp)
-			if pre != nil {
-				caseBody = append(caseBody, pre...)
-			}
+			pre, recv := jOptionalAssert("a.agent", mi)
+			caseBody = append(caseBody, pre...)
 			if mi.Method == "session/prompt" {
 				// Derive a cancellable context per session prompt.
 				caseBody = append(
@@ -68,15 +62,15 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 				// Call agent.Prompt(reqCtx, p)
 				caseBody = append(
 					caseBody,
-					List(Id("resp"), Id("err")).Op(":=").Id(recv).Dot(methodName).Call(Id("reqCtx"), Id("p")),
+					List(Id("resp"), Id("err")).Op(":=").Id(recv).Dot(mi.Name).Call(Id("reqCtx"), Id("p")),
 					Id("donePrompt").Call(),
 					If(Id("err").Op("!=").Nil()).Block(jRetToReqErr()),
 					Return(Id("resp"), Nil()),
 				)
 			} else if nullResp {
-				caseBody = append(caseBody, jCallRequestNoResp(recv, methodName)...)
+				caseBody = append(caseBody, jCallRequestNoResp(recv, mi.Name)...)
 			} else {
-				caseBody = append(caseBody, jCallRequestWithResp(recv, methodName)...)
+				caseBody = append(caseBody, jCallRequestWithResp(recv, mi.Name)...)
 			}
 		}
 		if len(caseBody) > 0 {
@@ -116,23 +110,16 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 			continue
 		}
 		if mi.Notif != "" {
-			name := strings.TrimSuffix(mi.Notif, "Notification")
-			switch mi.Method {
-			case "session/update":
-				name = "SessionUpdate"
-			case "session/cancel":
-				name = "Cancel"
-			}
-			fAgent.Func().Params(Id("c").Op("*").Id("AgentSideConnection")).Id(name).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Notif)).Error().
+			fAgent.Func().Params(Id("c").Op("*").Id("AgentSideConnection")).Id(mi.Name).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Notif)).Error().
 				Block(Return(Id("c").Dot("conn").Dot("SendNotification").Call(Id("ctx"), Id(constName), Id("params"))))
 		} else if mi.Req != "" {
 			respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
 			if ir.IsNullResponse(schema.Defs[respName]) {
-				fAgent.Func().Params(Id("c").Op("*").Id("AgentSideConnection")).Id(strings.TrimSuffix(mi.Req, "Request")).
+				fAgent.Func().Params(Id("c").Op("*").Id("AgentSideConnection")).Id(mi.Name).
 					Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Error().
 					Block(Return(Id("c").Dot("conn").Dot("SendRequestNoResult").Call(Id("ctx"), Id(constName), Id("params"))))
 			} else {
-				fAgent.Func().Params(Id("c").Op("*").Id("AgentSideConnection")).Id(strings.TrimSuffix(mi.Req, "Request")).
+				fAgent.Func().Params(Id("c").Op("*").Id("AgentSideConnection")).Id(mi.Name).
 					Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Params(Id(respName), Error()).
 					Block(
 						List(Id("resp"), Id("err")).Op(":=").Id("SendRequest").Types(Id(respName)).Call(Id("c").Dot("conn"), Id("ctx"), Id(constName), Id("params")),
@@ -167,25 +154,19 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 		body := []Code{}
 		if mi.Notif != "" {
 			body = append(body, jUnmarshalValidate(mi.Notif)...)
-			callName := ir.DispatchMethodNameForNotification(k, mi.Notif)
-			pre, recv := jClientAssert(mi.Binding, callName, mi.Notif, "", false)
-			if pre != nil {
-				body = append(body, pre...)
-			}
-			body = append(body, jCallNotification(recv, callName)...)
+			pre, recv := jOptionalAssert("c.client", mi)
+			body = append(body, pre...)
+			body = append(body, jCallNotification(recv, mi.Name)...)
 		} else if mi.Req != "" {
 			respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
 			nullResp := ir.IsNullResponse(schema.Defs[respName])
 			body = append(body, jUnmarshalValidate(mi.Req)...)
-			methodName := strings.TrimSuffix(mi.Req, "Request")
-			pre, recv := jClientAssert(mi.Binding, methodName, mi.Req, respName, !nullResp)
-			if pre != nil {
-				body = append(body, pre...)
-			}
+			pre, recv := jOptionalAssert("c.client", mi)
+			body = append(body, pre...)
 			if nullResp {
-				body = append(body, jCallRequestNoResp(recv, methodName)...)
+				body = append(body, jCallRequestNoResp(recv, mi.Name)...)
 			} else {
-				body = append(body, jCallRequestWithResp(recv, methodName)...)
+				body = append(body, jCallRequestWithResp(recv, mi.Name)...)
 			}
 		}
 		if len(body) > 0 {
@@ -216,25 +197,18 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 			continue
 		}
 		if mi.Notif != "" {
-			name := strings.TrimSuffix(mi.Notif, "Notification")
-			switch mi.Method {
-			case "session/update":
-				name = "SessionUpdate"
-			case "session/cancel":
-				name = "Cancel"
-			}
-			fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id(name).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Notif)).Error().
+			fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id(mi.Name).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Notif)).Error().
 				Block(Return(Id("c").Dot("conn").Dot("SendNotification").Call(Id("ctx"), Id(constName), Id("params"))))
 		} else if mi.Req != "" {
 			respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
 			if ir.IsNullResponse(schema.Defs[respName]) {
-				fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id(strings.TrimSuffix(mi.Req, "Request")).
+				fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id(mi.Name).
 					Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Error().
 					Block(Return(Id("c").Dot("conn").Dot("SendRequestNoResult").Call(Id("ctx"), Id(constName), Id("params"))))
 			} else {
 				// Special-case: session/prompt — if ctx was canceled, send session/cancel best-effort.
 				if mi.Method == "session/prompt" {
-					fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id(strings.TrimSuffix(mi.Req, "Request")).
+					fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id(mi.Name).
 						Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Params(Id(respName), Error()).
 						Block(
 							List(Id("resp"), Id("err")).Op(":=").Id("SendRequest").Types(Id(respName)).Call(Id("c").Dot("conn"), Id("ctx"), Id(constName), Id("params")),
@@ -246,7 +220,7 @@ func WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error
 							Return(Id("resp"), Id("err")),
 						)
 				} else {
-					fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id(strings.TrimSuffix(mi.Req, "Request")).
+					fClient.Func().Params(Id("c").Op("*").Id("ClientSideConnection")).Id(mi.Name).
 						Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Params(Id(respName), Error()).
 						Block(
 							List(Id("resp"), Id("err")).Op(":=").Id("SendRequest").Types(Id(respName)).Call(Id("c").Dot("conn"), Id("ctx"), Id(constName), Id("params")),

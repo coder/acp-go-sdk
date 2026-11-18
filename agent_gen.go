@@ -30,13 +30,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableDidChangeDocument(context.Context, UnstableDidChangeDocumentNotification) error
-		})
+		impl, ok := a.agent.(AgentUnstableDidChangeDocument)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		if err := exp.UnstableDidChangeDocument(ctx, p); err != nil {
+		if err := impl.UnstableDidChangeDocument(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
@@ -48,13 +46,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableDidCloseDocument(context.Context, UnstableDidCloseDocumentNotification) error
-		})
+		impl, ok := a.agent.(AgentUnstableDidCloseDocument)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		if err := exp.UnstableDidCloseDocument(ctx, p); err != nil {
+		if err := impl.UnstableDidCloseDocument(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
@@ -66,13 +62,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableDidFocusDocument(context.Context, UnstableDidFocusDocumentNotification) error
-		})
+		impl, ok := a.agent.(AgentUnstableDidFocusDocument)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		if err := exp.UnstableDidFocusDocument(ctx, p); err != nil {
+		if err := impl.UnstableDidFocusDocument(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
@@ -84,13 +78,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableDidOpenDocument(context.Context, UnstableDidOpenDocumentNotification) error
-		})
+		impl, ok := a.agent.(AgentUnstableDidOpenDocument)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		if err := exp.UnstableDidOpenDocument(ctx, p); err != nil {
+		if err := impl.UnstableDidOpenDocument(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
@@ -102,13 +94,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableDidSaveDocument(context.Context, UnstableDidSaveDocumentNotification) error
-		})
+		impl, ok := a.agent.(AgentUnstableDidSaveDocument)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		if err := exp.UnstableDidSaveDocument(ctx, p); err != nil {
+		if err := impl.UnstableDidSaveDocument(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
@@ -146,13 +136,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableMessageMcp(context.Context, UnstableMessageMcpNotification) error
-		})
+		impl, ok := a.agent.(AgentUnstableMessageMcp)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		if err := exp.UnstableMessageMcp(ctx, p); err != nil {
+		if err := impl.UnstableMessageMcp(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
@@ -164,13 +152,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableAcceptNes(context.Context, UnstableAcceptNesNotification) error
-		})
+		impl, ok := a.agent.(AgentUnstableAcceptNes)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		if err := exp.UnstableAcceptNes(ctx, p); err != nil {
+		if err := impl.UnstableAcceptNes(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
@@ -182,13 +168,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableCloseNes(context.Context, UnstableCloseNesRequest) (UnstableCloseNesResponse, error)
-		})
+		impl, ok := a.agent.(AgentUnstableCloseNes)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableCloseNes(ctx, p)
+		resp, err := impl.UnstableCloseNes(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -201,13 +185,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableRejectNes(context.Context, UnstableRejectNesNotification) error
-		})
+		impl, ok := a.agent.(AgentUnstableRejectNes)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		if err := exp.UnstableRejectNes(ctx, p); err != nil {
+		if err := impl.UnstableRejectNes(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
@@ -219,13 +201,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableStartNes(context.Context, UnstableStartNesRequest) (UnstableStartNesResponse, error)
-		})
+		impl, ok := a.agent.(AgentUnstableStartNes)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableStartNes(ctx, p)
+		resp, err := impl.UnstableStartNes(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -238,13 +218,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableSuggestNes(context.Context, UnstableSuggestNesRequest) (UnstableSuggestNesResponse, error)
-		})
+		impl, ok := a.agent.(AgentUnstableSuggestNes)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableSuggestNes(ctx, p)
+		resp, err := impl.UnstableSuggestNes(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -257,13 +235,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableDisableProvider(context.Context, UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error)
-		})
+		impl, ok := a.agent.(AgentUnstableDisableProvider)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableDisableProvider(ctx, p)
+		resp, err := impl.UnstableDisableProvider(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -276,13 +252,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableListProviders(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
-		})
+		impl, ok := a.agent.(AgentUnstableListProviders)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableListProviders(ctx, p)
+		resp, err := impl.UnstableListProviders(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -295,13 +269,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableSetProvider(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
-		})
+		impl, ok := a.agent.(AgentUnstableSetProvider)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableSetProvider(ctx, p)
+		resp, err := impl.UnstableSetProvider(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -353,13 +325,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := a.agent.(interface {
-			UnstableForkSession(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-		})
+		impl, ok := a.agent.(AgentUnstableForkSession)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableForkSession(ctx, p)
+		resp, err := impl.UnstableForkSession(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -385,11 +355,11 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		loader, ok := a.agent.(AgentLoader)
+		impl, ok := a.agent.(AgentLoader)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := loader.LoadSession(ctx, p)
+		resp, err := impl.LoadSession(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}

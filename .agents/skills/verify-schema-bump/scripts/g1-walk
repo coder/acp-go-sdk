@@ -10,7 +10,8 @@
 # env: VSB_ROOT  run and cache folder (default: ${TMPDIR:-/tmp}/verify-schema-bump)
 #
 # Exit 0 when every row has gen=ok, idem=ok and no drift=FAIL, and the
-# TARGET row has build=ok, vet=ok, methods=ok and an API diff. drift checks
+# TARGET row has build=ok, vet=ok, methods=ok and an API diff that does not
+# change Agent or Client. drift checks
 # the row of REF's own schema/version: REF's schema files and *_gen.go must
 # equal the regenerated ones. Needs network for the release
 # list and for schema files that are not cached yet.
@@ -154,6 +155,14 @@ if [ -f "$run/incompatible.txt" ]; then
 	echo
 	echo "Incompatible API changes at $target vs $base_tag (copy into the release notes):"
 	if [ -s "$run/incompatible.txt" ]; then cat "$run/incompatible.txt"; else echo "(none)"; fi
+fi
+# Agent and Client are frozen (cmd/generate/internal/ir/baseline.go): every
+# implementer breaks when either one changes.
+if grep -E '^- (Agent|Client)[.:]' "$run/incompatible.txt" >"$run/frozen.txt" 2>/dev/null; then
+	echo
+	echo "Agent or Client changed, which breaks every implementer:"
+	cat "$run/frozen.txt"
+	pass=0
 fi
 echo
 echo "evidence: $run"

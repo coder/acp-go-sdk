@@ -61,7 +61,7 @@ A map whose members have a schema takes their Go type (#118).
 - an elicitation content value is `null`, an object, or a mixed array;
 - an integer field's `minimum` or `maximum` is not an integer, including `1.0`;
 - a property schema is `null` or has no `type`;
-- an `env` or `headers` value is not a string. A `null` value decodes as `""`.
+- an `env` or `headers` value is neither a string nor `null`. A `null` value decodes as `""`.
 
 For example, docker/docker-agent decodes an MCP server's form schema into `acp.ElicitationSchema`, so `{"type": "integer", "minimum": 1.0}` from a Python server is now refused instead of forwarded.
 
@@ -85,15 +85,15 @@ Read one with `Value() (T, bool)`, `Ptr()` (nil unless set), `IsNull()` and `IsU
 | `for _, c := range u.Content` | `content, _ := u.Content.Value(); for _, c := range content` |
 | (no way to clear) | `info.Title = acp.PatchNull[string]()` on `SessionInfoUpdate` (and the patch fields of `CompactionUpdate`, `SubagentUpdate`, `SessionMessage`); check `IsNull()`. ACP v1 defines no clear for `ToolCallUpdate`: send `acp.PatchSet([]acp.ToolCallContent{})` or `acp.PatchSet([]acp.ToolCallLocation{})` to clear `content` or `locations`. |
 
-**`null` in a `ToolCallUpdate` does not clear.** ACP v1 says that `null` leaves `name`, `rawInput` and `rawOutput` unchanged, and the Rust SDK reads `null` in every `ToolCallUpdate` field as absent. Treat `IsNull()` there like `IsUnset()`. The docs of those fields say so.
+**`null` in a `ToolCallUpdate`, and in `_meta` of a `SessionInfoUpdate`, does not clear.** ACP v1 says that `null` leaves `name`, `rawInput` and `rawOutput` unchanged, and the Rust SDK reads `null` in every `ToolCallUpdate` field and in `SessionInfoUpdate._meta` as absent. Treat `IsNull()` there like `IsUnset()`, and do not send `PatchNull` there to clear. The docs of those fields say so (`SessionSessionInfoUpdate.Meta` too).
 
-**A `Patch` in a struct of your own** needs the `omitzero` tag option (Go 1.24 or later) to be left out when unset. `omitempty` never leaves out a struct, so it writes an unset `Patch` as `null`, which clears.
+**A `Patch` in a struct of your own** needs the `omitzero` tag option (Go 1.24 or later) to be left out when unset. `omitempty` never leaves out a struct, so it writes an unset `Patch` as `null`, which clears. Go 1.21 to 1.23 ignore `omitzero`. There, give the struct a `MarshalJSON` of its own, or, in a struct that you only write, make the field a `*acp.Patch[T]` with `omitempty` and leave it nil when unset. Do not read into such a pointer: `encoding/json` reads `null` into it as nil, so `null` and absent look the same.
 
 `PatchSet` of a nil slice or map writes `[]` or `{}`. A type with its own `MarshalJSON` writes itself: a nil `json.RawMessage` or a nil pointer is `null`, and so it reads back as `IsNull()`. A nil `[]byte` is `[]`, and an empty one is `""`.
 
 ## 64-bit integers
 
-An integer of format `int64`, `uint32` or `uint64` is `int64`, so that a 32-bit target (`GOARCH=386`, `arm`) holds every value a peer sends: a Windows exit code such as `3221225477`, or a token count above 2^31 (#118, #120). On a 64-bit target, decoding does not change.
+An integer of format `int64`, `uint32` or `uint64` is `int64`, so that a 32-bit target (`GOARCH=386`, `arm`) holds a Windows exit code such as `3221225477`, or a token count above 2^31 (#118, #120). A `uint64` value above 2^63−1, which the schema allows, does not fit: it fails to decode, or is dropped in a field that reads a bad value as absent. No ACP value comes near it. On a 64-bit target, decoding does not change.
 
 - `*int` to `*int64`: `TerminalExitStatus.ExitCode`, `WaitForTerminalExitResponse.ExitCode`, `ReadTextFileRequest.Line` and `Limit`, `ToolCallLocation.Line`, `CreateTerminalRequest.OutputByteLimit`, `MinLength`/`MaxLength` of `StringPropertySchema` and `ElicitationPropertySchemaString`, `MinItems`/`MaxItems` of `MultiSelectPropertySchema` and `ElicitationPropertySchemaArray`, `ThoughtTokens`, `CachedReadTokens` and `CachedWriteTokens` of `Usage`, `Size` of `ResourceLink` and `ContentBlockResourceLink`, and `Minimum`, `Maximum` and `Default` of `IntegerPropertySchema` and `ElicitationPropertySchemaInteger`.
 - `int` to `int64`: `InputTokens`, `OutputTokens` and `TotalTokens` of `Usage`, and `Used` and `Size` of `UsageUpdate` and of the `SessionUpdate` variant `SessionUsageUpdate`.
@@ -105,7 +105,8 @@ An integer of format `int64`, `uint32` or `uint64` is `int64`, so that a 32-bit 
 | `size := 1024; link.Size = &size` | `size := int64(1024); link.Size = &size` |
 | `acp.UsageUpdate{Used: used, Size: size}` with `int` values | `acp.UsageUpdate{Used: int64(used), Size: int64(size)}` |
 | `var in int = usage.InputTokens` | `in := usage.InputTokens` (an `int64`), or `int(usage.InputTokens)` |
-| `lines[*p.Line-1:]`, `n := *status.ExitCode` used as `int` | convert after a bounds check: `int(min(*p.Line-1, int64(len(lines))))`; `int(*status.ExitCode)` |
+| `lines[*p.Line-1:]` | `lines[int(min(*p.Line-1, int64(len(lines)))):]`: clamp to the slice before you convert |
+| `n := *status.ExitCode` used as `int` | `code := *status.ExitCode` (an `int64`). Keep it `int64`: on a 32-bit target, `int(...)` wraps a Windows exit code such as `3221225477`. |
 
 A negative value of an unsigned format, or a value above its range such as 4294967296 in a `uint32` field, still decodes. The Rust SDK rejects such a value, or drops it in a field that reads a bad value as absent (`exitCode`, `ToolCallLocation.line`).
 

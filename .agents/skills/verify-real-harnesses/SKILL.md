@@ -216,6 +216,8 @@ Run on 2026-11-17 with the SDK of `main` at `492745b`, again at `a0c38c3` after 
 | `no-refused-calls` | PASS | PASS |
 | `known-skips` | PASS | PASS |
 
+At schema 1.20.0 (`e330c1e`, 2026-11-18), with the same adapter versions, the driver advertises boolean config options, and both adapters then offer them in category `model_config`: Claude `fast` and `ultracode`, Codex `fast-mode`. `config-boolean` passes on both, and every other row is as above.
+
 Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.46 to $0.80. Codex reported no cost and used about 46,500 tokens. In four runs at `68c27b5` and three at `84bbc4c`, `g4` took 10 to 11 s, `g5 claude` 17 to 34 s and `g5 codex` 24 to 36 s, most of it model time.
 
 What the results mean:

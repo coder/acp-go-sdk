@@ -317,7 +317,12 @@ func checkGenerated(t *testing.T, schemaJSON string, extra map[string]string) {
 	if err := WriteHelpersJen(dir, &schema, &load.Meta{}); err != nil {
 		t.Fatalf("WriteHelpersJen: %v", err)
 	}
-	files := map[string]string{"go.mod": "module example.com/acp\n\ngo 1.21\n"}
+	// The generated table shapes needs the hand-written walker of the SDK.
+	walker, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "shape.go"))
+	if err != nil {
+		t.Fatalf("read the SDK's shape.go: %v", err)
+	}
+	files := map[string]string{"go.mod": "module example.com/acp\n\ngo 1.21\n", "shape.go": string(walker)}
 	for name, src := range extra {
 		files[name] = src
 	}

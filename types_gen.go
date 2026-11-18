@@ -303,7 +303,7 @@ func (v *Annotations) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Audience, &v.Audience, Role.valid)
+	decodeLenientItems(raw.Audience, &v.Audience, shapeRole)
 	decodeLenient(raw.LastModified, &v.LastModified)
 	decodeLenient(raw.Priority, &v.Priority)
 	return nil
@@ -716,7 +716,7 @@ func (v *AvailableCommand) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Input, &v.Input)
+	decodeLenient(raw.Input, &v.Input, shapeAvailableCommandInput)
 	return nil
 }
 
@@ -806,7 +806,7 @@ func (v *AvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands) && raw.AvailableCommands != nil {
+	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands, shapeAvailableCommand) && raw.AvailableCommands != nil {
 		setDefault(&v.AvailableCommands, "[]")
 	}
 	return nil
@@ -1410,7 +1410,7 @@ func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Error, &v.Error)
-	decodeLenientItems(raw.Summary, &v.Summary)
+	decodeLenientItems(raw.Summary, &v.Summary, shapeContentBlock)
 	return nil
 }
 
@@ -1480,7 +1480,7 @@ func (v *ConfigOptionUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions) && raw.ConfigOptions != nil {
+	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
 	}
 	return nil
@@ -3796,7 +3796,7 @@ func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
 		setDefault(&v.Properties, "{}")
 	}
 	decodeLenient(raw.Title, &v.Title)
-	if !decodeLenient(raw.Type, &v.Type, ElicitationSchemaType.valid) {
+	if !decodeLenient(raw.Type, &v.Type, shapeElicitationSchemaType) {
 		setDefault(&v.Type, "\"object\"")
 	}
 	return nil
@@ -4410,7 +4410,7 @@ func (v *ErrorStopReason) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Error, &v.Error)
+	decodeLenient(raw.Error, &v.Error, shapeError)
 	return nil
 }
 
@@ -4543,7 +4543,7 @@ func (v *IdleStateUpdateEndTurn) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -4572,7 +4572,7 @@ func (v *IdleStateUpdateMaxTokens) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -4602,7 +4602,7 @@ func (v *IdleStateUpdateMaxTurnRequests) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -4631,7 +4631,7 @@ func (v *IdleStateUpdateRefusal) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -4660,7 +4660,7 @@ func (v *IdleStateUpdateCancelled) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -4695,8 +4695,8 @@ func (v *IdleStateUpdateError) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Error, &v.Error)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Error, &v.Error, shapeError)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -4742,7 +4742,7 @@ func (v *IdleStateUpdateOther) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	v.AdditionalProperties = additionalProperties(b, "_meta", "stopReason", "usage")
 	return nil
 }
@@ -4771,7 +4771,7 @@ func (v *IdleStateUpdateNone) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -5273,7 +5273,7 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 	if !decodeLenient(raw.ClientCapabilities, &v.ClientCapabilities) {
 		setDefault(&v.ClientCapabilities, "{\"auth\":{\"terminal\":false},\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false}")
 	}
-	decodeLenient(raw.ClientInfo, &v.ClientInfo)
+	decodeLenient(raw.ClientInfo, &v.ClientInfo, shapeImplementation)
 	return nil
 }
 
@@ -5339,8 +5339,8 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 	if !decodeLenient(raw.AgentCapabilities, &v.AgentCapabilities) {
 		setDefault(&v.AgentCapabilities, "{\"auth\":{},\"loadSession\":false,\"mcpCapabilities\":{\"acp\":false,\"http\":false,\"sse\":false},\"promptCapabilities\":{\"audio\":false,\"embeddedContext\":false,\"image\":false},\"sessionCapabilities\":{}}")
 	}
-	decodeLenient(raw.AgentInfo, &v.AgentInfo)
-	if !decodeLenientItems(raw.AuthMethods, &v.AuthMethods) {
+	decodeLenient(raw.AgentInfo, &v.AgentInfo, shapeImplementation)
+	if !decodeLenientItems(raw.AuthMethods, &v.AuthMethods, shapeAuthMethod) {
 		setDefault(&v.AuthMethods, "[]")
 	}
 	return nil
@@ -5545,7 +5545,7 @@ func (v *ListSessionsResponse) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.NextCursor, &v.NextCursor)
-	if !decodeLenientItems(raw.Sessions, &v.Sessions) && raw.Sessions != nil {
+	if !decodeLenientItems(raw.Sessions, &v.Sessions, shapeSessionInfo) && raw.Sessions != nil {
 		setDefault(&v.Sessions, "[]")
 	}
 	return nil
@@ -5678,8 +5678,8 @@ func (v *LoadSessionResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
-	decodeLenient(raw.Modes, &v.Modes)
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
+	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
 	return nil
 }
 
@@ -6677,8 +6677,8 @@ func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
-	decodeLenient(raw.Modes, &v.Modes)
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
+	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
 	return nil
 }
 
@@ -6878,7 +6878,7 @@ func (v *Plan) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.Entries, &v.Entries) && raw.Entries != nil {
+	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
 	}
 	return nil
@@ -7022,7 +7022,7 @@ func (v *PlanItems) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.Entries, &v.Entries) && raw.Entries != nil {
+	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
 	}
 	return nil
@@ -7173,7 +7173,7 @@ func (v *PlanUpdateContentItems) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.Entries, &v.Entries) && raw.Entries != nil {
+	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
 	}
 	return nil
@@ -7466,7 +7466,7 @@ func (v *PromptResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -7723,7 +7723,7 @@ func (v *PromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if _, err := decodeItems(raw.Suggestions, &v.Suggestions); err != nil {
+	if _, err := decodeItems(raw.Suggestions, &v.Suggestions, shapePromptSuggestion); err != nil {
 		return propertyError(err, "PromptSuggestionsUpdate", "suggestions")
 	}
 	return nil
@@ -8365,8 +8365,8 @@ func (v *ResumeSessionResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
-	decodeLenient(raw.Modes, &v.Modes)
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
+	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
 	return nil
 }
 
@@ -8990,7 +8990,7 @@ func (v *SessionConfigSelectGroup) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.Options, &v.Options) && raw.Options != nil {
+	if !decodeLenientItems(raw.Options, &v.Options, shapeSessionConfigSelectOption) && raw.Options != nil {
 		setDefault(&v.Options, "[]")
 	}
 	return nil
@@ -9354,7 +9354,7 @@ func (v *SessionMessage) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenientItems(raw.Content, &v.Content, shapeContentBlock)
 	decodeLenient(raw.RecipientMessageId, &v.RecipientMessageId)
 	decodeLenient(raw.RecipientSessionId, &v.RecipientSessionId)
 	decodeLenient(raw.SenderMessageId, &v.SenderMessageId)
@@ -9468,7 +9468,7 @@ func (v *SessionModeState) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.AvailableModes, &v.AvailableModes) && raw.AvailableModes != nil {
+	if !decodeLenientItems(raw.AvailableModes, &v.AvailableModes, shapeSessionMode) && raw.AvailableModes != nil {
 		setDefault(&v.AvailableModes, "[]")
 	}
 	return nil
@@ -9918,13 +9918,13 @@ func (v *SessionUpdateToolCall) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenientItems(raw.Content, &v.Content, shapeToolCallContent)
 	decodeLenient(raw.Kind, &v.Kind)
-	decodeLenientItems(raw.Locations, &v.Locations)
+	decodeLenientItems(raw.Locations, &v.Locations, shapeToolCallLocation)
 	decodeLenient(raw.Name, &v.Name)
 	decodeLenient(raw.RawInput, &v.RawInput)
 	decodeLenient(raw.RawOutput, &v.RawOutput)
-	decodeLenient(raw.Status, &v.Status, ToolCallStatus.valid)
+	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
 	return nil
 }
 
@@ -9979,13 +9979,13 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenientItems(raw.Content, &v.Content, shapeToolCallContent)
 	decodeLenient(raw.Kind, &v.Kind)
-	decodeLenientItems(raw.Locations, &v.Locations)
+	decodeLenientItems(raw.Locations, &v.Locations, shapeToolCallLocation)
 	decodeLenient(raw.Name, &v.Name)
 	decodeLenient(raw.RawInput, &v.RawInput)
 	decodeLenient(raw.RawOutput, &v.RawOutput)
-	decodeLenient(raw.Status, &v.Status, (*ToolCallStatus).valid)
+	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
 	decodeLenient(raw.Title, &v.Title)
 	return nil
 }
@@ -10029,7 +10029,7 @@ func (v *SessionUpdatePlan) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.Entries, &v.Entries) && raw.Entries != nil {
+	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
 	}
 	return nil
@@ -10132,7 +10132,7 @@ func (v *SessionAvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands) && raw.AvailableCommands != nil {
+	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands, shapeAvailableCommand) && raw.AvailableCommands != nil {
 		setDefault(&v.AvailableCommands, "[]")
 	}
 	return nil
@@ -10202,7 +10202,7 @@ func (v *SessionConfigOptionUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions) && raw.ConfigOptions != nil {
+	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
 	}
 	return nil
@@ -10270,7 +10270,7 @@ func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Cost, &v.Cost)
+	decodeLenient(raw.Cost, &v.Cost, shapeCost)
 	return nil
 }
 
@@ -10342,7 +10342,7 @@ func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Error, &v.Error)
-	decodeLenientItems(raw.Summary, &v.Summary)
+	decodeLenientItems(raw.Summary, &v.Summary, shapeContentBlock)
 	return nil
 }
 
@@ -10420,7 +10420,7 @@ func (v *SessionPromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if _, err := decodeItems(raw.Suggestions, &v.Suggestions); err != nil {
+	if _, err := decodeItems(raw.Suggestions, &v.Suggestions, shapePromptSuggestion); err != nil {
 		return propertyError(err, "SessionPromptSuggestionsUpdate", "suggestions")
 	}
 	return nil
@@ -10502,7 +10502,7 @@ func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Capabilities, &v.Capabilities)
 	decodeLenient(raw.Description, &v.Description)
-	decodeLenient(raw.State, &v.State)
+	decodeLenient(raw.State, &v.State, shapeStateUpdate)
 	decodeLenient(raw.Title, &v.Title)
 	return nil
 }
@@ -10562,7 +10562,7 @@ func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenientItems(raw.Content, &v.Content, shapeContentBlock)
 	decodeLenient(raw.RecipientMessageId, &v.RecipientMessageId)
 	decodeLenient(raw.RecipientSessionId, &v.RecipientSessionId)
 	decodeLenient(raw.SenderMessageId, &v.SenderMessageId)
@@ -11350,7 +11350,7 @@ func (v *SetSessionConfigOptionResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions) && raw.ConfigOptions != nil {
+	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
 	}
 	return nil
@@ -11482,7 +11482,7 @@ func (v *StateUpdateIdleEndTurn) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -11512,7 +11512,7 @@ func (v *StateUpdateIdleMaxTokens) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -11543,7 +11543,7 @@ func (v *StateUpdateIdleMaxTurnRequests) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -11573,7 +11573,7 @@ func (v *StateUpdateIdleRefusal) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -11603,7 +11603,7 @@ func (v *StateUpdateIdleCancelled) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -11639,8 +11639,8 @@ func (v *StateUpdateIdleError) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Error, &v.Error)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Error, &v.Error, shapeError)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -11687,7 +11687,7 @@ func (v *StateUpdateIdleOther) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	v.AdditionalProperties = additionalProperties(b, "_meta", "state", "stopReason", "usage")
 	return nil
 }
@@ -11717,7 +11717,7 @@ func (v *StateUpdateIdleNone) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Usage, &v.Usage)
+	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	return nil
 }
 
@@ -12463,7 +12463,7 @@ func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Capabilities, &v.Capabilities)
 	decodeLenient(raw.Description, &v.Description)
-	decodeLenient(raw.State, &v.State)
+	decodeLenient(raw.State, &v.State, shapeStateUpdate)
 	decodeLenient(raw.Title, &v.Title)
 	return nil
 }
@@ -12826,13 +12826,13 @@ func (v *ToolCall) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenientItems(raw.Content, &v.Content, shapeToolCallContent)
 	decodeLenient(raw.Kind, &v.Kind)
-	decodeLenientItems(raw.Locations, &v.Locations)
+	decodeLenientItems(raw.Locations, &v.Locations, shapeToolCallLocation)
 	decodeLenient(raw.Name, &v.Name)
 	decodeLenient(raw.RawInput, &v.RawInput)
 	decodeLenient(raw.RawOutput, &v.RawOutput)
-	decodeLenient(raw.Status, &v.Status, ToolCallStatus.valid)
+	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
 	return nil
 }
 
@@ -13215,13 +13215,13 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content)
+	decodeLenientItems(raw.Content, &v.Content, shapeToolCallContent)
 	decodeLenient(raw.Kind, &v.Kind)
-	decodeLenientItems(raw.Locations, &v.Locations)
+	decodeLenientItems(raw.Locations, &v.Locations, shapeToolCallLocation)
 	decodeLenient(raw.Name, &v.Name)
 	decodeLenient(raw.RawInput, &v.RawInput)
 	decodeLenient(raw.RawOutput, &v.RawOutput)
-	decodeLenient(raw.Status, &v.Status, (*ToolCallStatus).valid)
+	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
 	decodeLenient(raw.Title, &v.Title)
 	return nil
 }
@@ -13539,7 +13539,7 @@ func (v *UnstableAuthStatusResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Accounts, &v.Accounts)
+	decodeLenientItems(raw.Accounts, &v.Accounts, shapeUnstableAuthAccount)
 	return nil
 }
 
@@ -13588,7 +13588,7 @@ func (v *UnstableAuthStatusUpdateNotification) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Accounts, &v.Accounts)
+	decodeLenientItems(raw.Accounts, &v.Accounts, shapeUnstableAuthAccount)
 	return nil
 }
 
@@ -13776,8 +13776,8 @@ func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
-	decodeLenient(raw.Modes, &v.Modes)
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeUnstableSessionConfigOption)
+	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
 	return nil
 }
 
@@ -15041,8 +15041,8 @@ func (v *UnstableSessionOptionsResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions)
-	decodeLenient(raw.Modes, &v.Modes)
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeUnstableSessionConfigOption)
+	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
 	return nil
 }
 
@@ -15485,7 +15485,7 @@ func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Cost, &v.Cost)
+	decodeLenient(raw.Cost, &v.Cost, shapeCost)
 	return nil
 }
 
@@ -15942,28 +15942,610 @@ type ClientUnstableMessageMcp interface {
 	UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpRequest) (UnstableMessageMcpResponse, error)
 }
 
-func (v ElicitationSchemaType) valid() bool {
-	switch v {
-	case ElicitationSchemaTypeObject:
-		return true
-	}
-	return false
-}
+// The shapes that the lenient decoders check a value against. See shape.go.
+const (
+	shapeAudioContent shapeID = iota + 1
+	shapeAuthMethod
+	shapeAuthMethodAgent
+	shapeAuthMethodId
+	shapeAuthMethodTerminal
+	shapeAvailableCommand
+	shapeAvailableCommandInput
+	shapeBlobResourceContents
+	shapeContent
+	shapeContentBlock
+	shapeCost
+	shapeDiff
+	shapeElicitationSchemaType
+	shapeEmbeddedResource
+	shapeEmbeddedResourceResource
+	shapeError
+	shapeErrorCode
+	shapeErrorStopReason
+	shapeIdleStateUpdate
+	shapeImageContent
+	shapeImplementation
+	shapePlanEntry
+	shapePlanEntryPriority
+	shapePlanEntryStatus
+	shapePromptSuggestion
+	shapeRequiresActionStateUpdate
+	shapeResourceLink
+	shapeRole
+	shapeRunningStateUpdate
+	shapeSessionConfigBoolean
+	shapeSessionConfigGroupId
+	shapeSessionConfigId
+	shapeSessionConfigOption
+	shapeSessionConfigSelect
+	shapeSessionConfigSelectGroup
+	shapeSessionConfigSelectOption
+	shapeSessionConfigSelectOptions
+	shapeSessionConfigValueId
+	shapeSessionId
+	shapeSessionInfo
+	shapeSessionMode
+	shapeSessionModeId
+	shapeSessionModeState
+	shapeSessionReference
+	shapeStateUpdate
+	shapeTerminal
+	shapeTerminalId
+	shapeTextContent
+	shapeTextResourceContents
+	shapeToolCallContent
+	shapeToolCallLocation
+	shapeToolCallStatus
+	shapeUnknownStateUpdate
+	shapeUnstableAuthAccount
+	shapeUnstableSessionConfigOption
+	shapeUnstructuredCommandInput
+	shapeUsage
+)
 
-func (v Role) valid() bool {
-	switch v {
-	case RoleAssistant, RoleUser:
-		return true
-	}
-	return false
-}
-
-func (v ToolCallStatus) valid() bool {
-	switch v {
-	case ToolCallStatusPending, ToolCallStatusInProgress, ToolCallStatusCompleted, ToolCallStatusFailed:
-		return true
-	}
-	return false
+var shapes = [...]shape{
+	shapeAudioContent: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"data":     {kinds: kindString},
+			"mimeType": {kinds: kindString},
+		},
+		required: []string{"data", "mimeType"},
+	},
+	shapeAuthMethod: {anyOf: []*shape{{
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"terminal"},
+		}},
+		ref:      shapeAuthMethodTerminal,
+		required: []string{"type"},
+	}, {ref: shapeAuthMethodAgent}}},
+	shapeAuthMethodAgent: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"id":   {ref: shapeAuthMethodId},
+			"name": {kinds: kindString},
+		},
+		required: []string{"id", "name"},
+	},
+	shapeAuthMethodId: {kinds: kindString},
+	shapeAuthMethodTerminal: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"args": {anyOf: []*shape{{kinds: kindNull}, {
+				items: &shape{kinds: kindString},
+				kinds: kindArray,
+			}}},
+			"env": {anyOf: []*shape{{kinds: kindNull}, {
+				kinds: kindObject,
+				rest:  &shape{kinds: kindString},
+			}}},
+			"id":   {ref: shapeAuthMethodId},
+			"name": {kinds: kindString},
+		},
+		required: []string{"id", "name"},
+	},
+	shapeAvailableCommand: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"description": {kinds: kindString},
+			"name":        {kinds: kindString},
+		},
+		required: []string{"name", "description"},
+	},
+	shapeAvailableCommandInput: {anyOf: []*shape{{ref: shapeUnstructuredCommandInput}}},
+	shapeBlobResourceContents: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"blob": {kinds: kindString},
+			"uri":  {kinds: kindString},
+		},
+		required: []string{"blob", "uri"},
+	},
+	shapeContent: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"content": {ref: shapeContentBlock}},
+		required: []string{"content"},
+	},
+	shapeContentBlock: {anyOf: []*shape{{
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"text"},
+		}},
+		ref:      shapeTextContent,
+		required: []string{"type"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"image"},
+		}},
+		ref:      shapeImageContent,
+		required: []string{"type"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"audio"},
+		}},
+		ref:      shapeAudioContent,
+		required: []string{"type"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"resource_link"},
+		}},
+		ref:      shapeResourceLink,
+		required: []string{"type"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"resource"},
+		}},
+		ref:      shapeEmbeddedResource,
+		required: []string{"type"},
+	}}},
+	shapeCost: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"amount":   {kinds: kindNumber},
+			"currency": {kinds: kindString},
+		},
+		required: []string{"amount", "currency"},
+	},
+	shapeDiff: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"newText": {kinds: kindString},
+			"path":    {kinds: kindString},
+		},
+		required: []string{"path", "newText"},
+	},
+	shapeElicitationSchemaType: {values: []any{"object"}},
+	shapeEmbeddedResource: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"resource": {ref: shapeEmbeddedResourceResource}},
+		required: []string{"resource"},
+	},
+	shapeEmbeddedResourceResource: {anyOf: []*shape{{ref: shapeTextResourceContents}, {ref: shapeBlobResourceContents}}},
+	shapeError: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"code":    {ref: shapeErrorCode},
+			"message": {kinds: kindString},
+		},
+		required: []string{"code", "message"},
+	},
+	shapeErrorCode:       {kinds: kindInteger},
+	shapeErrorStopReason: {kinds: kindObject},
+	shapeIdleStateUpdate: {
+		anyOf: []*shape{{
+			kinds: kindObject,
+			props: map[string]*shape{"stopReason": {
+				kinds:  kindString,
+				values: []any{"end_turn"},
+			}},
+			required: []string{"stopReason"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"stopReason": {
+				kinds:  kindString,
+				values: []any{"max_tokens"},
+			}},
+			required: []string{"stopReason"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"stopReason": {
+				kinds:  kindString,
+				values: []any{"max_turn_requests"},
+			}},
+			required: []string{"stopReason"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"stopReason": {
+				kinds:  kindString,
+				values: []any{"refusal"},
+			}},
+			required: []string{"stopReason"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"stopReason": {
+				kinds:  kindString,
+				values: []any{"cancelled"},
+			}},
+			required: []string{"stopReason"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"stopReason": {
+				kinds:  kindString,
+				values: []any{"error"},
+			}},
+			ref:      shapeErrorStopReason,
+			required: []string{"stopReason"},
+		}, {
+			kinds: kindObject,
+			not: &shape{anyOf: []*shape{{
+				kinds: kindObject,
+				props: map[string]*shape{"stopReason": {
+					kinds:  kindString,
+					values: []any{"end_turn"},
+				}},
+				required: []string{"stopReason"},
+			}, {
+				kinds: kindObject,
+				props: map[string]*shape{"stopReason": {
+					kinds:  kindString,
+					values: []any{"max_tokens"},
+				}},
+				required: []string{"stopReason"},
+			}, {
+				kinds: kindObject,
+				props: map[string]*shape{"stopReason": {
+					kinds:  kindString,
+					values: []any{"max_turn_requests"},
+				}},
+				required: []string{"stopReason"},
+			}, {
+				kinds: kindObject,
+				props: map[string]*shape{"stopReason": {
+					kinds:  kindString,
+					values: []any{"refusal"},
+				}},
+				required: []string{"stopReason"},
+			}, {
+				kinds: kindObject,
+				props: map[string]*shape{"stopReason": {
+					kinds:  kindString,
+					values: []any{"cancelled"},
+				}},
+				required: []string{"stopReason"},
+			}, {
+				kinds: kindObject,
+				props: map[string]*shape{"stopReason": {
+					kinds:  kindString,
+					values: []any{"error"},
+				}},
+				required: []string{"stopReason"},
+			}}},
+			props:    map[string]*shape{"stopReason": {kinds: kindString}},
+			required: []string{"stopReason"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"stopReason": {kinds: kindNull}},
+		}},
+		kinds: kindObject,
+	},
+	shapeImageContent: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"data":     {kinds: kindString},
+			"mimeType": {kinds: kindString},
+		},
+		required: []string{"data", "mimeType"},
+	},
+	shapeImplementation: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"name":    {kinds: kindString},
+			"version": {kinds: kindString},
+		},
+		required: []string{"name", "version"},
+	},
+	shapePlanEntry: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"content":  {kinds: kindString},
+			"priority": {ref: shapePlanEntryPriority},
+			"status":   {ref: shapePlanEntryStatus},
+		},
+		required: []string{"content", "priority", "status"},
+	},
+	shapePlanEntryPriority: {values: []any{"high", "medium", "low"}},
+	shapePlanEntryStatus:   {values: []any{"pending", "in_progress", "completed"}},
+	shapePromptSuggestion: {
+		kinds: kindObject,
+		props: map[string]*shape{"prompt": {
+			items: &shape{ref: shapeContentBlock},
+			kinds: kindArray,
+		}},
+		required: []string{"prompt"},
+	},
+	shapeRequiresActionStateUpdate: {kinds: kindObject},
+	shapeResourceLink: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"name": {kinds: kindString},
+			"uri":  {kinds: kindString},
+		},
+		required: []string{"name", "uri"},
+	},
+	shapeRole:               {values: []any{"assistant", "user"}},
+	shapeRunningStateUpdate: {kinds: kindObject},
+	shapeSessionConfigBoolean: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"currentValue": {kinds: kindBoolean}},
+		required: []string{"currentValue"},
+	},
+	shapeSessionConfigGroupId: {kinds: kindString},
+	shapeSessionConfigId:      {kinds: kindString},
+	shapeSessionConfigOption: {
+		anyOf: []*shape{{
+			kinds: kindObject,
+			props: map[string]*shape{"type": {
+				kinds:  kindString,
+				values: []any{"select"},
+			}},
+			ref:      shapeSessionConfigSelect,
+			required: []string{"type"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"type": {
+				kinds:  kindString,
+				values: []any{"boolean"},
+			}},
+			ref:      shapeSessionConfigBoolean,
+			required: []string{"type"},
+		}},
+		kinds: kindObject,
+		props: map[string]*shape{
+			"id":   {ref: shapeSessionConfigId},
+			"name": {kinds: kindString},
+		},
+		required: []string{"id", "name"},
+	},
+	shapeSessionConfigSelect: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"currentValue": {ref: shapeSessionConfigValueId},
+			"options":      {ref: shapeSessionConfigSelectOptions},
+		},
+		required: []string{"currentValue", "options"},
+	},
+	shapeSessionConfigSelectGroup: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"group": {ref: shapeSessionConfigGroupId},
+			"name":  {kinds: kindString},
+		},
+		required: []string{"group", "name", "options"},
+	},
+	shapeSessionConfigSelectOption: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"name":  {kinds: kindString},
+			"value": {ref: shapeSessionConfigValueId},
+		},
+		required: []string{"value", "name"},
+	},
+	shapeSessionConfigSelectOptions: {anyOf: []*shape{{
+		items: &shape{ref: shapeSessionConfigSelectOption},
+		kinds: kindArray,
+	}, {
+		items: &shape{ref: shapeSessionConfigSelectGroup},
+		kinds: kindArray,
+	}}},
+	shapeSessionConfigValueId: {kinds: kindString},
+	shapeSessionId:            {kinds: kindString},
+	shapeSessionInfo: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"cwd":       {kinds: kindString},
+			"sessionId": {ref: shapeSessionId},
+		},
+		required: []string{"sessionId", "cwd"},
+	},
+	shapeSessionMode: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"id":   {ref: shapeSessionModeId},
+			"name": {kinds: kindString},
+		},
+		required: []string{"id", "name"},
+	},
+	shapeSessionModeId: {kinds: kindString},
+	shapeSessionModeState: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"currentModeId": {ref: shapeSessionModeId}},
+		required: []string{"currentModeId", "availableModes"},
+	},
+	shapeSessionReference: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"sessionId": {ref: shapeSessionId}},
+		required: []string{"sessionId"},
+	},
+	shapeStateUpdate: {anyOf: []*shape{{
+		kinds: kindObject,
+		props: map[string]*shape{"state": {
+			kinds:  kindString,
+			values: []any{"running"},
+		}},
+		ref:      shapeRunningStateUpdate,
+		required: []string{"state"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"state": {
+			kinds:  kindString,
+			values: []any{"idle"},
+		}},
+		ref:      shapeIdleStateUpdate,
+		required: []string{"state"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"state": {
+			kinds:  kindString,
+			values: []any{"requires_action"},
+		}},
+		ref:      shapeRequiresActionStateUpdate,
+		required: []string{"state"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"state": {
+			kinds:  kindString,
+			values: []any{"unknown"},
+		}},
+		ref:      shapeUnknownStateUpdate,
+		required: []string{"state"},
+	}, {
+		kinds: kindObject,
+		not: &shape{anyOf: []*shape{{
+			kinds: kindObject,
+			props: map[string]*shape{"state": {
+				kinds:  kindString,
+				values: []any{"running"},
+			}},
+			required: []string{"state"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"state": {
+				kinds:  kindString,
+				values: []any{"idle"},
+			}},
+			required: []string{"state"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"state": {
+				kinds:  kindString,
+				values: []any{"requires_action"},
+			}},
+			required: []string{"state"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"state": {
+				kinds:  kindString,
+				values: []any{"unknown"},
+			}},
+			required: []string{"state"},
+		}}},
+		props:    map[string]*shape{"state": {kinds: kindString}},
+		required: []string{"state"},
+	}}},
+	shapeTerminal: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"terminalId": {ref: shapeTerminalId}},
+		required: []string{"terminalId"},
+	},
+	shapeTerminalId: {kinds: kindString},
+	shapeTextContent: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"text": {kinds: kindString}},
+		required: []string{"text"},
+	},
+	shapeTextResourceContents: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"text": {kinds: kindString},
+			"uri":  {kinds: kindString},
+		},
+		required: []string{"text", "uri"},
+	},
+	shapeToolCallContent: {anyOf: []*shape{{
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"content"},
+		}},
+		ref:      shapeContent,
+		required: []string{"type"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"diff"},
+		}},
+		ref:      shapeDiff,
+		required: []string{"type"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"terminal"},
+		}},
+		ref:      shapeTerminal,
+		required: []string{"type"},
+	}, {
+		kinds: kindObject,
+		props: map[string]*shape{"type": {
+			kinds:  kindString,
+			values: []any{"session"},
+		}},
+		ref:      shapeSessionReference,
+		required: []string{"type"},
+	}}},
+	shapeToolCallLocation: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"path": {kinds: kindString}},
+		required: []string{"path"},
+	},
+	shapeToolCallStatus:     {values: []any{"pending", "in_progress", "completed", "failed"}},
+	shapeUnknownStateUpdate: {kinds: kindObject},
+	shapeUnstableAuthAccount: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"label": {kinds: kindString}},
+		required: []string{"label"},
+	},
+	shapeUnstableSessionConfigOption: {
+		anyOf: []*shape{{
+			kinds: kindObject,
+			props: map[string]*shape{"type": {
+				kinds:  kindString,
+				values: []any{"select"},
+			}},
+			ref:      shapeSessionConfigSelect,
+			required: []string{"type"},
+		}, {
+			kinds: kindObject,
+			props: map[string]*shape{"type": {
+				kinds:  kindString,
+				values: []any{"boolean"},
+			}},
+			ref:      shapeSessionConfigBoolean,
+			required: []string{"type"},
+		}},
+		kinds: kindObject,
+		props: map[string]*shape{
+			"id":   {ref: shapeSessionConfigId},
+			"name": {kinds: kindString},
+		},
+		required: []string{"id", "name"},
+	},
+	shapeUnstructuredCommandInput: {
+		kinds:    kindObject,
+		props:    map[string]*shape{"hint": {kinds: kindString}},
+		required: []string{"hint"},
+	},
+	shapeUsage: {
+		kinds: kindObject,
+		props: map[string]*shape{
+			"inputTokens":  {kinds: kindInteger},
+			"outputTokens": {kinds: kindInteger},
+			"totalTokens":  {kinds: kindInteger},
+		},
+		required: []string{"totalTokens", "inputTokens", "outputTokens"},
+	},
 }
 
 // decodeField decodes the raw JSON of a property into dst. An absent property
@@ -15993,11 +16575,12 @@ func setDefault[T any](dst *T, fallback string) {
 }
 
 // decodeLenient decodes a property that has x-deserialize-default-on-error: a
-// value that is not a valid T, or that valid rejects, is not an error.
-func decodeLenient[T any](raw json.RawMessage, dst *T, valid ...func(T) bool) bool {
+// value that is not a valid T, or that does not fit the shape check, is not an
+// error. It leaves dst at its zero value and returns false.
+func decodeLenient[T any](raw json.RawMessage, dst *T, check ...shapeID) bool {
 	decoded, _ := decodeField(raw, dst)
-	for _, isValid := range valid {
-		if decoded && !isValid(*dst) {
+	for _, id := range check {
+		if decoded && !id.accepts(raw) {
 			*dst = *new(T)
 			return false
 		}
@@ -16007,8 +16590,8 @@ func decodeLenient[T any](raw json.RawMessage, dst *T, valid ...func(T) bool) bo
 
 // decodeItems decodes an array property that has
 // x-deserialize-skip-invalid-items: it drops the items that are null, that are
-// not a valid T, or that valid rejects.
-func decodeItems[T any](raw json.RawMessage, dst *[]T, valid ...func(T) bool) (decoded bool, err error) {
+// not a valid T, or that do not fit the shape check.
+func decodeItems[T any](raw json.RawMessage, dst *[]T, check ...shapeID) (decoded bool, err error) {
 	var items []json.RawMessage
 	if decoded, err = decodeField(raw, &items); !decoded {
 		if raw != nil {
@@ -16019,7 +16602,7 @@ func decodeItems[T any](raw json.RawMessage, dst *[]T, valid ...func(T) bool) (d
 	kept := make([]T, 0, len(items))
 	for _, item := range items {
 		var v T
-		if decodeLenient(item, &v, valid...) {
+		if decodeLenient(item, &v, check...) {
 			kept = append(kept, v)
 		}
 	}
@@ -16029,8 +16612,8 @@ func decodeItems[T any](raw json.RawMessage, dst *[]T, valid ...func(T) bool) (d
 
 // decodeLenientItems decodes an array property that has both hints: a value
 // that is not an array is not an error either.
-func decodeLenientItems[T any](raw json.RawMessage, dst *[]T, valid ...func(T) bool) bool {
-	decoded, _ := decodeItems(raw, dst, valid...)
+func decodeLenientItems[T any](raw json.RawMessage, dst *[]T, check ...shapeID) bool {
+	decoded, _ := decodeItems(raw, dst, check...)
 	return decoded
 }
 

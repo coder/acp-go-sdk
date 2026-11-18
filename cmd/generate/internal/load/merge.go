@@ -385,9 +385,9 @@ func visitDefinition(root *Definition, fn func(*Definition)) {
 		}
 		seen[d] = struct{}{}
 		fn(d)
-		if d.Items != nil {
-			walk(d.Items)
-		}
+		walk(d.Items)
+		walk(d.AdditionalProperties.Schema)
+		walk(d.Not)
 		for _, v := range d.Properties {
 			walk(v)
 		}
@@ -430,6 +430,8 @@ func deepCopyDefinition(d *Definition) *Definition {
 		}
 	}
 	copyDef.Items = deepCopyDefinition(d.Items)
+	copyDef.AdditionalProperties.Schema = deepCopyDefinition(d.AdditionalProperties.Schema)
+	copyDef.Not = deepCopyDefinition(d.Not)
 	if d.AnyOf != nil {
 		copyDef.AnyOf = make([]*Definition, len(d.AnyOf))
 		for i, v := range d.AnyOf {

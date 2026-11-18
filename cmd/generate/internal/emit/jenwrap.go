@@ -40,4 +40,6 @@ var (
 	Parens        = jen.Parens
 	InterfaceFunc = jen.InterfaceFunc
 	Comment       = jen.Comment
+	Values        = jen.Values
+	DictFunc      = jen.DictFunc
 )

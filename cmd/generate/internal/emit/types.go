@@ -145,7 +145,7 @@ type typesBuilder struct {
 	schema                   *load.Schema
 	usedTypeNames            map[string]bool
 	variants                 map[string][]unionVariant
-	validatedEnums           map[string]bool
+	shapes                   *shapeTable
 	usesDecodeHelpers        bool
 	usesAdditionalProperties bool
 }
@@ -165,7 +165,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	}
 	b := &typesBuilder{
 		f: f, schema: schema, usedTypeNames: usedTypeNames, variants: emitted,
-		validatedEnums: map[string]bool{},
+		shapes: newShapeTable(schema),
 	}
 
 	// Deterministic order
@@ -233,9 +233,9 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			// Use the same implementation, but require exactly one variant
 			unionWrapper = true
 			b.emitUnion(name, def, def.OneOf, true, true)
-		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || bool(def.AdditionalProperties)):
+		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || def.AdditionalProperties.Open):
 			fields := ir.Fields(def.Properties, def.Required)
-			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), bool(def.AdditionalProperties))
+			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), def.AdditionalProperties.Open)
 		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":
 			f.Type().Id(name).Add(primitiveJenType(ir.PrimaryType(def)))
 			f.Line()
@@ -1099,7 +1099,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				if len(nested) > 0 {
 					nestedVariants = b.emitUnion(tname, &load.Definition{Properties: mergedProps, Required: required, Discriminator: v.Discriminator}, nested, len(v.OneOf) > 0, false)
 				} else {
-					b.emitStruct(tname, fields, nil, bool(v.AdditionalProperties))
+					b.emitStruct(tname, fields, nil, v.AdditionalProperties.Open)
 				}
 			default:
 				// Title-only variants: check if they're extension types
@@ -1158,7 +1158,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		b.variants[name] = recorded
 	}
 	// wrapper
-	wrapperPlans := b.plansFor(wrapperFields)
+	wrapperPlans := b.plansFor(name, wrapperFields)
 	st := fieldDecls(wrapperPlans, nil)
 	wrapperFieldNames := map[string]bool{}
 	for _, field := range wrapperFields {

@@ -106,7 +106,7 @@ A negative value of an unsigned format, or a value above its range such as 42949
 
 ## One type per shape
 
-Unstable methods no longer get `Unstable`-prefixed copies of the types that stable methods use (#122). A shared type carries the unstable additions, each marked `**UNSTABLE**` in its doc comment. The types of unstable-only methods keep the prefix, such as `UnstableForkSessionRequest`. Drop the prefix:
+Unstable methods no longer get `Unstable`-prefixed copies of the types that stable methods use (#122). A shared type carries the unstable additions, each marked `**UNSTABLE**` in its doc comment: at schema 1.32.0, the constant `SessionConfigOptionCategorySpeed` and the `Acp` variant of `McpServer`. The types of unstable-only methods keep the prefix, such as `UnstableForkSessionRequest`. In every case but two you drop the `Unstable` prefix: `UnstableMcpServerHttp` and `UnstableMcpServerSse` become `McpServerHttpInline` and `McpServerSseInline`.
 
 | v0.19.0 | v0.20.0 |
 | --- | --- |
@@ -114,9 +114,10 @@ Unstable methods no longer get `Unstable`-prefixed copies of the types that stab
 | `acp.UnstableSessionConfigOptionCategorySpeed` (and the other `UnstableSessionConfigOptionCategory*` constants) | `acp.SessionConfigOptionCategorySpeed` (and so on) |
 | `acp.NewUnstableSessionConfigOptionBoolean(...)`, `NewUnstableSessionConfigOptionSelect(...)` | `acp.NewSessionConfigOptionBoolean(...)`, `NewSessionConfigOptionSelect(...)` |
 | `acp.UnstableInitialSessionConfigOption`, `UnstableInitialSessionConfigOptionBoolean`, `UnstableInitialSessionConfigOptionValueId` | `acp.InitialSessionConfigOption`, `InitialSessionConfigOptionBoolean`, `InitialSessionConfigOptionValueId` |
-| `acp.UnstableMcpServer`, `UnstableMcpServerAcp`, `UnstableMcpServerAcpId`, `UnstableMcpServerAcpInline`, `UnstableMcpServerHttp`, `UnstableMcpServerSse` | `acp.McpServer`, `McpServerAcp`, `McpServerAcpId`, `McpServerAcpInline`, `McpServerHttp`, `McpServerSse` |
+| `acp.UnstableMcpServer`, `UnstableMcpServerAcp`, `UnstableMcpServerAcpId`, `UnstableMcpServerAcpInline` | `acp.McpServer`, `McpServerAcp`, `McpServerAcpId`, `McpServerAcpInline` |
+| `acp.UnstableMcpServerHttp`, `UnstableMcpServerSse` (the http and sse variants of `UnstableMcpServer`, with a `Type` field) | `acp.McpServerHttpInline`, `McpServerSseInline` (`McpServerHttp` and `McpServerSse` are the definitions without `Type`, which the variants embed) |
 
-The wire does not change.
+The fields of the unstable methods' types (`UnstableForkSessionRequest.ConfigOptions` and `.McpServers`, `UnstableForkSessionResponse.ConfigOptions`, `UnstableSessionOptionsResponse.ConfigOptions`, and `ServerId` of `UnstableMessageMcpRequest` and `UnstableMessageMcpNotification`) now use the shared types. The compiler reports each break, and the wire does not change.
 
 ## Changes the compiler does not catch
 
@@ -147,6 +148,6 @@ These compile after the migration and behave differently. Find them with `grep`,
 
 1. **A value that does not encode** given to `WithStartRawInput`, `WithStartRawOutput` or an error constructor is left out, and the send succeeds. v0.19.0 failed the send.
 
-1. **Re-wrapping a `Patch` from `WithUpdateRawInput` or `WithUpdateRawOutput` whose value did not encode**, as `PatchSet(p.Value())` or `PatchFromPtr(p.Ptr())`, drops its error and writes `null`. Only its `MarshalJSON` returns the error.
+1. **Re-wrapping a `Patch` from `WithUpdateRawInput` or `WithUpdateRawOutput` whose value did not encode**, as `acp.PatchFromPtr(p.Ptr())` or `acp.PatchSet` of its `Value()`, drops its error and writes `null`: such a Patch reads as set with a nil value, and only its `MarshalJSON` returns the error.
 
 1. **Stricter decoding** of elicitation schemas and content, `env` and `headers`: see [Typed maps](#typed-maps).

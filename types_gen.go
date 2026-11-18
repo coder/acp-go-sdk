@@ -1342,10 +1342,14 @@ type CompactionId string
 type CompactionStatus string
 
 const (
+	// Compaction has started and has not finished.
 	CompactionStatusInProgress CompactionStatus = "in_progress"
-	CompactionStatusCompleted  CompactionStatus = "completed"
-	CompactionStatusFailed     CompactionStatus = "failed"
-	CompactionStatusCancelled  CompactionStatus = "cancelled"
+	// Compaction finished successfully.
+	CompactionStatusCompleted CompactionStatus = "completed"
+	// Compaction finished unsuccessfully.
+	CompactionStatusFailed CompactionStatus = "failed"
+	// Compaction was cancelled before it finished.
+	CompactionStatusCancelled CompactionStatus = "cancelled"
 )
 
 // A content block appended to a compaction's summary. A first-seen ID creates
@@ -3839,6 +3843,7 @@ func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
 type ElicitationSchemaType string
 
 const (
+	// Object schema type.
 	ElicitationSchemaTypeObject ElicitationSchemaType = "object"
 )
 
@@ -6766,9 +6771,12 @@ type NoticeCapabilities struct{}
 type NoticeSeverity string
 
 const (
-	NoticeSeverityInfo    NoticeSeverity = "info"
+	// Informational notice.
+	NoticeSeverityInfo NoticeSeverity = "info"
+	// Warning notice.
 	NoticeSeverityWarning NoticeSeverity = "warning"
-	NoticeSeverityError   NoticeSeverity = "error"
+	// Error notice.
+	NoticeSeverityError NoticeSeverity = "error"
 )
 
 // Schema for number (floating-point) properties in an elicitation form.
@@ -6862,9 +6870,13 @@ type PermissionOptionId string
 type PermissionOptionKind string
 
 const (
-	PermissionOptionKindAllowOnce    PermissionOptionKind = "allow_once"
-	PermissionOptionKindAllowAlways  PermissionOptionKind = "allow_always"
-	PermissionOptionKindRejectOnce   PermissionOptionKind = "reject_once"
+	// Allow this operation only this time.
+	PermissionOptionKindAllowOnce PermissionOptionKind = "allow_once"
+	// Allow this operation and remember the choice.
+	PermissionOptionKindAllowAlways PermissionOptionKind = "allow_always"
+	// Reject this operation only this time.
+	PermissionOptionKindRejectOnce PermissionOptionKind = "reject_once"
+	// Reject this operation and remember the choice.
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
@@ -6988,9 +7000,12 @@ func (v *PlanEntry) UnmarshalJSON(b []byte) error {
 type PlanEntryPriority string
 
 const (
-	PlanEntryPriorityHigh   PlanEntryPriority = "high"
+	// High priority task - critical to the overall goal.
+	PlanEntryPriorityHigh PlanEntryPriority = "high"
+	// Medium priority task - important but not critical.
 	PlanEntryPriorityMedium PlanEntryPriority = "medium"
-	PlanEntryPriorityLow    PlanEntryPriority = "low"
+	// Low priority task - nice to have but not essential.
+	PlanEntryPriorityLow PlanEntryPriority = "low"
 )
 
 // Status of a plan entry in the execution flow.
@@ -7000,9 +7015,12 @@ const (
 type PlanEntryStatus string
 
 const (
-	PlanEntryStatusPending    PlanEntryStatus = "pending"
+	// The task has not started yet.
+	PlanEntryStatusPending PlanEntryStatus = "pending"
+	// The task is currently being worked on.
 	PlanEntryStatusInProgress PlanEntryStatus = "in_progress"
-	PlanEntryStatusCompleted  PlanEntryStatus = "completed"
+	// The task has been successfully completed.
+	PlanEntryStatusCompleted PlanEntryStatus = "completed"
 )
 
 // **UNSTABLE**
@@ -8411,8 +8429,10 @@ func (v *ResumeSessionResponse) Validate() error {
 type Role string
 
 const (
+	// The assistant side of a conversation.
 	RoleAssistant Role = "assistant"
-	RoleUser      Role = "user"
+	// The user side of a conversation.
+	RoleUser Role = "user"
 )
 
 // Foreground work is in progress.
@@ -8534,9 +8554,12 @@ func (v *SessionArchiveCapabilities) UnmarshalJSON(b []byte) error {
 type SessionArchiveFilter string
 
 const (
+	// Only sessions that are not archived. This is the default.
 	SessionArchiveFilterExclude SessionArchiveFilter = "exclude"
+	// Both archived sessions and sessions that are not archived.
 	SessionArchiveFilterInclude SessionArchiveFilter = "include"
-	SessionArchiveFilterOnly    SessionArchiveFilter = "only"
+	// Only archived sessions.
+	SessionArchiveFilterOnly SessionArchiveFilter = "only"
 )
 
 // **UNSTABLE**
@@ -8937,10 +8960,19 @@ func (u *SessionConfigOption) Validate() error {
 type SessionConfigOptionCategory string
 
 const (
-	SessionConfigOptionCategoryMode         SessionConfigOptionCategory = "mode"
-	SessionConfigOptionCategoryModel        SessionConfigOptionCategory = "model"
-	SessionConfigOptionCategoryModelConfig  SessionConfigOptionCategory = "model_config"
-	SessionConfigOptionCategorySpeed        SessionConfigOptionCategory = "speed"
+	// Session mode selector.
+	SessionConfigOptionCategoryMode SessionConfigOptionCategory = "mode"
+	// Model selector.
+	SessionConfigOptionCategoryModel SessionConfigOptionCategory = "model"
+	// Model-related configuration parameter.
+	SessionConfigOptionCategoryModelConfig SessionConfigOptionCategory = "model_config"
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Response speed selector, such as a fast mode toggle.
+	SessionConfigOptionCategorySpeed SessionConfigOptionCategory = "speed"
+	// Thought/reasoning level selector.
 	SessionConfigOptionCategoryThoughtLevel SessionConfigOptionCategory = "thought_level"
 )
 
@@ -12406,20 +12438,37 @@ func (u StateUpdate) MarshalJSON() ([]byte, error) {
 type StopReason string
 
 const (
-	StopReasonEndTurn         StopReason = "end_turn"
-	StopReasonMaxTokens       StopReason = "max_tokens"
+	// The turn ended successfully.
+	StopReasonEndTurn StopReason = "end_turn"
+	// The turn ended because the agent reached the maximum number of tokens.
+	StopReasonMaxTokens StopReason = "max_tokens"
+	// The turn ended because the agent reached the maximum number of allowed
+	// agent requests between user turns.
 	StopReasonMaxTurnRequests StopReason = "max_turn_requests"
-	StopReasonRefusal         StopReason = "refusal"
-	StopReasonCancelled       StopReason = "cancelled"
+	// The turn ended because the agent refused to continue. The user prompt
+	// and everything that comes after it won't be included in the next
+	// prompt, so this should be reflected in the UI.
+	StopReasonRefusal StopReason = "refusal"
+	// The turn was cancelled by the client via 'session/cancel'.
+	//
+	// This stop reason MUST be returned when the client sends a 'session/cancel'
+	// notification, even if the cancellation causes exceptions in underlying operations.
+	// Agents should catch these exceptions and return this semantically meaningful
+	// response to confirm successful cancellation.
+	StopReasonCancelled StopReason = "cancelled"
 )
 
 // String format types for string properties in elicitation schemas.
 type StringFormat string
 
 const (
-	StringFormatEmail    StringFormat = "email"
-	StringFormatUri      StringFormat = "uri"
-	StringFormatDate     StringFormat = "date"
+	// Email address format.
+	StringFormatEmail StringFormat = "email"
+	// URI format.
+	StringFormatUri StringFormat = "uri"
+	// Date format (YYYY-MM-DD).
+	StringFormatDate StringFormat = "date"
+	// Date-time format (ISO 8601).
 	StringFormatDateTime StringFormat = "date-time"
 )
 
@@ -12785,7 +12834,21 @@ func (v *SystemPrompt) UnmarshalJSON(b []byte) error {
 type SystemPromptMode string
 
 const (
-	SystemPromptModeAppend   SystemPromptMode = "append"
+	// Add the content to the Agent's own instructions rather than replacing them.
+	//
+	// Every Agent that advertises 'sessionCapabilities.systemPrompt' supports this mode.
+	// Agents SHOULD give the content system-level precedence, for example in the
+	// model's system prompt or developer instructions rather than in user-turn
+	// content. Where it is placed and how it is formatted is implementation-defined.
+	SystemPromptModeAppend SystemPromptMode = "append"
+	// Replace the Agent's built-in default instructions with the content.
+	//
+	// This does not change tool availability, MCP servers, permissions, or session
+	// configuration. Context the Agent supplies from the workspace or environment
+	// MAY still be included. Clients that use this mode take responsibility for any
+	// tool guidance or safety instructions the Agent's default instructions
+	// provided, and MUST only use it when the Agent advertises
+	// 'sessionCapabilities.systemPrompt.mode.override'.
 	SystemPromptModeOverride SystemPromptMode = "override"
 )
 
@@ -13409,10 +13472,15 @@ func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
 type ToolCallStatus string
 
 const (
-	ToolCallStatusPending    ToolCallStatus = "pending"
+	// The tool call hasn't started running yet because the input is either
+	// streaming or we're awaiting approval.
+	ToolCallStatusPending ToolCallStatus = "pending"
+	// The tool call is currently running.
 	ToolCallStatusInProgress ToolCallStatus = "in_progress"
-	ToolCallStatusCompleted  ToolCallStatus = "completed"
-	ToolCallStatusFailed     ToolCallStatus = "failed"
+	// The tool call completed successfully.
+	ToolCallStatusCompleted ToolCallStatus = "completed"
+	// The tool call failed with an error.
+	ToolCallStatusFailed ToolCallStatus = "failed"
 )
 
 // An update to an existing tool call.
@@ -13551,16 +13619,26 @@ func (t *ToolCallUpdate) Validate() error {
 type ToolKind string
 
 const (
-	ToolKindRead       ToolKind = "read"
-	ToolKindEdit       ToolKind = "edit"
-	ToolKindDelete     ToolKind = "delete"
-	ToolKindMove       ToolKind = "move"
-	ToolKindSearch     ToolKind = "search"
-	ToolKindExecute    ToolKind = "execute"
-	ToolKindThink      ToolKind = "think"
-	ToolKindFetch      ToolKind = "fetch"
+	// Reading files or data.
+	ToolKindRead ToolKind = "read"
+	// Modifying files or content.
+	ToolKindEdit ToolKind = "edit"
+	// Removing files or data.
+	ToolKindDelete ToolKind = "delete"
+	// Moving or renaming files.
+	ToolKindMove ToolKind = "move"
+	// Searching for information.
+	ToolKindSearch ToolKind = "search"
+	// Running commands or code.
+	ToolKindExecute ToolKind = "execute"
+	// Internal reasoning or planning.
+	ToolKindThink ToolKind = "think"
+	// Retrieving external data.
+	ToolKindFetch ToolKind = "fetch"
+	// Switching the current session mode.
 	ToolKindSwitchMode ToolKind = "switch_mode"
-	ToolKindOther      ToolKind = "other"
+	// Other tool types (default).
+	ToolKindOther ToolKind = "other"
 )
 
 // UnmarshalJSON reads a string that ToolKind does not list as ToolKindOther.
@@ -13768,10 +13846,15 @@ func (v *UnstableAuthAccount) UnmarshalJSON(b []byte) error {
 type UnstableAuthState string
 
 const (
-	UnstableAuthStateAuthenticated   UnstableAuthState = "authenticated"
+	// Credentials are configured. This does not guarantee that they are valid.
+	UnstableAuthStateAuthenticated UnstableAuthState = "authenticated"
+	// The user needs to sign in. This includes credentials that are missing,
+	// expired, or known to be invalid.
 	UnstableAuthStateUnauthenticated UnstableAuthState = "unauthenticated"
-	UnstableAuthStateNotRequired     UnstableAuthState = "not_required"
-	UnstableAuthStateUnknown         UnstableAuthState = "unknown"
+	// No authentication is needed, for example because the agent uses a local model.
+	UnstableAuthStateNotRequired UnstableAuthState = "not_required"
+	// The agent cannot currently determine the state.
+	UnstableAuthStateUnknown UnstableAuthState = "unknown"
 )
 
 // **UNSTABLE**
@@ -14012,11 +14095,11 @@ type UnstableForkSessionRequest struct {
 	// has. The Agent SHOULD NOT send 'config_option_update' notifications for these entries,
 	// and SHOULD NOT send other 'session/update' notifications caused by applying them
 	// before it responds.
-	ConfigOptions []UnstableInitialSessionConfigOption `json:"configOptions,omitempty"`
+	ConfigOptions []InitialSessionConfigOption `json:"configOptions,omitempty"`
 	// The working directory for this session. Must be an absolute path.
 	Cwd string `json:"cwd"`
 	// List of MCP servers to connect to for this session.
-	McpServers []UnstableMcpServer `json:"mcpServers,omitempty"`
+	McpServers []McpServer `json:"mcpServers,omitempty"`
 	// The ID of the session to fork.
 	SessionId SessionId `json:"sessionId"`
 	// System-level instructions for the forked session.
@@ -14063,7 +14146,7 @@ type UnstableForkSessionResponse struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Initial session configuration options if supported by the Agent.
-	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
+	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
 	// Initial mode state if supported by the Agent
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/v1/draft/session-modes)
@@ -14085,170 +14168,13 @@ func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeUnstableSessionConfigOption)
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
 	return nil
 }
 
 func (v *UnstableForkSessionResponse) Validate() error {
 	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// An initial value for a config option, sent on session setup requests.
-//
-// Same shape as 'session/set_config_option' without 'sessionId'. Unlike
-// 'session/set_config_option', an unknown 'configId', a 'type' that does not match the
-// option, or a value that is not allowed is ignored instead of rejected.
-//
-// Clients only send 'type: "boolean"' entries when they advertise
-// 'sessionCapabilities.configOptions.boolean'.
-// A boolean value ('type: "boolean"').
-type UnstableInitialSessionConfigOptionBoolean struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
-	// The ID of the configuration option to set.
-	ConfigId SessionConfigId `json:"configId"`
-	Type     string          `json:"type"`
-	// The boolean value.
-	Value bool `json:"value"`
-}
-
-func (v *UnstableInitialSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
-	type plain UnstableInitialSessionConfigOptionBoolean
-	type UnstableInitialSessionConfigOptionBoolean struct {
-		*plain
-		Meta json.RawMessage `json:"_meta"`
-	}
-	raw := UnstableInitialSessionConfigOptionBoolean{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	return nil
-}
-
-// A 'SessionConfigValueId' string value.
-//
-// This is the default when 'type' is absent on the wire. Unknown 'type'
-// values with string payloads also gracefully deserialize into this
-// variant.
-type UnstableInitialSessionConfigOptionValueId struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
-	// The ID of the configuration option to set.
-	ConfigId SessionConfigId `json:"configId"`
-	// The value ID.
-	Value SessionConfigValueId `json:"value"`
-}
-
-func (v *UnstableInitialSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
-	type plain UnstableInitialSessionConfigOptionValueId
-	type UnstableInitialSessionConfigOptionValueId struct {
-		*plain
-		Meta json.RawMessage `json:"_meta"`
-	}
-	raw := UnstableInitialSessionConfigOptionValueId{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	return nil
-}
-
-type UnstableInitialSessionConfigOption struct {
-	// A boolean value ('type: "boolean"').
-	Boolean *UnstableInitialSessionConfigOptionBoolean `json:"-"`
-	// A 'SessionConfigValueId' string value.
-	//
-	// This is the default when 'type' is absent on the wire. Unknown 'type'
-	// values with string payloads also gracefully deserialize into this
-	// variant.
-	ValueId *UnstableInitialSessionConfigOptionValueId `json:"-"`
-}
-
-func (u *UnstableInitialSessionConfigOption) UnmarshalJSON(b []byte) error {
-	*u = UnstableInitialSessionConfigOption{}
-	if string(b) == "null" {
-		return errors.New("no matching variant for union")
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "boolean":
-				var v UnstableInitialSessionConfigOptionBoolean
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Boolean = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableInitialSessionConfigOptionValueId
-			var match bool = true
-			if raw := string(m["value"]); raw == "" || raw == "null" {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.ValueId = &v
-				return nil
-			}
-		}
-	} else {
-		if _, ok := err.(*json.UnmarshalTypeError); !ok {
-			return err
-		}
-	}
-	var arr []map[string]json.RawMessage
-	if json.Unmarshal(b, &arr) == nil {
-	}
-	return errors.New("no matching variant for union")
-}
-func (u UnstableInitialSessionConfigOption) MarshalJSON() ([]byte, error) {
-	if u.Boolean != nil {
-		_b, _e := json.Marshal(*u.Boolean)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		var m map[string]json.RawMessage
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		m["type"] = json.RawMessage("\"boolean\"")
-		return json.Marshal(m)
-	}
-	if u.ValueId != nil {
-		_b, _e := json.Marshal(*u.ValueId)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		var m map[string]json.RawMessage
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
-	}
-	return []byte{}, nil
 }
 
 // **UNSTABLE**
@@ -14343,11 +14269,16 @@ func (v *UnstableListProvidersResponse) Validate() error {
 type UnstableLlmProtocol string
 
 const (
+	// Anthropic API protocol.
 	UnstableLlmProtocolAnthropic UnstableLlmProtocol = "anthropic"
-	UnstableLlmProtocolOpenai    UnstableLlmProtocol = "openai"
-	UnstableLlmProtocolAzure     UnstableLlmProtocol = "azure"
-	UnstableLlmProtocolVertex    UnstableLlmProtocol = "vertex"
-	UnstableLlmProtocolBedrock   UnstableLlmProtocol = "bedrock"
+	// OpenAI API protocol.
+	UnstableLlmProtocolOpenai UnstableLlmProtocol = "openai"
+	// Azure OpenAI API protocol.
+	UnstableLlmProtocolAzure UnstableLlmProtocol = "azure"
+	// Google Vertex AI API protocol.
+	UnstableLlmProtocolVertex UnstableLlmProtocol = "vertex"
+	// AWS Bedrock API protocol.
+	UnstableLlmProtocolBedrock UnstableLlmProtocol = "bedrock"
 )
 
 // **UNSTABLE**
@@ -14401,341 +14332,6 @@ func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
 // from the outer ACP JSON-RPC request ID.
 type UnstableMcpRequestId string
 
-// Configuration for connecting to an MCP (Model Context Protocol) server.
-//
-// MCP servers provide tools and context that the agent can use when
-// processing prompts.
-//
-// See protocol docs: [MCP Servers](https://agentclientprotocol.com/protocol/v1/draft/session-setup#mcp-servers)
-// HTTP transport configuration
-//
-// Only available when the Agent capabilities indicate 'mcp_capabilities.http' is 'true'.
-type UnstableMcpServerHttp struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
-	// HTTP headers to set when making requests to the MCP server.
-	Headers []HttpHeader `json:"headers"`
-	// Human-readable name identifying this MCP server.
-	Name string `json:"name"`
-	Type string `json:"type"`
-	// URL to the MCP server.
-	Url string `json:"url"`
-}
-
-func (v UnstableMcpServerHttp) MarshalJSON() ([]byte, error) {
-	type Alias UnstableMcpServerHttp
-	var a Alias
-	a = Alias(v)
-	if a.Headers == nil {
-		json.Unmarshal([]byte("[]"), &a.Headers)
-	}
-	return json.Marshal(a)
-}
-
-func (v *UnstableMcpServerHttp) UnmarshalJSON(b []byte) error {
-	type plain UnstableMcpServerHttp
-	type UnstableMcpServerHttp struct {
-		*plain
-		Meta    json.RawMessage `json:"_meta"`
-		Headers json.RawMessage `json:"headers"`
-	}
-	raw := UnstableMcpServerHttp{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	if decoded, err := decodeField(raw.Headers, &v.Headers); err != nil {
-		return propertyError(err, "UnstableMcpServerHttp", "headers")
-	} else if !decoded && raw.Headers != nil {
-		setDefault(&v.Headers, "[]")
-	}
-	return nil
-}
-
-// SSE transport configuration
-//
-// Only available when the Agent capabilities indicate 'mcp_capabilities.sse' is 'true'.
-type UnstableMcpServerSse struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
-	// HTTP headers to set when making requests to the MCP server.
-	Headers []HttpHeader `json:"headers"`
-	// Human-readable name identifying this MCP server.
-	Name string `json:"name"`
-	Type string `json:"type"`
-	// URL to the MCP server.
-	Url string `json:"url"`
-}
-
-func (v UnstableMcpServerSse) MarshalJSON() ([]byte, error) {
-	type Alias UnstableMcpServerSse
-	var a Alias
-	a = Alias(v)
-	if a.Headers == nil {
-		json.Unmarshal([]byte("[]"), &a.Headers)
-	}
-	return json.Marshal(a)
-}
-
-func (v *UnstableMcpServerSse) UnmarshalJSON(b []byte) error {
-	type plain UnstableMcpServerSse
-	type UnstableMcpServerSse struct {
-		*plain
-		Meta    json.RawMessage `json:"_meta"`
-		Headers json.RawMessage `json:"headers"`
-	}
-	raw := UnstableMcpServerSse{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	if decoded, err := decodeField(raw.Headers, &v.Headers); err != nil {
-		return propertyError(err, "UnstableMcpServerSse", "headers")
-	} else if !decoded && raw.Headers != nil {
-		setDefault(&v.Headers, "[]")
-	}
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// # ACP transport configuration
-//
-// Only available when the Agent capabilities indicate 'mcp_capabilities.acp' is 'true'.
-// The MCP server is provided by an ACP component and communicates over the ACP channel.
-type UnstableMcpServerAcpInline struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
-	// Human-readable name identifying this MCP server.
-	Name string `json:"name"`
-	// Unique identifier for this MCP server, generated by the component providing it.
-	//
-	// Providers MUST NOT reuse an ID for multiple ACP-transport MCP servers that are visible
-	// on the same ACP connection.
-	ServerId UnstableMcpServerAcpId `json:"serverId"`
-	Type     string                 `json:"type"`
-}
-
-func (v *UnstableMcpServerAcpInline) UnmarshalJSON(b []byte) error {
-	type plain UnstableMcpServerAcpInline
-	type UnstableMcpServerAcpInline struct {
-		*plain
-		Meta json.RawMessage `json:"_meta"`
-	}
-	raw := UnstableMcpServerAcpInline{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	return nil
-}
-
-type UnstableMcpServer struct {
-	// HTTP transport configuration
-	//
-	// Only available when the Agent capabilities indicate 'mcp_capabilities.http' is 'true'.
-	Http *UnstableMcpServerHttp `json:"-"`
-	// SSE transport configuration
-	//
-	// Only available when the Agent capabilities indicate 'mcp_capabilities.sse' is 'true'.
-	Sse *UnstableMcpServerSse `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// # ACP transport configuration
-	//
-	// Only available when the Agent capabilities indicate 'mcp_capabilities.acp' is 'true'.
-	// The MCP server is provided by an ACP component and communicates over the ACP channel.
-	Acp *UnstableMcpServerAcpInline `json:"-"`
-	// Stdio transport configuration
-	//
-	// All Agents MUST support this transport.
-	Stdio *McpServerStdio `json:"-"`
-}
-
-func (u *UnstableMcpServer) UnmarshalJSON(b []byte) error {
-	*u = UnstableMcpServer{}
-	if string(b) == "null" {
-		return errors.New("no matching variant for union")
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "http":
-				var v UnstableMcpServerHttp
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Http = &v
-				return nil
-			case "sse":
-				var v UnstableMcpServerSse
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Sse = &v
-				return nil
-			case "acp":
-				var v UnstableMcpServerAcpInline
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Acp = &v
-				return nil
-			}
-		}
-		{
-			var v McpServerStdio
-			var match bool = true
-			if raw := string(m["name"]); raw == "" || raw == "null" {
-				match = false
-			}
-			if raw := string(m["command"]); raw == "" || raw == "null" {
-				match = false
-			}
-			if _, ok := m["args"]; !ok {
-				match = false
-			}
-			if _, ok := m["env"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Stdio = &v
-				return nil
-			}
-		}
-	} else {
-		if _, ok := err.(*json.UnmarshalTypeError); !ok {
-			return err
-		}
-	}
-	var arr []map[string]json.RawMessage
-	if json.Unmarshal(b, &arr) == nil {
-	}
-	return errors.New("no matching variant for union")
-}
-func (u UnstableMcpServer) MarshalJSON() ([]byte, error) {
-	if u.Http != nil {
-		_b, _e := json.Marshal(*u.Http)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		var m map[string]json.RawMessage
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		m["type"] = json.RawMessage("\"http\"")
-		return json.Marshal(m)
-	}
-	if u.Sse != nil {
-		_b, _e := json.Marshal(*u.Sse)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		var m map[string]json.RawMessage
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		m["type"] = json.RawMessage("\"sse\"")
-		return json.Marshal(m)
-	}
-	if u.Acp != nil {
-		_b, _e := json.Marshal(*u.Acp)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		var m map[string]json.RawMessage
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		m["type"] = json.RawMessage("\"acp\"")
-		return json.Marshal(m)
-	}
-	if u.Stdio != nil {
-		_b, _e := json.Marshal(*u.Stdio)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		var m map[string]json.RawMessage
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		return json.Marshal(m)
-	}
-	return []byte{}, nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// ACP transport configuration for MCP.
-//
-// The MCP server is provided by an ACP component and communicates over the ACP channel
-// using 'mcp/message'.
-type UnstableMcpServerAcp struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
-	// Human-readable name identifying this MCP server.
-	Name string `json:"name"`
-	// Unique identifier for this MCP server, generated by the component providing it.
-	//
-	// Providers MUST NOT reuse an ID for multiple ACP-transport MCP servers that are visible
-	// on the same ACP connection.
-	ServerId UnstableMcpServerAcpId `json:"serverId"`
-}
-
-func (v *UnstableMcpServerAcp) UnmarshalJSON(b []byte) error {
-	type plain UnstableMcpServerAcp
-	type UnstableMcpServerAcp struct {
-		*plain
-		Meta json.RawMessage `json:"_meta"`
-	}
-	raw := UnstableMcpServerAcp{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	return nil
-}
-
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Unique identifier for an MCP server using the ACP transport.
-//
-// The value is opaque and generated by the ACP component providing the MCP server. It is
-// used by 'mcp/message' to route requests to the component that declared the server.
-type UnstableMcpServerAcpId string
-
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -14760,7 +14356,7 @@ type UnstableMessageMcpNotification struct {
 	// The identifier of the active inner MCP request.
 	RequestId UnstableMcpRequestId `json:"requestId"`
 	// The declared ACP MCP server handling the associated request.
-	ServerId UnstableMcpServerAcpId `json:"serverId"`
+	ServerId McpServerAcpId `json:"serverId"`
 }
 
 func (v *UnstableMessageMcpNotification) UnmarshalJSON(b []byte) error {
@@ -14805,7 +14401,7 @@ type UnstableMessageMcpRequest struct {
 	// The caller-generated identifier for the inner MCP request.
 	RequestId UnstableMcpRequestId `json:"requestId"`
 	// The declared ACP MCP server receiving this request.
-	ServerId UnstableMcpServerAcpId `json:"serverId"`
+	ServerId McpServerAcpId `json:"serverId"`
 }
 
 func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
@@ -15052,204 +14648,6 @@ func (v *UnstableProviderInfo) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// A session configuration option selector and its current state.
-// Single-value selector (dropdown).
-type UnstableSessionConfigOptionSelect struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
-	// Optional semantic category for this option (UX only).
-	Category *UnstableSessionConfigOptionCategory `json:"category,omitempty"`
-	// The currently selected value.
-	CurrentValue SessionConfigValueId `json:"currentValue"`
-	// Optional description for the Client to display to the user.
-	Description *string `json:"description,omitempty"`
-	// Unique identifier for the configuration option.
-	Id SessionConfigId `json:"id"`
-	// Human-readable label for the option.
-	Name string `json:"name"`
-	// The set of selectable options.
-	Options SessionConfigSelectOptions `json:"options"`
-	Type    string                     `json:"type"`
-}
-
-func (v *UnstableSessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
-	type plain UnstableSessionConfigOptionSelect
-	type UnstableSessionConfigOptionSelect struct {
-		*plain
-		Meta        json.RawMessage `json:"_meta"`
-		Category    json.RawMessage `json:"category"`
-		Description json.RawMessage `json:"description"`
-	}
-	raw := UnstableSessionConfigOptionSelect{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Category, &v.Category)
-	decodeLenient(raw.Description, &v.Description)
-	return nil
-}
-
-// Boolean on/off toggle.
-type UnstableSessionConfigOptionBoolean struct {
-	// The _meta property is reserved by ACP to allow clients and agents to attach additional
-	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
-	// these keys.
-	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
-	// Optional semantic category for this option (UX only).
-	Category *UnstableSessionConfigOptionCategory `json:"category,omitempty"`
-	// The current value of the boolean option.
-	CurrentValue bool `json:"currentValue"`
-	// Optional description for the Client to display to the user.
-	Description *string `json:"description,omitempty"`
-	// Unique identifier for the configuration option.
-	Id SessionConfigId `json:"id"`
-	// Human-readable label for the option.
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
-func (v *UnstableSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
-	type plain UnstableSessionConfigOptionBoolean
-	type UnstableSessionConfigOptionBoolean struct {
-		*plain
-		Meta        json.RawMessage `json:"_meta"`
-		Category    json.RawMessage `json:"category"`
-		Description json.RawMessage `json:"description"`
-	}
-	raw := UnstableSessionConfigOptionBoolean{plain: (*plain)(v)}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return plainFieldError(err)
-	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Category, &v.Category)
-	decodeLenient(raw.Description, &v.Description)
-	return nil
-}
-
-type UnstableSessionConfigOption struct {
-	// Single-value selector (dropdown).
-	Select *UnstableSessionConfigOptionSelect `json:"-"`
-	// Boolean on/off toggle.
-	Boolean *UnstableSessionConfigOptionBoolean `json:"-"`
-}
-
-func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
-	*u = UnstableSessionConfigOption{}
-	if string(b) == "null" {
-		return errors.New("no matching variant for union")
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "select":
-				var v UnstableSessionConfigOptionSelect
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Select = &v
-				return nil
-			case "boolean":
-				var v UnstableSessionConfigOptionBoolean
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Boolean = &v
-				return nil
-			}
-		}
-	} else {
-		if _, ok := err.(*json.UnmarshalTypeError); !ok {
-			return err
-		}
-	}
-	var arr []map[string]json.RawMessage
-	if json.Unmarshal(b, &arr) == nil {
-	}
-	return errors.New("no matching variant for union")
-}
-func (u UnstableSessionConfigOption) MarshalJSON() ([]byte, error) {
-	if u.Select != nil {
-		_b, _e := json.Marshal(*u.Select)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		var m map[string]json.RawMessage
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		m["type"] = json.RawMessage("\"select\"")
-		return json.Marshal(m)
-	}
-	if u.Boolean != nil {
-		_b, _e := json.Marshal(*u.Boolean)
-		if _e != nil {
-			return []byte{}, _e
-		}
-		var m map[string]json.RawMessage
-		if json.Unmarshal(_b, &m) != nil {
-			return []byte{}, errors.New("invalid variant payload")
-		}
-		m["type"] = json.RawMessage("\"boolean\"")
-		return json.Marshal(m)
-	}
-	return []byte{}, nil
-}
-
-func (u *UnstableSessionConfigOption) Validate() error {
-	var count int
-	if u.Select != nil {
-		count++
-	}
-	if u.Boolean != nil {
-		count++
-	}
-	if count != 1 {
-		return errors.New("UnstableSessionConfigOption must have exactly one variant set")
-	}
-	if u.Select != nil {
-		if u.Select.Name == "" {
-			return fmt.Errorf("name is required")
-		}
-	}
-	if u.Boolean != nil {
-		if u.Boolean.Name == "" {
-			return fmt.Errorf("name is required")
-		}
-	}
-	return nil
-}
-
-// Semantic category for a session configuration option.
-//
-// This is intended to help Clients distinguish broadly common selectors (e.g. model selector vs
-// session mode selector vs thought/reasoning level) for UX purposes (keyboard shortcuts, icons,
-// placement). It MUST NOT be required for correctness. Clients MUST handle missing or unknown
-// categories gracefully.
-//
-// Category names beginning with '_' are free for custom use, like other ACP extension methods.
-// Category names that do not begin with '_' are reserved for the ACP spec.
-type UnstableSessionConfigOptionCategory string
-
-const (
-	UnstableSessionConfigOptionCategoryMode         UnstableSessionConfigOptionCategory = "mode"
-	UnstableSessionConfigOptionCategoryModel        UnstableSessionConfigOptionCategory = "model"
-	UnstableSessionConfigOptionCategoryModelConfig  UnstableSessionConfigOptionCategory = "model_config"
-	UnstableSessionConfigOptionCategorySpeed        UnstableSessionConfigOptionCategory = "speed"
-	UnstableSessionConfigOptionCategoryThoughtLevel UnstableSessionConfigOptionCategory = "thought_level"
-)
-
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -15330,7 +14728,7 @@ type UnstableSessionOptionsResponse struct {
 	// 'NewSessionResponse'.
 	//
 	// Optional. Omitted, 'null', or empty means no config options are advertised.
-	ConfigOptions []UnstableSessionConfigOption `json:"configOptions,omitempty"`
+	ConfigOptions []SessionConfigOption `json:"configOptions,omitempty"`
 	// The mode state the session would start with, if the Agent supports modes.
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/v1/draft/session-modes)
@@ -15350,7 +14748,7 @@ func (v *UnstableSessionOptionsResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeUnstableSessionConfigOption)
+	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
 	return nil
 }
@@ -15367,7 +14765,16 @@ func (v *UnstableSessionOptionsResponse) Validate() error {
 type UnstableSessionStatus string
 
 const (
-	UnstableSessionStatusOpen  UnstableSessionStatus = "open"
+	// The Agent has the session in memory, for any connection.
+	//
+	// This does not mean the requesting connection is attached to it. A Client that did
+	// not create or resume the session on its own connection MUST still call
+	// 'session/load' or 'session/resume' before sending 'session/prompt' or expecting
+	// 'session/update' notifications.
+	UnstableSessionStatusOpen UnstableSessionStatus = "open"
+	// The Agent knows the session and can resume it, but does not have it in memory.
+	//
+	// The Client can call 'session/load' or 'session/resume' to start it.
 	UnstableSessionStatusSaved UnstableSessionStatus = "saved"
 )
 
@@ -16307,7 +15714,6 @@ const (
 	shapeToolCallStatus
 	shapeUnknownStateUpdate
 	shapeUnstableAuthAccount
-	shapeUnstableSessionConfigOption
 	shapeUnstructuredCommandInput
 	shapeUsage
 )
@@ -16815,31 +16221,6 @@ var shapes = [...]shape{
 		kinds:    kindObject,
 		props:    map[string]*shape{"label": {kinds: kindString}},
 		required: []string{"label"},
-	},
-	shapeUnstableSessionConfigOption: {
-		anyOf: []*shape{{
-			kinds: kindObject,
-			props: map[string]*shape{"type": {
-				kinds:  kindString,
-				values: []any{"select"},
-			}},
-			ref:      shapeSessionConfigSelect,
-			required: []string{"type"},
-		}, {
-			kinds: kindObject,
-			props: map[string]*shape{"type": {
-				kinds:  kindString,
-				values: []any{"boolean"},
-			}},
-			ref:      shapeSessionConfigBoolean,
-			required: []string{"type"},
-		}},
-		kinds: kindObject,
-		props: map[string]*shape{
-			"id":   {ref: shapeSessionConfigId},
-			"name": {kinds: kindString},
-		},
-		required: []string{"id", "name"},
 	},
 	shapeUnstructuredCommandInput: {
 		kinds:    kindObject,

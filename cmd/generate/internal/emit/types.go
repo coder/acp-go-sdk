@@ -122,6 +122,18 @@ func emitDocComment(f *File, desc string) {
 
 // appendDocComments appends doc comment Code elements to a slice for struct field comments.
 // Used when building struct field definitions with proper multi-line comment support.
+// constDocs maps the const of each alternative in alts to its description,
+// the doc comment of its Go constant.
+func constDocs(alts []*load.Definition) map[string]string {
+	docs := map[string]string{}
+	for _, alt := range alts {
+		if alt != nil && alt.Const != nil {
+			docs[fmt.Sprint(alt.Const)] = alt.Description
+		}
+	}
+	return docs
+}
+
 func appendDocComments(codeSlice []Code, desc string) []Code {
 	lines := util.FormatDocComment(desc)
 	for _, line := range lines {
@@ -223,6 +235,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 				if !ok {
 					continue
 				}
+				defs = appendDocComments(defs, v.Description)
 				defs = append(defs, Id(util.ToEnumConst(name, s)).Id(name).Op("=").Lit(s))
 			}
 			if len(defs) > 0 {
@@ -351,8 +364,15 @@ func (b *typesBuilder) emitEnum(name string, def *load.Definition) {
 	f.Type().Id(name).String()
 	members := []Code{}
 	defs := []Code{}
+	docs := constDocs(def.OneOf)
+	for value, note := range def.EnumNotes {
+		if docs[value] == "" {
+			docs[value] = note
+		}
+	}
 	for _, value := range enumValues(def) {
 		members = append(members, Id(util.ToEnumConst(name, value)))
+		defs = appendDocComments(defs, docs[value])
 		defs = append(defs, Id(util.ToEnumConst(name, value)).Id(name).Op("=").Lit(value))
 	}
 	if len(defs) > 0 {

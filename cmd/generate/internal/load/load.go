@@ -38,16 +38,20 @@ type Definition struct {
 	Properties  map[string]*Definition `json:"properties"`
 	Required    []string               `json:"required"`
 	Enum        []any                  `json:"enum"`
-	Items       *Definition            `json:"items"`
-	Ref         string                 `json:"$ref"`
-	AnyOf       []*Definition          `json:"anyOf"`
-	OneOf       []*Definition          `json:"oneOf"`
-	AllOf       []*Definition          `json:"allOf"`
-	DocsIgnore  bool                   `json:"x-docs-ignore"`
-	Title       string                 `json:"title"`
-	Const       any                    `json:"const"`
-	XSide       string                 `json:"x-side"`
-	XMethod     string                 `json:"x-method"`
+	// EnumNotes maps an enum value to the doc comment of its constant. The
+	// schema has no such keyword: the merge sets it for the values that only
+	// the unstable schema has (MergeStableAndUnstable).
+	EnumNotes  map[string]string `json:"-"`
+	Items      *Definition       `json:"items"`
+	Ref        string            `json:"$ref"`
+	AnyOf      []*Definition     `json:"anyOf"`
+	OneOf      []*Definition     `json:"oneOf"`
+	AllOf      []*Definition     `json:"allOf"`
+	DocsIgnore bool              `json:"x-docs-ignore"`
+	Title      string            `json:"title"`
+	Const      any               `json:"const"`
+	XSide      string            `json:"x-side"`
+	XMethod    string            `json:"x-method"`
 	// Format is the format keyword, such as "int64" for an integer that must
 	// hold any 64-bit value.
 	Format string `json:"format"`

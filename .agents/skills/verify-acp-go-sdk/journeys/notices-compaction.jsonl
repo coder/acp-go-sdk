@@ -1,0 +1,14 @@
+# Notice, tool names and /compact for an editor that advertises notices and compaction. Feature: notices-compaction.md
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false,"session":{"notices":{},"compaction":{}}}},"save":"init","expect":{"result.protocolVersion":1}}
+{"send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new"}
+{"send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"save":"turn","timeout":"30s","expect":{"result.stopReason":"end_turn"}}
+{"step":"disclaimer is a notice","waitFor":"session/update","where":{"params.sessionId":"{{new.result.sessionId}}","params.update.sessionUpdate":"notice","params.update.severity":"info","params.update.title":"ACP Go Example Agent — demo only","params.update.description":"No AI model runs. Every turn is scripted."},"timeout":"1s"}
+{"step":"read tool is named","waitFor":"session/update","where":{"params.update.sessionUpdate":"tool_call","params.update.toolCallId":"call_1","params.update.name":"read_file"},"timeout":"1s"}
+{"step":"edit tool is named","waitFor":"session/update","where":{"params.update.sessionUpdate":"tool_call","params.update.toolCallId":"call_2","params.update.name":"write_file"},"timeout":"1s"}
+{"step":"permission names the tool","waitFor":"session/request_permission","where":{"params.toolCall.toolCallId":"call_2","params.toolCall.name":"write_file"},"timeout":"1s"}
+{"send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"/compact"}]},"save":"compact","timeout":"10s","expect":{"result.stopReason":"end_turn"}}
+{"step":"compaction starts","waitFor":"session/update","where":{"params.sessionId":"{{new.result.sessionId}}","params.update.sessionUpdate":"compaction_update","params.update.status":"in_progress"},"timeout":"1s"}
+{"step":"summary streams","waitFor":"session/update","where":{"params.update.sessionUpdate":"compaction_summary_chunk","params.update.content":{"type":"text","text":"Compacted 1 earlier prompt(s) of this demo session."}},"timeout":"1s"}
+{"step":"compaction completes","waitFor":"session/update","where":{"params.update.sessionUpdate":"compaction_update","params.update.status":"completed"},"timeout":"1s"}
+{"close":true,"expectExit":0}

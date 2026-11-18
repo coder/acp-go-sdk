@@ -2,9 +2,10 @@
 // ts-client.mjs drives an ACP agent with the official TypeScript SDK
 // (@agentclientprotocol/sdk), the way its own example client does: one
 // initialize, one session/new and one prompt turn, with every permission
-// request answered allow. It advertises form and url elicitation, fills each
-// form field with "ts-host" and accepts each url. It records every JSON-RPC
-// line in both directions.
+// request answered allow, and then the prompt /compact. It advertises form and
+// url elicitation, fills each form field with "ts-host" and accepts each url.
+// It advertises notices and compaction too. It records every JSON-RPC line in
+// both directions.
 //
 //   node ts-client.mjs --out DIR --cwd DIR -- AGENT [ARGS...]
 //
@@ -12,7 +13,9 @@
 // DIR/result.txt. Exit 0: protocol version 1 was negotiated, the turn ended
 // with end_turn, at least one agent message arrived, the agent asked for
 // permission and got allow, the agent asked a form elicitation whose answer
-// reached its edit and a url elicitation that it completed, no error
+// reached its edit and a url elicitation that it completed, the agent sent
+// one notice and named each tool call, /compact streamed compaction updates
+// with one id and ended with end_turn, no error
 // response or non-JSON line crossed the wire, and the agent exited 0 after
 // its input closed. Exit 1: otherwise. Run it from a folder whose
 // node_modules holds the SDK.
@@ -51,6 +54,11 @@ const permissions = [];
 // value of each field, and a url with accept. elicitations lists each one.
 const tsHost = "ts-host";
 const elicitations = [];
+// notices, toolNames and compaction record what the TypeScript SDK decoded of
+// the notice, tool call and compaction updates.
+const notices = [];
+const toolNames = [];
+const compaction = [];
 
 function record(dir, line) {
   const entry = { t_ms: Date.now() - start, dir };
@@ -114,6 +122,7 @@ try {
     .onRequest(acp.methods.client.session.requestPermission, (ctx) => {
       const opts = ctx.params.options;
       const pick = opts.find((o) => o.kind === "allow_once") ?? opts.find((o) => o.kind === "allow_always");
+      toolNames.push(`permission ${ctx.params.toolCall.toolCallId}=${ctx.params.toolCall.name ?? "<none>"}`);
       permissions.push({
         title: ctx.params.toolCall.title ?? "",
         content: ctx.params.toolCall.rawInput?.content ?? "",
@@ -135,13 +144,18 @@ try {
       elicitations.push({ complete: ctx.params.elicitationId });
     })
     .onNotification(acp.methods.client.session.update, (ctx) => {
-      const kind = ctx.params.update.sessionUpdate;
+      const u = ctx.params.update;
+      const kind = u.sessionUpdate;
       kinds[kind] = (kinds[kind] ?? 0) + 1;
+      if (kind === "notice") notices.push({ severity: u.severity, title: u.title, description: u.description ?? null });
+      if (kind === "tool_call") toolNames.push(`${u.toolCallId}=${u.name ?? "<none>"}`);
+      if (kind === "compaction_update") compaction.push({ kind, id: u.compactionId, status: u.status });
+      if (kind === "compaction_summary_chunk") compaction.push({ kind, id: u.compactionId, text: u.content?.text ?? null });
     })
     .connectWith(stream, async (ctx) => {
       const init = await ctx.request(acp.methods.agent.initialize, {
         protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: { elicitation: { form: {}, url: {} } },
+        clientCapabilities: { elicitation: { form: {}, url: {} }, session: { notices: {}, compaction: {} } },
         clientInfo: { name: "acp-harness-ts-client", version: "0" },
       });
       const session = await ctx.request(acp.methods.agent.session.new, { cwd, mcpServers: [] });
@@ -149,7 +163,16 @@ try {
         sessionId: session.sessionId,
         prompt: [{ type: "text", text: "Hello, agent!" }],
       });
-      return { protocolVersion: init.protocolVersion, sessionId: session.sessionId, stopReason: turn.stopReason };
+      const compact = await ctx.request(acp.methods.agent.session.prompt, {
+        sessionId: session.sessionId,
+        prompt: [{ type: "text", text: "/compact" }],
+      });
+      return {
+        protocolVersion: init.protocolVersion,
+        sessionId: session.sessionId,
+        stopReason: turn.stopReason,
+        compactStopReason: compact.stopReason,
+      };
     });
 } catch (err) {
   problems.push(`request failed: ${err?.message ?? err}`);
@@ -189,12 +212,40 @@ const checks = [
       typeof elicitations[1].elicitationId === "string" &&
       elicitations[2].complete === elicitations[1].elicitationId,
   ],
+  [
+    "one info notice",
+    notices.length === 1 && notices[0].severity === "info" && notices[0].title !== "",
+  ],
+  [
+    "each tool call and the permission request carry a name",
+    toolNames.join(" ") === "call_1=read_file call_2=write_file permission call_2=write_file",
+  ],
+  [
+    "/compact streamed compaction updates with one id and ended with end_turn",
+    outcome?.compactStopReason === "end_turn" &&
+      compaction.map((c) => c.status ?? c.kind).join(" ") === "in_progress compaction_summary_chunk completed" &&
+      new Set(compaction.map((c) => c.id)).size === 1 &&
+      typeof compaction[1]?.text === "string",
+  ],
   ["no error response or non-JSON line on the wire", problems.length === 0],
   ["agent exited 0 after its input closed", exit === "exit 0"],
   [`transcript.jsonl written${transcriptErr ? `: ${transcriptErr.message}` : ""}`, transcriptErr === null],
 ];
 const pass = checks.every(([, ok]) => ok);
-const summary = { agent, sdk: "@agentclientprotocol/sdk", outcome, kinds, permissions, elicitations, problems, agentExit: exit, pass };
+const summary = {
+  agent,
+  sdk: "@agentclientprotocol/sdk",
+  outcome,
+  kinds,
+  permissions,
+  elicitations,
+  notices,
+  toolNames,
+  compaction,
+  problems,
+  agentExit: exit,
+  pass,
+};
 writeFileSync(`${out}/summary.json`, JSON.stringify(summary, null, 2) + "\n");
 const lines = checks.map(([name, ok]) => `${ok ? "PASS" : "FAIL"}  ${name}`);
 lines.push(...problems.map((p) => `      ${p}`), `exit=${pass ? 0 : 1}`);

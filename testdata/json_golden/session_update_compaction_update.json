@@ -1,0 +1,11 @@
+{
+  "sessionUpdate": "compaction_update",
+  "compactionId": "cmp_1",
+  "status": "completed",
+  "summary": [
+    {
+      "type": "text",
+      "text": "The user asked for a config change."
+    }
+  ]
+}

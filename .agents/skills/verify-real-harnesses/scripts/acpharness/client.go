@@ -17,6 +17,8 @@ type event struct {
 	Text   string // text of a message or thought chunk
 	Model  string // model id that a usage_update names in _meta
 	Status string // status that a tool_call or tool_call_update sets
+	// Decoded is a checkedKinds update as the SDK decoded it, encoded again.
+	Decoded json.RawMessage
 }
 
 // permission is one session/request_permission and the answer it got.
@@ -54,6 +56,7 @@ type harnessClient struct {
 	// it is empty, the client cancels every elicitation.
 	elicit       string
 	elicitations []elicitation
+	toolNames    []toolName // the name that the SDK decoded for each tool call
 }
 
 // elicitation is one elicitation/create or elicitation/complete from the
@@ -220,6 +223,7 @@ func (c *harnessClient) RequestPermission(_ context.Context, p acp.RequestPermis
 		answerReject: {acp.PermissionOptionKindRejectOnce, acp.PermissionOptionKindRejectAlways},
 	}[policy]
 	rec := permission{Scenario: c.h.rec.current(), Conn: c.conn, Answer: "cancelled"}
+	c.addToolName("session/request_permission", p.SessionId, p.ToolCall.ToolCallId, p.ToolCall.Name)
 	if p.ToolCall.Title != nil {
 		rec.Title = *p.ToolCall.Title
 	}
@@ -246,6 +250,15 @@ pick:
 func (c *harnessClient) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
 	u := n.Update
 	ev := event{Kind: updateKind(u)}
+	if checkedKinds[ev.Kind] {
+		ev.Decoded, _ = json.Marshal(u)
+	}
+	switch {
+	case u.ToolCall != nil:
+		c.addToolName("tool_call", n.SessionId, u.ToolCall.ToolCallId, u.ToolCall.Name)
+	case u.ToolCallUpdate != nil:
+		c.addToolName("tool_call_update", n.SessionId, u.ToolCallUpdate.ToolCallId, u.ToolCallUpdate.Name)
+	}
 	switch {
 	case u.AgentMessageChunk != nil:
 		ev.Text = blockText(u.AgentMessageChunk.Content)
@@ -280,6 +293,18 @@ func (c *harnessClient) SessionUpdate(_ context.Context, n acp.SessionNotificati
 		}
 	}
 	return nil
+}
+
+func (c *harnessClient) addToolName(where string, sid acp.SessionId, id acp.ToolCallId, name *string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.toolNames = append(c.toolNames, toolName{c.conn, where, string(sid), string(id), decodedName(name)})
+}
+
+func (c *harnessClient) decodedToolNames() []toolName {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]toolName(nil), c.toolNames...)
 }
 
 // usage records a prompt response's usage. The schema defines its fields
@@ -385,6 +410,12 @@ func updateKind(u acp.SessionUpdate) string {
 		return "session_info_update"
 	case u.UsageUpdate != nil:
 		return "usage_update"
+	case u.Notice != nil:
+		return "notice"
+	case u.CompactionUpdate != nil:
+		return "compaction_update"
+	case u.CompactionSummaryChunk != nil:
+		return "compaction_summary_chunk"
 	}
 	return "unknown"
 }

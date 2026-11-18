@@ -40,13 +40,14 @@ const rpcTimeout = 2 * time.Minute
 // profiles lists the scenarios of each profile in the order they run.
 // runLive and runSmoke must match it; -only accepts only these names.
 var profiles = map[string][]string{
-	"live": {"initialize", "authenticate", "session/new", "prompt", "config-option", "config-boolean", "elicitation", "permission-allow",
-		"permission-reject", "cancel", "session/list", "session/close", "session/delete", "session/load", "session/resume"},
+	"live": {"initialize", "authenticate", "session/new", "prompt", "config-option", "config-boolean", "elicitation", "notice", "compaction",
+		"permission-allow", "permission-reject", "cancel", "session/list", "session/close", "session/delete", "session/load", "session/resume"},
 	"smoke": {"initialize", "authenticate", "session/new", "prompt"},
 }
 
 // runLive runs every scenario. Connection 1 creates session A (prompt,
-// config option, list, close) and session B (permissions, cancel, delete).
+// config option, list, close), sessions E, N and C for the elicitation,
+// notice and compaction turns, and session B (permissions, cancel, delete).
 // Connections 2 and 3 are new agent processes that reopen session A, the
 // way an editor does after a restart.
 func (h *harness) runLive() {
@@ -59,6 +60,8 @@ func (h *harness) runLive() {
 	h.step("config-option", func() (status, string) { return h.switchModel(a) })
 	h.step("config-boolean", func() (status, string) { return h.toggleBoolean(a) })
 	h.step("elicitation", func() (status, string) { return h.elicitTurn(a) })
+	h.step("notice", func() (status, string) { return h.noticeTurn(a) })
+	h.step("compaction", func() (status, string) { return h.compactTurn(a) })
 	h.step("permission-allow", func() (status, string) { return h.permissionTurn(a, answerAllow) })
 	h.step("permission-reject", func() (status, string) { return h.permissionTurn(a, answerReject) })
 	h.step("cancel", func() (status, string) { return h.cancelTurn(a) })
@@ -105,9 +108,12 @@ func initRequest() acp.InitializeRequest {
 	return acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
-			// Accept boolean config options, so an agent may offer them.
+			// Accept boolean config options, notices and compaction updates,
+			// so an agent may offer and send them.
 			Session: &acp.ClientSessionCapabilities{
 				ConfigOptions: &acp.SessionConfigOptionsCapabilities{Boolean: &acp.BooleanConfigOptionCapabilities{}},
+				Notices:       &acp.NoticeCapabilities{},
+				Compaction:    &acp.CompactionCapabilities{},
 			},
 			// Accept terminal auth methods and elicitations, so an agent
 			// may advertise and send them.
@@ -191,14 +197,16 @@ func (h *harness) reconnect() (*agentConn, error) {
 	return a, nil
 }
 
-func (h *harness) newSession(a *agentConn, name string) (status, string) {
+// newSession creates the session called name in its own cwd, with the MCP
+// servers given.
+func (h *harness) newSession(a *agentConn, name string, servers ...acp.McpServer) (status, string) {
 	cwd := filepath.Join(h.opts.cwd, strings.ToLower(name))
 	if err := os.MkdirAll(cwd, 0o700); err != nil {
 		return fail, err.Error()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-	resp, err := a.conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
+	resp, err := a.conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: append([]acp.McpServer{}, servers...)})
 	if err != nil {
 		return fail, "session/new: " + errText(err)
 	}
@@ -226,18 +234,21 @@ type turn struct {
 }
 
 func (t turn) describe() string {
-	var kinds []string
-	for k, n := range t.kinds {
-		kinds = append(kinds, fmt.Sprintf("%s=%d", k, n))
+	return fmt.Sprintf("stopReason %s, reply %q, models %v, %s, %.1fs",
+		t.resp.StopReason, clip(t.text, 60), t.models, countKinds(t.kinds, t.tools), float64(t.ms)/1000)
+}
+
+// countKinds lists update kinds and tool call statuses with their counts.
+func countKinds(kinds, tools map[string]int) string {
+	list := func(m map[string]int) string {
+		var out []string
+		for k, n := range m {
+			out = append(out, fmt.Sprintf("%s=%d", k, n))
+		}
+		sort.Strings(out)
+		return strings.Join(out, " ")
 	}
-	sort.Strings(kinds)
-	var tools []string
-	for k, n := range t.tools {
-		tools = append(tools, fmt.Sprintf("%s=%d", k, n))
-	}
-	sort.Strings(tools)
-	return fmt.Sprintf("stopReason %s, reply %q, models %v, updates [%s], tool statuses [%s], %.1fs",
-		t.resp.StopReason, clip(t.text, 60), t.models, strings.Join(kinds, " "), strings.Join(tools, " "), float64(t.ms)/1000)
+	return fmt.Sprintf("updates [%s], tool statuses [%s]", list(kinds), list(tools))
 }
 
 func (h *harness) prompt(a *agentConn, sid acp.SessionId, text string) turn {
@@ -1060,6 +1071,88 @@ func (h *harness) elicitTurn(a *agentConn) (status, string) {
 		return fail, fmt.Sprintf("the reply does not name the answer %s alone; %s", strings.ToUpper(elicitAnswer), t.describe())
 	}
 	return pass, fmt.Sprintf("%d form elicitation(s): %s; %s", len(asked), strings.Join(answers, "; "), t.describe())
+}
+
+// brokenServer is an MCP server that cannot start: its command does not
+// exist. It goes to session N, and the agent should tell the user so.
+func (h *harness) brokenServer() acp.McpServer {
+	return acp.McpServer{Stdio: &acp.McpServerStdio{Name: "harness-broken", Command: filepath.Join(h.opts.cwd, "no-such-mcp-server"),
+		Args: []string{}, Env: []acp.EnvVariable{}}}
+}
+
+// noticeTurn opens session N with an MCP server that cannot start and runs
+// one pong turn. The agent tells the user about the failed server with a
+// notice update, which may come before the turn, so every update of N counts.
+func (h *harness) noticeTurn(a *agentConn) (status, string) {
+	if st, detail := h.newSession(a, "N", h.brokenServer()); st != pass {
+		return fail, "session/new for session N: " + detail
+	}
+	sid := h.sessions["N"]
+	t := h.prompt(a, sid, pongPrompt)
+	notices, err := h.sent(a, sid, 0, 0, "notice")
+	kinds, tools := map[string]int{}, map[string]int{}
+	for _, ev := range a.client.since(sid, 0) {
+		kinds[ev.Kind]++
+		if ev.Status != "" {
+			tools[ev.Status]++
+		}
+	}
+	got := "since session/new, session N got " + countKinds(kinds, tools)
+	switch {
+	case t.err != nil:
+		return fail, "session/prompt: " + errText(t.err)
+	case t.resp.StopReason != acp.StopReasonEndTurn || !saysPong(t):
+		return fail, "the pong turn: " + t.describe()
+	case err != nil:
+		return fail, err.Error()
+	case len(notices) == 0 && h.opts.sendsNone["notice"]:
+		return skip, skipSendsNone + ": -sends-none notice, and " + got + "; pong turn: " + t.describe()
+	case len(notices) == 0:
+		return fail, "no notice update arrived for the MCP server that cannot start; " + got + "; pong turn: " + t.describe()
+	}
+	return pass, fmt.Sprintf("%d notice(s), each decoded as on the wire: %s; pong turn: %s%s", len(notices), describeNotices(notices), t.describe(), h.staleSendsNone("notice"))
+}
+
+// compactTurn runs a pong turn in session C, then the /compact command,
+// which both adapters offer as a slash command.
+func (h *harness) compactTurn(a *agentConn) (status, string) {
+	if st, detail := h.newSession(a, "C"); st != pass {
+		return fail, "session/new for session C: " + detail
+	}
+	sid := h.sessions["C"]
+	switch first := h.prompt(a, sid, pongPrompt); {
+	case first.err != nil:
+		return fail, "session/prompt before /compact: " + errText(first.err)
+	case first.resp.StopReason != acp.StopReasonEndTurn || !saysPong(first):
+		return fail, "the pong turn before /compact: " + first.describe()
+	}
+	emark, wmark := a.client.mark(sid), len(h.rec.updatesOnWire(a.n, sid))
+	t := h.prompt(a, sid, "/compact")
+	wire, err := h.sent(a, sid, emark, wmark, "compaction_update", "compaction_summary_chunk")
+	updates, detail, problem := compactions(wire)
+	detail = fmt.Sprintf("stopReason %s; %s; %s", t.resp.StopReason, detail, t.describe())
+	switch {
+	case t.err != nil:
+		return fail, "session/prompt /compact: " + errText(t.err)
+	case err != nil:
+		return fail, err.Error()
+	case updates == 0 && h.opts.sendsNone["compaction"]:
+		return skip, skipSendsNone + ": -sends-none compaction, and /compact sent no compaction_update; " + detail
+	case updates == 0:
+		return fail, "no compaction_update arrived for /compact; " + detail
+	case problem != "":
+		return fail, problem + "; " + detail
+	}
+	return pass, fmt.Sprintf("%d compaction_update(s), every compaction update decoded as on the wire: %s%s", updates, detail, h.staleSendsNone("compaction"))
+}
+
+// staleSendsNone flags a -sends-none entry that the agent proved wrong, so
+// that the adapter table gets fixed.
+func (h *harness) staleSendsNone(scenario string) string {
+	if !h.opts.sendsNone[scenario] {
+		return ""
+	}
+	return "; the agent sent it despite -sends-none " + scenario + ", so drop that flag from the adapter table"
 }
 
 func contains(xs []string, x string) bool {

@@ -395,3 +395,130 @@ func TestExampleAgent_Elicitation(t *testing.T) {
 		})
 	}
 }
+
+// recordClient records every session update in order and rejects each
+// permission request, recording the tool call it was asked about.
+type recordClient struct {
+	acp.Client
+	mu      sync.Mutex
+	updates []acp.SessionUpdate
+	asked   []acp.ToolCallUpdate
+}
+
+func (c *recordClient) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.updates = append(c.updates, n.Update)
+	return nil
+}
+
+func (c *recordClient) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.asked = append(c.asked, p.ToolCall)
+	return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeSelected("reject")}, nil
+}
+
+// take returns the updates recorded since the last call.
+func (c *recordClient) take() []acp.SessionUpdate {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	u := c.updates
+	c.updates = nil
+	return u
+}
+
+func TestExampleAgent_NoticesCompactionAndToolNames(t *testing.T) {
+	tests := []struct {
+		name                string
+		session             *acp.ClientSessionCapabilities
+		notices, compaction bool
+	}{
+		{"no capability", nil, false, false},
+		{"notices", &acp.ClientSessionCapabilities{Notices: &acp.NoticeCapabilities{}}, true, false},
+		{"compaction", &acp.ClientSessionCapabilities{Compaction: &acp.CompactionCapabilities{}}, false, true},
+		{"both", &acp.ClientSessionCapabilities{Notices: &acp.NoticeCapabilities{}, Compaction: &acp.CompactionCapabilities{}}, true, true},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			client := &recordClient{}
+			c, _ := connectClient(t, client)
+			if _, err := c.Initialize(ctx, acp.InitializeRequest{
+				ProtocolVersion:    acp.ProtocolVersionNumber,
+				ClientCapabilities: acp.ClientCapabilities{Session: tt.session},
+			}); err != nil {
+				t.Fatalf("initialize: %v", err)
+			}
+			sid := newSession(t, c, "/w")
+			prompt := func(text string) []acp.SessionUpdate {
+				t.Helper()
+				resp, err := c.Prompt(ctx, acp.PromptRequest{SessionId: sid, Prompt: []acp.ContentBlock{acp.TextBlock(text)}})
+				if err != nil || resp.StopReason != acp.StopReasonEndTurn {
+					t.Fatalf("session/prompt %q = %+v, %v; want end_turn", text, resp, err)
+				}
+				return client.take()
+			}
+
+			turn := prompt("hi")
+			if first := turn[0]; tt.notices {
+				if n := first.Notice; n == nil || n.Severity != acp.NoticeSeverityInfo || n.Title != "ACP Go Example Agent — demo only" {
+					t.Errorf("first update = %+v, want the demo notice", first)
+				}
+			} else if first.AgentMessageChunk == nil {
+				t.Errorf("first update = %+v, want the demo agent message", first)
+			}
+			var names []string
+			for _, u := range turn {
+				if u.Notice != nil && !tt.notices {
+					t.Errorf("notice %+v sent to a client without the capability", u.Notice)
+				}
+				if u.ToolCall != nil {
+					names = append(names, fmt.Sprintf("%s=%s", u.ToolCall.ToolCallId, deref(u.ToolCall.Name)))
+				}
+			}
+			if want := []string{"call_1=read_file", "call_2=write_file"}; !reflect.DeepEqual(names, want) {
+				t.Errorf("tool call names = %v, want %v", names, want)
+			}
+			client.mu.Lock()
+			if len(client.asked) != 1 || deref(client.asked[0].Name) != "write_file" {
+				t.Errorf("permission tool calls = %+v, want one named write_file", client.asked)
+			}
+			client.mu.Unlock()
+
+			compacted := prompt("/compact")
+			summary := "Compacted 1 earlier prompt(s) of this demo session."
+			if !tt.compaction {
+				if len(compacted) != 1 || compacted[0].AgentMessageChunk == nil || compacted[0].AgentMessageChunk.Content.Text.Text != summary {
+					t.Fatalf("/compact updates = %+v, want one agent message %q", compacted, summary)
+				}
+				return
+			}
+			if len(compacted) != 3 {
+				t.Fatalf("/compact sent %d updates, want 3: %+v", len(compacted), compacted)
+			}
+			start, chunk, done := compacted[0].CompactionUpdate, compacted[1].CompactionSummaryChunk, compacted[2].CompactionUpdate
+			if start == nil || start.Status != acp.CompactionStatusInProgress {
+				t.Errorf("first update = %+v, want compaction_update in_progress", compacted[0])
+			}
+			if chunk == nil || chunk.Content.Text == nil || chunk.Content.Text.Text != summary {
+				t.Errorf("second update = %+v, want the summary chunk %q", compacted[1], summary)
+			}
+			if done == nil || done.Status != acp.CompactionStatusCompleted {
+				t.Errorf("third update = %+v, want compaction_update completed", compacted[2])
+			}
+			if start != nil && chunk != nil && done != nil && (chunk.CompactionId != start.CompactionId || done.CompactionId != start.CompactionId) {
+				t.Errorf("compaction ids %s, %s, %s differ", start.CompactionId, chunk.CompactionId, done.CompactionId)
+			}
+		})
+	}
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return *s
+}

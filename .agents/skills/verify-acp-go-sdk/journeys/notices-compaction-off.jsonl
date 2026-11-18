@@ -1,0 +1,9 @@
+# The same session for an editor that advertises neither notices nor compaction. Feature: notices-compaction.md
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}},"save":"init","expect":{"result.protocolVersion":1}}
+{"send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new"}
+{"send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"save":"turn","timeout":"30s","expect":{"result.stopReason":"end_turn"}}
+{"step":"disclaimer is a message","waitFor":"session/update","where":{"params.update.sessionUpdate":"agent_message_chunk","params.update.content.text":"ACP Go Example Agent — demo only (no AI model)."},"timeout":"1s"}
+{"send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"/compact"}]},"save":"compact","timeout":"10s","expect":{"result.stopReason":"end_turn"}}
+{"step":"summary is a message","waitFor":"session/update","where":{"params.update.sessionUpdate":"agent_message_chunk","params.update.content.text":"Compacted 1 earlier prompt(s) of this demo session."},"timeout":"1s"}
+{"close":true,"expectExit":0}

@@ -1,0 +1,6 @@
+{
+  "sessionUpdate": "notice",
+  "severity": "warning",
+  "title": "MCP server \"docs\" failed to start",
+  "description": "Its tools are unavailable in this session."
+}

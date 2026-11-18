@@ -6,7 +6,8 @@ A developer runs the example client in a terminal. It starts the example agent, 
 
 - `cli-connect` prints `✅ Connected to agent (protocol v1)` and `📝 Created session: sess_...`.
 - `cli-config` prints the session's config options after `📝 Created session:`, see [config-options.md](./config-options.md).
-- `cli-stream` prints each chunk and each tool call with its status.
+- `cli-stream` prints each chunk and each tool call with its name and status.
+- `cli-notice` advertises `session.notices` and prints the agent's disclaimer as `📣 [info] ACP Go Example Agent — demo only` and the line `   No AI model runs. Every turn is scripted.`, see [notices-compaction.md](./notices-compaction.md).
 - `cli-host` asks `Database host [new-host]:` before the permission prompt. Enter takes `new-host`, and a typed host goes into the edit, which the permission prompt prints as JSON.
 - `cli-allow` applies the edit after `1`, and prints ` Perfect! I've successfully updated the configuration. The changes have been applied.`
 - `cli-review` asks `Open this URL? [y/N]:` after an allowed edit. `y` prints `[Client] Opening https://example.com/acp-demo/review` and then `✅ Elicitation elic_... complete`. Any other answer declines, and no completion follows.
@@ -31,7 +32,7 @@ Preconditions:
 
 Steps:
 
-- **Allow.** Press Enter at the host, type `1` at the permission prompt and `y` at the review. Run `"$V" client client-allow '\n1\ny\n'`. Exit 0. `stdout.txt` has, in this order: `✅ Connected to agent (protocol v1)`, `📝 Created session: sess_`, `🔧 Reading project files (pending)`, `📝 Which database host should the configuration use?`, `Database host [new-host]:`, `🔐 Permission requested: Modifying critical configuration file`, `Choose an option:`, ` Perfect! I've successfully updated the configuration. The changes have been applied.`, `🔗 Review the configuration change in your browser.`, `Open this URL? [y/N]:`, `[Client] Opening https://example.com/acp-demo/review`, `✅ Elicitation elic_`, `✅ Agent completed`.
+- **Allow.** Press Enter at the host, type `1` at the permission prompt and `y` at the review. Run `"$V" client client-allow '\n1\ny\n'`. Exit 0. `stdout.txt` has, in this order: `✅ Connected to agent (protocol v1)`, `📝 Created session: sess_`, `📣 [info] ACP Go Example Agent — demo only`, `🔧 Reading project files [read_file] (pending)`, `📝 Which database host should the configuration use?`, `Database host [new-host]:`, `🔐 Permission requested: Modifying critical configuration file`, `Choose an option:`, ` Perfect! I've successfully updated the configuration. The changes have been applied.`, `🔗 Review the configuration change in your browser.`, `Open this URL? [y/N]:`, `[Client] Opening https://example.com/acp-demo/review`, `✅ Elicitation elic_`, `✅ Agent completed`.
 - **Typed host.** Run `"$V" client client-host 'db.internal\n1\nn\n'`. Exit 0. The line after `🔐 Permission requested:` is `   {"content":"{\"database\": {\"host\": \"db.internal\"}}","path":"/project/config.json"}`, and `stdout.txt` has no `✅ Elicitation` line.
 - **Tool call status.** Run `grep 'Tool call' "$ACP_VERIFY_RUN/evidence/client-allow/stdout.txt"`. Expected: `` 🔧 Tool call `call_1` updated: completed ``, then `` 🔧 Tool call `call_2` updated: completed ``. A pointer address such as `0x29c44f7ab480` instead of `completed` is a FAIL. See Gotchas.
 - **Reject after a wrong key.** Press Enter at the host, then type `9`, then `2`. Run `"$V" client client-reject '\n9\n2\n'`. Exit 0. `stdout.txt` has `Invalid option. Please try again.`, then ` I understand you prefer not to make that change. I'll skip the configuration update.`, then `✅ Agent completed`.

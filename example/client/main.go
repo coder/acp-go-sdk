@@ -70,8 +70,18 @@ func (e *exampleClient) SessionUpdate(ctx context.Context, params acp.SessionNot
 		if c.Text != nil {
 			fmt.Println(c.Text.Text)
 		}
+	case u.Notice != nil:
+		n := u.Notice
+		fmt.Printf("📣 [%s] %s\n", n.Severity, n.Title)
+		if n.Description != nil {
+			fmt.Printf("   %s\n", *n.Description)
+		}
 	case u.ToolCall != nil:
-		fmt.Printf("\n🔧 %s (%s)\n", u.ToolCall.Title, u.ToolCall.Status)
+		name := ""
+		if u.ToolCall.Name != nil {
+			name = " [" + *u.ToolCall.Name + "]"
+		}
+		fmt.Printf("\n🔧 %s%s (%s)\n", u.ToolCall.Title, name, u.ToolCall.Status)
 	case u.ToolCallUpdate != nil:
 		status := ""
 		if u.ToolCallUpdate.Status != nil {
@@ -314,10 +324,14 @@ func main() {
 		ClientCapabilities: acp.ClientCapabilities{
 			Fs:       acp.FileSystemCapabilities{ReadTextFile: true, WriteTextFile: true},
 			Terminal: true,
-			// Accept boolean config options, so the agent may offer them.
-			Session: &acp.ClientSessionCapabilities{ConfigOptions: &acp.SessionConfigOptionsCapabilities{
-				Boolean: &acp.BooleanConfigOptionCapabilities{},
-			}},
+			Session: &acp.ClientSessionCapabilities{
+				// Accept boolean config options, so the agent may offer them.
+				ConfigOptions: &acp.SessionConfigOptionsCapabilities{
+					Boolean: &acp.BooleanConfigOptionCapabilities{},
+				},
+				// Print notices, so the agent may send them.
+				Notices: &acp.NoticeCapabilities{},
+			},
 			// Answer elicitation/create in both modes, so the agent may ask.
 			Elicitation: &acp.ElicitationCapabilities{
 				Form: &acp.ElicitationFormCapabilities{},

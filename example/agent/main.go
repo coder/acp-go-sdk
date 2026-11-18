@@ -37,8 +37,11 @@ type exampleAgent struct {
 	// formElicitation and urlElicitation are set when the client accepts
 	// elicitation/create in form and url mode.
 	formElicitation, urlElicitation bool
-	// mu guards sessions, nextSeq, booleanConfig, the elicitation flags and
-	// every field of each agentSession. A handler never calls the client while
+	// notices and compaction are set when the client accepts notice and
+	// compaction session updates.
+	notices, compaction bool
+	// mu guards sessions, nextSeq, the client's capability flags and every
+	// field of each agentSession. A handler never calls the client while
 	// it holds mu.
 	mu sync.Mutex
 }
@@ -174,6 +177,13 @@ func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.Se
 	return acp.SetSessionConfigOptionResponse{ConfigOptions: a.configOptions(s)}, nil
 }
 
+// UnstableMessageMcp implements acp.AgentExperimental. The example agent
+// sends no mcp/message request, so it has no active request for a client's
+// MCP notification to belong to, and drops it.
+func (a *exampleAgent) UnstableMessageMcp(ctx context.Context, params acp.UnstableMessageMcpNotification) error {
+	return nil
+}
+
 // UnstableDidChangeDocument implements acp.AgentExperimental.
 func (a *exampleAgent) UnstableDidChangeDocument(ctx context.Context, params acp.UnstableDidChangeDocumentNotification) error {
 	return nil
@@ -259,6 +269,8 @@ func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequ
 	a.booleanConfig = caps != nil && caps.ConfigOptions != nil && caps.ConfigOptions.Boolean != nil
 	a.formElicitation = elicitation != nil && elicitation.Form != nil
 	a.urlElicitation = elicitation != nil && elicitation.Url != nil
+	a.notices = caps != nil && caps.Notices != nil
+	a.compaction = caps != nil && caps.Compaction != nil
 	a.mu.Unlock()
 	return acp.InitializeResponse{
 		ProtocolVersion: acp.ProtocolVersionNumber,
@@ -327,8 +339,13 @@ func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (ac
 		prev()
 	}
 
-	// simulate a full turn with streaming updates and a permission request
-	if err := a.simulateTurn(ctx, sid); err != nil {
+	// /compact compacts the session; any other prompt runs the demo turn with
+	// streaming updates and a permission request
+	run := a.simulateTurn
+	if isCommand(params.Prompt, "/compact") {
+		run = a.compact
+	}
+	if err := run(ctx, sid); err != nil {
 		if ctx.Err() != nil {
 			return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
 		}
@@ -346,11 +363,70 @@ func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (ac
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
 
+// isCommand reports whether the prompt is the one text block command.
+func isCommand(prompt []acp.ContentBlock, command string) bool {
+	return len(prompt) == 1 && prompt[0].Text != nil && prompt[0].Text.Text == command
+}
+
+// disclaimer tells the user that this is the example agent: as a notice when
+// the client presents notices, else as an agent message.
+func (a *exampleAgent) disclaimer() acp.SessionUpdate {
+	a.mu.Lock()
+	notices := a.notices
+	a.mu.Unlock()
+	if !notices {
+		return acp.UpdateAgentMessageText("ACP Go Example Agent — demo only (no AI model).")
+	}
+	return acp.SessionUpdate{Notice: &acp.SessionUpdateNotice{
+		Severity:    acp.NoticeSeverityInfo,
+		Title:       "ACP Go Example Agent — demo only",
+		Description: acp.Ptr("No AI model runs. Every turn is scripted."),
+	}}
+}
+
+// compact runs the /compact command. The demo keeps no conversation, so the
+// summary only counts the session's earlier prompts. A client that accepts
+// compaction updates sees the compaction start, its summary stream in and the
+// compaction complete. Any other client gets the summary as an agent message.
+func (a *exampleAgent) compact(ctx context.Context, sid string) error {
+	a.mu.Lock()
+	supported := a.compaction
+	var earlier uint64
+	if s, ok := a.sessions[sid]; ok {
+		earlier = s.turn - 1
+	}
+	a.mu.Unlock()
+	summary := fmt.Sprintf("Compacted %d earlier prompt(s) of this demo session.", earlier)
+	if !supported {
+		return a.conn.SessionUpdate(ctx, acp.SessionNotification{
+			SessionId: acp.SessionId(sid),
+			Update:    acp.UpdateAgentMessageText(summary),
+		})
+	}
+	id := acp.CompactionId(randomID("cmp_"))
+	updates := []acp.SessionUpdate{
+		{CompactionUpdate: &acp.SessionCompactionUpdate{CompactionId: id, Status: acp.CompactionStatusInProgress}},
+		{CompactionSummaryChunk: &acp.SessionUpdateCompactionSummaryChunk{CompactionId: id, Content: acp.TextBlock(summary)}},
+		{CompactionUpdate: &acp.SessionCompactionUpdate{CompactionId: id, Status: acp.CompactionStatusCompleted}},
+	}
+	for i, u := range updates {
+		if i > 0 {
+			if err := pause(ctx, 250*time.Millisecond); err != nil {
+				return err
+			}
+		}
+		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: acp.SessionId(sid), Update: u}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
-	// disclaimer: stream a demo notice so clients see it's the example agent
+	// disclaimer, so clients see it's the example agent
 	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
 		SessionId: acp.SessionId(sid),
-		Update:    acp.UpdateAgentMessageText("ACP Go Example Agent — demo only (no AI model)."),
+		Update:    a.disclaimer(),
 	}); err != nil {
 		return err
 	}
@@ -374,6 +450,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		Update: acp.StartToolCall(
 			acp.ToolCallId("call_1"),
 			"Reading project files",
+			acp.WithStartName("read_file"),
 			acp.WithStartKind(acp.ToolKindRead),
 			acp.WithStartStatus(acp.ToolCallStatusPending),
 			acp.WithStartLocations([]acp.ToolCallLocation{{Path: "/project/README.md"}}),
@@ -419,6 +496,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		Update: acp.StartToolCall(
 			acp.ToolCallId("call_2"),
 			"Modifying critical configuration file",
+			acp.WithStartName("write_file"),
 			acp.WithStartKind(acp.ToolKindEdit),
 			acp.WithStartStatus(acp.ToolCallStatusPending),
 			acp.WithStartLocations([]acp.ToolCallLocation{{Path: "/project/config.json"}}),
@@ -445,6 +523,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		ToolCall: acp.ToolCallUpdate{
 			ToolCallId: acp.ToolCallId("call_2"),
 			Title:      acp.Ptr("Modifying critical configuration file"),
+			Name:       acp.Ptr("write_file"),
 			Kind:       acp.Ptr(acp.ToolKindEdit),
 			Status:     acp.Ptr(acp.ToolCallStatusPending),
 			Locations:  []acp.ToolCallLocation{{Path: "/project/config.json"}},

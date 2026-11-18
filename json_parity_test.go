@@ -187,6 +187,45 @@ func TestJSONGolden_SessionUpdates(t *testing.T) {
 			return StartToolCall("call_001", "Reading configuration file", WithStartKind(ToolKindRead), WithStartStatus(ToolCallStatusPending))
 		},
 	))
+	t.Run("session_update_tool_call_name", runGolden(
+		func() SessionUpdate {
+			return SessionUpdate{ToolCall: &SessionUpdateToolCall{ToolCallId: "call_001", Title: "Reading configuration file", Name: Ptr("read_file"), Kind: ToolKindRead, Status: ToolCallStatusPending}}
+		},
+		func() SessionUpdate {
+			return StartToolCall("call_001", "Reading configuration file", WithStartName("read_file"), WithStartKind(ToolKindRead), WithStartStatus(ToolCallStatusPending))
+		},
+	))
+	t.Run("session_update_tool_call_update_name", runGolden(
+		func() SessionUpdate {
+			return UpdateToolCall("call_001", WithUpdateName("read_file"), WithUpdateStatus(ToolCallStatusCompleted))
+		},
+	))
+	t.Run("session_update_notice", runGolden(
+		func() SessionUpdate {
+			return SessionUpdate{Notice: &SessionUpdateNotice{
+				Severity:    NoticeSeverityWarning,
+				Title:       `MCP server "docs" failed to start`,
+				Description: Ptr("Its tools are unavailable in this session."),
+			}}
+		},
+	))
+	t.Run("session_update_compaction_update", runGolden(
+		func() SessionUpdate {
+			return SessionUpdate{CompactionUpdate: &SessionCompactionUpdate{
+				CompactionId: "cmp_1",
+				Status:       CompactionStatusCompleted,
+				Summary:      []ContentBlock{TextBlock("The user asked for a config change.")},
+			}}
+		},
+	))
+	t.Run("session_update_compaction_summary_chunk", runGolden(
+		func() SessionUpdate {
+			return SessionUpdate{CompactionSummaryChunk: &SessionUpdateCompactionSummaryChunk{
+				CompactionId: "cmp_1",
+				Content:      TextBlock("The user asked for a config change."),
+			}}
+		},
+	))
 	t.Run("session_update_tool_call_read", runGolden(
 		func() SessionUpdate {
 			return StartReadToolCall("call_001", "Reading configuration file", "/home/user/project/src/config.json")

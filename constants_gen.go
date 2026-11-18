@@ -6,7 +6,7 @@ package acp
 const ProtocolVersionNumber = 1
 
 // SchemaVersion is the ACP schema release that this SDK's generated code targets.
-const SchemaVersion = "1.21.0"
+const SchemaVersion = "1.25.0"
 
 // Agent method names
 const (
@@ -46,8 +46,6 @@ const (
 	ClientMethodElicitationCreate        = "elicitation/create"
 	ClientMethodFsReadTextFile           = "fs/read_text_file"
 	ClientMethodFsWriteTextFile          = "fs/write_text_file"
-	ClientMethodMcpConnect               = "mcp/connect"
-	ClientMethodMcpDisconnect            = "mcp/disconnect"
 	ClientMethodMcpMessage               = "mcp/message"
 	ClientMethodSessionRequestPermission = "session/request_permission"
 	ClientMethodSessionUpdate            = "session/update"

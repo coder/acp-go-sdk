@@ -60,8 +60,8 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 			return nil, toReqErr(err)
 		}
 		return resp, nil
-	case ClientMethodMcpConnect:
-		var p UnstableConnectMcpRequest
+	case ClientMethodMcpMessage:
+		var p UnstableMessageMcpRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
@@ -69,31 +69,12 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		exp, ok := c.client.(interface {
-			UnstableConnectMcp(context.Context, UnstableConnectMcpRequest) (UnstableConnectMcpResponse, error)
+			UnstableMessageMcp(context.Context, UnstableMessageMcpRequest) (UnstableMessageMcpResponse, error)
 		})
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableConnectMcp(ctx, p)
-		if err != nil {
-			return nil, toReqErr(err)
-		}
-		return resp, nil
-	case ClientMethodMcpDisconnect:
-		var p UnstableDisconnectMcpRequest
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		exp, ok := c.client.(interface {
-			UnstableDisconnectMcp(context.Context, UnstableDisconnectMcpRequest) (UnstableDisconnectMcpResponse, error)
-		})
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.UnstableDisconnectMcp(ctx, p)
+		resp, err := exp.UnstableMessageMcp(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -218,6 +199,9 @@ func (c *ClientSideConnection) Initialize(ctx context.Context, params Initialize
 func (c *ClientSideConnection) Logout(ctx context.Context, params LogoutRequest) (LogoutResponse, error) {
 	resp, err := SendRequest[LogoutResponse](c.conn, ctx, AgentMethodLogout, params)
 	return resp, err
+}
+func (c *ClientSideConnection) UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpNotification) error {
+	return c.conn.SendNotification(ctx, AgentMethodMcpMessage, params)
 }
 func (c *ClientSideConnection) UnstableAcceptNes(ctx context.Context, params UnstableAcceptNesNotification) error {
 	return c.conn.SendNotification(ctx, AgentMethodNesAccept, params)

@@ -138,6 +138,24 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return resp, nil
+	case AgentMethodMcpMessage:
+		var p UnstableMessageMcpNotification
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		exp, ok := a.agent.(interface {
+			UnstableMessageMcp(context.Context, UnstableMessageMcpNotification) error
+		})
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		if err := exp.UnstableMessageMcp(ctx, p); err != nil {
+			return nil, toReqErr(err)
+		}
+		return nil, nil
 	case AgentMethodNesAccept:
 		var p UnstableAcceptNesNotification
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -465,12 +483,8 @@ func (c *AgentSideConnection) WriteTextFile(ctx context.Context, params WriteTex
 	resp, err := SendRequest[WriteTextFileResponse](c.conn, ctx, ClientMethodFsWriteTextFile, params)
 	return resp, err
 }
-func (c *AgentSideConnection) UnstableConnectMcp(ctx context.Context, params UnstableConnectMcpRequest) (UnstableConnectMcpResponse, error) {
-	resp, err := SendRequest[UnstableConnectMcpResponse](c.conn, ctx, ClientMethodMcpConnect, params)
-	return resp, err
-}
-func (c *AgentSideConnection) UnstableDisconnectMcp(ctx context.Context, params UnstableDisconnectMcpRequest) (UnstableDisconnectMcpResponse, error) {
-	resp, err := SendRequest[UnstableDisconnectMcpResponse](c.conn, ctx, ClientMethodMcpDisconnect, params)
+func (c *AgentSideConnection) UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpRequest) (UnstableMessageMcpResponse, error) {
+	resp, err := SendRequest[UnstableMessageMcpResponse](c.conn, ctx, ClientMethodMcpMessage, params)
 	return resp, err
 }
 func (c *AgentSideConnection) RequestPermission(ctx context.Context, params RequestPermissionRequest) (RequestPermissionResponse, error) {

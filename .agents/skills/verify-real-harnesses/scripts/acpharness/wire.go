@@ -70,6 +70,10 @@ type recorder struct {
 	// connection, which the elicitation scenario compares with what the SDK
 	// decoded.
 	elicitations map[int][]json.RawMessage
+	// The name of every tool call on the wire, and the raw checkedKinds
+	// updates of each session on each connection, keyed like costs.
+	toolNames []toolName
+	updates   map[string][]json.RawMessage
 }
 
 func newRecorder(dir string) (*recorder, error) {
@@ -79,7 +83,7 @@ func newRecorder(dir string) (*recorder, error) {
 	}
 	r := &recorder{start: time.Now(), transcript: f, inbound: map[string]int{}, notified: map[int]int{}, handled: map[int]int{},
 		requested: map[int]int{}, answered: map[int]int{}, sent: map[int]map[string]string{}, results: map[int]map[string]json.RawMessage{},
-		costs: map[string]float64{}, elicitations: map[int][]json.RawMessage{}}
+		costs: map[string]float64{}, elicitations: map[int][]json.RawMessage{}, updates: map[string][]json.RawMessage{}}
 	r.scenario.Store("setup")
 	return r, nil
 }
@@ -112,21 +116,16 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 	if _, err := r.transcript.Write(append(b, '\n')); err != nil && r.writeErr == nil {
 		r.writeErr = fmt.Errorf("transcript.jsonl: %w", err)
 	}
-	if dir == agentToClient && msg.Method == "session/update" {
+	if dir == agentToClient && (msg.Method == "session/update" || msg.Method == "session/request_permission") {
 		var n struct {
 			Params struct {
-				SessionID string `json:"sessionId"`
-				Update    struct {
-					Cost *struct {
-						Amount   float64 `json:"amount"`
-						Currency string  `json:"currency"`
-					} `json:"cost"`
-				} `json:"update"`
+				SessionID string          `json:"sessionId"`
+				Update    json.RawMessage `json:"update"`
+				ToolCall  json.RawMessage `json:"toolCall"`
 			} `json:"params"`
 		}
-		if json.Unmarshal(raw, &n) == nil && n.Params.Update.Cost != nil && strings.EqualFold(n.Params.Update.Cost.Currency, "USD") {
-			key := fmt.Sprintf("%d/%s", conn, n.Params.SessionID)
-			r.costs[key] = max(r.costs[key], n.Params.Update.Cost.Amount)
+		if json.Unmarshal(raw, &n) == nil {
+			r.sessionMessage(conn, n.Params.SessionID, n.Params.Update, n.Params.ToolCall)
 		}
 	}
 	if dir == agentToClient && msg.Method != "" {
@@ -187,6 +186,53 @@ func (r *recorder) line(conn int, dir string, raw []byte) {
 			r.findings = append(r.findings, finding{Kind: kind, Source: "sdk-reply", Conn: conn, Scenario: r.current(), Text: string(raw)})
 		}
 	}
+}
+
+// sessionMessage reads a raw session/update or session/request_permission
+// from the agent: the USD cost, the tool call name and the checkedKinds
+// updates. r.mu is held.
+func (r *recorder) sessionMessage(conn int, sid string, update, toolCall json.RawMessage) {
+	key := fmt.Sprintf("%d/%s", conn, sid)
+	var u struct {
+		Kind       string          `json:"sessionUpdate"`
+		ToolCallID string          `json:"toolCallId"`
+		Name       json.RawMessage `json:"name"`
+		Cost       *struct {
+			Amount   float64 `json:"amount"`
+			Currency string  `json:"currency"`
+		} `json:"cost"`
+	}
+	if toolCall != nil {
+		if json.Unmarshal(toolCall, &u) == nil {
+			r.toolNames = append(r.toolNames, toolName{conn, "session/request_permission", sid, u.ToolCallID, wireName(u.Name)})
+		}
+		return
+	}
+	if json.Unmarshal(update, &u) != nil {
+		return
+	}
+	if u.Cost != nil && strings.EqualFold(u.Cost.Currency, "USD") {
+		r.costs[key] = max(r.costs[key], u.Cost.Amount)
+	}
+	switch {
+	case u.Kind == "tool_call" || u.Kind == "tool_call_update":
+		r.toolNames = append(r.toolNames, toolName{conn, u.Kind, sid, u.ToolCallID, wireName(u.Name)})
+	case checkedKinds[u.Kind]:
+		r.updates[key] = append(r.updates[key], update)
+	}
+}
+
+// updatesOnWire returns the raw checkedKinds updates of session sid on conn.
+func (r *recorder) updatesOnWire(conn int, sid acp.SessionId) []json.RawMessage {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]json.RawMessage(nil), r.updates[fmt.Sprintf("%d/%s", conn, sid)]...)
+}
+
+func (r *recorder) toolNamesOnWire() []toolName {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]toolName(nil), r.toolNames...)
 }
 
 // result returns the raw result of the last response to method on conn, or

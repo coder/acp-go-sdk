@@ -134,6 +134,14 @@ func WithStartKind(k ToolKind) ToolCallStartOpt {
 	}
 }
 
+// WithStartName sets the programmatic name of the tool, such as "read_file",
+// for a tool_call start update. Title stays the human-readable label.
+func WithStartName(n string) ToolCallStartOpt {
+	return func(tc *SessionUpdateToolCall) {
+		tc.Name = Ptr(n)
+	}
+}
+
 // WithStartStatus sets the status for a tool_call start update.
 func WithStartStatus(s ToolCallStatus) ToolCallStartOpt {
 	return func(tc *SessionUpdateToolCall) {
@@ -196,6 +204,14 @@ func UpdateToolCall(id ToolCallId, opts ...ToolCallUpdateOpt) SessionUpdate {
 func WithUpdateTitle(t string) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
 		tu.Title = Ptr(t)
+	}
+}
+
+// WithUpdateName sets the programmatic name of the tool for a
+// tool_call_update.
+func WithUpdateName(n string) ToolCallUpdateOpt {
+	return func(tu *SessionToolCallUpdate) {
+		tu.Name = Ptr(n)
 	}
 }
 

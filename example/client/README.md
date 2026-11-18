@@ -12,10 +12,10 @@
 - CLI: with at least one argument, `os.Args[1]` is the agent program and `os.Args[2:]` are its arguments [main.go:main].
 - CLI: with no arguments, the client runs `go run <clientDir>/../agent`, where `clientDir` is the directory of `main.go` from `runtime.Caller(0)` [main.go:main]. This is the [example agent](https://github.com/coder/acp-go-sdk/blob/main/example/agent/main.go).
 - Environment variables: this file reads none. `exec.CommandContext` looks up `go`, or an agent command without a path separator, through `PATH`, and the child inherits the full environment [main.go:main].
-- `Initialize` request: `ProtocolVersion` is `acp.ProtocolVersionNumber`, `Fs.ReadTextFile` and `Fs.WriteTextFile` are `true`, and `Terminal` is `true` [main.go:main].
+- `Initialize` request: `ProtocolVersion` is `acp.ProtocolVersionNumber`, `Fs.ReadTextFile` and `Fs.WriteTextFile` are `true`, `Terminal` is `true`, `Session` sets `ConfigOptions.Boolean` and `Notices`, and `Elicitation` sets `Form` and `Url` [main.go:main].
 - `NewSession` request: `Cwd` is the process working directory from `mustCwd`, and `McpServers` is empty [main.go:main][main.go:mustCwd].
 - `Prompt` request: one text block, `"Hello, agent!"` [main.go:main].
-- `SessionUpdate` prints agent message text, tool calls, and tool call updates. For plan, agent thought, and user message updates, it prints only the kind name from `displayUpdateKind` [main.go:SessionUpdate][main.go:displayUpdateKind].
+- `SessionUpdate` prints agent message text, notices (severity, title and description), tool calls with their `name` when set, and tool call updates. For plan, agent thought, and user message updates, it prints only the kind name from `displayUpdateKind` [main.go:SessionUpdate][main.go:displayUpdateKind].
 
 ## Invariants
 

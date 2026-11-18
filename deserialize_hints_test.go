@@ -147,3 +147,39 @@ func TestUnmarshalJSON_StaysStrictWithoutDeserializeHints(t *testing.T) {
 		t.Errorf("priority = %q, want the unknown value %q kept", entry.Priority, "urgent")
 	}
 }
+
+// Schema 1.25.0 drops the default-on-error hints from properties that a
+// receiver acts on, such as a terminal's command line or a session's MCP
+// servers, so a malformed value fails the decode instead of reading as unset.
+func TestUnmarshalJSON_RejectsMalformedValuesThatReceiversActOn(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		into func() any
+		in   string
+	}{
+		{"terminal args", func() any { return new(CreateTerminalRequest) }, `{"sessionId":"s","command":"ls","args":"-la"}`},
+		{"terminal cwd", func() any { return new(CreateTerminalRequest) }, `{"sessionId":"s","command":"ls","cwd":5}`},
+		{"terminal env", func() any { return new(CreateTerminalRequest) }, `{"sessionId":"s","command":"ls","env":{"A":"1"}}`},
+		{"terminal output byte limit", func() any { return new(CreateTerminalRequest) }, `{"sessionId":"s","command":"ls","outputByteLimit":"1kb"}`},
+		{"read line", func() any { return new(ReadTextFileRequest) }, `{"sessionId":"s","path":"/a","line":"10"}`},
+		{"read limit", func() any { return new(ReadTextFileRequest) }, `{"sessionId":"s","path":"/a","limit":"all"}`},
+		{"new session mcp servers", func() any { return new(NewSessionRequest) }, `{"cwd":"/w","mcpServers":"none"}`},
+		{"new session additional directories", func() any { return new(NewSessionRequest) }, `{"cwd":"/w","mcpServers":[],"additionalDirectories":"/x"}`},
+		{"load session mcp servers", func() any { return new(LoadSessionRequest) }, `{"sessionId":"s","cwd":"/w","mcpServers":{}}`},
+		{"resume session additional directories", func() any { return new(ResumeSessionRequest) }, `{"sessionId":"s","cwd":"/w","additionalDirectories":[5]}`},
+		{"terminal auth args", func() any { return new(AuthMethodTerminal) }, `{"id":"login","name":"Log in","args":"--login"}`},
+		{"terminal auth env", func() any { return new(AuthMethodTerminal) }, `{"id":"login","name":"Log in","env":[]}`},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := tt.into()
+			if err := json.Unmarshal([]byte(tt.in), v); err == nil {
+				got, _ := json.Marshal(v)
+				t.Errorf("%s decoded without an error as %s", tt.in, got)
+			}
+		})
+	}
+}

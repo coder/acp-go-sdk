@@ -38,4 +38,5 @@ Each feature file starts with an H1 title and one paragraph about what an editor
 - [Prompt turns](./prompt-turns.md): a plain turn, a model switch, and a cancelled turn.
 - [Permissions](./permissions.md): an edit that the user allows or rejects.
 - [Elicitation](./elicitation.md): the agent asks the user a question through a form, and replies with the answer.
+- [Tool names, notices and compaction](./agent-updates.md): the name of each tool call, a notice about an MCP server that failed to start, and `/compact`.
 - [Cross-SDK](./cross-sdk.md): the official TypeScript SDK against this SDK, in both directions.

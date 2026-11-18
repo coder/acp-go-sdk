@@ -66,11 +66,16 @@ func compareJSON(in, out []byte, schemas []schemaRef) (comparison, error) {
 
 // describe lists every differing path and the values at the first.
 func describe(diffs []string) string {
+	return fmt.Sprintf("%d difference(s) at %s; first %s", len(diffs), strings.Join(diffPaths(diffs), " "), diffs[0])
+}
+
+// diffPaths returns the path of each difference.
+func diffPaths(diffs []string) []string {
 	paths := make([]string, len(diffs))
 	for i, d := range diffs {
 		paths[i], _, _ = strings.Cut(d, ": in=")
 	}
-	return fmt.Sprintf("%d difference(s) at %s; first %s", len(diffs), strings.Join(paths, " "), diffs[0])
+	return paths
 }
 
 func under(path string, roots []string) bool {

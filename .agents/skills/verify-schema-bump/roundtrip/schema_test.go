@@ -4,8 +4,10 @@
 // SDK is the checkout four levels up (go.mod replaces it), and the schema
 // is that checkout's schema/ folder.
 //
-// Each problem is one t.Errorf line that starts with a fixed token, so
-// scripts/g2-roundtrip can list them:
+// Each problem is one t.Errorf line "TOKEN KEY: DETAIL". The key names the
+// def and the property or path that the problem is about, and never the
+// error text, so scripts/g2-roundtrip lists the keys in failures.txt and the
+// whole lines in details.txt, and two runs diff by key. The tokens:
 //
 //	NO-TYPE   the schema def has no SDK Go type
 //	DECODE    json.Unmarshal into the SDK type failed on a schema-valid value
@@ -20,9 +22,11 @@ package roundtrip
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -135,9 +139,51 @@ func (f *schemaFile) validate(def string, data []byte) error {
 		return err
 	}
 	if err := sch.Validate(v); err != nil {
-		return fmt.Errorf("%s", oneLine(err.Error(), 300))
+		return schemaError{msg: oneLine(err.Error(), 300), at: firstFailure(err)}
 	}
 	return nil
+}
+
+// schemaError is a one-line validation error that keeps where in the value
+// the first rule failed.
+type schemaError struct{ msg, at string }
+
+func (e schemaError) Error() string { return e.msg }
+
+// firstFailure returns the location in the value of the first rule that err
+// reports, following the first cause down: "/" for the value itself.
+func firstFailure(err error) string {
+	var verr *jsonschema.ValidationError
+	if !errors.As(err, &verr) {
+		return ""
+	}
+	for len(verr.Causes) > 0 {
+		verr = verr.Causes[0]
+	}
+	return "/" + strings.Join(verr.InstanceLocation, "/")
+}
+
+// decodeKey names the property that a decode error is about, when it names
+// one: the Field of a *json.UnmarshalTypeError.
+func decodeKey(def string, err error) string {
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) && typeErr.Field != "" {
+		return def + " " + typeErr.Field
+	}
+	return def
+}
+
+// requiredMessage matches the error of a generated Validate method for a
+// missing property.
+var requiredMessage = regexp.MustCompile(`^(\S+) is required$`)
+
+// validateKey names the property that a Validate error is about, when it
+// names one.
+func validateKey(def string, err error) string {
+	if m := requiredMessage.FindStringSubmatch(err.Error()); m != nil {
+		return def + " " + m[1]
+	}
+	return def
 }
 
 // checkRoundTrip decodes data into the SDK type for def, runs its Validate
@@ -154,36 +200,40 @@ func checkRoundTrip(t *testing.T, def string, data []byte, files []*schemaFile) 
 	}
 	v := newValue()
 	if err := json.Unmarshal(data, v); err != nil {
-		t.Errorf("DECODE %s: %v", def, oneLine(err.Error(), 200))
+		t.Errorf("DECODE %s: %v", decodeKey(def, err), oneLine(err.Error(), 200))
 		return
 	}
 	if val, ok := v.(interface{ Validate() error }); ok {
 		if err := val.Validate(); err != nil {
-			t.Errorf("VALIDATE %s: %v", def, oneLine(err.Error(), 200))
+			t.Errorf("VALIDATE %s: %v", validateKey(def, err), oneLine(err.Error(), 200))
 		}
 	}
 	out, err := json.Marshal(v)
 	if err != nil {
-		t.Errorf("DECODE %s: re-encode: %v", def, err)
+		t.Errorf("DECODE %s re-encode: %v", def, err)
 		return
 	}
 	c, err := compareJSON(data, out, defRefs(def, files))
 	if err != nil {
-		t.Errorf("LOSSY %s: %v", def, err)
+		t.Errorf("LOSSY %s compare: %v", def, err)
 		return
 	}
 	if len(c.lost) > 0 {
-		t.Errorf("LOSSY %s: %s", def, describe(c.lost))
+		t.Errorf("LOSSY %s %s: %s", def, strings.Join(diffPaths(c.lost), " "), describe(c.lost))
 	}
 	if len(c.unknown) > 0 {
-		t.Logf("UNKNOWN %s: dropped %s, not defined in this schema version", def, strings.Join(c.unknown, " "))
+		t.Logf("UNKNOWN %s %s: dropped, not defined in this schema version", def, strings.Join(c.unknown, " "))
 	}
 	for _, f := range files {
 		if _, ok := f.defs[def]; !ok || f.validate(def, data) != nil {
 			continue
 		}
 		if err := f.validate(def, out); err != nil {
-			t.Errorf("SCHEMA %s (%s): %v", def, f.name, err)
+			var at string
+			if serr, ok := err.(schemaError); ok {
+				at = " " + serr.at
+			}
+			t.Errorf("SCHEMA %s (%s)%s: %v", def, f.name, at, err)
 		}
 	}
 }
@@ -220,4 +270,32 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// The key of a problem line names the property or the path, never the
+// error text, so that a changed message keeps the key.
+func TestProblemKeys_NameThePropertyNotTheMessage(t *testing.T) {
+	var v struct {
+		A struct {
+			B int `json:"b"`
+		} `json:"a"`
+	}
+	decodeErr := json.Unmarshal([]byte(`{"a":{"b":"x"}}`), &v)
+	f, err := newSchemaFile("test", "test.json", []byte(`{"$defs": {"D": {"type": "object", "properties": {
+		"a": {"type": "object", "properties": {"b": {"type": "integer"}}}}}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaErr, _ := f.validate("D", []byte(`{"a":{"b":"x"}}`)).(schemaError)
+	for _, tc := range []struct{ got, want string }{
+		{decodeKey("D", decodeErr), "D a.b"},
+		{decodeKey("D", errors.New("no matching variant for union")), "D"},
+		{validateKey("D", errors.New("sessions is required")), "D sessions"},
+		{validateKey("D", errors.New("D must have exactly one variant set")), "D"},
+		{schemaErr.at, "/a/b"},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("key = %q, want %q", tc.got, tc.want)
+		}
+	}
 }

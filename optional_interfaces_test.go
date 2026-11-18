@@ -41,7 +41,7 @@ func (b *syncBuffer) String() string {
 }
 
 // connectPair connects agent and client over pipes and returns both sides,
-// with the agent side logging to agentLog.
+// with the agent side logging to agentLog from the DEBUG level up.
 func connectPair(t *testing.T, agent Agent, client Client, agentLog io.Writer) (*AgentSideConnection, *ClientSideConnection) {
 	t.Helper()
 	c2aR, c2aW := io.Pipe()
@@ -51,7 +51,7 @@ func connectPair(t *testing.T, agent Agent, client Client, agentLog io.Writer) (
 		_ = a2cW.Close()
 	})
 	agentConn := NewAgentSideConnection(agent, a2cW, c2aR)
-	agentConn.SetLogger(slog.New(slog.NewTextHandler(agentLog, nil)))
+	agentConn.SetLogger(slog.New(slog.NewTextHandler(agentLog, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	return agentConn, NewClientSideConnection(client, c2aW, a2cR)
 }
 
@@ -87,8 +87,9 @@ func TestOptionalInterface_AbsentMethodIsMethodNotFound(t *testing.T) {
 	}
 	_, err := clientConn.LoadSession(ctx, loadRequest)
 	wantMethodNotFound(t, err, AgentMethodSessionLoad)
-	if got := agentLog.String(); !strings.Contains(got, "failed to handle notification") || !strings.Contains(got, "method=mcp/message") || !strings.Contains(got, "Method not found") {
-		t.Errorf("agent log %q, want a method-not-found record for the mcp/message notification", got)
+	// A notification needs no answer, so the agent ignores it at DEBUG.
+	if got := agentLog.String(); !strings.Contains(got, `level=DEBUG msg="ignored unhandled notification" method=mcp/message`) || !strings.Contains(got, "Method not found") || strings.Contains(got, "level=ERROR") {
+		t.Errorf("agent log %q, want only a DEBUG method-not-found record for the mcp/message notification", got)
 	}
 
 	_, err = clientConn.UnstableForkSession(ctx, forkRequest)

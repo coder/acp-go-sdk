@@ -5,8 +5,10 @@
 {"step":"extension notification is ignored","notify":"_example.com/progress","params":{"pct":50}}
 {"sleep":"200ms"}
 {"stderrLacks":"failed to handle notification"}
-{"step":"unknown notification is logged","notify":"foo/notify","params":{}}
-{"stderrHas":"failed to handle notification","timeout":"2s"}
+{"step":"unknown notification is ignored","notify":"foo/notify","params":{}}
+{"step":"notification with invalid params","notify":"session/cancel","params":{"sessionId":5}}
+{"stderrHas":"failed to handle notification method=session/cancel","timeout":"2s"}
+{"stderrLacks":"foo/notify"}
 {"step":"invalid params","send":"session/new","params":{"mcpServers":[]},"expect":{"error.code":-32602,"error.data.error":"cwd is required"}}
 {"step":"malformed line","raw":"{not json"}
 {"stderrHas":"failed to parse incoming message","timeout":"2s"}

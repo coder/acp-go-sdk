@@ -438,8 +438,11 @@ func (h *harness) globalStep(name, kind string, findings []finding) {
 		}
 	}
 	st, detail := pass, "none in sdk.log or in the SDK's replies"
-	if kind == agentError {
+	switch kind {
+	case agentError:
 		detail = "the agent sent no JSON-RPC error response"
+	case methodNotFound:
+		detail += fmt.Sprintf("; the clients of connections 2 and 3, which do not implement it, ignored auth/status_update %d times below the error level", h.rec.ignoredCount())
 	}
 	if len(hits) > 0 {
 		st = fail

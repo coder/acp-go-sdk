@@ -2,7 +2,7 @@
 
 ## Overview
 
-`example/agent` is a `package main` demo ACP agent built on `github.com/coder/acp-go-sdk`. It keeps sessions in a mutex-guarded map and answers `Initialize` with the SDK protocol version and `LoadSession` disabled. Each `Prompt` runs a scripted turn: it streams text, reports two tool calls, and sends one permission request to the client. It uses no AI model. `main` connects the agent over stdio, or over the stdio of a child process when you pass a command line, and blocks until the peer disconnects.
+`example/agent` is a `package main` demo ACP agent built on `github.com/coder/acp-go-sdk`. It keeps sessions in a mutex-guarded map and answers `Initialize` with the SDK protocol version, `LoadSession` disabled, and the `session/list` and `session/delete` capabilities. It lists and deletes the sessions in that map. Each `Prompt` runs a scripted turn: it streams text, reports two tool calls, and sends one permission request to the client. It uses no AI model. `main` connects the agent over stdio, or over the stdio of a child process when you pass a command line, and blocks until the peer disconnects.
 
 ## Interface
 
@@ -10,24 +10,27 @@
 - `exampleAgent` satisfies `acp.Agent`, `acp.AgentLoader`, and `acp.AgentExperimental`, checked by compile-time assertions [main.go:exampleAgent]
 - CLI: no flags are parsed. With no arguments, the agent speaks ACP on its own stdin and stdout. With arguments, `os.Args[1]` is the client program and `os.Args[2:]` are its arguments [main.go:main]
 - Environment variables: this file reads none. With arguments, `exec.CommandContext` looks up the client program through `PATH` when its name has no path separator, and the child inherits the full environment [main.go:main]
-- `Initialize` returns `ProtocolVersion: acp.ProtocolVersionNumber` and `AgentCapabilities.LoadSession: false` [main.go:Initialize]
-- `NewSession` returns a new session ID of the form `sess_<hex>` [main.go:NewSession]
+- `Initialize` returns `ProtocolVersion: acp.ProtocolVersionNumber`, `AgentCapabilities.LoadSession: false`, and `SessionCapabilities` with `List` and `Delete` set to `{}` [main.go:Initialize]
+- `NewSession` returns a new session ID of the form `sess_<hex>` and records the request's `Cwd` [main.go:NewSession]
+- `ListSessions` returns one page, with no `NextCursor`, of every session in the map, or only those whose `Cwd` equals the request's `Cwd` when it is set, in creation order. Each entry has `SessionId` and `Cwd` [main.go:ListSessions]
+- `DeleteSession` removes the session from the map and returns an empty response and a nil error, also for an unknown session ID [main.go:DeleteSession]
 - `Prompt` runs the scripted turn and returns `acp.StopReasonEndTurn`, or `acp.StopReasonCancelled` when the turn context ends [main.go:Prompt]
 - `Cancel` cancels the running turn of a session [main.go:Cancel]
 - `Authenticate` and `LoadSession` return empty responses and a nil error [main.go:Authenticate, main.go:LoadSession]
 - `SetSessionMode` returns an empty response and a nil error [main.go:SetSessionMode]
 - `UnstableDidOpenDocument`, `UnstableDidChangeDocument`, `UnstableDidCloseDocument`, `UnstableDidFocusDocument`, `UnstableDidSaveDocument`, `UnstableAcceptNes`, and `UnstableRejectNes` return nil and do nothing [main.go:UnstableDidOpenDocument, main.go:UnstableAcceptNes]
-- These methods return `acp.NewMethodNotFound`: `ListSessions`, `ResumeSession`, `CloseSession`, `SetSessionConfigOption`, `Logout`, `UnstableForkSession`, `UnstableDeleteSession`, `UnstableStartNes`, `UnstableSuggestNes`, `UnstableCloseNes`, `UnstableListProviders`, `UnstableSetProvider`, `UnstableDisableProvider` [main.go:ListSessions, main.go:CloseSession, main.go:UnstableDeleteSession]
+- These methods return `acp.NewMethodNotFound`: `ResumeSession`, `CloseSession`, `SetSessionConfigOption`, `Logout`, `UnstableForkSession`, `UnstableStartNes`, `UnstableSuggestNes`, `UnstableCloseNes`, `UnstableListProviders`, `UnstableSetProvider`, `UnstableDisableProvider` [main.go:ResumeSession, main.go:CloseSession, main.go:UnstableForkSession]
 - `SetAgentConnection` stores the `*acp.AgentSideConnection` that the turn uses to send updates. `main` calls it after `acp.NewAgentSideConnection` [main.go:SetAgentConnection, main.go:main]
 
 ## Invariants
 
-- `Prompt` returns the error `session <id> not found` when the session ID is not in the sessions map [main.go:Prompt]
-- `Prompt` calls the cancel func that it finds in `s.cancel` before it starts a new turn. It reads `s.cancel` and stores the new func in separate critical sections, so two concurrent `Prompt` calls on one session can both find it empty and neither cancels the other. The SDK still cancels the earlier prompt of a session when a later one registers [main.go:Prompt] [../../agent.go:registerPrompt]
+- `Prompt` returns the error `session <id> not found` when the session ID is not in the sessions map, so a prompt after `DeleteSession` fails [main.go:Prompt, main.go:DeleteSession]
+- `DeleteSession` calls the session's cancel func, when it is set, under `a.mu`. `Prompt` checks its context under `a.mu` after the last step of a turn, so a turn that a delete reaches before that check ends with `StopReasonCancelled`, and a delete after it finds no cancel func [main.go:DeleteSession, main.go:Prompt]
+- `Prompt` looks up the session, takes the earlier turn's cancel func from `s.cancel`, and stores its own in one critical section, and then calls the earlier func. A concurrent `DeleteSession` either runs first, so `Prompt` fails with `session <id> not found`, or finds the new func and cancels the turn. The SDK also cancels the earlier prompt of a session when a later one registers [main.go:Prompt, main.go:DeleteSession] [../../agent.go:registerPrompt]
 - `Prompt` maps any turn error that occurs after the turn context ends to `StopReasonCancelled` with a nil error [main.go:Prompt]
-- `Prompt` stores the current turn's cancel func in `s.cancel` before the turn runs, and clears it only after a successful turn. On the error and cancelled paths, `s.cancel` still holds the current turn's func [main.go:Prompt]
+- `Prompt` stores the current turn's cancel func in `s.cancel` before the turn runs, and clears it only after a successful turn, and only when no later `Prompt` has replaced it (`s.turn` still holds its number). On the error and cancelled paths, `s.cancel` still holds the current turn's func [main.go:Prompt]
 - `Cancel` returns nil for unknown sessions and calls the cancel func only when it is set. It reads `s.cancel` after it releases `a.mu` [main.go:Cancel]
-- `a.mu` guards the sessions map in `NewSession`, `Cancel`, and `Prompt`, and guards writes to `s.cancel` in `Prompt` [main.go:NewSession, main.go:Cancel, main.go:Prompt]
+- `a.mu` guards the sessions map and `nextSeq` in `NewSession`, `ListSessions`, `DeleteSession`, `Cancel`, and `Prompt`, and guards `s.cancel` and `s.turn` in `Prompt` [main.go:NewSession, main.go:ListSessions, main.go:DeleteSession, main.go:Cancel, main.go:Prompt]
 - A `Cancelled` permission outcome ends the turn with a nil error, so `Prompt` returns `StopReasonEndTurn` [main.go:simulateTurn]
 - A permission outcome with no `Selected` option returns the error `unexpected permission outcome` [main.go:simulateTurn]
 - A selected option other than `allow` or `reject` returns the error `unexpected permission option: <id>` [main.go:simulateTurn]
@@ -47,9 +50,10 @@
 - A turn that is not cancelled sends one `RequestPermission` request for `call_2` (path `/project/config.json`, the same as the tool call) with options `allow` and `reject`, and waits for the client response [main.go:simulateTurn]
 - A turn that is not cancelled sleeps between steps: one 250 ms step and several 1 s steps [main.go:simulateTurn, main.go:pause]
 - `NewSession` adds an entry to the sessions map under `a.mu` [main.go:NewSession]
+- `DeleteSession` removes an entry from the sessions map under `a.mu` [main.go:DeleteSession]
 - `Prompt` stores a `context.CancelFunc` in the session under `a.mu` [main.go:Prompt]
 - `randomID` reads 12 bytes from `crypto/rand` [main.go:randomID]
 
 ## Verification
 
-- Run: `go vet ./example/agent`
+- Run: `go vet ./example/agent` and `go test ./example/agent`. The tests drive `session/new`, `session/list`, `session/delete`, and `session/prompt` through an SDK client connection over pipes [main_test.go]

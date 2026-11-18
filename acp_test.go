@@ -122,6 +122,7 @@ type agentFuncs struct {
 	ResumeSessionFunc          func(context.Context, ResumeSessionRequest) (ResumeSessionResponse, error)
 	SetSessionConfigOptionFunc func(context.Context, SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error)
 	LogoutFunc                 func(context.Context, LogoutRequest) (LogoutResponse, error)
+	DeleteSessionFunc          func(context.Context, DeleteSessionRequest) (DeleteSessionResponse, error)
 	// Unstable (schema/meta.unstable.json)
 	UnstableDidChangeDocumentFunc func(context.Context, UnstableDidChangeDocumentNotification) error
 	UnstableDidCloseDocumentFunc  func(context.Context, UnstableDidCloseDocumentNotification) error
@@ -136,7 +137,6 @@ type agentFuncs struct {
 	UnstableDisableProviderFunc   func(context.Context, UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error)
 	UnstableListProvidersFunc     func(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
 	UnstableSetProviderFunc       func(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
-	UnstableDeleteSessionFunc     func(context.Context, UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error)
 	UnstableForkSessionFunc       func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
@@ -197,6 +197,14 @@ func (a agentFuncs) CloseSession(ctx context.Context, params CloseSessionRequest
 		return a.CloseSessionFunc(ctx, params)
 	}
 	return CloseSessionResponse{}, nil
+}
+
+// DeleteSession implements Agent.
+func (a agentFuncs) DeleteSession(ctx context.Context, params DeleteSessionRequest) (DeleteSessionResponse, error) {
+	if a.DeleteSessionFunc != nil {
+		return a.DeleteSessionFunc(ctx, params)
+	}
+	return DeleteSessionResponse{}, nil
 }
 
 // SetSessionMode implements Agent.
@@ -337,13 +345,6 @@ func (a agentFuncs) UnstableSetProvider(ctx context.Context, params UnstableSetP
 	return UnstableSetProviderResponse{}, nil
 }
 
-func (a agentFuncs) UnstableDeleteSession(ctx context.Context, params UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error) {
-	if a.UnstableDeleteSessionFunc != nil {
-		return a.UnstableDeleteSessionFunc(ctx, params)
-	}
-	return UnstableDeleteSessionResponse{}, nil
-}
-
 func (a agentFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	if a.HandleExtensionMethodFunc != nil {
 		return a.HandleExtensionMethodFunc(ctx, method, params)
@@ -369,6 +370,10 @@ func (a *forkOnlyUnstableAgent) Cancel(context.Context, CancelNotification) erro
 
 func (a *forkOnlyUnstableAgent) CloseSession(context.Context, CloseSessionRequest) (CloseSessionResponse, error) {
 	return CloseSessionResponse{}, nil
+}
+
+func (a *forkOnlyUnstableAgent) DeleteSession(context.Context, DeleteSessionRequest) (DeleteSessionResponse, error) {
+	return DeleteSessionResponse{}, nil
 }
 
 func (a *forkOnlyUnstableAgent) Logout(context.Context, LogoutRequest) (LogoutResponse, error) {
@@ -431,6 +436,34 @@ func TestAgentDispatch_AllowsPartialUnstableMethodImplementation(t *testing.T) {
 	}
 	if resp.SessionId != "forked-session" {
 		t.Fatalf("unexpected response session id: %q", resp.SessionId)
+	}
+}
+
+func TestClientSideConnection_DeleteSession(t *testing.T) {
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+
+	var got DeleteSessionRequest
+	NewAgentSideConnection(agentFuncs{
+		DeleteSessionFunc: func(_ context.Context, p DeleteSessionRequest) (DeleteSessionResponse, error) {
+			got = p
+			return DeleteSessionResponse{Meta: map[string]any{"deleted": true}}, nil
+		},
+	}, a2cW, c2aR)
+	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	resp, err := c.DeleteSession(ctx, DeleteSessionRequest{SessionId: "sess-1"})
+	if err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+	if got.SessionId != "sess-1" {
+		t.Fatalf("agent got session id %q, want %q", got.SessionId, "sess-1")
+	}
+	if resp.Meta["deleted"] != true {
+		t.Fatalf("response _meta = %v, want deleted=true", resp.Meta)
 	}
 }
 
@@ -1263,6 +1296,10 @@ func (agentNoExtensions) Logout(ctx context.Context, params LogoutRequest) (Logo
 
 func (agentNoExtensions) CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error) {
 	return CloseSessionResponse{}, nil
+}
+
+func (agentNoExtensions) DeleteSession(ctx context.Context, params DeleteSessionRequest) (DeleteSessionResponse, error) {
+	return DeleteSessionResponse{}, nil
 }
 
 func (agentNoExtensions) NewSession(ctx context.Context, params NewSessionRequest) (NewSessionResponse, error) {

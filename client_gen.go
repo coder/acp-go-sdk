@@ -268,8 +268,8 @@ func (c *ClientSideConnection) CloseSession(ctx context.Context, params CloseSes
 	resp, err := SendRequest[CloseSessionResponse](c.conn, ctx, AgentMethodSessionClose, params)
 	return resp, err
 }
-func (c *ClientSideConnection) UnstableDeleteSession(ctx context.Context, params UnstableDeleteSessionRequest) (UnstableDeleteSessionResponse, error) {
-	resp, err := SendRequest[UnstableDeleteSessionResponse](c.conn, ctx, AgentMethodSessionDelete, params)
+func (c *ClientSideConnection) DeleteSession(ctx context.Context, params DeleteSessionRequest) (DeleteSessionResponse, error) {
+	resp, err := SendRequest[DeleteSessionResponse](c.conn, ctx, AgentMethodSessionDelete, params)
 	return resp, err
 }
 func (c *ClientSideConnection) UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {

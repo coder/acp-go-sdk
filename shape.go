@@ -49,8 +49,6 @@ const (
 	kindString
 	kindArray
 	kindObject
-
-	kindNumber = kindInteger | kindFraction
 )
 
 // accepts reports whether raw, the JSON of a value that decoded into its Go

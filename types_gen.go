@@ -16112,7 +16112,7 @@ var shapes = [...]shape{
 	shapeCost: {
 		kinds: kindObject,
 		props: map[string]*shape{
-			"amount":   {kinds: kindNumber},
+			"amount":   {kinds: kindFraction | kindInteger},
 			"currency": {kinds: kindString},
 		},
 		required: []string{"amount", "currency"},

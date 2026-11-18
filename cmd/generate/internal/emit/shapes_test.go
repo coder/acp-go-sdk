@@ -34,6 +34,15 @@ const shapedSchema = `{"$defs": {
     "bC": {"type": "array", "items": {"type": "string"}, "x-deserialize-default-on-error": true}}},
   "AB": {"type": "object", "properties": {
     "c": {"type": "array", "items": {"type": "integer"}, "x-deserialize-default-on-error": true}}},
+  "Composite": {"type": "object", "required": ["k"], "properties": {"k": {"const": {"a": 1}}}},
+  "Mapped": {"type": "object", "properties": {
+    "_meta": {"type": ["object", "null"], "x-deserialize-default-on-error": true}},
+    "additionalProperties": {"type": "string"}},
+  "Picked": {"type": "string", "enum": ["a"], "oneOf": [{"type": "string", "const": "a"}, {"type": "string", "const": "b"}]},
+  "Checked": {"type": "object", "properties": {
+    "composite": {"anyOf": [{"$ref": "#/$defs/Composite"}, {"type": "null"}], "x-deserialize-default-on-error": true},
+    "mapped": {"anyOf": [{"$ref": "#/$defs/Mapped"}, {"type": "null"}], "x-deserialize-default-on-error": true},
+    "picked": {"anyOf": [{"$ref": "#/$defs/Picked"}, {"type": "null"}], "x-deserialize-default-on-error": true}}},
   "Loose": {"type": "object", "properties": {
     "either": {"anyOf": [
       {"type": "object", "required": ["a"], "properties": {"a": {"type": "string"}}},
@@ -142,6 +151,28 @@ func TestLoose_UnmarshalJSON_ChecksPropertiesOfTypeAny(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var got Loose
+		if err := json.Unmarshal([]byte(tt.in), &got); err != nil {
+			t.Errorf("unmarshal %s: %v", tt.in, err)
+			continue
+		}
+		out, _ := json.Marshal(got)
+		if string(out) != tt.want {
+			t.Errorf("%s decoded to %s, want %s", tt.in, out, tt.want)
+		}
+	}
+}
+
+func TestChecked_UnmarshalJSON_FollowsEachRuleOfTheSchema(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{` + "`" + `{"composite":{"k":{"a":1}}}` + "`" + `, ` + "`" + `{"composite":{"k":{"a":1}}}` + "`" + `},
+		{` + "`" + `{"composite":{}}` + "`" + `, ` + "`" + `{}` + "`" + `},
+		{` + "`" + `{"mapped":{"_meta":{"x":1},"a":"b"}}` + "`" + `, ` + "`" + `{"mapped":{"_meta":{"x":1}}}` + "`" + `},
+		{` + "`" + `{"mapped":{"a":null}}` + "`" + `, ` + "`" + `{}` + "`" + `},
+		{` + "`" + `{"picked":"a"}` + "`" + `, ` + "`" + `{"picked":"a"}` + "`" + `},
+		{` + "`" + `{"picked":"b"}` + "`" + `, ` + "`" + `{}` + "`" + `},
+	}
+	for _, tt := range tests {
+		var got Checked
 		if err := json.Unmarshal([]byte(tt.in), &got); err != nil {
 			t.Errorf("unmarshal %s: %v", tt.in, err)
 			continue

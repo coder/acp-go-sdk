@@ -28,14 +28,14 @@ type shapeNode struct {
 }
 
 // jsonKinds maps a JSON Schema type to the jsonKind constants of shape.go.
-var jsonKinds = map[string]string{
-	"null":    "kindNull",
-	"boolean": "kindBoolean",
-	"integer": "kindInteger",
-	"number":  "kindNumber",
-	"string":  "kindString",
-	"array":   "kindArray",
-	"object":  "kindObject",
+var jsonKinds = map[string][]string{
+	"null":    {"kindNull"},
+	"boolean": {"kindBoolean"},
+	"integer": {"kindInteger"},
+	"number":  {"kindInteger", "kindFraction"},
+	"string":  {"kindString"},
+	"array":   {"kindArray"},
+	"object":  {"kindObject"},
 }
 
 // shapeTable collects the shapes that the lenient decoders of types_gen.go
@@ -151,20 +151,22 @@ func (t *shapeTable) node(d *load.Definition) *shapeNode {
 	n.kinds = kindsOf(d.Type)
 	switch {
 	case d.Const != nil:
-		n.values = []any{d.Const}
+		n.values = scalars([]any{d.Const})
 	case len(d.Enum) > 0 && !hasOtherMember(d):
-		n.values = d.Enum
+		n.values = scalars(d.Enum)
 	}
 	n.required = d.Required
+	n.rest = t.node(d.AdditionalProperties.Schema)
 	for _, k := range sortedPropertyKeys(d.Properties) {
-		if m := t.member(d.Properties[k]); m != nil {
+		// A property that takes every value stays named while rest has a
+		// rule, so that rest does not apply to it.
+		if m := t.member(d.Properties[k]); m != nil || n.rest != nil {
 			if n.props == nil {
 				n.props = map[string]*shapeNode{}
 			}
 			n.props[k] = m
 		}
 	}
-	n.rest = t.node(d.AdditionalProperties.Schema)
 	n.items = t.node(d.Items)
 	alts := d.AnyOf
 	if len(alts) == 0 {
@@ -211,17 +213,65 @@ func (t *shapeTable) alternatives(n *shapeNode, d *load.Definition, alts []*load
 		}
 		switch {
 		case len(open) == 0 && hasOtherMember(d):
-			n.kinds = mergeKinds(n.kinds, kinds)
+			n.kinds = intersectKinds(n.kinds, kinds)
 			return
 		case len(open) == 0:
-			n.values = values
+			n.values = intersectValues(n.values, values)
 			return
 		case !slices.ContainsFunc(nodes, func(an *shapeNode) bool { return !covered(an) }):
-			n.kinds = mergeKinds(n.kinds, open)
+			n.kinds = intersectKinds(n.kinds, open)
 			return
 		}
 	}
 	n.anyOf = nodes
+}
+
+// scalars returns values when each is a string, a number, a boolean or
+// null, and nil otherwise: the walker compares values with ==, which panics
+// on an array or an object, so such an enum or const adds no rule.
+func scalars(values []any) []any {
+	for _, v := range values {
+		switch v.(type) {
+		case string, float64, bool, nil:
+		default:
+			return nil
+		}
+	}
+	return values
+}
+
+// intersectValues returns the values in both a and b, or b when a lists
+// none. A value fits a node only when it fits all of the node's rules.
+func intersectValues(a, b []any) []any {
+	if a == nil {
+		return b
+	}
+	both := []any{}
+	for _, v := range a {
+		if slices.Contains(b, v) {
+			both = append(both, v)
+		}
+	}
+	return both
+}
+
+// intersectKinds returns the kinds in both a and b, or b when a lists none.
+// When they share no kind, it returns a: the shape then fits more values
+// than the schema, never fewer.
+func intersectKinds(a, b []string) []string {
+	if len(a) == 0 {
+		return mergeKinds(nil, b)
+	}
+	var both []string
+	for _, k := range a {
+		if slices.Contains(b, k) {
+			both = append(both, k)
+		}
+	}
+	if len(both) == 0 {
+		return a
+	}
+	return mergeKinds(nil, both)
 }
 
 // member returns the node of a property, changed by its hints as the Rust
@@ -357,9 +407,7 @@ func kindsOf(typ any) []string {
 	}
 	var kinds []string
 	for _, name := range names {
-		if kind, ok := jsonKinds[name]; ok {
-			kinds = append(kinds, kind)
-		}
+		kinds = append(kinds, jsonKinds[name]...)
 	}
 	return mergeKinds(nil, kinds)
 }
@@ -465,7 +513,11 @@ func (t *shapeTable) render(n *shapeNode) Code {
 	if n.props != nil {
 		d[Id("props")] = Map(String()).Op("*").Id("shape").Values(DictFunc(func(props Dict) {
 			for k, m := range n.props {
-				props[Lit(k)] = t.render(m)
+				if m == nil {
+					props[Lit(k)] = Nil()
+				} else {
+					props[Lit(k)] = t.render(m)
+				}
 			}
 		}))
 	}

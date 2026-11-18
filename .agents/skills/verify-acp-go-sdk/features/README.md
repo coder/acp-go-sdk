@@ -45,6 +45,7 @@ Keep implementation details out of the map, except where a gotcha needs one to e
 - [Cancel](./cancel.md): `session/cancel` ends a turn, and `$/cancel_request` cancels a request.
 - [Config options](./config-options.md): `session/new` offers a model select and a boolean option, and `session/set_config_option` changes them.
 - [Elicitation](./elicitation.md): the agent asks the editor a question in `form` mode and for a page visit in `url` mode, and completes the visit with `elicitation/complete`.
+- [Notices, compaction and tool names](./notices-compaction.md): the agent sends a `notice` and compaction updates to an editor that advertises them, and names the tool of each tool call.
 - [Session delete](./session-delete.md): `session/list` and `session/delete` remove a session from the agent's history, also during its turn.
 - [Errors and extensions](./errors-and-extensions.md): error replies, `_` extension methods, malformed input and end of input.
 - [Example client CLI](./client-cli.md): a developer runs `example/client` and answers its permission prompt.

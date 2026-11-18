@@ -1,6 +1,6 @@
 # Cancel
 
-A user presses stop in the editor while a turn runs. The editor sends `session/cancel`, and the agent stops streaming and answers the open prompt with `stopReason: "cancelled"`. An editor can also cancel any single request with `$/cancel_request`, and the agent then ends that request.
+A user presses stop in the editor while a turn runs. The editor sends `session/cancel`, and the agent stops streaming and answers the open prompt with `stopReason: "cancelled"`. An editor can also cancel any single request with `$/cancel_request`, and the agent then ends that request. `$/cancel_request` is stable from schema 1.17.0, and the SDK names it `acp.ProtocolMethodCancelRequest`.
 
 ## Sub-features
 

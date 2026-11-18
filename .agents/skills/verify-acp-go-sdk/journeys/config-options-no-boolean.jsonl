@@ -1,0 +1,5 @@
+# A client without the boolean capability gets no boolean option. Feature: config-options.md
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}},"save":"init","expect":{"result.protocolVersion":1}}
+{"step":"model only","send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new","expect":{"result.configOptions":[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"demo-fast","options":[{"value":"demo-fast","name":"Demo Fast"},{"value":"demo-deep","name":"Demo Deep"}]}]}}
+{"step":"boolean refused","send":"session/set_config_option","params":{"sessionId":"{{new.result.sessionId}}","configId":"web_search","type":"boolean","value":true},"expect":{"error.code":-32602,"error.data.error":"no boolean option with this id"}}
+{"close":true,"expectExit":0}

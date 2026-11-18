@@ -486,12 +486,17 @@ func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
 	return ""
 }
 
-// integerType is the Go type of an integer schema: int64 for the format
-// int64, so that a 32-bit target holds every value the schema allows, and
-// int otherwise.
+// integerType is the Go type of an integer schema: int64 for the formats
+// int64, uint32, and uint64, so that a 32-bit target holds every value that a
+// peer sends (such as the exit code 3221225477 of a Windows process, or a
+// token count above 2^31), and int otherwise. A uint64 above 2^63 does not fit;
+// no ACP value comes near it.
 func integerType(d *load.Definition) *Statement {
-	if d != nil && d.Format == "int64" {
-		return Int64()
+	if d != nil {
+		switch d.Format {
+		case "int64", "uint32", "uint64":
+			return Int64()
+		}
 	}
 	return Int()
 }

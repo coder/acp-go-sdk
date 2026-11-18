@@ -33,6 +33,16 @@ func TestElicitation_RoundTripKeepsOwnPropertiesAndScope(t *testing.T) {
 			into: func() any { return new(CreateElicitationRequest) },
 			json: `{"mode":"url","message":"Sign in","elicitationId":"e","url":"https://example.com/auth","requestId":"r"}`,
 		},
+		{
+			name: "request of an unknown mode with members that the schema does not name",
+			into: func() any { return new(CreateElicitationRequest) },
+			json: `{"mode":"_x","message":"m","sessionId":"s","extra":{"k":1}}`,
+		},
+		{
+			name: "request of an unknown mode with a request scope and a long number",
+			into: func() any { return new(CreateElicitationRequest) },
+			json: `{"mode":"_x","message":"m","requestId":7,"_meta":{"a":1},"count":12345678901234567890}`,
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -50,6 +60,30 @@ func TestElicitation_RoundTripKeepsOwnPropertiesAndScope(t *testing.T) {
 				t.Fatalf("round trip changed the value\n got: %s\nwant: %s", got, want)
 			}
 		})
+	}
+}
+
+func TestCreateElicitationOther_KeepsOnlyTheMembersThatNoPartNames(t *testing.T) {
+	t.Parallel()
+	var req CreateElicitationRequest
+	if err := json.Unmarshal([]byte(`{"mode":"_x","message":"m","sessionId":"s","toolCallId":"t","extra":true}`), &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if req.Other == nil || req.Other.Session == nil {
+		t.Fatalf("decoded %+v, want the other mode with a session scope", req)
+	}
+	if got := req.Other.AdditionalProperties; len(got) != 1 || string(got["extra"]) != "true" {
+		t.Errorf("AdditionalProperties = %s, want only extra", got)
+	}
+
+	// A member that the union names keeps its value.
+	req.Other.AdditionalProperties["mode"] = json.RawMessage(`"_y"`)
+	out, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(out), `"mode":"_x"`) {
+		t.Errorf("encoded %s, want mode _x", out)
 	}
 }
 

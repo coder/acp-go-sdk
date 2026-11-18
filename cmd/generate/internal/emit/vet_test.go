@@ -97,7 +97,15 @@ const scopedUnionSchema = `{"$defs": {
       {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "form"}},
         "allOf": [{"$ref": "#/$defs/FormMode"}]},
       {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "url"}},
-        "allOf": [{"$ref": "#/$defs/UrlMode"}]}
+        "allOf": [{"$ref": "#/$defs/UrlMode"}]},
+      {"title": "other", "type": "object", "required": ["mode"], "properties": {"mode": {"type": "string"}},
+        "anyOf": [
+          {"title": "Session", "allOf": [{"$ref": "#/$defs/SessionScope"}]},
+          {"title": "Request", "allOf": [{"$ref": "#/$defs/RequestScope"}]}],
+        "unevaluatedProperties": true,
+        "not": {"anyOf": [
+          {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "form"}}},
+          {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "url"}}}]}}
     ]}
 }}`
 
@@ -143,11 +151,29 @@ func TestScopedUnions_RoundTripOwnPropertiesAndScope(t *testing.T) {
 		{func() any { return new(UrlMode) }, ` + "`" + `{"url":"https://example.com","sessionId":"s"}` + "`" + `},
 		{func() any { return new(CreateElicitationRequest) }, ` + "`" + `{"mode":"form","message":"m","requestedSchema":{"a":1},"fields":["f"],"sessionId":"s","toolCallId":"t"}` + "`" + `},
 		{func() any { return new(CreateElicitationRequest) }, ` + "`" + `{"mode":"url","message":"m","url":"https://example.com","requestId":"r"}` + "`" + `},
+		{func() any { return new(CreateElicitationRequest) }, ` + "`" + `{"mode":"_x","message":"m","sessionId":"s","extra":{"k":1},"n":12345678901234567890}` + "`" + `},
+		{func() any { return new(CreateElicitationRequest) }, ` + "`" + `{"mode":"_x","message":"m","requestId":"r"}` + "`" + `},
 	}
 	for _, tt := range tests {
 		if out := roundTrip(t, tt.into(), tt.in); !sameJSON(t, out, tt.in) {
 			t.Errorf("round trip of %s gives %s", tt.in, out)
 		}
+	}
+}
+
+func TestCreateElicitationOther_KeepsTheMembersThatNoPartNames(t *testing.T) {
+	var req CreateElicitationRequest
+	roundTrip(t, &req, ` + "`" + `{"mode":"_x","message":"m","sessionId":"s","toolCallId":"t","extra":1}` + "`" + `)
+	if req.Other == nil || len(req.Other.AdditionalProperties) != 1 || string(req.Other.AdditionalProperties["extra"]) != "1" {
+		t.Fatalf("decoded %+v, want the other mode with only extra unnamed", req.Other)
+	}
+	req.Other.AdditionalProperties["message"] = json.RawMessage(` + "`" + `"x"` + "`" + `)
+	out, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := ` + "`" + `{"mode":"_x","message":"m","sessionId":"s","toolCallId":"t","extra":1}` + "`" + `; !sameJSON(t, string(out), want) {
+		t.Errorf("encoded %s, want %s: a named member keeps its value", out, want)
 	}
 }
 

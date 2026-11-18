@@ -34,6 +34,28 @@ func TestReadSchemaVersion(t *testing.T) {
 	}
 }
 
+func TestDefinition_UnmarshalJSON_UnevaluatedPropertiesIsSetOnlyByTrue(t *testing.T) {
+	tests := []struct {
+		schema string
+		want   bool
+	}{
+		{`{"type": "object", "unevaluatedProperties": true}`, true},
+		{`{"type": "object", "unevaluatedProperties": false}`, false},
+		{`{"type": "object", "unevaluatedProperties": {"type": "string"}}`, false},
+		{`{"type": "object", "unevaluatedProperties": "true"}`, false},
+		{`{"type": "object"}`, false},
+	}
+	for _, tt := range tests {
+		var def Definition
+		if err := json.Unmarshal([]byte(tt.schema), &def); err != nil {
+			t.Fatalf("parse %s: %v", tt.schema, err)
+		}
+		if got := bool(def.UnevaluatedProperties); got != tt.want {
+			t.Errorf("UnevaluatedProperties of %s = %v, want %v", tt.schema, got, tt.want)
+		}
+	}
+}
+
 func TestDefinition_UnmarshalJSON_ReadsAdditionalProperties(t *testing.T) {
 	tests := []struct {
 		schema     string

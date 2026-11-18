@@ -121,6 +121,9 @@ func normalize(v any, schemas []schemaRef, path string, unknown *[]string) any {
 					known = true
 					child = append(child, schemaRef{n.defs, ap})
 				}
+				// unevaluatedProperties: true takes the members that no
+				// part of the schema names, its anyOf alternatives included.
+				known = known || m["unevaluatedProperties"] == true
 			}
 			if !known {
 				*unknown = append(*unknown, path+"/"+k)
@@ -304,6 +307,12 @@ func TestCompareJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	both := append(d, schemaRef{other, other["D"]})
+	unevaluated := map[string]any{}
+	if err := json.Unmarshal([]byte(`{"O": {"type": "object", "properties": {"mode": {"type": "string"}},
+		"anyOf": [{"properties": {"sessionId": {"type": "string"}}}], "unevaluatedProperties": true}}`), &unevaluated); err != nil {
+		t.Fatal(err)
+	}
+	open := []schemaRef{{unevaluated, unevaluated["O"]}}
 	for _, tc := range []struct {
 		name, in, out string
 		schemas       []schemaRef
@@ -319,6 +328,7 @@ func TestCompareJSON(t *testing.T) {
 		{"non-default dropped", `{"name":"x","flag":true}`, `{"name":"x"}`, d, 1, 0},
 		{"undefined member dropped", `{"name":"x","extra":1}`, `{"name":"x"}`, d, 0, 1},
 		{"free-form member dropped", `{"meta":{"k":"v"}}`, `{}`, d, 1, 0},
+		{"unevaluated member dropped", `{"mode":"x","extra":1}`, `{"mode":"x"}`, open, 1, 0},
 		{"files disagree on the default", `{"flag":false}`, `{}`, both, 1, 0},
 	} {
 		c, err := compareJSON([]byte(tc.in), []byte(tc.out), tc.schemas)

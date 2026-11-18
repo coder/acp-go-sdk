@@ -125,10 +125,14 @@ func (g instanceGen) ofType(typ string, m map[string]any, depth int) (any, bool)
 			obj[name] = v
 		}
 		// A free-form object such as _meta or a map type gets one member.
-		if ap := m["additionalProperties"]; len(props) == 0 && g.full {
-			if ap == true {
-				obj["example"] = "value"
-			} else if v, ok := g.value(ap, depth+1, -1); ok && depth < maxDepth {
+		// So does an object that takes members its schema does not name.
+		ap := m["additionalProperties"]
+		switch {
+		case !g.full:
+		case ap == true || m["unevaluatedProperties"] == true:
+			obj["example"] = "value"
+		case len(props) == 0:
+			if v, ok := g.value(ap, depth+1, -1); ok && depth < maxDepth {
 				obj["example"] = v
 			}
 		}
@@ -276,4 +280,23 @@ func TestInstances(t *testing.T) {
 	}
 	t.Logf("SUMMARY instances: %d checked, %d builder gaps skipped, %d unstable-only defs without an SDK type %v",
 		checked, invalid, len(noType), noType)
+}
+
+// An object whose schema takes members it does not name gets one in a full
+// value, so that the round trip shows whether the SDK keeps it.
+func TestInstanceGen_FullValueHasAMemberThatTheSchemaDoesNotName(t *testing.T) {
+	defs := map[string]any{}
+	if err := json.Unmarshal([]byte(`{
+		"Open": {"type": "object", "properties": {"mode": {"type": "string"}}, "additionalProperties": true},
+		"Unevaluated": {"type": "object", "properties": {"mode": {"type": "string"}}, "unevaluatedProperties": true},
+		"Closed": {"type": "object", "properties": {"mode": {"type": "string"}}}}`), &defs); err != nil {
+		t.Fatal(err)
+	}
+	for def, want := range map[string]bool{"Open": true, "Unevaluated": true, "Closed": false} {
+		v, ok := instanceGen{defs: defs, full: true}.value(defs[def], 0, -1)
+		obj, _ := v.(map[string]any)
+		if _, got := obj["example"]; !ok || got != want {
+			t.Errorf("full value of %s = %v; want an unnamed member: %v", def, v, want)
+		}
+	}
 }

@@ -182,7 +182,10 @@ func TestUnstableCreateElicitationRequest_FormCarriesItsScope(t *testing.T) {
 	}
 }
 
-func TestNewUnstableCreateElicitationRequest_EveryConstructorSetsAScope(t *testing.T) {
+// The schema 1.20.0 union has an open "other" mode, so the generator no longer
+// emits New... constructors for it. These struct literals are the migration
+// that the v0.15.0 release notes give.
+func TestUnstableCreateElicitationRequest_LiteralsCarryTheirScope(t *testing.T) {
 	t.Parallel()
 	requestID := RequestIdStr("r")
 	tests := []struct {
@@ -190,10 +193,22 @@ func TestNewUnstableCreateElicitationRequest_EveryConstructorSetsAScope(t *testi
 		req  UnstableCreateElicitationRequest
 		want string
 	}{
-		{"form in a session", NewUnstableCreateElicitationRequestFormSession(UnstableElicitationSchema{}, "s"), `"sessionId":"s"`},
-		{"form in a request", NewUnstableCreateElicitationRequestFormRequest(UnstableElicitationSchema{}, RequestId{Str: &requestID}), `"requestId":"r"`},
-		{"url in a session", NewUnstableCreateElicitationRequestUrlSession("e", "https://example.com", "s"), `"sessionId":"s"`},
-		{"url in a request", NewUnstableCreateElicitationRequestUrlRequest("e", "https://example.com", RequestId{Str: &requestID}), `"requestId":"r"`},
+		{"form in a session", UnstableCreateElicitationRequest{Form: &UnstableCreateElicitationForm{
+			Mode: "form", RequestedSchema: UnstableElicitationSchema{},
+			Session: &UnstableElicitationSessionScope{SessionId: "s"},
+		}}, `"sessionId":"s"`},
+		{"form in a request", UnstableCreateElicitationRequest{Form: &UnstableCreateElicitationForm{
+			Mode: "form", RequestedSchema: UnstableElicitationSchema{},
+			Request: &UnstableElicitationRequestScope{RequestId: RequestId{Str: &requestID}},
+		}}, `"requestId":"r"`},
+		{"url in a session", UnstableCreateElicitationRequest{Url: &UnstableCreateElicitationUrl{
+			Mode: "url", ElicitationId: "e", Url: "https://example.com",
+			Session: &UnstableElicitationSessionScope{SessionId: "s"},
+		}}, `"sessionId":"s"`},
+		{"url in a request", UnstableCreateElicitationRequest{Url: &UnstableCreateElicitationUrl{
+			Mode: "url", ElicitationId: "e", Url: "https://example.com",
+			Request: &UnstableElicitationRequestScope{RequestId: RequestId{Str: &requestID}},
+		}}, `"requestId":"r"`},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -201,10 +216,10 @@ func TestNewUnstableCreateElicitationRequest_EveryConstructorSetsAScope(t *testi
 			t.Parallel()
 			out, err := json.Marshal(tt.req)
 			if err != nil {
-				t.Fatalf("marshal the result of the constructor: %v", err)
+				t.Fatalf("marshal the literal: %v", err)
 			}
 			if !strings.Contains(string(out), tt.want) {
-				t.Fatalf("constructor result encodes to %s, want it to hold %s", out, tt.want)
+				t.Fatalf("literal encodes to %s, want it to hold %s", out, tt.want)
 			}
 		})
 	}

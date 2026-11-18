@@ -150,8 +150,6 @@ func TestInitializeResponse_UnmarshalJSON_TypeErrorNamesStructAndProperty(t *tes
 		wantField string
 	}{
 		{"property without a default", `{"protocolVersion":"one"}`, "protocolVersion"},
-		{"property with a default", `{"protocolVersion":1,"agentCapabilities":5}`, "agentCapabilities"},
-		{"property inside one with a default", `{"protocolVersion":1,"agentCapabilities":{"loadSession":"yes"}}`, "agentCapabilities.loadSession"},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -167,5 +165,24 @@ func TestInitializeResponse_UnmarshalJSON_TypeErrorNamesStructAndProperty(t *tes
 				t.Fatalf("error names %s.%s, want InitializeResponse.%s (error: %v)", typeErr.Struct, typeErr.Field, tt.wantField, err)
 			}
 		})
+	}
+}
+
+// Schema 1.17.0 marks agentCapabilities and loadSession with
+// x-deserialize-default-on-error, so a malformed value reads as the default
+// instead of failing the response.
+func TestInitializeResponse_UnmarshalJSON_MalformedCapabilitiesReadAsDefaults(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{
+		`{"protocolVersion":1,"agentCapabilities":5}`,
+		`{"protocolVersion":1,"agentCapabilities":{"loadSession":"yes"}}`,
+	} {
+		var resp InitializeResponse
+		if err := json.Unmarshal([]byte(in), &resp); err != nil {
+			t.Fatalf("unmarshal %s: %v, want the default capabilities", in, err)
+		}
+		if resp.ProtocolVersion != 1 || resp.AgentCapabilities.LoadSession {
+			t.Fatalf("unmarshal %s = %+v, want protocol 1 and loadSession false", in, resp)
+		}
 	}
 }

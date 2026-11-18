@@ -133,7 +133,7 @@ func (h *harness) connect() (*agentConn, bool) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 		defer cancel()
-		if _, err := a.conn.Authenticate(ctx, acp.AuthenticateRequest{MethodId: h.opts.auth}); err != nil {
+		if _, err := a.conn.Authenticate(ctx, acp.AuthenticateRequest{MethodId: acp.AuthMethodId(h.opts.auth)}); err != nil {
 			return fail, "authenticate: " + errText(err)
 		}
 		return pass, "methodId " + h.opts.auth
@@ -162,7 +162,7 @@ func (h *harness) reconnect() (*agentConn, error) {
 		if ids := authIDs(resp.AuthMethods); !contains(ids, h.opts.auth) {
 			return a, fmt.Errorf("connection %d does not advertise auth method %q; it advertises %v", a.n, h.opts.auth, ids)
 		}
-		if _, err := a.conn.Authenticate(ctx, acp.AuthenticateRequest{MethodId: h.opts.auth}); err != nil {
+		if _, err := a.conn.Authenticate(ctx, acp.AuthenticateRequest{MethodId: acp.AuthMethodId(h.opts.auth)}); err != nil {
 			return a, fmt.Errorf("authenticate on connection %d: %s", a.n, errText(err))
 		}
 	}
@@ -821,11 +821,11 @@ func authIDs(ms []acp.AuthMethod) []string {
 	for _, m := range ms {
 		switch {
 		case m.Agent != nil:
-			ids = append(ids, m.Agent.Id)
+			ids = append(ids, string(m.Agent.Id))
 		case m.EnvVar != nil:
-			ids = append(ids, m.EnvVar.Id)
+			ids = append(ids, string(m.EnvVar.Id))
 		case m.Terminal != nil:
-			ids = append(ids, m.Terminal.Id)
+			ids = append(ids, string(m.Terminal.Id))
 		}
 	}
 	return ids

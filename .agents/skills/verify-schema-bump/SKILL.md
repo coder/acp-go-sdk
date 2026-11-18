@@ -92,11 +92,11 @@ Each `HINT` line names the probe class in brackets: `null`, `wrong-type`, `missi
 
 A schema without hints logs `SUMMARY hints: no hints in this schema`.
 
-Each problem line is `TOKEN KEY: DETAIL`. The key names the def and the property or path that the problem is about: the field of a `DECODE` type error, the property of a `VALIDATE` "is required" error, every differing path of a `LOSSY` value, the location of the first failing rule of a `SCHEMA` value, and the hint, site and schema file of a `HINT` line. The key never holds the error text, so a changed message or value keeps it.
+Each problem line is `TOKEN KEY: DETAIL`. The key names the def and the property or path that the problem is about: the field of a `DECODE` type error, the property of a `VALIDATE` "is required" error, every differing path of a `LOSSY` value, the location of the first failing rule of a `SCHEMA` value, and the hint, site and schema file of a `HINT` line. The key never holds the error text, so a changed message or value keeps it. `failures.txt` lists each key with the number of distinct lines that have it, such as `LOSSY SessionNotification /update/content (1)`. A new kind of failure at a key that the base already has, such as a different value lost at the same path, raises that number.
 
-Pass: exit 0 and `G2 PASS`. A bump PR whose base already fails compares its `failures.txt` with the base's run (`diff BASE_RUN/failures.txt BUMP_RUN/failures.txt`): a new key is a regression unless the PR explains it, and a key that the bump fixes goes away. `details.txt` has the error text of each key.
+Pass: exit 0 and `G2 PASS`. A bump PR whose base already fails compares its `failures.txt` with the base's run (`diff BASE_RUN/failures.txt BUMP_RUN/failures.txt`): a new key or a higher count is a regression unless the PR explains it, and a key that the bump fixes goes away. `details.txt` has the lines of each key.
 
-Evidence, in `$VSB_ROOT/runs/g2-VERSION-TIME/`: `test.log` (`go test -v`, with the subtest of each problem), `failures.txt` (one sorted key per distinct problem), `details.txt` (the whole line of each problem), `unknown.txt` (one key per distinct `UNKNOWN`) and `summary.txt`.
+Evidence, in `$VSB_ROOT/runs/g2-VERSION-TIME/`: `test.log` (`go test -v`, with the subtest of each problem), `failures.txt` (one sorted key per distinct problem, with its count of distinct lines), `details.txt` (the whole line of each problem), `unknown.txt` (one key per distinct `UNKNOWN`) and `summary.txt`.
 
 G2 needs an SDK that compiles. At a schema version where the SDK does not build (see the G1 results below), it cannot run until the bump fixes the build.
 
@@ -151,7 +151,7 @@ At schema 1.32.0 (`4b9d5da`, 2026-11-18), G1 from 1.25.0 passes: every release g
 
 With the deep probes (#96, 2026-11-18, schema 1.32.0), `TestHints` tries 1669 bad values at the 938 sites it does not skip, 576 of them deep: 253 `missing-required`, 261 `null-member` and 62 `unknown-enum`. `main` at `020bcaf` (v0.18.0) fails 81 sites with 168 lines: 81 `missing-required`, 81 `null-member` and 6 `unknown-enum`, such as a `SessionInfo` without `cwd` in `ListSessionsResponse.sessions`, `agentInfo` without `version`, and a `PlanEntry` with an unknown `priority`. The SDK that checks hinted values against their shapes passes all 938. The Rust crate `agent-client-protocol-schema` 1.18.0 (schema 1.32.0, feature `unstable`) reads each of the 1669 bad values the same as the value without the bad part.
 
-With the harness transcripts in the corpus (2026-11-18, schema 1.32.0, `main` at `020bcaf`), G2 checks 509 transcript messages (19 extension messages skipped) and reports 3 keys, all `LOSSY`:
+With the harness transcripts in the corpus (2026-11-18, schema 1.32.0, `main` at `020bcaf`), G2 checks 509 transcript messages (19 extension messages skipped) and reports 3 keys, all `LOSSY` with a count of 1:
 
 - `LOSSY InitializeResponse /authMethods/0/env`: the accepted `env: {}` line above.
 - `LOSSY SessionNotification /update/content` and `LOSSY SessionNotification /update/content /update/locations`: Claude sends `content: []` and `locations: []` in a full `tool_call` update, and the SDK leaves the empty arrays out when it encodes the update. These two keys are known, and #106 tracks them. They go away when #106 is fixed (planned for v0.20.0).

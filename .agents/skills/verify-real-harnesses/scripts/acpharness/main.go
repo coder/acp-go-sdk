@@ -6,8 +6,8 @@
 // Usage:
 //
 //	acpharness -out DIR -cwd DIR [-profile live|smoke] [-ask-mode MODE]
-//	    [-auth METHOD] [-budget-usd 25] [-turn-timeout 5m] [-only a,b]
-//	    [-pgids FILE] -- AGENT [ARGS...]
+//	    [-auth METHOD] [-sends-none a,b] [-budget-usd 25] [-turn-timeout 5m]
+//	    [-only a,b] [-pgids FILE] -- AGENT [ARGS...]
 //
 // The live profile runs every scenario in scenarios.go. The smoke profile
 // runs initialize, session/new and one prompt turn, for agents without a
@@ -53,9 +53,14 @@ const (
 	skipNoModelOption   = "no model option"
 	skipNoOtherModel    = "no other model"
 	skipNoBooleanOption = "no boolean option"
+	skipSendsNone       = "adapter sends none"
 )
 
-var knownSkips = []string{skipNotSelected, skipNoAuth, skipNotAdvertised, skipNoModelOption, skipNoOtherModel, skipNoBooleanOption}
+var knownSkips = []string{skipNotSelected, skipNoAuth, skipNotAdvertised, skipNoModelOption, skipNoOtherModel, skipNoBooleanOption, skipSendsNone}
+
+// sendsNoneScenarios are the scenarios that -sends-none may name: each one
+// waits for an update that an adapter may not send at all.
+var sendsNoneScenarios = []string{"notice", "compaction"}
 
 // undocumentedSkips returns each SKIP whose detail does not start with a
 // documented reason, as "name (detail)".
@@ -89,6 +94,7 @@ type options struct {
 	budget            float64
 	turnTimeout       time.Duration
 	only              map[string]bool
+	sendsNone         map[string]bool // scenarios whose update the agent is known not to send
 	pgids             string
 	agent             []string
 }
@@ -120,13 +126,14 @@ const exitUsage = 64
 
 func main() {
 	var o options
-	var only string
+	var only, sendsNone string
 	fs := flag.NewFlagSet("acpharness", flag.ContinueOnError)
 	fs.StringVar(&o.out, "out", "", "evidence folder (created)")
 	fs.StringVar(&o.cwd, "cwd", "", "folder for the sessions' working directories (created)")
 	fs.StringVar(&o.profile, "profile", "live", "live or smoke")
 	fs.StringVar(&o.askMode, "ask-mode", "", "mode that makes the agent ask before it edits a file")
 	fs.StringVar(&o.auth, "auth", "", "authenticate with this method id after initialize")
+	fs.StringVar(&sendsNone, "sends-none", "", "comma-separated scenarios ("+strings.Join(sendsNoneScenarios, ", ")+") whose update the agent is known not to send: SKIP instead of FAIL when none arrives")
 	fs.Float64Var(&o.budget, "budget-usd", 25, "stop before the next scenario once the reported cost reaches this")
 	fs.DurationVar(&o.turnTimeout, "turn-timeout", 5*time.Minute, "longest prompt turn")
 	fs.StringVar(&only, "only", "", "comma-separated scenarios to run; setup steps always run")
@@ -140,6 +147,17 @@ func main() {
 	if o.out == "" || o.cwd == "" || len(o.agent) == 0 || (o.profile != "live" && o.profile != "smoke") {
 		fs.Usage()
 		os.Exit(exitUsage)
+	}
+	o.sendsNone = map[string]bool{}
+	for _, s := range strings.Split(sendsNone, ",") {
+		if s = strings.TrimSpace(s); s == "" {
+			continue
+		}
+		if !contains(sendsNoneScenarios, s) {
+			fmt.Fprintf(os.Stderr, "acpharness: -sends-none names %q; it takes %s\n", s, strings.Join(sendsNoneScenarios, ", "))
+			os.Exit(exitUsage)
+		}
+		o.sendsNone[s] = true
 	}
 	if only != "" {
 		o.only = map[string]bool{}
@@ -293,6 +311,16 @@ func (h *harness) finish() int {
 	} else {
 		h.row("no-refused-calls", fail, fmt.Sprintf("the agent called %d method(s) that the client does not offer: %s",
 			len(refused), clip(strings.Join(refused, ", "), 240)))
+	}
+	// The smoke profile's example agents name no tool call.
+	if h.opts.profile == "live" {
+		h.rec.scenario.Store("tool-call-name")
+		var decoded []toolName
+		for _, a := range h.conns {
+			decoded = append(decoded, a.client.decodedToolNames()...)
+		}
+		st, detail := checkToolNames(h.rec.toolNamesOnWire(), decoded, h.opts.only != nil)
+		h.row("tool-call-name", st, detail)
 	}
 	if odd := undocumentedSkips(h.results); len(odd) == 0 {
 		h.row("known-skips", pass, "every SKIP has a reason that SKILL.md lists")

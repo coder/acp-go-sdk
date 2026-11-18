@@ -60,7 +60,9 @@ adapter() {
 		BIN_NAME=codex-acp
 		HOME_VAR=CODEX_HOME
 		NEEDS=(OPENAI_API_KEY)
-		FLAGS=(-auth api-key -ask-mode read-only)
+		# codex-acp reports an MCP server that cannot start as a failed tool
+		# call, not as a notice.
+		FLAGS=(-auth api-key -ask-mode read-only -sends-none notice)
 		;;
 	*) usage "unknown adapter '$1': use claude or codex" ;;
 	esac

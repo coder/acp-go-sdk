@@ -14,6 +14,9 @@ type fieldPlan struct {
 	fallbackJSON                     string
 	fallbackOnAbsent, fallbackOnNull bool
 	fillNilOnEncode                  bool
+	// patch says that the field is a patch field (ir.PatchFields), a
+	// Patch of patchValueType.
+	patch bool
 	// shape is the shapeID constant that a lenient decoder checks the
 	// decoded value, or each decoded item, against; nil for none.
 	shape Code
@@ -28,6 +31,17 @@ func (p fieldPlan) customDecode() bool {
 	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems
 }
 
+// patches returns the patch fields of plans.
+func patches(plans []fieldPlan) []fieldPlan {
+	var out []fieldPlan
+	for _, p := range plans {
+		if p.patch {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // plansFor plans the fields of the struct owner.
 func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 	plans := make([]fieldPlan, 0, len(fields))
@@ -38,8 +52,21 @@ func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 }
 
 func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
-	p := fieldPlan{field: field}
+	p := fieldPlan{field: field, patch: b.patch[field.Def]}
 	def, lenient := field.Def, field.Lenient
+	if p.patch {
+		// A patch field reads absent, null, and a value apart, so it has no
+		// fallback, and only default-on-error, with or without
+		// skip-invalid-items, has a patch decoder.
+		if def.Default != nil || lenient.DefaultOnNull || (lenient.SkipInvalidItems && !lenient.DefaultOnError) {
+			panic(fmt.Sprintf("patch field %q of %q has a default or a hint that the generator does not support on a patch field", field.Prop, owner))
+		}
+		b.usesPatch = true
+		if lenient.DefaultOnError {
+			p.shape = b.shapes.site(owner, field, patchValueType(field))
+		}
+		return p
+	}
 	switch {
 	case def.Default != nil:
 		defaultJSON, err := json.Marshal(def.Default)
@@ -56,7 +83,7 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 		p.fillNilOnEncode = true
 	}
 	if lenient.DefaultOnError || lenient.SkipInvalidItems {
-		p.shape = b.shapes.site(owner, field)
+		p.shape = b.shapes.site(owner, field, fieldType(field))
 	}
 	return p
 }
@@ -84,19 +111,32 @@ func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 			}
 			decls = append(decls, Comment(fmt.Sprintf("Defaults to %s if unset.", p.fallbackJSON)))
 		}
-		tag := field.Prop
-		if !field.Required && !p.fillNilOnEncode {
-			tag += ",omitempty"
-		}
-		var typ Code
-		if nestedTypeName, ok := nestedTypeNames[field.Prop]; ok {
-			typ = Id(nestedTypeName)
-		} else {
-			typ = fieldType(field)
-		}
-		decls = append(decls, Id(field.Name).Add(typ).Tag(map[string]string{"json": tag}))
+		decls = append(decls, fieldDecl(p, nestedTypeNames, false))
 	}
 	return decls
+}
+
+// fieldDecl declares the struct field of p. With patchPointers, a patch field
+// is a pointer to its Patch with omitempty, as the struct that MarshalJSON
+// encodes has it.
+func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, patchPointers bool) Code {
+	field := p.field
+	tag := field.Prop
+	if !field.Required && !p.fillNilOnEncode && (!p.patch || patchPointers) {
+		tag += ",omitempty"
+	}
+	var typ Code
+	switch nestedTypeName, ok := nestedTypeNames[field.Prop]; {
+	case p.patch && patchPointers:
+		typ = Op("*").Id("Patch").Types(patchValueType(field))
+	case p.patch:
+		typ = Id("Patch").Types(patchValueType(field))
+	case ok:
+		typ = Id(nestedTypeName)
+	default:
+		typ = fieldType(field)
+	}
+	return Id(field.Name).Add(typ).Tag(map[string]string{"json": tag})
 }
 
 // metaProperty is the property that ACP reserves on its types for
@@ -111,6 +151,28 @@ func fieldType(field ir.Field) Code {
 		return Id("Meta")
 	}
 	return jenTypeForOptional(def)
+}
+
+// patchValueType returns the Go type of the value of field, a patch field:
+// the type of its schema without null.
+func patchValueType(field ir.Field) Code {
+	def := field.Def
+	if field.Prop == metaProperty {
+		return fieldType(field)
+	}
+	if nonNull := nonNullAlternative(def); nonNull != nil {
+		return jenTypeFor(nonNull)
+	}
+	if types, ok := def.Type.([]any); ok {
+		withoutNull := *def
+		for _, t := range types {
+			if t != "null" {
+				withoutNull.Type = t
+			}
+		}
+		return jenTypeFor(&withoutNull)
+	}
+	return jenTypeFor(def)
 }
 
 // additionalPropertiesField is the field of a struct whose schema says
@@ -139,17 +201,35 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 	f.Type().Id(name).Struct(decls...)
 	f.Line()
 
-	if open || slices.ContainsFunc(plans, fieldPlan.hasFallback) {
+	patched := patches(plans)
+	if open || len(patched) > 0 || slices.ContainsFunc(plans, fieldPlan.hasFallback) {
 		f.Func().Params(Id("v").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
 			g.Type().Id("Alias").Id(name)
 			g.Var().Id("a").Id("Alias")
 			g.Id("a").Op("=").Id("Alias").Call(Id("v"))
 			emitFillNil(g, plans, "a")
+			encoded := Id("a")
+			if len(patched) > 0 {
+				// The same fields in the same order, but a patch field is a
+				// pointer that is nil, and so left out, when it is unset.
+				var shadow []Code
+				values := Dict{}
+				for _, p := range plans {
+					shadow = append(shadow, fieldDecl(p, nestedTypeNames, true))
+					value := Id("a").Dot(p.field.Name)
+					if p.patch {
+						value = value.Dot("orNil").Call()
+					}
+					values[Id(p.field.Name)] = value
+				}
+				g.Type().Id("patched").Struct(shadow...)
+				encoded = Id("patched").Values(values)
+			}
 			if !open {
-				g.Return(Qual("encoding/json", "Marshal").Call(Id("a")))
+				g.Return(Qual("encoding/json", "Marshal").Call(encoded))
 				return
 			}
-			g.List(Id("named"), Id("err")).Op(":=").Qual("encoding/json", "Marshal").Call(Id("a"))
+			g.List(Id("named"), Id("err")).Op(":=").Qual("encoding/json", "Marshal").Call(encoded)
 			g.If(Id("err").Op("!=").Nil()).Block(Return(Nil(), Id("err")))
 			g.Return(Id("withAdditionalProperties").Call(Id("named"), Id("v").Dot(additionalPropertiesField)))
 		})

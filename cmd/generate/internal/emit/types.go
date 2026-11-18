@@ -148,6 +148,9 @@ type typesBuilder struct {
 	shapes                   *shapeTable
 	usesDecodeHelpers        bool
 	usesAdditionalProperties bool
+	// patch holds the patch fields of the schema (ir.PatchFields).
+	patch     map[*load.Definition]bool
+	usesPatch bool
 }
 
 // buildTypesJen builds the types_gen.go file. It also returns, per oneOf union,
@@ -165,7 +168,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	}
 	b := &typesBuilder{
 		f: f, schema: schema, usedTypeNames: usedTypeNames, variants: emitted,
-		shapes: newShapeTable(schema),
+		shapes: newShapeTable(schema), patch: ir.PatchFields(schema),
 	}
 
 	// Deterministic order

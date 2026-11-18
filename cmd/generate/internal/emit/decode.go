@@ -47,6 +47,16 @@ func decodeStmt(p fieldPlan, structName, recv string) Code {
 	}
 	fallback := Id("setDefault").Call(Op("&").Id(recv).Dot(p.field.Name), Lit(p.fallbackJSON))
 
+	if p.patch {
+		// planFor allows only default-on-error on a patch field that
+		// decodes here.
+		helper := "decodePatch"
+		if p.field.Lenient.SkipInvalidItems {
+			helper = "decodePatchItems"
+		}
+		return Id(helper).Call(args...)
+	}
+
 	if p.field.Lenient.DefaultOnError {
 		helper := "decodeLenient"
 		if p.field.Lenient.SkipInvalidItems {
@@ -180,6 +190,48 @@ func (b *typesBuilder) emitSupport() {
 		Return(Id("err")),
 	)
 	f.Line()
+
+	if b.usesPatch {
+		f.Comment("decodePatch decodes a patch field that has x-deserialize-default-on-error.")
+		f.Comment("An absent field leaves dst alone, null clears it, and a value that is not a")
+		f.Comment("valid T, or that does not fit the shape check, leaves it unset.")
+		f.Func().Id("decodePatch").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Id("Patch").Types(Id("T")), checkParam()).Block(
+			Switch().Block(
+				Case(Id("raw").Op("==").Nil()),
+				Case(Id("string").Call(Id("raw")).Op("==").Lit("null")).Block(
+					Op("*").Id("dst").Op("=").Id("PatchNull").Types(Id("T")).Call(),
+				),
+				Default().Block(
+					Var().Id("v").Id("T"),
+					Op("*").Id("dst").Op("=").Id("Patch").Types(Id("T")).Values(),
+					If(Id("decodeLenient").Call(Id("raw"), Op("&").Id("v"), Id("check").Op("..."))).Block(
+						Op("*").Id("dst").Op("=").Id("PatchSet").Call(Id("v")),
+					),
+				),
+			),
+		)
+		f.Line()
+
+		f.Comment("decodePatchItems decodes a patch field that has both hints: it also drops")
+		f.Comment("the items that are null, that are not a valid T, or that do not fit the shape")
+		f.Comment("check.")
+		f.Func().Id("decodePatchItems").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Id("Patch").Types(Index().Id("T")), checkParam()).Block(
+			Switch().Block(
+				Case(Id("raw").Op("==").Nil()),
+				Case(Id("string").Call(Id("raw")).Op("==").Lit("null")).Block(
+					Op("*").Id("dst").Op("=").Id("PatchNull").Types(Index().Id("T")).Call(),
+				),
+				Default().Block(
+					Var().Id("v").Index().Id("T"),
+					Op("*").Id("dst").Op("=").Id("Patch").Types(Index().Id("T")).Values(),
+					If(Id("decodeLenientItems").Call(Id("raw"), Op("&").Id("v"), Id("check").Op("..."))).Block(
+						Op("*").Id("dst").Op("=").Id("PatchSet").Call(Id("v")),
+					),
+				),
+			),
+		)
+		f.Line()
+	}
 
 	if !b.usesAdditionalProperties {
 		return

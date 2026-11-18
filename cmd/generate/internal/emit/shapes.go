@@ -62,8 +62,8 @@ func newShapeTable(schema *load.Schema) *shapeTable {
 // whole value, or each item with x-deserialize-skip-invalid-items. It
 // returns nil when the shape can reject no value that the Go type accepts.
 // The decoder reads null as a bad value itself, so the shape need not.
-func (t *shapeTable) site(owner string, field ir.Field) Code {
-	def, goType := field.Def, fieldType(field)
+func (t *shapeTable) site(owner string, field ir.Field, goType Code) Code {
+	def := field.Def
 	if field.Lenient.SkipInvalidItems {
 		def, goType = def.Items, jenTypeFor(def.Items)
 	}

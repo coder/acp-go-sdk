@@ -28,13 +28,10 @@ type exampleClient struct {
 var _ acp.Client = (*exampleClient)(nil)
 
 func (e *exampleClient) RequestPermission(ctx context.Context, params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
-	title := ""
-	if params.ToolCall.Title != nil {
-		title = *params.ToolCall.Title
-	}
+	title, _ := params.ToolCall.Title.Value()
 	fmt.Printf("\n🔐 Permission requested: %s\n", title)
-	if params.ToolCall.RawInput != nil {
-		if b, err := json.Marshal(params.ToolCall.RawInput); err == nil {
+	if raw, ok := params.ToolCall.RawInput.Value(); ok {
+		if b, err := json.Marshal(raw); err == nil {
 			fmt.Printf("   %s\n", b)
 		}
 	}
@@ -83,10 +80,7 @@ func (e *exampleClient) SessionUpdate(ctx context.Context, params acp.SessionNot
 		}
 		fmt.Printf("\n🔧 %s%s (%s)\n", u.ToolCall.Title, name, u.ToolCall.Status)
 	case u.ToolCallUpdate != nil:
-		status := ""
-		if u.ToolCallUpdate.Status != nil {
-			status = string(*u.ToolCallUpdate.Status)
-		}
+		status, _ := u.ToolCallUpdate.Status.Value()
 		fmt.Printf("\n🔧 Tool call `%s` updated: %s\n\n", u.ToolCallUpdate.ToolCallId, status)
 	case u.Plan != nil || u.AgentThoughtChunk != nil || u.UserMessageChunk != nil:
 		// Keep output compact for other updates

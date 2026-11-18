@@ -73,16 +73,12 @@ func (a *exampleAgent) ListSessions(ctx context.Context, params acp.ListSessions
 // and drops the session, so session/list no longer returns it. An unknown
 // session ID succeeds, as the protocol asks.
 func (a *exampleAgent) DeleteSession(ctx context.Context, params acp.DeleteSessionRequest) (acp.DeleteSessionResponse, error) {
-	var cancel context.CancelFunc
 	a.mu.Lock()
-	if s, ok := a.sessions[string(params.SessionId)]; ok {
-		cancel = s.cancel
+	defer a.mu.Unlock()
+	if s, ok := a.sessions[string(params.SessionId)]; ok && s.cancel != nil {
+		s.cancel()
 	}
 	delete(a.sessions, string(params.SessionId))
-	a.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
 	return acp.DeleteSessionResponse{}, nil
 }
 
@@ -244,10 +240,14 @@ func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (ac
 		return acp.PromptResponse{}, err
 	}
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	if s.turn == turn {
 		s.cancel = nil
 	}
-	a.mu.Unlock()
+	// A delete that ran after the turn's last step still cancels it.
+	if ctx.Err() != nil {
+		return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
+	}
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
 

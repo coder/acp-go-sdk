@@ -25,7 +25,7 @@
 ## Invariants
 
 - `Prompt` returns the error `session <id> not found` when the session ID is not in the sessions map, so a prompt after `DeleteSession` fails [main.go:Prompt, main.go:DeleteSession]
-- `DeleteSession` reads the session's cancel func under `a.mu` and calls it, when it is set, after it releases `a.mu`, so a running turn ends with `StopReasonCancelled` [main.go:DeleteSession, main.go:Prompt]
+- `DeleteSession` calls the session's cancel func, when it is set, under `a.mu`. `Prompt` checks its context under `a.mu` after the last step of a turn, so a turn that a delete reaches before that check ends with `StopReasonCancelled`, and a delete after it finds no cancel func [main.go:DeleteSession, main.go:Prompt]
 - `Prompt` looks up the session, takes the earlier turn's cancel func from `s.cancel`, and stores its own in one critical section, and then calls the earlier func. A concurrent `DeleteSession` either runs first, so `Prompt` fails with `session <id> not found`, or finds the new func and cancels the turn. The SDK also cancels the earlier prompt of a session when a later one registers [main.go:Prompt, main.go:DeleteSession] [../../agent.go:registerPrompt]
 - `Prompt` maps any turn error that occurs after the turn context ends to `StopReasonCancelled` with a nil error [main.go:Prompt]
 - `Prompt` stores the current turn's cancel func in `s.cancel` before the turn runs, and clears it only after a successful turn, and only when no later `Prompt` has replaced it (`s.turn` still holds its number). On the error and cancelled paths, `s.cancel` still holds the current turn's func [main.go:Prompt]

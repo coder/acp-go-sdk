@@ -26,11 +26,11 @@ A value that the schema leaves free keeps the JSON as it arrived, so an integer 
 | `Meta: map[string]any{"k": v}` | `meta, err := acp.NewMeta(map[string]any{"k": v})`, or `var meta acp.Meta; err := meta.Set("k", v)` |
 | `s, ok := x.Meta["k"].(string)` | `var s string; err := x.Meta.Get("k", &s)`. A missing key returns an error that wraps `acp.ErrMetaKeyNotFound`. |
 | `RawInput: map[string]any{"path": p}` | `acp.WithStartRawInput(map[string]any{"path": p})`, or `json.Marshal` it |
-| `in, ok := tc.RawInput.(map[string]any)` (`tc` an `acp.ToolCall`) | `var in map[string]any; err := json.Unmarshal(tc.RawInput, &in)` |
+| `in, ok := tc.RawInput.(map[string]any)` (`tc` an `acp.ToolCall`) | `var in map[string]any; if len(tc.RawInput) > 0 { err = json.Unmarshal(tc.RawInput, &in) }`. An absent value is a nil `json.RawMessage`, and `json.Unmarshal` of it fails. |
 | `in, ok := u.RawInput.(map[string]any)` (`u` an `acp.ToolCallUpdate`) | `var in map[string]any; if raw, ok := u.RawInput.Value(); ok { err = json.Unmarshal(raw, &in) }` |
 | `acp.ToolCallUpdate{RawInput: v}` | `acp.WithUpdateRawInput(v)`, or `RawInput: acp.PatchSet(json.RawMessage(b))` with `b` the JSON of `v` |
-| `p, ok := req.Params.(map[string]any)` (`req` an `acp.AgentRequest`; also `AgentNotification`, `ClientRequest`, `ClientNotification`, and `Result` of `AgentResult`, `ClientResult`) | `var p map[string]any; err := json.Unmarshal(req.Params, &p)` |
-| `&acp.RequestError{Code: c, Message: m, Data: d}` | `acp.NewRequestError(c, m, d)`; read `re.Data` with `json.Unmarshal` |
+| `p, ok := req.Params.(map[string]any)` (`req` an `acp.AgentRequest`; also `AgentNotification`, `ClientRequest`, `ClientNotification`, and `Result` of `AgentResult`, `ClientResult`) | `var p map[string]any; if len(req.Params) > 0 { err = json.Unmarshal(req.Params, &p) }` |
+| `&acp.RequestError{Code: c, Message: m, Data: d}` | `acp.NewRequestError(c, m, d)`; read `re.Data` with `json.Unmarshal` when `len(re.Data) > 0` |
 
 In the update types whose fields are [patch fields](#patch-fields), such as `ToolCallUpdate`, `_meta`, `rawInput` and `rawOutput` are a `Patch` of these types: set one with `acp.PatchSet(meta)`, and read it with `Value()` first, as the second `RawInput` row shows.
 
@@ -105,7 +105,7 @@ An integer of format `int64`, `uint32` or `uint64` is `int64`, so that a 32-bit 
 | `size := 1024; link.Size = &size` | `size := int64(1024); link.Size = &size` |
 | `acp.UsageUpdate{Used: used, Size: size}` with `int` values | `acp.UsageUpdate{Used: int64(used), Size: int64(size)}` |
 | `var in int = usage.InputTokens` | `in := usage.InputTokens` (an `int64`), or `int(usage.InputTokens)` |
-| `lines[*p.Line-1:]` | `lines[int(min(*p.Line-1, int64(len(lines)))):]`: clamp to the slice before you convert |
+| `lines[*p.Line-1:]` | `lines[int(max(0, min(*p.Line-1, int64(len(lines))))):]`: clamp to the slice, at both ends, before you convert. The schema allows `line: 0`. |
 | `n := *status.ExitCode` used as `int` | `code := *status.ExitCode` (an `int64`). Keep it `int64`: on a 32-bit target, `int(...)` wraps a Windows exit code such as `3221225477`. |
 
 A negative value of an unsigned format, or a value above its range such as 4294967296 in a `uint32` field, still decodes. The Rust SDK rejects such a value, or drops it in a field that reads a bad value as absent (`exitCode`, `ToolCallLocation.line`).
@@ -129,7 +129,7 @@ The fields of the unstable methods' types (`UnstableForkSessionRequest.ConfigOpt
 
 These compile after the migration and behave differently. Find them with `grep`, and check each one.
 
-1. **A free-form value passed to `func(v any)`.** `RawInput` and `RawOutput` of a `ToolCall`, a `Meta` value, and an error's `Data` are now a `json.RawMessage`. In a `ToolCallUpdate`, `RawInput` and `RawOutput` are `acp.Patch[json.RawMessage]`: read them with `Value()` first. Either way, an assertion or type switch on `map[string]any`, `[]any`, `string` or `float64` takes its default branch, while `json.Marshal(v)` still writes the same JSON. Decode first: into a typed struct to keep every digit, or into `any` for the v0.19.0 behavior. Find these calls with `grep -nE '\.(RawInput|RawOutput|Data|Meta)\b'`.
+1. **A free-form value passed to `func(v any)`.** These are now a `json.RawMessage`: `RawInput` and `RawOutput` of a `ToolCall`, a `Meta` value, an error's `Data`, the `Params` or `Result` of the envelope types (`AgentRequest`, `AgentNotification`, `AgentResult`, `ClientRequest`, `ClientNotification`, `ClientResult`), and the result of `mcp/message`. The `Params` of `mcp/message` are a `map[string]json.RawMessage`. In a `ToolCallUpdate`, `RawInput` and `RawOutput` are `acp.Patch[json.RawMessage]`: read them with `Value()` first. Either way, an assertion or type switch on `map[string]any`, `[]any`, `string` or `float64` takes its default branch, while `json.Marshal(v)` still writes the same JSON. Decode first: into a typed struct to keep every digit, or into `any` for the v0.19.0 behavior. Find these calls, and those of item 2, with `grep -nE '\.(RawInput|RawOutput|Data|Meta|Params|Result|Content|Properties|Env|Headers)\b'`.
 
    For example, jaegertracing/jaeger passes `u.ToolCallUpdate.RawOutput` to its `flattenToolResultContent(raw any)`. The `!= nil` check before the call fails to compile, but once that check is migrated, the call still compiles. It then gets a `Patch` and sends the tool output's JSON instead of its text:
 
@@ -148,7 +148,7 @@ These compile after the migration and behave differently. Find them with `grep`,
    }
    ```
 
-1. **Elicitation `Content` passed to `func(v any)`**, such as a JSON Schema validator, gets `ElicitationContentValue` structs where it got strings and numbers. Encode the map and decode it into `map[string]any` first. docker/docker-agent passes it to `jsonschema.Resolved.Validate`.
+1. **A typed map passed to `func(v any)`.** Elicitation `Content` holds `ElicitationContentValue` structs where it held strings and numbers, `ElicitationSchema.Properties` holds `ElicitationPropertySchema` values, and `Env` and `Headers` are a `map[string]string`, so a type switch on `map[string]any` takes its default branch. Encode the map and decode it into `map[string]any` first. docker/docker-agent passes `Content` to `jsonschema.Resolved.Validate`.
 
 1. **Any other `Patch` passed to `func(v any)`.** `json.Marshal` of it writes the same JSON, but a type switch on `*T` or `[]T` no longer matches. Read it with `Value()` first.
 

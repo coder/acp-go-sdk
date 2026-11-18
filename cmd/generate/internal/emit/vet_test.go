@@ -124,7 +124,8 @@ const openUnionSchema = `{"$defs": {
   "Inner": {"anyOf": [
     {"title": "X", "type": "object", "required": ["x"], "properties": {"x": {"type": "string"}, "y": {"type": "string"}}},
     {"title": "Z", "type": "object", "required": ["z"], "properties": {"z": {"type": "string"}}}]},
-  "Nested": {"anyOf": [{"$ref": "#/$defs/Inner"}], "unevaluatedProperties": true}
+  "Nested": {"anyOf": [{"$ref": "#/$defs/Inner"}], "unevaluatedProperties": true},
+  "Plain": {"type": "object", "properties": {"a": {"type": "string"}}, "unevaluatedProperties": true}
 }}`
 
 const openUnionTest = `package acp
@@ -142,6 +143,7 @@ func TestOpenUnions_KeepUnnamedMembers(t *testing.T) {
 		{func() any { return new(Scope) }, ` + "`" + `{"sessionId":"s","extra":1}` + "`" + `},
 		{func() any { return new(Mode) }, ` + "`" + `{"mode":"m","requestId":"r","extra":{"k":[1]}}` + "`" + `},
 		{func() any { return new(Nested) }, ` + "`" + `{"x":"1","y":"2","extra":1}` + "`" + `},
+		{func() any { return new(Plain) }, ` + "`" + `{"a":"1","extra":[true]}` + "`" + `},
 	} {
 		v := tt.into()
 		if err := json.Unmarshal([]byte(tt.in), v); err != nil {

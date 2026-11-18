@@ -233,9 +233,9 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			// Use the same implementation, but require exactly one variant
 			unionWrapper = true
 			b.emitUnion(name, def, def.OneOf, true, true)
-		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || def.AdditionalProperties.Open):
+		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || opensMembers(def)):
 			fields := ir.Fields(def.Properties, def.Required)
-			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), def.AdditionalProperties.Open)
+			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), opensMembers(def))
 		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":
 			f.Type().Id(name).Add(primitiveJenType(ir.PrimaryType(def)))
 			f.Line()
@@ -873,6 +873,12 @@ func scalarConstOf(v *load.Definition) Code {
 	return nil
 }
 
+// opensMembers reports whether d takes members that it does not name:
+// "additionalProperties": true or "unevaluatedProperties": true.
+func opensMembers(d *load.Definition) bool {
+	return d.AdditionalProperties.Open || bool(d.UnevaluatedProperties)
+}
+
 // namedProperties returns the properties that d names: its own, those of
 // its $ref and allOf, and those of each of its anyOf and oneOf
 // alternatives, at any depth.
@@ -970,7 +976,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	}
 	// open says that the union takes members that no part of it names. The
 	// wrapper keeps them in AdditionalProperties.
-	open := parentDef != nil && (parentDef.AdditionalProperties.Open || bool(parentDef.UnevaluatedProperties))
+	open := parentDef != nil && opensMembers(parentDef)
 	alts := unionAlternatives(schema, defs)
 	var wrapperFields []ir.Field
 	if len(sharedProps) > 0 && !allInlineObjects(alts) {
@@ -1126,7 +1132,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 						AdditionalProperties: v.AdditionalProperties, UnevaluatedProperties: v.UnevaluatedProperties,
 					}, nested, len(v.OneOf) > 0, false)
 				} else {
-					b.emitStruct(tname, fields, nil, v.AdditionalProperties.Open)
+					b.emitStruct(tname, fields, nil, opensMembers(v))
 				}
 			default:
 				// Title-only variants: check if they're extension types

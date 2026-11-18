@@ -95,10 +95,19 @@ func normalize(v any, schemas []schemaRef, path string, unknown *[]string) any {
 	switch v := v.(type) {
 	case map[string]any:
 		nodes := expand(schemas, v)
-		constrained := false
+		constrained, open := false, false
 		for _, n := range nodes {
-			_, ok := n.node.(map[string]any)["properties"]
+			m := n.node.(map[string]any)
+			_, ok := m["properties"]
 			constrained = constrained || ok
+			// "additionalProperties": true or "unevaluatedProperties": true
+			// takes the members that no part of the schema names, its anyOf
+			// alternatives included. expand keeps an alternative by its type
+			// and consts alone, so it counts only if v also has its required
+			// members.
+			if m["additionalProperties"] == true || m["unevaluatedProperties"] == true {
+				open = open || matches(n.defs, m, v, 0)
+			}
 		}
 		out := map[string]any{}
 		for _, k := range sortedKeys(v) {
@@ -106,7 +115,7 @@ func normalize(v any, schemas []schemaRef, path string, unknown *[]string) any {
 				continue
 			}
 			var child []schemaRef
-			known := !constrained
+			known := !constrained || open
 			for _, n := range nodes {
 				m := n.node.(map[string]any)
 				props, _ := m["properties"].(map[string]any)
@@ -115,16 +124,10 @@ func normalize(v any, schemas []schemaRef, path string, unknown *[]string) any {
 					child = append(child, schemaRef{n.defs, p})
 					continue
 				}
-				switch ap := m["additionalProperties"].(type) {
-				case bool:
-					known = known || ap
-				case map[string]any:
+				if ap, ok := m["additionalProperties"].(map[string]any); ok {
 					known = true
 					child = append(child, schemaRef{n.defs, ap})
 				}
-				// unevaluatedProperties: true takes the members that no
-				// part of the schema names, its anyOf alternatives included.
-				known = known || m["unevaluatedProperties"] == true
 			}
 			if !known {
 				*unknown = append(*unknown, path+"/"+k)
@@ -364,6 +367,14 @@ func TestCompareJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	catchAll := []schemaRef{{union, union["U"]}}
+	byRequired := map[string]any{}
+	if err := json.Unmarshal([]byte(`{"R": {"anyOf": [
+		{"type": "object", "required": ["a"], "properties": {"a": {"type": "integer"}}},
+		{"type": "object", "required": ["b"], "properties": {"b": {"type": "integer"}}, "additionalProperties": true},
+		{"type": "object", "required": ["c"], "properties": {"c": {"type": "integer"}}, "unevaluatedProperties": true}]}}`), &byRequired); err != nil {
+		t.Fatal(err)
+	}
+	required := []schemaRef{{byRequired, byRequired["R"]}}
 	for _, tc := range []struct {
 		name, in, out string
 		schemas       []schemaRef
@@ -382,6 +393,9 @@ func TestCompareJSON(t *testing.T) {
 		{"unevaluated member dropped", `{"mode":"x","extra":1}`, `{"mode":"x"}`, open, 1, 0},
 		{"undefined member of a known variant dropped", `{"mode":"form","extra":1}`, `{"mode":"form"}`, catchAll, 0, 1},
 		{"unevaluated member of the catch-all dropped", `{"mode":"_x","extra":1}`, `{"mode":"_x"}`, catchAll, 1, 0},
+		{"undefined member of the closed variant dropped", `{"a":1,"extra":1}`, `{"a":1}`, required, 0, 1},
+		{"additional member of the variant that requires it dropped", `{"b":1,"extra":1}`, `{"b":1}`, required, 1, 0},
+		{"unevaluated member of the variant that requires it dropped", `{"c":1,"extra":1}`, `{"c":1}`, required, 1, 0},
 		{"files disagree on the default", `{"flag":false}`, `{}`, both, 1, 0},
 	} {
 		c, err := compareJSON([]byte(tc.in), []byte(tc.out), tc.schemas)

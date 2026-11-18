@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -130,39 +132,76 @@ func TestHints(t *testing.T) {
 		t.Logf("SUMMARY hints: no hints in this schema")
 		return
 	}
+	if path := os.Getenv("G2_PROBES"); path != "" {
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		probeLog = json.NewEncoder(f)
+		defer func() { probeLog = nil }()
+	}
 	counts := map[string]int{}
+	probes := 0
 	for _, site := range sites {
 		name := fmt.Sprintf("%s/%s/%s", site.file.name, site.path(), site.hint)
 		outcome := "pass"
 		t.Run(name, func(t *testing.T) {
-			skip, err := checkHint(site)
+			r := checkHint(site)
+			probes += r.probes
 			switch {
-			case skip != "":
+			case r.skip != "":
 				outcome = "skip"
-				t.Logf("skip %s: %s", name, skip)
-			case err != "":
+				t.Logf("skip %s: %s", name, r.skip)
+			case len(r.problems) > 0:
 				outcome = "fail"
-				t.Errorf("HINT %s %s (%s): %s", site.hint, site.path(), site.file.name, err)
+				for _, p := range r.problems {
+					t.Errorf("HINT %s %s (%s) [%s]: %s", site.hint, site.path(), site.file.name, p.probe, p.detail)
+				}
 			}
 		})
 		counts[outcome]++
 	}
-	t.Logf("SUMMARY hints: %d sites, %d pass, %d fail, %d skipped (no Go type, or no value the schema rejects)",
-		len(sites), counts["pass"], counts["fail"], counts["skip"])
+	t.Logf("SUMMARY hints: %d sites, %d pass, %d fail, %d skipped (no Go type, or no value the schema rejects); %d bad values tried",
+		len(sites), counts["pass"], counts["fail"], counts["skip"], probes)
 }
 
-// checkHint returns a reason to skip the site, or what the SDK did wrong.
-func checkHint(site hintSite) (skip, problem string) {
+// probeLog, when G2_PROBES names a file, receives every bad value that
+// checkHint tries, so that another SDK can decode the same values.
+var probeLog *json.Encoder
+
+// hintResult is what checkHint found at a site: a reason to skip it, or the
+// bad values that the SDK read wrong, one problem per probe class.
+type hintResult struct {
+	skip     string
+	probes   int
+	problems []hintProblem
+}
+
+type hintProblem struct{ probe, detail string }
+
+// badValue is one input that checkHint tries: the instance around a bad
+// value of probe class probe (null, wrong-type, or a deep probe), at member
+// path at in the hinted value.
+type badValue struct {
+	probe, at string
+	input     []byte
+}
+
+// checkHint tries the bad values of each probe class at the site and
+// returns what the SDK read wrong, or a reason to skip the site.
+func checkHint(site hintSite) hintResult {
 	if _, ok := registry[site.def]; !ok {
-		return "no SDK type", ""
+		return hintResult{skip: "no SDK type"}
 	}
-	base, ok := instanceGen{defs: site.file.defs}.value(site.file.defs[site.def], 0, site.variant)
+	gen := instanceGen{defs: site.file.defs}
+	base, ok := gen.value(site.file.defs[site.def], 0, site.variant)
 	if site.items != nil {
-		base, ok = instanceGen{defs: site.file.defs}.value(site.items, 1, -1)
+		base, ok = gen.value(site.items, 1, -1)
 	}
 	obj, isObj := base.(map[string]any)
 	if !ok || !isObj {
-		return "no object instance", ""
+		return hintResult{skip: "no object instance"}
 	}
 	// encode returns the value of the def that holds o.
 	encode := func(o map[string]any) []byte {
@@ -197,82 +236,132 @@ func checkHint(site hintSite) (skip, problem string) {
 	if site.required && schemaType(site.schema) == "array" {
 		absent = func() []byte { return with([]any{}) }
 	}
-	// badInputs builds the instance around each bad value to try: null and the
-	// first malformed value, each when the schema rejects the instance.
-	badInputs := func(node any, build func(any) []byte) (inputs [][]byte) {
-		try := func(bad any) bool {
-			input := build(bad)
-			rejected := site.file.validate(site.def, input) != nil
-			if rejected {
-				inputs = append(inputs, input)
-			}
-			return rejected
+	var inputs []badValue
+	// try adds the instance that build makes around bad when the schema
+	// rejects it.
+	try := func(probe, at string, bad any, build func(any) []byte) bool {
+		input := build(bad)
+		rejected := site.file.validate(site.def, input) != nil
+		if rejected {
+			inputs = append(inputs, badValue{probe, at, input})
 		}
-		try(nil)
+		return rejected
+	}
+	// shallow tries null and the first malformed value in place of a value
+	// of node.
+	shallow := func(node any, build func(any) []byte) {
+		try("null", "/", nil, build)
 		for _, bad := range malformed {
 			if _, isString := bad.(string); isString && readsEveryString(site.file.defs, node) {
 				continue
 			}
-			if try(bad) {
+			if try("wrong-type", "/", bad, build) {
 				break
 			}
 		}
-		return inputs
+	}
+	// deep tries each deep probe of a full value of node in place of a
+	// value of node, when that full value is schema-valid there.
+	deep := func(node any, build func(any) []byte) {
+		full, ok := instanceGen{defs: site.file.defs, full: true}.value(node, 1, -1)
+		if !ok || site.file.validate(site.def, build(full)) != nil {
+			return
+		}
+		for _, m := range mutations(site.file.defs, node, full) {
+			try(m.probe, m.String(), m.apply(full), build)
+		}
 	}
 
-	var inputs [][]byte
 	var want []byte
 	switch site.hint {
 	case "x-deserialize-default-on-error":
 		// The value with a good property must be schema-valid, so that a
 		// bad value is what makes it invalid.
-		good, ok := instanceGen{defs: site.file.defs}.value(site.schema, 1, -1)
+		good, ok := gen.value(site.schema, 1, -1)
 		if !ok || site.file.validate(site.def, with(good)) != nil {
-			return "no schema-valid instance with the property set", ""
+			return hintResult{skip: "no schema-valid instance with the property set"}
 		}
-		inputs, want = badInputs(site.schema, with), absent()
-		if len(inputs) == 0 {
-			return "the property accepts every tried value", ""
+		shallow(site.schema, with)
+		// The items of an array that also has
+		// x-deserialize-skip-invalid-items are probed at that hint.
+		if ps, _ := site.schema["x-deserialize-skip-invalid-items"].(bool); !ps {
+			deep(site.schema, with)
 		}
+		want = absent()
 	case "x-deserialize-skip-invalid-items":
-		item, ok := instanceGen{defs: site.file.defs}.value(itemsOf(site.file.defs, site.schema), 1, -1)
+		items := itemsOf(site.file.defs, site.schema)
+		item, ok := gen.value(items, 1, -1)
 		if !ok {
-			return "no item instance", ""
+			return hintResult{skip: "no item instance"}
 		}
 		if err := site.file.validate(site.def, with([]any{item})); err != nil {
-			return "built item is not schema-valid: " + err.Error(), ""
+			return hintResult{skip: "built item is not schema-valid: " + err.Error()}
 		}
-		inputs = badInputs(itemsOf(site.file.defs, site.schema), func(bad any) []byte { return with([]any{item, bad}) })
-		if len(inputs) == 0 {
-			return "the items accept every tried value", ""
-		}
+		withBad := func(bad any) []byte { return with([]any{item, bad}) }
+		shallow(items, withBad)
+		deep(items, withBad)
 		want = with([]any{item})
 	case "x-deserialize-default-on-null":
-		inputs, want = [][]byte{with(nil)}, absent()
+		inputs, want = []badValue{{"null", "/", with(nil)}}, absent()
+	}
+	if len(inputs) == 0 {
+		return hintResult{skip: "the property accepts every tried value"}
+	}
+	expected, err := decodeEncode(site.def, want)
+	if err != nil {
+		return hintResult{skip: "the instance without the bad part does not decode: " + err.Error()}
 	}
 
-	expected, expectedErr := decodeEncode(site.def, want)
-	for _, input := range inputs {
-		got, err := decodeEncode(site.def, input)
-		if err != nil {
-			return "", fmt.Sprintf("decode %s: %v", oneLine(string(input), 160), oneLine(err.Error(), 160))
+	r := hintResult{probes: len(inputs)}
+	failed := map[string][]string{} // probe class -> problems
+	var classes []string
+	for _, in := range inputs {
+		if probeLog != nil {
+			probeLog.Encode(map[string]any{"def": site.def, "file": site.file.name, "site": site.path(), "hint": site.hint,
+				"probe": in.probe, "at": in.at, "json": json.RawMessage(in.input), "want": json.RawMessage(want)})
 		}
-		if expectedErr != nil {
-			return "the instance without the bad part does not decode: " + expectedErr.Error(), ""
-		}
-		c, err := compareJSON(expected, got, defRefs(site.def, []*schemaFile{site.file}))
-		if err != nil {
-			return "", "compare: " + err.Error()
-		}
-		if diffs := append(c.lost, c.unknown...); len(diffs) > 0 {
-			return "", fmt.Sprintf("decoded %s differently from %s: %s", oneLine(string(input), 160), oneLine(string(want), 160), describe(diffs))
-		}
-		// compareJSON counts null as absent, so check that null was not kept.
-		if site.member(input) == "null" && site.member(got) == "null" && site.member(expected) != "null" {
-			return "", fmt.Sprintf("decoded %s and kept %s as null", oneLine(string(input), 160), site.prop)
+		if problem := readsAsWant(site, in.input, want, expected); problem != "" {
+			if failed[in.probe] == nil {
+				classes = append(classes, in.probe)
+			}
+			failed[in.probe] = append(failed[in.probe], fmt.Sprintf("at %s: %s", in.at, problem))
 		}
 	}
-	return "", ""
+	for _, class := range classes {
+		n := 0
+		for _, in := range inputs {
+			if in.probe == class {
+				n++
+			}
+		}
+		detail := failed[class][0]
+		if len(failed[class]) > 1 || n > 1 {
+			detail = fmt.Sprintf("%d of %d bad values; first %s", len(failed[class]), n, detail)
+		}
+		r.problems = append(r.problems, hintProblem{class, detail})
+	}
+	return r
+}
+
+// readsAsWant returns how the SDK read input other than as want, which it
+// reads as expected, or "" when it read them the same.
+func readsAsWant(site hintSite, input, want, expected []byte) string {
+	got, err := decodeEncode(site.def, input)
+	if err != nil {
+		return fmt.Sprintf("decode %s: %v", oneLine(string(input), 160), oneLine(err.Error(), 160))
+	}
+	c, err := compareJSON(expected, got, defRefs(site.def, []*schemaFile{site.file}))
+	if err != nil {
+		return "compare: " + err.Error()
+	}
+	if diffs := append(c.lost, c.unknown...); len(diffs) > 0 {
+		return fmt.Sprintf("decoded %s differently from %s: %s", oneLine(string(input), 160), oneLine(string(want), 160), describe(diffs))
+	}
+	// compareJSON counts null as absent, so check that null was not kept.
+	if site.member(input) == "null" && site.member(got) == "null" && site.member(expected) != "null" {
+		return fmt.Sprintf("decoded %s and kept %s as null", oneLine(string(input), 160), site.prop)
+	}
+	return ""
 }
 
 // member returns the JSON of the site's property in doc, a value of the
@@ -376,7 +465,8 @@ func (v *readsOther) UnmarshalJSON(b []byte) error {
 
 // keyed reads Launch as the SDK reads the variant of a union that the
 // required key args selects, when it ignores the hint of args there: null
-// selects no variant, and another value that is no array reads as empty.
+// selects no variant, and another value that is no array of strings reads as
+// empty.
 type keyed struct {
 	Args []string `json:"args"`
 }
@@ -389,8 +479,15 @@ func (v *keyed) UnmarshalJSON(b []byte) error {
 	if raw := string(m["args"]); raw == "" || raw == "null" {
 		return errors.New("no matching variant for union")
 	}
-	if json.Unmarshal(m["args"], &v.Args) != nil {
+	// A null item breaks args as a value of the wrong type does.
+	var args []*string
+	if json.Unmarshal(m["args"], &args) != nil || slices.Contains(args, nil) {
 		v.Args = []string{}
+		return nil
+	}
+	v.Args = make([]string, len(args))
+	for i, arg := range args {
+		v.Args[i] = *arg
 	}
 	return nil
 }
@@ -408,6 +505,47 @@ func (v *hinted) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	return v.keyed.UnmarshalJSON(b)
+}
+
+// entry reads Entry as encoding/json does: a member that the JSON omits, or
+// that is null, reads as the zero value.
+type entry struct {
+	Name string `json:"name"`
+}
+
+// checkedEntry reads Entry as the Rust types do: without a name, or with a
+// null one, the value is no Entry.
+type checkedEntry struct{ entry }
+
+func (e *checkedEntry) UnmarshalJSON(b []byte) error {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	if raw := string(m["name"]); raw == "" || raw == "null" {
+		return errors.New("missing field name")
+	}
+	return json.Unmarshal(b, &e.entry)
+}
+
+// lenientHolder reads H as the hint on entry asks: an entry that does not
+// decode as E reads as absent.
+type lenientHolder[E any] struct {
+	Entry *E `json:"entry,omitempty"`
+}
+
+func (h *lenientHolder[E]) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Entry json.RawMessage `json:"entry"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	var e E
+	if string(raw.Entry) != "null" && json.Unmarshal(raw.Entry, &e) == nil {
+		h.Entry = &e
+	}
+	return nil
 }
 
 const unionHintSchema = `{"$defs": {
@@ -453,7 +591,10 @@ func TestCheckHint(t *testing.T) {
 			"p": {"type": "string", "x-deserialize-default-on-error": true}}},
 		"Kind": {"oneOf": [{"const": "read", "type": "string"}, {"const": "other", "type": "string"}]},
 		"O": {"type": "object", "properties": {
-			"kind": {"anyOf": [{"$ref": "#/$defs/Kind"}, {"type": "null"}], "x-deserialize-default-on-error": true}}}}}`))
+			"kind": {"anyOf": [{"$ref": "#/$defs/Kind"}, {"type": "null"}], "x-deserialize-default-on-error": true}}},
+		"Entry": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+		"H": {"type": "object", "properties": {
+			"entry": {"anyOf": [{"$ref": "#/$defs/Entry"}, {"type": "null"}], "x-deserialize-default-on-error": true}}}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,17 +629,19 @@ func TestCheckHint(t *testing.T) {
 		{"a null required key reads as the default", "Runner", func() any { return new(hinted) }, false, false},
 		{"a null required key of an item selects no variant", "Runners", func() any { return new([]keyed) }, false, true},
 		{"a null required key of an item reads as the default", "Runners", func() any { return new([]hinted) }, false, false},
+		{"a value without a required member is kept", "H", func() any { return new(lenientHolder[entry]) }, false, true},
+		{"a value without a required member reads as absent", "H", func() any { return new(lenientHolder[checkedEntry]) }, false, false},
 	} {
 		saved, had := registry[tc.def]
 		registry[tc.def] = tc.sdkType
-		skip, problem := checkHint(sites[tc.def])
+		r := checkHint(sites[tc.def])
 		if had {
 			registry[tc.def] = saved
 		} else {
 			delete(registry, tc.def)
 		}
-		if (skip != "") != tc.skip || (problem != "") != tc.fails {
-			t.Errorf("%s: checkHint = skip %q, problem %q; want skip %v, fails %v", tc.name, skip, problem, tc.skip, tc.fails)
+		if (r.skip != "") != tc.skip || (len(r.problems) > 0) != tc.fails {
+			t.Errorf("%s: checkHint = skip %q, problems %+v; want skip %v, fails %v", tc.name, r.skip, r.problems, tc.skip, tc.fails)
 		}
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/ir"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
@@ -15,7 +14,9 @@ type fieldPlan struct {
 	fallbackJSON                     string
 	fallbackOnAbsent, fallbackOnNull bool
 	fillNilOnEncode                  bool
-	enumValidator                    Code
+	// shape is the shapeID constant that a lenient decoder checks the
+	// decoded value, or each decoded item, against; nil for none.
+	shape Code
 }
 
 func (p fieldPlan) hasFallback() bool {
@@ -27,15 +28,16 @@ func (p fieldPlan) customDecode() bool {
 	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems
 }
 
-func (b *typesBuilder) plansFor(fields []ir.Field) []fieldPlan {
+// plansFor plans the fields of the struct owner.
+func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 	plans := make([]fieldPlan, 0, len(fields))
 	for _, field := range fields {
-		plans = append(plans, b.planFor(field))
+		plans = append(plans, b.planFor(owner, field))
 	}
 	return plans
 }
 
-func (b *typesBuilder) planFor(field ir.Field) fieldPlan {
+func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 	p := fieldPlan{field: field}
 	def, lenient := field.Def, field.Lenient
 	switch {
@@ -53,15 +55,8 @@ func (b *typesBuilder) planFor(field ir.Field) fieldPlan {
 		p.fallbackOnNull = lenient.DefaultOnNull || lenient.DefaultOnError
 		p.fillNilOnEncode = true
 	}
-	switch {
-	case lenient.SkipInvalidItems:
-		p.enumValidator = b.enumValidator(namedTypeRef(def.Items), false)
-	case lenient.DefaultOnError:
-		if alt := nonNullAlternative(def); alt != nil {
-			p.enumValidator = b.enumValidator(alt.Ref, true)
-		} else {
-			p.enumValidator = b.enumValidator(namedTypeRef(def), false)
-		}
+	if lenient.DefaultOnError || lenient.SkipInvalidItems {
+		p.shape = b.shapes.site(owner, field)
 	}
 	return p
 }
@@ -74,37 +69,6 @@ func mapsToSliceOrMap(d *load.Definition) bool {
 		return len(d.Properties) == 0 && d.Ref == ""
 	}
 	return false
-}
-
-// namedTypeRef returns the $ref that jenTypeFor resolves d to a named type
-// with: its own, or that of an allOf around one.
-func namedTypeRef(d *load.Definition) string {
-	if d == nil {
-		return ""
-	}
-	if d.Ref == "" {
-		for _, part := range d.AllOf {
-			if part != nil && part.Ref != "" {
-				return part.Ref
-			}
-		}
-	}
-	return d.Ref
-}
-
-// enumValidator returns the check that a decoded value is a member of the
-// closed enum that ref names. An enum with the member "other" needs none: its
-// UnmarshalJSON reads every other string as that member.
-func (b *typesBuilder) enumValidator(ref string, ptr bool) Code {
-	name := strings.TrimPrefix(ref, "#/$defs/")
-	if def := b.schema.Defs[name]; def == nil || (len(def.Enum) == 0 && !isStringConstUnion(def)) || hasOtherMember(def) {
-		return nil
-	}
-	b.validatedEnums[name] = true
-	if ptr {
-		return Parens(Op("*").Id(name)).Dot("valid")
-	}
-	return Id(name).Dot("valid")
 }
 
 func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
@@ -144,7 +108,7 @@ const additionalPropertiesField = "AdditionalProperties"
 // says that the schema has "additionalProperties": true.
 func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeNames map[string]string, open bool) {
 	f := b.f
-	plans := b.plansFor(fields)
+	plans := b.plansFor(name, fields)
 	decls := fieldDecls(plans, nestedTypeNames)
 	if open {
 		for _, field := range fields {
@@ -231,7 +195,7 @@ func (b *typesBuilder) emitNestedStructs(parent string, fields []ir.Field) map[s
 		if prop.Description != "" {
 			emitDocComment(f, prop.Description)
 		}
-		b.emitStruct(nestedTypeName, ir.Fields(prop.Properties, prop.Required), nil, bool(prop.AdditionalProperties))
+		b.emitStruct(nestedTypeName, ir.Fields(prop.Properties, prop.Required), nil, prop.AdditionalProperties.Open)
 	}
 	return nestedTypeNames
 }

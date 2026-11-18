@@ -75,6 +75,96 @@ func TestUnmarshalJSON_HonorsDeserializeHints(t *testing.T) {
 	}
 }
 
+// A hinted value that decodes into its Go type but breaks its schema inside
+// reads as if it were absent, as in the Rust types: a required member is
+// absent or null, or a closed enum holds a value it does not list (#96).
+func TestUnmarshalJSON_DropsHintedValuesThatBreakTheirSchema(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		into    func() any
+		in      string
+		without string // in without the bad value
+	}{
+		{
+			name:    "a session without its cwd",
+			into:    func() any { return new(ListSessionsResponse) },
+			in:      `{"sessions":[{"sessionId":"s"},{"sessionId":"t","cwd":"/w"}]}`,
+			without: `{"sessions":[{"sessionId":"t","cwd":"/w"}]}`,
+		},
+		{
+			name:    "a session whose cwd is null",
+			into:    func() any { return new(ListSessionsResponse) },
+			in:      `{"sessions":[{"sessionId":"s","cwd":null},{"sessionId":"t","cwd":"/w"}]}`,
+			without: `{"sessions":[{"sessionId":"t","cwd":"/w"}]}`,
+		},
+		{
+			name:    "agent info without its version",
+			into:    func() any { return new(InitializeResponse) },
+			in:      `{"protocolVersion":1,"agentInfo":{"name":"x"}}`,
+			without: `{"protocolVersion":1}`,
+		},
+		{
+			name:    "a plan entry with an unknown priority",
+			into:    func() any { return new(Plan) },
+			in:      `{"entries":[{"content":"a","priority":"urgent","status":"pending"},{"content":"b","priority":"high","status":"pending"}]}`,
+			without: `{"entries":[{"content":"b","priority":"high","status":"pending"}]}`,
+		},
+		{
+			name:    "a diff without its path in a tool call",
+			into:    func() any { return new(SessionNotification) },
+			in:      `{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"t","title":"edit","content":[{"type":"diff","newText":"x"},{"type":"diff","path":"/a","newText":"y"}]}}`,
+			without: `{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"t","title":"edit","content":[{"type":"diff","path":"/a","newText":"y"}]}}`,
+		},
+		{
+			name:    "session modes without the current mode",
+			into:    func() any { return new(NewSessionResponse) },
+			in:      `{"sessionId":"s","modes":{"availableModes":[{"id":"a","name":"A"}]}}`,
+			without: `{"sessionId":"s"}`,
+		},
+		{
+			// A required member must be there even when its own hint reads
+			// a bad value as the default: Rust fails a missing one.
+			name:    "session modes without the list of modes",
+			into:    func() any { return new(NewSessionResponse) },
+			in:      `{"sessionId":"s","modes":{"currentModeId":"a"}}`,
+			without: `{"sessionId":"s"}`,
+		},
+		{
+			name:    "a select option group without its options",
+			into:    func() any { return new(NewSessionResponse) },
+			in:      `{"sessionId":"s","configOptions":[{"id":"m","name":"Model","type":"select","currentValue":"v","options":[{"group":"g","name":"G"}]}]}`,
+			without: `{"sessionId":"s","configOptions":[]}`,
+		},
+		{
+			name:    "a member with its own hint keeps the value around it",
+			into:    func() any { return new(ListSessionsResponse) },
+			in:      `{"sessions":[{"sessionId":"s","cwd":"/w","title":7}]}`,
+			without: `{"sessions":[{"sessionId":"s","cwd":"/w"}]}`,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decode := func(in string) []byte {
+				v := tt.into()
+				if err := json.Unmarshal([]byte(in), v); err != nil {
+					t.Fatalf("unmarshal %s: %v", in, err)
+				}
+				out, err := json.Marshal(v)
+				if err != nil {
+					t.Fatalf("marshal: %v", err)
+				}
+				return out
+			}
+			if ok, got, want := equalJSON(decode(tt.in), decode(tt.without)); !ok {
+				t.Fatalf("%s decoded to\n got: %s\nwant: %s", tt.in, got, want)
+			}
+		})
+	}
+}
+
 func TestInitializeResponse_UnmarshalJSON_BadAuthMethodsReadAsDefault(t *testing.T) {
 	t.Parallel()
 	var resp InitializeResponse

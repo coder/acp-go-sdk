@@ -61,9 +61,12 @@ type Definition struct {
 	DefaultOnError   bool `json:"x-deserialize-default-on-error"`
 	SkipInvalidItems bool `json:"x-deserialize-skip-invalid-items"`
 	DefaultOnNull    bool `json:"x-deserialize-default-on-null"`
-	// AdditionalProperties is set when the schema says
-	// "additionalProperties": true. False or a schema leaves it unset.
-	AdditionalProperties isTrue `json:"additionalProperties"`
+	// AdditionalProperties is the additionalProperties keyword: true, or the
+	// schema of each member that Properties does not name.
+	AdditionalProperties Members `json:"additionalProperties"`
+	// Not is a schema that a value must not match. The catch-all variant of
+	// a union uses it to leave out the discriminator values of the others.
+	Not *Definition `json:"not"`
 
 	// boolSchema records whether this definition was a boolean schema (true/false).
 	// JSON Schema allows boolean schemas, where true matches anything and false matches nothing.
@@ -71,11 +74,24 @@ type Definition struct {
 	boolSchema *bool `json:"-"`
 }
 
-// isTrue decodes the JSON literal true as true and any other value as false.
-type isTrue bool
+// Members is a keyword, such as additionalProperties, that applies to the
+// members of an object that its properties do not name.
+type Members struct {
+	// Open is set by the literal true: any member is allowed.
+	Open bool
+	// Schema is set by a schema, which each such member must match.
+	Schema *Definition
+}
 
-func (t *isTrue) UnmarshalJSON(b []byte) error {
-	*t = isTrue(bytes.Equal(bytes.TrimSpace(b), []byte("true")))
+// UnmarshalJSON reads true as Open and an object as Schema. Any other value,
+// false included, leaves both unset.
+func (m *Members) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	*m = Members{Open: bytes.Equal(b, []byte("true"))}
+	if bytes.HasPrefix(b, []byte("{")) {
+		m.Schema = new(Definition)
+		return json.Unmarshal(b, m.Schema)
+	}
 	return nil
 }
 

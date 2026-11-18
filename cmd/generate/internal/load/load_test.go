@@ -34,23 +34,29 @@ func TestReadSchemaVersion(t *testing.T) {
 	}
 }
 
-func TestDefinition_UnmarshalJSON_AdditionalPropertiesIsSetOnlyByTrue(t *testing.T) {
+func TestDefinition_UnmarshalJSON_ReadsAdditionalProperties(t *testing.T) {
 	tests := []struct {
-		schema string
-		want   bool
+		schema     string
+		open       bool
+		schemaType any
 	}{
-		{`{"type": "object", "additionalProperties": true}`, true},
-		{`{"type": "object", "additionalProperties": false}`, false},
-		{`{"type": "object", "additionalProperties": {"type": "string"}}`, false},
-		{`{"type": "object"}`, false},
+		{`{"type": "object", "additionalProperties": true}`, true, nil},
+		{`{"type": "object", "additionalProperties": false}`, false, nil},
+		{`{"type": "object", "additionalProperties": {"type": "string"}}`, false, "string"},
+		{`{"type": "object"}`, false, nil},
 	}
 	for _, tt := range tests {
 		var def Definition
 		if err := json.Unmarshal([]byte(tt.schema), &def); err != nil {
 			t.Fatalf("parse %s: %v", tt.schema, err)
 		}
-		if bool(def.AdditionalProperties) != tt.want {
-			t.Errorf("AdditionalProperties of %s = %v, want %v", tt.schema, def.AdditionalProperties, tt.want)
+		got := def.AdditionalProperties
+		var gotType any
+		if got.Schema != nil {
+			gotType = got.Schema.Type
+		}
+		if got.Open != tt.open || gotType != tt.schemaType {
+			t.Errorf("AdditionalProperties of %s = open %v, schema type %v; want open %v, schema type %v", tt.schema, got.Open, gotType, tt.open, tt.schemaType)
 		}
 	}
 }

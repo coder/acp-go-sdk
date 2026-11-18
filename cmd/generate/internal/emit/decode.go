@@ -2,10 +2,8 @@ package emit
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
-	"github.com/coder/acp-go-sdk/cmd/generate/internal/util"
 )
 
 func decodeFallback(p fieldPlan, target Code) Code {
@@ -33,8 +31,8 @@ func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fie
 func decodeStmt(p fieldPlan, structName, recv string) Code {
 	raw := func() *Statement { return Id("raw").Dot(p.field.Name) }
 	args := []Code{raw(), Op("&").Id(recv).Dot(p.field.Name)}
-	if p.enumValidator != nil {
-		args = append(args, p.enumValidator)
+	if p.shape != nil {
+		args = append(args, p.shape)
 	}
 	needsFallback := func(notDecoded *Statement) *Statement {
 		if !p.fallbackOnAbsent {
@@ -75,28 +73,13 @@ func decodeStmt(p fieldPlan, structName, recv string) Code {
 
 func (b *typesBuilder) emitSupport() {
 	f := b.f
-	enums := make([]string, 0, len(b.validatedEnums))
-	for name := range b.validatedEnums {
-		enums = append(enums, name)
-	}
-	sort.Strings(enums)
-	for _, name := range enums {
-		consts := []Code{}
-		for _, value := range enumValues(b.schema.Defs[name]) {
-			consts = append(consts, Id(util.ToEnumConst(name, value)))
-		}
-		f.Func().Params(Id("v").Id(name)).Id("valid").Params().Bool().Block(
-			Switch(Id("v")).Block(Case(consts...).Block(Return(Lit(true)))),
-			Return(Lit(false)),
-		)
-		f.Line()
-	}
+	b.shapes.emit(f)
 	if !b.usesDecodeHelpers {
 		return
 	}
 
 	rawParam := func() Code { return Id("raw").Qual("encoding/json", "RawMessage") }
-	validParam := func() Code { return Id("valid").Op("...").Func().Params(Id("T")).Bool() }
+	checkParam := func() Code { return Id("check").Op("...").Id("shapeID") }
 	typeErr := func() Code {
 		return List(Id("typeErr"), Id("ok")).Op(":=").Id("err").Assert(Op("*").Qual("encoding/json", "UnmarshalTypeError"))
 	}
@@ -128,11 +111,12 @@ func (b *typesBuilder) emitSupport() {
 	f.Line()
 
 	f.Comment("decodeLenient decodes a property that has x-deserialize-default-on-error: a")
-	f.Comment("value that is not a valid T, or that valid rejects, is not an error.")
-	f.Func().Id("decodeLenient").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Id("T"), validParam()).Bool().Block(
+	f.Comment("value that is not a valid T, or that does not fit the shape check, is not an")
+	f.Comment("error. It leaves dst at its zero value and returns false.")
+	f.Func().Id("decodeLenient").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Id("T"), checkParam()).Bool().Block(
 		List(Id("decoded"), Id("_")).Op(":=").Id("decodeField").Call(Id("raw"), Id("dst")),
-		For(List(Id("_"), Id("isValid")).Op(":=").Range().Id("valid")).Block(
-			If(Id("decoded").Op("&&").Op("!").Id("isValid").Call(Op("*").Id("dst"))).Block(
+		For(List(Id("_"), Id("id")).Op(":=").Range().Id("check")).Block(
+			If(Id("decoded").Op("&&").Op("!").Id("id").Dot("accepts").Call(Id("raw"))).Block(
 				Op("*").Id("dst").Op("=").Op("*").Id("new").Call(Id("T")),
 				Return(Lit(false)),
 			),
@@ -143,8 +127,8 @@ func (b *typesBuilder) emitSupport() {
 
 	f.Comment("decodeItems decodes an array property that has")
 	f.Comment("x-deserialize-skip-invalid-items: it drops the items that are null, that are")
-	f.Comment("not a valid T, or that valid rejects.")
-	f.Func().Id("decodeItems").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Index().Id("T"), validParam()).Params(Id("decoded").Bool(), Id("err").Error()).Block(
+	f.Comment("not a valid T, or that do not fit the shape check.")
+	f.Func().Id("decodeItems").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Index().Id("T"), checkParam()).Params(Id("decoded").Bool(), Id("err").Error()).Block(
 		Var().Id("items").Index().Qual("encoding/json", "RawMessage"),
 		If(List(Id("decoded"), Id("err")).Op("=").Id("decodeField").Call(Id("raw"), Op("&").Id("items")), Op("!").Id("decoded")).Block(
 			If(Id("raw").Op("!=").Nil()).Block(Op("*").Id("dst").Op("=").Nil()),
@@ -153,7 +137,7 @@ func (b *typesBuilder) emitSupport() {
 		Id("kept").Op(":=").Make(Index().Id("T"), Lit(0), Id("len").Call(Id("items"))),
 		For(List(Id("_"), Id("item")).Op(":=").Range().Id("items")).Block(
 			Var().Id("v").Id("T"),
-			If(Id("decodeLenient").Call(Id("item"), Op("&").Id("v"), Id("valid").Op("..."))).Block(
+			If(Id("decodeLenient").Call(Id("item"), Op("&").Id("v"), Id("check").Op("..."))).Block(
 				Id("kept").Op("=").Append(Id("kept"), Id("v")),
 			),
 		),
@@ -164,8 +148,8 @@ func (b *typesBuilder) emitSupport() {
 
 	f.Comment("decodeLenientItems decodes an array property that has both hints: a value")
 	f.Comment("that is not an array is not an error either.")
-	f.Func().Id("decodeLenientItems").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Index().Id("T"), validParam()).Bool().Block(
-		List(Id("decoded"), Id("_")).Op(":=").Id("decodeItems").Call(Id("raw"), Id("dst"), Id("valid").Op("...")),
+	f.Func().Id("decodeLenientItems").Types(Id("T").Any()).Params(rawParam(), Id("dst").Op("*").Index().Id("T"), checkParam()).Bool().Block(
+		List(Id("decoded"), Id("_")).Op(":=").Id("decodeItems").Call(Id("raw"), Id("dst"), Id("check").Op("...")),
 		Return(Id("decoded")),
 	)
 	f.Line()

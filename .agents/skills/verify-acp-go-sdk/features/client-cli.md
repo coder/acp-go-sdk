@@ -5,6 +5,7 @@ A developer runs the example client in a terminal. It starts the example agent, 
 ## Sub-features
 
 - `cli-connect` prints `✅ Connected to agent (protocol v1)` and `📝 Created session: sess_...`.
+- `cli-config` prints the session's config options after `📝 Created session:`, see [config-options.md](./config-options.md).
 - `cli-stream` prints each chunk and each tool call with its status.
 - `cli-allow` applies the edit after `1`, and prints ` Perfect! I've successfully updated the configuration. The changes have been applied.`
 - `cli-reject` skips the edit after `2`, and prints ` I understand you prefer not to make that change. I'll skip the configuration update.`

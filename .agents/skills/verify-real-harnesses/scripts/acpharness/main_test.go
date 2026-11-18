@@ -310,14 +310,20 @@ func TestAdvertises_DecidesByTheWire(t *testing.T) {
 	}
 }
 
-func TestConfigSelect_ComparesTheWireWithTheDecodedOption(t *testing.T) {
-	decodeNew := func(raw string) []acp.SessionConfigOption {
+// newSessionDecoder returns a func that decodes the config options of a raw
+// session/new result with the SDK.
+func newSessionDecoder(t *testing.T) func(string) []acp.SessionConfigOption {
+	return func(raw string) []acp.SessionConfigOption {
 		var r acp.NewSessionResponse
 		if err := json.Unmarshal([]byte(raw), &r); err != nil {
 			t.Fatalf("decode session/new: %v", err)
 		}
 		return r.ConfigOptions
 	}
+}
+
+func TestConfigSelect_ComparesTheWireWithTheDecodedOption(t *testing.T) {
+	decodeNew := newSessionDecoder(t)
 	codex := `{"sessionId":"s","configOptions":[` + codexModels + `]}`
 	grouped := `{"sessionId":"s","configOptions":[{"id":"model","name":"Model","type":"select","currentValue":"a","options":[
 		{"group":"g1","name":"One","options":[{"value":"a","name":"A"},{"value":"b","name":"B"}]},
@@ -340,6 +346,40 @@ func TestConfigSelect_ComparesTheWireWithTheDecodedOption(t *testing.T) {
 	noValues[0].Select.Options = acp.SessionConfigSelectOptions{}
 	for name, cfg := range map[string][]acp.SessionConfigOption{"SDK lost the option": lost, "SDK lost its values": noValues} {
 		if _, err := configSelect(json.RawMessage(codex), cfg, acp.SessionConfigOptionCategoryModel, "model"); err == nil || !strings.Contains(err.Error(), "decode mismatch") {
+			t.Errorf("%s: err %v, want a decode mismatch", name, err)
+		}
+	}
+}
+
+func TestConfigBoolean_ComparesEveryOptionAndPicksABoolean(t *testing.T) {
+	decodeNew := newSessionDecoder(t)
+	// Shaped like the options that claude-agent-acp 0.108.0 and codex-acp 2.7.0
+	// offer a client that accepts booleans: a model_config boolean after other
+	// options, and a category that the schema does not list.
+	claude := `{"sessionId":"s","configOptions":[` +
+		`{"id":"model","name":"Model","type":"select","category":"model","currentValue":"default","options":[{"value":"default","name":"Default"}]},` +
+		`{"id":"ultra","name":"Ultra","type":"boolean","currentValue":true},` +
+		`{"id":"fast","name":"Fast","type":"boolean","category":"model_config","currentValue":false},` +
+		`{"id":"plan","name":"Plan","type":"select","category":"collaboration_mode","currentValue":"x","options":[{"value":"x","name":"X"}]}]}`
+	noBoolean := `{"sessionId":"s","configOptions":[{"id":"model","name":"Model","type":"select","currentValue":"m","options":[{"value":"m","name":"M"}]}]}`
+
+	opt, all, err := configBoolean(json.RawMessage(claude), decodeNew(claude), acp.SessionConfigOptionCategoryModelConfig)
+	if err != nil || opt == nil || opt.ID != "fast" || opt.CurrentValue != "false" || len(all) != 4 {
+		t.Fatalf("claude options: %v, %v, %v; want fast=false of 4", opt, all, err)
+	}
+	if opt, _, err := configBoolean(json.RawMessage(claude), decodeNew(claude), "other"); err != nil || opt == nil || opt.ID != "ultra" {
+		t.Fatalf("no boolean in the category: %v, %v; want the first boolean, ultra", opt, err)
+	}
+	if opt, _, err := configBoolean(json.RawMessage(noBoolean), decodeNew(noBoolean), acp.SessionConfigOptionCategoryModelConfig); err != nil || opt != nil {
+		t.Fatalf("no boolean option: %v, %v", opt, err)
+	}
+
+	flipped := decodeNew(claude)
+	flipped[2].Boolean.CurrentValue = true
+	lostCategory := decodeNew(claude)
+	lostCategory[3].Select.Category = nil
+	for name, cfg := range map[string][]acp.SessionConfigOption{"SDK flipped a value": flipped, "SDK lost a category": lostCategory, "SDK lost an option": decodeNew(claude)[:3]} {
+		if _, _, err := configBoolean(json.RawMessage(claude), cfg, acp.SessionConfigOptionCategoryModelConfig); err == nil || !strings.Contains(err.Error(), "decode mismatch") {
 			t.Errorf("%s: err %v, want a decode mismatch", name, err)
 		}
 	}

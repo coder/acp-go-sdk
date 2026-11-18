@@ -172,6 +172,82 @@ func configSelect(raw json.RawMessage, cfg []acp.SessionConfigOption, category a
 	return sel, nil
 }
 
+// configSummary is a config option reduced to its type, id, category and
+// current value, the value as JSON text.
+type configSummary struct {
+	Type, ID, Category, CurrentValue string
+}
+
+func (c configSummary) String() string {
+	return fmt.Sprintf("%s:%s=%s", c.Type, c.ID, c.CurrentValue)
+}
+
+// configBoolean compares every config option that the SDK decoded with the
+// configOptions of the raw result that carried them, and returns the first
+// boolean option in category, else the first boolean option, else nil.
+func configBoolean(raw json.RawMessage, cfg []acp.SessionConfigOption, category acp.SessionConfigOptionCategory) (*configSummary, []configSummary, error) {
+	if raw == nil {
+		return nil, nil, fmt.Errorf("no raw result with the config options was recorded")
+	}
+	var opts []struct {
+		Type         string          `json:"type"`
+		ID           string          `json:"id"`
+		Category     string          `json:"category"`
+		CurrentValue json.RawMessage `json:"currentValue"`
+	}
+	if v := jsonAt(raw, "configOptions"); v != nil {
+		if err := json.Unmarshal(v, &opts); err != nil {
+			return nil, nil, fmt.Errorf("configOptions on the wire: %w", err)
+		}
+	}
+	wire := []configSummary{}
+	for _, o := range opts {
+		wire = append(wire, configSummary{o.Type, o.ID, o.Category, string(o.CurrentValue)})
+	}
+	decoded := []configSummary{}
+	for _, o := range cfg {
+		switch {
+		case o.Select != nil:
+			decoded = append(decoded, configSummary{"select", string(o.Select.Id), categoryText(o.Select.Category), string(mustMarshal(o.Select.CurrentValue))})
+		case o.Boolean != nil:
+			decoded = append(decoded, configSummary{"boolean", string(o.Boolean.Id), categoryText(o.Boolean.Category), string(mustMarshal(o.Boolean.CurrentValue))})
+		default:
+			decoded = append(decoded, configSummary{})
+		}
+	}
+	if !reflect.DeepEqual(wire, decoded) {
+		return nil, wire, fmt.Errorf("decode mismatch: the config options on the wire are %v, but the SDK decoded %v", wire, decoded)
+	}
+	var first *configSummary
+	for i := range wire {
+		if wire[i].Type != "boolean" {
+			continue
+		}
+		if wire[i].Category == string(category) {
+			return &wire[i], wire, nil
+		}
+		if first == nil {
+			first = &wire[i]
+		}
+	}
+	return first, wire, nil
+}
+
+func categoryText(c *acp.SessionConfigOptionCategory) string {
+	if c == nil {
+		return ""
+	}
+	return string(*c)
+}
+
+func mustMarshal(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
 // checkModes returns an error when the SDK decoded the session modes of a
 // raw session/new result otherwise than the wire has them: the current
 // mode and every mode id, in order.

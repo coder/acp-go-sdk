@@ -47,14 +47,15 @@ const (
 // SKILL.md lists them all. A SKIP for any other reason, such as a scenario
 // blocked by an earlier failure or by the budget, fails the known-skips row.
 const (
-	skipNotSelected   = "not selected by -only"
-	skipNoAuth        = "no -auth"
-	skipNotAdvertised = "not advertised"
-	skipNoModelOption = "no model option"
-	skipNoOtherModel  = "no other model"
+	skipNotSelected     = "not selected by -only"
+	skipNoAuth          = "no -auth"
+	skipNotAdvertised   = "not advertised"
+	skipNoModelOption   = "no model option"
+	skipNoOtherModel    = "no other model"
+	skipNoBooleanOption = "no boolean option"
 )
 
-var knownSkips = []string{skipNotSelected, skipNoAuth, skipNotAdvertised, skipNoModelOption, skipNoOtherModel}
+var knownSkips = []string{skipNotSelected, skipNoAuth, skipNotAdvertised, skipNoModelOption, skipNoOtherModel, skipNoBooleanOption}
 
 // undocumentedSkips returns each SKIP whose detail does not start with a
 // documented reason, as "name (detail)".

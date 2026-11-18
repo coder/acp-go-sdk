@@ -214,6 +214,10 @@ func main() {
 		ClientCapabilities: acp.ClientCapabilities{
 			Fs:       acp.FileSystemCapabilities{ReadTextFile: true, WriteTextFile: true},
 			Terminal: true,
+			// Accept boolean config options, so the agent may offer them.
+			Session: &acp.ClientSessionCapabilities{ConfigOptions: &acp.SessionConfigOptionsCapabilities{
+				Boolean: &acp.BooleanConfigOptionCapabilities{},
+			}},
 		},
 	})
 	if err != nil {
@@ -247,6 +251,14 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("📝 Created session: %s\n", newSess.SessionId)
+	for _, o := range newSess.ConfigOptions {
+		switch {
+		case o.Select != nil:
+			fmt.Printf("⚙️  %s: %s\n", o.Select.Name, o.Select.CurrentValue)
+		case o.Boolean != nil:
+			fmt.Printf("⚙️  %s: %v\n", o.Boolean.Name, o.Boolean.CurrentValue)
+		}
+	}
 	fmt.Printf("💬 User: Hello, agent!\n\n")
 	fmt.Print(" ")
 

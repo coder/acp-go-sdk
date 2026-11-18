@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +36,14 @@ func (c *testClient) RequestPermission(context.Context, acp.RequestPermissionReq
 // wires it to stdio.
 func connect(t *testing.T) (*acp.ClientSideConnection, *testClient) {
 	t.Helper()
+	c, client, _ := connectAgent(t)
+	return c, client
+}
+
+// connectAgent is connect that also returns the agent, for a test that calls
+// its methods directly.
+func connectAgent(t *testing.T) (*acp.ClientSideConnection, *testClient, *exampleAgent) {
+	t.Helper()
 	c2aR, c2aW := io.Pipe()
 	a2cR, a2cW := io.Pipe()
 	t.Cleanup(func() {
@@ -43,7 +53,7 @@ func connect(t *testing.T) (*acp.ClientSideConnection, *testClient) {
 	ag := newExampleAgent()
 	ag.SetAgentConnection(acp.NewAgentSideConnection(ag, a2cW, c2aR))
 	client := &testClient{updates: make(chan acp.SessionNotification, 64)}
-	return acp.NewClientSideConnection(client, c2aW, a2cR), client
+	return acp.NewClientSideConnection(client, c2aW, a2cR), client, ag
 }
 
 func newSession(t *testing.T, c *acp.ClientSideConnection, cwd string) acp.SessionId {
@@ -140,5 +150,126 @@ func TestExampleAgent_DeleteSessionCancelsRunningTurn(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the turn did not end after session/delete")
+	}
+}
+
+// TestExampleAgent_CancelDuringPrompts calls Cancel while prompts install and
+// clear their cancel funcs. Run it with -race: Cancel must read the session's
+// cancel func under the lock that Prompt writes it under.
+func TestExampleAgent_CancelDuringPrompts(t *testing.T) {
+	ctx := context.Background()
+	c, _, ag := connectAgent(t)
+	sid := newSession(t, c, "/w")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _ = ag.Prompt(ctx, acp.PromptRequest{SessionId: sid, Prompt: []acp.ContentBlock{acp.TextBlock("hi")}})
+		}()
+		go func() {
+			defer wg.Done()
+			_ = ag.Cancel(ctx, acp.CancelNotification{SessionId: sid})
+		}()
+	}
+	// The last prompt may still run: cancel it until every prompt returns.
+	finished := make(chan struct{})
+	go func() { wg.Wait(); close(finished) }()
+	for {
+		select {
+		case <-finished:
+			return
+		case <-time.After(10 * time.Millisecond):
+			_ = ag.Cancel(ctx, acp.CancelNotification{SessionId: sid})
+		}
+	}
+}
+
+// setFn builds a session/set_config_option request for the test's session.
+type setFn func(acp.SessionId) acp.SetSessionConfigOptionRequest
+
+func setModel(v acp.SessionConfigValueId) setFn {
+	return func(sid acp.SessionId) acp.SetSessionConfigOptionRequest {
+		return acp.SetSessionConfigOptionRequest{ValueId: &acp.SetSessionConfigOptionValueId{SessionId: sid, ConfigId: "model", Value: v}}
+	}
+}
+
+func setWebSearch(v bool) setFn {
+	return func(sid acp.SessionId) acp.SetSessionConfigOptionRequest {
+		return acp.SetSessionConfigOptionRequest{Boolean: &acp.SetSessionConfigOptionBoolean{SessionId: sid, ConfigId: "web_search", Type: "boolean", Value: v}}
+	}
+}
+
+func inSession(sid acp.SessionId, set setFn) setFn {
+	return func(acp.SessionId) acp.SetSessionConfigOptionRequest { return set(sid) }
+}
+
+// configValues lists each option as id=value, in the agent's order.
+func configValues(opts []acp.SessionConfigOption) []string {
+	out := []string{}
+	for _, o := range opts {
+		switch {
+		case o.Select != nil:
+			out = append(out, string(o.Select.Id)+"="+string(o.Select.CurrentValue))
+		case o.Boolean != nil:
+			out = append(out, fmt.Sprintf("%s=%v", o.Boolean.Id, o.Boolean.CurrentValue))
+		}
+	}
+	return out
+}
+
+func TestExampleAgent_SetSessionConfigOption(t *testing.T) {
+	ctx := context.Background()
+	booleans := acp.ClientCapabilities{Session: &acp.ClientSessionCapabilities{
+		ConfigOptions: &acp.SessionConfigOptionsCapabilities{Boolean: &acp.BooleanConfigOptionCapabilities{}},
+	}}
+	tests := []struct {
+		name    string
+		caps    acp.ClientCapabilities
+		set     []setFn
+		wantNew []string
+		want    []string // nil: the last set fails with invalid params
+	}{
+		{"model and web search", booleans, []setFn{setModel("demo-deep"), setWebSearch(true)},
+			[]string{"model=demo-fast", "web_search=false"}, []string{"model=demo-deep", "web_search=true"}},
+		{"no boolean option for a client without the capability", acp.ClientCapabilities{}, []setFn{setWebSearch(true)},
+			[]string{"model=demo-fast"}, nil},
+		{"unknown model", booleans, []setFn{setModel("gpt-0")},
+			[]string{"model=demo-fast", "web_search=false"}, nil},
+		{"unknown session", booleans, []setFn{inSession("sess_unknown", setModel("demo-deep"))},
+			[]string{"model=demo-fast", "web_search=false"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := connect(t)
+			if _, err := c.Initialize(ctx, acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber, ClientCapabilities: tt.caps}); err != nil {
+				t.Fatalf("initialize: %v", err)
+			}
+			resp, err := c.NewSession(ctx, acp.NewSessionRequest{Cwd: "/w", McpServers: []acp.McpServer{}})
+			if err != nil {
+				t.Fatalf("session/new: %v", err)
+			}
+			if got := configValues(resp.ConfigOptions); !reflect.DeepEqual(got, tt.wantNew) {
+				t.Fatalf("session/new config options = %v, want %v", got, tt.wantNew)
+			}
+			var last acp.SetSessionConfigOptionResponse
+			for i, set := range tt.set {
+				last, err = c.SetSessionConfigOption(ctx, set(resp.SessionId))
+				if tt.want == nil && i == len(tt.set)-1 {
+					var reqErr *acp.RequestError
+					if !errors.As(err, &reqErr) || reqErr.Code != -32602 {
+						t.Fatalf("session/set_config_option error = %v, want invalid params", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("session/set_config_option %d: %v", i, err)
+				}
+			}
+			if got := configValues(last.ConfigOptions); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("config options after the sets = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

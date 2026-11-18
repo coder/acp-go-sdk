@@ -22,13 +22,20 @@ type agentSession struct {
 	seq    uint64
 	cancel context.CancelFunc
 	turn   uint64 // counts the prompts; the newest one owns cancel
+	// The session's config options, see configOptions.
+	model     acp.SessionConfigValueId
+	webSearch bool
 }
 
 type exampleAgent struct {
 	conn     *acp.AgentSideConnection
 	sessions map[string]*agentSession
 	nextSeq  uint64
-	mu       sync.Mutex
+	// booleanConfig is set when the client accepts boolean config options.
+	booleanConfig bool
+	// mu guards sessions, nextSeq, booleanConfig and every field of each
+	// agentSession. A handler never calls the client while it holds mu.
+	mu sync.Mutex
 }
 
 var (
@@ -87,9 +94,79 @@ func (a *exampleAgent) ResumeSession(ctx context.Context, params acp.ResumeSessi
 	return acp.ResumeSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionResume)
 }
 
-// SetSessionConfigOption implements acp.Agent.
+// The config option ids and the model values that the example agent offers.
+const (
+	configModel     acp.SessionConfigId      = "model"
+	configWebSearch acp.SessionConfigId      = "web_search"
+	modelFast       acp.SessionConfigValueId = "demo-fast"
+	modelDeep       acp.SessionConfigValueId = "demo-deep"
+)
+
+// configOptions returns the session's config options: a model select, and a
+// boolean in the model_config category when the client accepts booleans.
+// The caller holds a.mu.
+func (a *exampleAgent) configOptions(s *agentSession) []acp.SessionConfigOption {
+	models := acp.SessionConfigSelectOptionsUngrouped{
+		{Value: modelFast, Name: "Demo Fast"},
+		{Value: modelDeep, Name: "Demo Deep"},
+	}
+	opts := []acp.SessionConfigOption{{Select: &acp.SessionConfigOptionSelect{
+		Id:           configModel,
+		Name:         "Model",
+		Category:     acp.Ptr(acp.SessionConfigOptionCategoryModel),
+		Type:         "select",
+		CurrentValue: s.model,
+		Options:      acp.SessionConfigSelectOptions{Ungrouped: &models},
+	}}}
+	if a.booleanConfig {
+		opts = append(opts, acp.SessionConfigOption{Boolean: &acp.SessionConfigOptionBoolean{
+			Id:           configWebSearch,
+			Name:         "Web search",
+			Category:     acp.Ptr(acp.SessionConfigOptionCategoryModelConfig),
+			Type:         "boolean",
+			CurrentValue: s.webSearch,
+		}})
+	}
+	return opts
+}
+
+// SetSessionConfigOption implements acp.Agent. It sets the model to one of
+// its values, or web search on or off, and returns every option.
 func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
-	return acp.SetSessionConfigOptionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionSetConfigOption)
+	invalid := func(configID acp.SessionConfigId, msg string) error {
+		return acp.NewInvalidParams(map[string]any{"configId": configID, "error": msg})
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var s *agentSession
+	switch {
+	case params.ValueId != nil:
+		p := params.ValueId
+		s = a.sessions[string(p.SessionId)]
+		if s == nil {
+			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "unknown session")
+		}
+		if p.ConfigId != configModel {
+			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "no select option with this id")
+		}
+		if p.Value != modelFast && p.Value != modelDeep {
+			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "unknown model "+string(p.Value))
+		}
+		s.model = p.Value
+	case params.Boolean != nil:
+		p := params.Boolean
+		s = a.sessions[string(p.SessionId)]
+		if s == nil {
+			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "unknown session")
+		}
+		if p.ConfigId != configWebSearch || !a.booleanConfig {
+			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "no boolean option with this id")
+		}
+		s.webSearch = p.Value
+	default:
+		return acp.SetSessionConfigOptionResponse{}, acp.NewInvalidParams(map[string]any{"error": "no value"})
+	}
+	return acp.SetSessionConfigOptionResponse{ConfigOptions: a.configOptions(s)}, nil
 }
 
 // UnstableDidChangeDocument implements acp.AgentExperimental.
@@ -171,6 +248,10 @@ func (a *exampleAgent) CloseSession(ctx context.Context, params acp.CloseSession
 func (a *exampleAgent) SetAgentConnection(conn *acp.AgentSideConnection) { a.conn = conn }
 
 func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequest) (acp.InitializeResponse, error) {
+	caps := params.ClientCapabilities.Session
+	a.mu.Lock()
+	a.booleanConfig = caps != nil && caps.ConfigOptions != nil && caps.ConfigOptions.Boolean != nil
+	a.mu.Unlock()
 	return acp.InitializeResponse{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		AgentCapabilities: acp.AgentCapabilities{
@@ -186,10 +267,11 @@ func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequ
 func (a *exampleAgent) NewSession(ctx context.Context, params acp.NewSessionRequest) (acp.NewSessionResponse, error) {
 	sid := randomID()
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.nextSeq++
-	a.sessions[sid] = &agentSession{cwd: params.Cwd, seq: a.nextSeq}
-	a.mu.Unlock()
-	return acp.NewSessionResponse{SessionId: acp.SessionId(sid)}, nil
+	s := &agentSession{cwd: params.Cwd, seq: a.nextSeq, model: modelFast}
+	a.sessions[sid] = s
+	return acp.NewSessionResponse{SessionId: acp.SessionId(sid), ConfigOptions: a.configOptions(s)}, nil
 }
 
 func (a *exampleAgent) Authenticate(ctx context.Context, _ acp.AuthenticateRequest) (acp.AuthenticateResponse, error) {
@@ -200,12 +282,17 @@ func (a *exampleAgent) LoadSession(ctx context.Context, _ acp.LoadSessionRequest
 	return acp.LoadSessionResponse{}, nil
 }
 
+// Cancel cancels the session's running turn. It copies the cancel func under
+// a.mu, which guards every agentSession field, and calls it after the unlock.
 func (a *exampleAgent) Cancel(ctx context.Context, params acp.CancelNotification) error {
+	var cancel context.CancelFunc
 	a.mu.Lock()
-	s, ok := a.sessions[string(params.SessionId)]
+	if s, ok := a.sessions[string(params.SessionId)]; ok {
+		cancel = s.cancel
+	}
 	a.mu.Unlock()
-	if ok && s != nil && s.cancel != nil {
-		s.cancel()
+	if cancel != nil {
+		cancel()
 	}
 	return nil
 }

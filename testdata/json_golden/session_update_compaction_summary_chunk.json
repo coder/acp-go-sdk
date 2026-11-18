@@ -1,0 +1,8 @@
+{
+  "sessionUpdate": "compaction_summary_chunk",
+  "compactionId": "cmp_1",
+  "content": {
+    "type": "text",
+    "text": "The user asked for a config change."
+  }
+}

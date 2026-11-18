@@ -1,0 +1,6 @@
+{
+  "sessionUpdate": "tool_call_update",
+  "toolCallId": "call_001",
+  "name": "read_file",
+  "status": "completed"
+}

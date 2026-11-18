@@ -36,7 +36,7 @@ Steps:
 
 ## Gotchas
 
-- The example agent advertises `loadSession: false`. A `session/load` journey tests the SDK's dispatch only, not a feature that the agent offers.
+- The example agent advertises `loadSession: true` and replays a session's turns on `session/load`. [session-load.md](./session-load.md) covers it.
 - `session/new` needs `cwd` and `mcpServers`, or it answers `-32602`. An empty list is fine for `mcpServers`.
 - The permission answer must be a rule (`respond`) before the prompt. Without one, `acpwire` answers `-32601`, and the agent ends the turn with that error.
 - The agent exits as soon as its connection reports done, which can be before it logs `connection closed`. That line is in some logs and not in others. Do not assert on it.

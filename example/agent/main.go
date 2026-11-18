@@ -29,6 +29,17 @@ type agentSession struct {
 	webSearch bool
 	// systemPrompt is the text of the client's system prompt, if any.
 	systemPrompt string
+	// history is every session/update of the session in order: the user's
+	// prompts and each update that the agent sent. LoadSession replays it.
+	history []acp.SessionUpdate
+	// toolCalls counts the tool call ids that the session's turns used, so
+	// that each id is unique within the session, as the protocol asks.
+	toolCalls int
+	// sendMu orders the session's updates with a replay. sessionUpdate holds
+	// it while it sends an update and adds it to history, and LoadSession
+	// while it replays history, so a replay never misses or repeats an
+	// update. Lock order: sendMu, then exampleAgent.mu.
+	sendMu sync.Mutex
 }
 
 type exampleAgent struct {
@@ -44,8 +55,8 @@ type exampleAgent struct {
 	// compaction session updates.
 	notices, compaction bool
 	// mu guards sessions, nextSeq, the client's capability flags and every
-	// field of each agentSession. A handler never calls the client while
-	// it holds mu.
+	// field of each agentSession but sendMu. A handler never calls the
+	// client while it holds mu.
 	mu sync.Mutex
 }
 
@@ -87,15 +98,28 @@ func (a *exampleAgent) ListSessions(ctx context.Context, params acp.ListSessions
 }
 
 // DeleteSession implements acp.Agent. It cancels the session's running turn
-// and drops the session, so session/list no longer returns it. An unknown
-// session ID succeeds, as the protocol asks.
+// and drops the session, so session/list no longer returns it. It holds the
+// session's sendMu, so it waits for a running replay to finish, and no update
+// of the session follows it. An unknown session ID succeeds, as the protocol
+// asks.
 func (a *exampleAgent) DeleteSession(ctx context.Context, params acp.DeleteSessionRequest) (acp.DeleteSessionResponse, error) {
+	sid := string(params.SessionId)
+	a.mu.Lock()
+	s := a.sessions[sid]
+	a.mu.Unlock()
+	if s == nil {
+		return acp.DeleteSessionResponse{}, nil
+	}
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if s, ok := a.sessions[string(params.SessionId)]; ok && s.cancel != nil {
+	if s.cancel != nil {
 		s.cancel()
 	}
-	delete(a.sessions, string(params.SessionId))
+	if a.sessions[sid] == s {
+		delete(a.sessions, sid)
+	}
 	return acp.DeleteSessionResponse{}, nil
 }
 
@@ -212,7 +236,7 @@ func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequ
 	return acp.InitializeResponse{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		AgentCapabilities: acp.AgentCapabilities{
-			LoadSession: false,
+			LoadSession: true,
 			SessionCapabilities: acp.SessionCapabilities{
 				List:   &acp.SessionListCapabilities{},
 				Delete: &acp.SessionDeleteCapabilities{},
@@ -267,8 +291,75 @@ func (a *exampleAgent) Authenticate(ctx context.Context, _ acp.AuthenticateReque
 	return acp.AuthenticateResponse{}, nil
 }
 
-func (a *exampleAgent) LoadSession(ctx context.Context, _ acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
-	return acp.LoadSessionResponse{}, nil
+// LoadSession implements acp.AgentLoader. It replays the session's history as
+// session/update notifications before it answers, as the protocol asks, and
+// takes a new system prompt the way NewSession does. Without one, the session
+// keeps the prompt that it has. The agent keeps sessions in memory, so it can
+// load only a session of this process.
+func (a *exampleAgent) LoadSession(ctx context.Context, params acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
+	prompt, err := systemPromptText(params.SystemPrompt)
+	if err != nil {
+		return acp.LoadSessionResponse{}, err
+	}
+	// An unknown session gets -32002 (resource not found) with the requested
+	// sessionId in data, as the protocol asks of the session methods.
+	notFound := &acp.RequestError{Code: -32002, Message: "Resource not found", Data: map[string]any{"sessionId": params.SessionId}}
+	sid := string(params.SessionId)
+	a.mu.Lock()
+	s := a.sessions[sid]
+	a.mu.Unlock()
+	if s == nil {
+		return acp.LoadSessionResponse{}, notFound
+	}
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	a.mu.Lock()
+	switch {
+	case a.sessions[sid] != s: // deleted while this call waited for sendMu
+		a.mu.Unlock()
+		return acp.LoadSessionResponse{}, notFound
+	case params.Cwd != s.cwd:
+		a.mu.Unlock()
+		return acp.LoadSessionResponse{}, acp.NewInvalidParams(map[string]any{"error": "cwd does not match the session"})
+	}
+	history := append([]acp.SessionUpdate(nil), s.history...)
+	a.mu.Unlock()
+	for _, u := range history {
+		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: params.SessionId, Update: u}); err != nil {
+			return acp.LoadSessionResponse{}, err
+		}
+	}
+	// A failed load leaves the session's prompt as it was. sendMu keeps the
+	// session from being deleted until this returns.
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if params.SystemPrompt != nil {
+		s.systemPrompt = prompt
+	}
+	return acp.LoadSessionResponse{ConfigOptions: a.configOptions(s)}, nil
+}
+
+// sessionUpdate sends an update of a session and adds it to the session's
+// history, except a notice: notices are live events, not session history.
+// See agentSession.sendMu.
+func (a *exampleAgent) sessionUpdate(ctx context.Context, n acp.SessionNotification) error {
+	a.mu.Lock()
+	s := a.sessions[string(n.SessionId)]
+	a.mu.Unlock()
+	if s == nil {
+		return a.conn.SessionUpdate(ctx, n)
+	}
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	if err := a.conn.SessionUpdate(ctx, n); err != nil {
+		return err
+	}
+	if n.Update.Notice == nil {
+		a.mu.Lock()
+		s.history = append(s.history, n.Update)
+		a.mu.Unlock()
+	}
+	return nil
 }
 
 // Cancel cancels the session's running turn. It copies the cancel func under
@@ -288,21 +379,43 @@ func (a *exampleAgent) Cancel(ctx context.Context, params acp.CancelNotification
 
 func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (acp.PromptResponse, error) {
 	sid := string(params.SessionId)
-	// Look up the session and install this turn's cancel func in one critical
-	// section, so that a concurrent DeleteSession either runs first or
-	// cancels this turn.
+	notFound := fmt.Errorf("session %s not found", sid)
 	a.mu.Lock()
-	s, ok := a.sessions[sid]
-	if !ok {
+	s := a.sessions[sid]
+	a.mu.Unlock()
+	if s == nil {
+		return acp.PromptResponse{}, notFound
+	}
+	// Start the turn in one critical section under sendMu and a.mu: check
+	// that the session still exists and that no newer prompt or cancel has
+	// ended this one, install the turn's cancel func, and add the prompt to
+	// the history. A concurrent DeleteSession then either runs first or
+	// cancels this turn. The SDK cancels the context of a prompt that
+	// arrived before the session's newest one, so a late prompt neither
+	// cancels the newer turn nor lands after it in the history. Under sendMu,
+	// an update of an earlier turn lands before or after the whole prompt.
+	s.sendMu.Lock()
+	a.mu.Lock()
+	if a.sessions[sid] != s {
 		a.mu.Unlock()
-		return acp.PromptResponse{}, fmt.Errorf("session %s not found", sid)
+		s.sendMu.Unlock()
+		return acp.PromptResponse{}, notFound
+	}
+	if ctx.Err() != nil {
+		a.mu.Unlock()
+		s.sendMu.Unlock()
+		return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	prev := s.cancel
 	s.cancel = cancel
 	s.turn++
 	turn := s.turn
+	for _, block := range params.Prompt {
+		s.history = append(s.history, acp.UpdateUserMessage(block))
+	}
 	a.mu.Unlock()
+	s.sendMu.Unlock()
 	// cancel any previous turn
 	if prev != nil {
 		prev()
@@ -367,7 +480,7 @@ func (a *exampleAgent) compact(ctx context.Context, sid string) error {
 	a.mu.Unlock()
 	summary := fmt.Sprintf("Compacted %d earlier prompt(s) of this demo session.", earlier)
 	if !supported {
-		return a.conn.SessionUpdate(ctx, acp.SessionNotification{
+		return a.sessionUpdate(ctx, acp.SessionNotification{
 			SessionId: acp.SessionId(sid),
 			Update:    acp.UpdateAgentMessageText(summary),
 		})
@@ -384,16 +497,30 @@ func (a *exampleAgent) compact(ctx context.Context, sid string) error {
 				return err
 			}
 		}
-		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: acp.SessionId(sid), Update: u}); err != nil {
+		if err := a.sessionUpdate(ctx, acp.SessionNotification{SessionId: acp.SessionId(sid), Update: u}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// toolCallIDs returns the ids of a turn's read and edit tool calls: call_1
+// and call_2 in the session's first turn, call_3 and call_4 in the next.
+func (a *exampleAgent) toolCallIDs(sid string) (read, edit acp.ToolCallId) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n := 0
+	if s, ok := a.sessions[sid]; ok {
+		n = s.toolCalls
+		s.toolCalls += 2
+	}
+	return acp.ToolCallId(fmt.Sprintf("call_%d", n+1)), acp.ToolCallId(fmt.Sprintf("call_%d", n+2))
+}
+
 func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
+	readID, editID := a.toolCallIDs(sid)
 	// disclaimer, so clients see it's the example agent
-	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+	if err := a.sessionUpdate(ctx, acp.SessionNotification{
 		SessionId: acp.SessionId(sid),
 		Update:    a.disclaimer(),
 	}); err != nil {
@@ -411,7 +538,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	}
 	a.mu.Unlock()
 	if prompt != "" {
-		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+		if err := a.sessionUpdate(ctx, acp.SessionNotification{
 			SessionId: acp.SessionId(sid),
 			Update:    acp.UpdateAgentMessageText("Following your system prompt: " + prompt),
 		}); err != nil {
@@ -419,7 +546,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		}
 	}
 	// initial message chunk
-	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+	if err := a.sessionUpdate(ctx, acp.SessionNotification{
 		SessionId: acp.SessionId(sid),
 		Update:    acp.UpdateAgentMessageText("I'll help you with that. Let me start by reading some files to understand the current situation."),
 	}); err != nil {
@@ -430,10 +557,10 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	}
 
 	// tool call without permission
-	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+	if err := a.sessionUpdate(ctx, acp.SessionNotification{
 		SessionId: acp.SessionId(sid),
 		Update: acp.StartToolCall(
-			acp.ToolCallId("call_1"),
+			readID,
 			"Reading project files",
 			acp.WithStartName("read_file"),
 			acp.WithStartKind(acp.ToolKindRead),
@@ -449,10 +576,10 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	}
 
 	// update tool call completed
-	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+	if err := a.sessionUpdate(ctx, acp.SessionNotification{
 		SessionId: acp.SessionId(sid),
 		Update: acp.UpdateToolCall(
-			acp.ToolCallId("call_1"),
+			readID,
 			acp.WithUpdateStatus(acp.ToolCallStatusCompleted),
 			acp.WithUpdateContent([]acp.ToolCallContent{acp.ToolContent(acp.TextBlock("# My Project\n\nThis is a sample project..."))}),
 			acp.WithUpdateRawOutput(map[string]any{"content": "# My Project\n\nThis is a sample project..."}),
@@ -465,7 +592,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	}
 
 	// more text
-	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+	if err := a.sessionUpdate(ctx, acp.SessionNotification{
 		SessionId: acp.SessionId(sid),
 		Update:    acp.UpdateAgentMessageText(" Now I understand the project structure. I need to make some changes to improve it."),
 	}); err != nil {
@@ -476,10 +603,10 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	}
 
 	// tool call requiring permission
-	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+	if err := a.sessionUpdate(ctx, acp.SessionNotification{
 		SessionId: acp.SessionId(sid),
 		Update: acp.StartToolCall(
-			acp.ToolCallId("call_2"),
+			editID,
 			"Modifying critical configuration file",
 			acp.WithStartName("write_file"),
 			acp.WithStartKind(acp.ToolKindEdit),
@@ -492,7 +619,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	}
 
 	// ask the user for the value that the edit writes
-	host, err := a.askHost(ctx, sid)
+	host, err := a.askHost(ctx, sid, editID)
 	if err != nil {
 		return err
 	}
@@ -506,7 +633,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	permResp, err := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
 		SessionId: acp.SessionId(sid),
 		ToolCall: acp.ToolCallUpdate{
-			ToolCallId: acp.ToolCallId("call_2"),
+			ToolCallId: editID,
 			Title:      acp.Ptr("Modifying critical configuration file"),
 			Name:       acp.Ptr("write_file"),
 			Kind:       acp.Ptr(acp.ToolKindEdit),
@@ -532,10 +659,10 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	}
 	switch string(permResp.Outcome.Selected.OptionId) {
 	case "allow":
-		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+		if err := a.sessionUpdate(ctx, acp.SessionNotification{
 			SessionId: acp.SessionId(sid),
 			Update: acp.UpdateToolCall(
-				acp.ToolCallId("call_2"),
+				editID,
 				acp.WithUpdateStatus(acp.ToolCallStatusCompleted),
 				acp.WithUpdateRawOutput(map[string]any{"success": true, "message": "Configuration updated"}),
 				acp.WithUpdateTitle("Modifying critical configuration file"),
@@ -546,7 +673,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		if err := pause(ctx, time.Second); err != nil {
 			return err
 		}
-		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+		if err := a.sessionUpdate(ctx, acp.SessionNotification{
 			SessionId: acp.SessionId(sid),
 			Update:    acp.UpdateAgentMessageText(" Perfect! I've successfully updated the configuration. The changes have been applied."),
 		}); err != nil {
@@ -559,7 +686,7 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		if err := pause(ctx, time.Second); err != nil {
 			return err
 		}
-		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+		if err := a.sessionUpdate(ctx, acp.SessionNotification{
 			SessionId: acp.SessionId(sid),
 			Update:    acp.UpdateAgentMessageText(" I understand you prefer not to make that change. I'll skip the configuration update."),
 		}); err != nil {
@@ -579,7 +706,7 @@ const defaultHost = "new-host"
 // call, which database host the edit writes. It returns defaultHost when the
 // client does not accept form elicitation, or when the user declines,
 // cancels, or accepts without a host.
-func (a *exampleAgent) askHost(ctx context.Context, sid string) (string, error) {
+func (a *exampleAgent) askHost(ctx context.Context, sid string, editID acp.ToolCallId) (string, error) {
 	a.mu.Lock()
 	form := a.formElicitation
 	a.mu.Unlock()
@@ -599,7 +726,7 @@ func (a *exampleAgent) askHost(ctx context.Context, sid string) (string, error) 
 			}}},
 			Required: []string{"host"},
 		},
-		Session: &acp.ElicitationSessionScope{SessionId: acp.SessionId(sid), ToolCallId: acp.Ptr(acp.ToolCallId("call_2"))},
+		Session: &acp.ElicitationSessionScope{SessionId: acp.SessionId(sid), ToolCallId: acp.Ptr(editID)},
 	}})
 	if err != nil {
 		return "", err

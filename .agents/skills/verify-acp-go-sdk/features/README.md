@@ -47,6 +47,7 @@ Keep implementation details out of the map, except where a gotcha needs one to e
 - [Elicitation](./elicitation.md): the agent asks the editor a question in `form` mode and for a page visit in `url` mode, and completes the visit with `elicitation/complete`.
 - [Notices, compaction and tool names](./notices-compaction.md): the agent sends a `notice` and compaction updates to an editor that advertises them, and names the tool of each tool call.
 - [Client system prompt](./system-prompt.md): `session/new` takes a `systemPrompt` in `append` mode, and the agent refuses one that it cannot apply.
+- [Session load](./session-load.md): `session/load` replays a session's history before it answers, and takes a new system prompt.
 - [Session delete](./session-delete.md): `session/list` and `session/delete` remove a session from the agent's history, also during its turn.
 - [Errors and extensions](./errors-and-extensions.md): error replies, `_` extension methods, malformed input and end of input.
 - [Example client CLI](./client-cli.md): a developer runs `example/client` and answers its permission prompt.

@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"strings"
 	"testing"
 )
 
@@ -78,5 +79,18 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 	}
 	if free == nil || !free.Assign.IsValid() || types.ExprString(free.Type) != "json.RawMessage" {
 		t.Errorf("Free is not an alias of json.RawMessage: %#v", free)
+	}
+}
+
+// A patch field whose schema is an inline object keeps the struct that the
+// generator writes for it.
+func TestWriteTypesJen_PatchOfAnInlineObjectUsesItsStruct(t *testing.T) {
+	src, _ := emitUnionFiles(t, `{"$defs": {
+  "Update": {"description": "Only changed fields need to be included.", "type": "object", "properties": {
+    "owner": {"type": ["object", "null"], "properties": {"name": {"type": "string"}}}
+  }}
+}}`)
+	if !strings.Contains(src, "Owner Patch[UpdateOwner]") {
+		t.Errorf("types_gen.go does not declare Owner as Patch[UpdateOwner]:\n%s", src)
 	}
 }

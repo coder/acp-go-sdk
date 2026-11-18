@@ -126,11 +126,17 @@ func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, patchPointers boo
 		tag += ",omitempty"
 	}
 	var typ Code
-	switch nestedTypeName, ok := nestedTypeNames[field.Prop]; {
+	nestedTypeName, ok := nestedTypeNames[field.Prop]
+	value := patchValueType(field)
+	if ok {
+		// An inline object with properties has a struct of its own.
+		value = Id(nestedTypeName)
+	}
+	switch {
 	case p.patch && patchPointers:
-		typ = Op("*").Id("Patch").Types(patchValueType(field))
+		typ = Op("*").Id("Patch").Types(value)
 	case p.patch:
-		typ = Id("Patch").Types(patchValueType(field))
+		typ = Id("Patch").Types(value)
 	case ok:
 		typ = Id(nestedTypeName)
 	default:

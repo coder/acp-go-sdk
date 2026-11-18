@@ -27,6 +27,12 @@ const (
 		"red and blue. Do not choose for me and do not edit any file. After I answer, reply with only the color that I chose, " +
 		"in capital letters."
 	elicitAnswer = "blue"
+	// systemPrompt is the client system prompt of session P. Only it asks
+	// for the code word, so a reply to helloPrompt that has the word shows
+	// that the agent applied the prompt.
+	systemPromptWord = "ZEBRA-42"
+	systemPrompt     = "End every reply with the code word " + systemPromptWord + "."
+	helloPrompt      = "Say hello in one short sentence. Do not use tools."
 )
 
 func writePrompt(file, marker string) string {
@@ -41,7 +47,7 @@ const rpcTimeout = 2 * time.Minute
 // runLive and runSmoke must match it; -only accepts only these names.
 var profiles = map[string][]string{
 	"live": {"initialize", "authenticate", "session/new", "prompt", "config-option", "config-boolean", "elicitation", "notice", "compaction",
-		"permission-allow", "permission-reject", "cancel", "session/list", "session/close", "session/delete", "session/load", "session/resume"},
+		"system-prompt", "permission-allow", "permission-reject", "cancel", "session/list", "session/close", "session/delete", "session/load", "session/resume"},
 	"smoke": {"initialize", "authenticate", "session/new", "prompt"},
 }
 
@@ -62,6 +68,7 @@ func (h *harness) runLive() {
 	h.step("elicitation", func() (status, string) { return h.elicitTurn(a) })
 	h.step("notice", func() (status, string) { return h.noticeTurn(a) })
 	h.step("compaction", func() (status, string) { return h.compactTurn(a) })
+	h.step("system-prompt", func() (status, string) { return h.systemPromptTurn(a) })
 	h.step("permission-allow", func() (status, string) { return h.permissionTurn(a, answerAllow) })
 	h.step("permission-reject", func() (status, string) { return h.permissionTurn(a, answerReject) })
 	h.step("cancel", func() (status, string) { return h.cancelTurn(a) })
@@ -200,13 +207,21 @@ func (h *harness) reconnect() (*agentConn, error) {
 // newSession creates the session called name in its own cwd, with the MCP
 // servers given.
 func (h *harness) newSession(a *agentConn, name string, servers ...acp.McpServer) (status, string) {
+	return h.newSessionWith(a, name, acp.NewSessionRequest{McpServers: servers})
+}
+
+// newSessionWith creates the session called name in its own cwd from req,
+// whose Cwd it sets.
+func (h *harness) newSessionWith(a *agentConn, name string, req acp.NewSessionRequest) (status, string) {
 	cwd := filepath.Join(h.opts.cwd, strings.ToLower(name))
 	if err := os.MkdirAll(cwd, 0o700); err != nil {
 		return fail, err.Error()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-	resp, err := a.conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: append([]acp.McpServer{}, servers...)})
+	req.Cwd = cwd
+	req.McpServers = append([]acp.McpServer{}, req.McpServers...)
+	resp, err := a.conn.NewSession(ctx, req)
 	if err != nil {
 		return fail, "session/new: " + errText(err)
 	}
@@ -1144,6 +1159,33 @@ func (h *harness) compactTurn(a *agentConn) (status, string) {
 		return fail, problem + "; " + detail
 	}
 	return pass, fmt.Sprintf("%d compaction_update(s), every compaction update decoded as on the wire: %s%s", updates, detail, h.staleSendsNone("compaction"))
+}
+
+// systemPromptTurn opens session P with a client system prompt in append
+// mode, which every agent that advertises the capability supports, and runs
+// one turn. Only the system prompt asks for the code word.
+func (h *harness) systemPromptTurn(a *agentConn) (status, string) {
+	if st, detail := need(a, capSystemPrompt); st != "" {
+		return st, detail
+	}
+	advertised := "systemPrompt " + wireText(jsonAt(a.rawInit, "agentCapabilities", "sessionCapabilities", "systemPrompt"))
+	req := acp.NewSessionRequest{SystemPrompt: &acp.SystemPrompt{
+		Mode:    acp.SystemPromptModeAppend,
+		Content: []acp.ContentBlock{acp.TextBlock(systemPrompt)},
+	}}
+	if st, detail := h.newSessionWith(a, "P", req); st != pass {
+		return fail, "session/new for session P with a system prompt: " + detail
+	}
+	t := h.prompt(a, h.sessions["P"], helloPrompt)
+	switch {
+	case t.err != nil:
+		return fail, "session/prompt: " + errText(t.err)
+	case t.resp.StopReason != acp.StopReasonEndTurn:
+		return fail, "stopReason " + string(t.resp.StopReason) + "; " + t.describe()
+	case !strings.Contains(t.text, systemPromptWord):
+		return fail, "the reply lacks " + systemPromptWord + ", which only the system prompt asks for; " + advertised + "; " + t.describe()
+	}
+	return pass, advertised + "; " + t.describe()
 }
 
 // staleSendsNone flags a -sends-none entry that the agent proved wrong, so

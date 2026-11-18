@@ -74,7 +74,10 @@ type elicitation struct {
 	decoded json.RawMessage
 }
 
-var _ acp.Client = (*harnessClient)(nil)
+var (
+	_ acp.Client                         = (*harnessClient)(nil)
+	_ acp.ClientUnstableAuthStatusUpdate = (*harnessClient)(nil)
+)
 
 func newHarnessClient(h *harness, conn int) *harnessClient {
 	return &harnessClient{h: h, conn: conn, policy: answerCancel, events: map[acp.SessionId][]event{},
@@ -124,6 +127,14 @@ func (c *harnessClient) CreateElicitation(_ context.Context, p acp.CreateElicita
 	c.elicitations = append(c.elicitations, rec)
 	c.mu.Unlock()
 	return resp, nil
+}
+
+// UnstableAuthStatusUpdate takes the agent's sign-in status, which Claude
+// Code sends on every session/new, session/load and session/resume. The
+// client shows no sign-in, so it keeps nothing.
+func (c *harnessClient) UnstableAuthStatusUpdate(context.Context, acp.UnstableAuthStatusUpdateNotification) error {
+	c.h.rec.handledOne(c.conn)
+	return nil
 }
 
 // CompleteElicitation records the notification.

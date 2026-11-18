@@ -166,6 +166,17 @@ func (c *replClient) WaitForTerminalExit(ctx context.Context, params acp.WaitFor
 }
 
 // KillTerminal implements acp.Client.
+// CreateElicitation implements acp.Client. This client does not advertise
+// the elicitation capability, so the agent should not ask.
+func (c *replClient) CreateElicitation(ctx context.Context, params acp.CreateElicitationRequest) (acp.CreateElicitationResponse, error) {
+	return acp.CreateElicitationResponse{}, acp.NewMethodNotFound(acp.ClientMethodElicitationCreate)
+}
+
+// CompleteElicitation implements acp.Client.
+func (c *replClient) CompleteElicitation(ctx context.Context, params acp.CompleteElicitationNotification) error {
+	return nil
+}
+
 func (c *replClient) KillTerminal(ctx context.Context, params acp.KillTerminalRequest) (acp.KillTerminalResponse, error) {
 	fmt.Printf("[Client] KillTerminal: %v\n", params)
 	return acp.KillTerminalResponse{}, nil

@@ -26,6 +26,9 @@ type clientFuncs struct {
 	ReleaseTerminalFunc     func(context.Context, ReleaseTerminalRequest) (ReleaseTerminalResponse, error)
 	TerminalOutputFunc      func(context.Context, TerminalOutputRequest) (TerminalOutputResponse, error)
 	WaitForTerminalExitFunc func(context.Context, WaitForTerminalExitRequest) (WaitForTerminalExitResponse, error)
+	// Elicitation handlers
+	CreateElicitationFunc   func(context.Context, CreateElicitationRequest) (CreateElicitationResponse, error)
+	CompleteElicitationFunc func(context.Context, CompleteElicitationNotification) error
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
@@ -100,6 +103,23 @@ func (c *clientFuncs) WaitForTerminalExit(ctx context.Context, params WaitForTer
 		return c.WaitForTerminalExitFunc(ctx, params)
 	}
 	return WaitForTerminalExitResponse{}, nil
+}
+
+// CreateElicitation implements Client. Without CreateElicitationFunc it
+// answers as a client that does not support elicitation.
+func (c clientFuncs) CreateElicitation(ctx context.Context, params CreateElicitationRequest) (CreateElicitationResponse, error) {
+	if c.CreateElicitationFunc != nil {
+		return c.CreateElicitationFunc(ctx, params)
+	}
+	return CreateElicitationResponse{}, NewMethodNotFound(ClientMethodElicitationCreate)
+}
+
+// CompleteElicitation implements Client.
+func (c clientFuncs) CompleteElicitation(ctx context.Context, params CompleteElicitationNotification) error {
+	if c.CompleteElicitationFunc != nil {
+		return c.CompleteElicitationFunc(ctx, params)
+	}
+	return nil
 }
 
 func (c clientFuncs) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {

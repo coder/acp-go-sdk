@@ -112,6 +112,16 @@ func (clientExample) WaitForTerminalExit(ctx context.Context, p WaitForTerminalE
 
 // Example_client launches the Go agent example, negotiates protocol,
 // opens a session, and sends a simple prompt.
+// CreateElicitation answers as a client without elicitation support: it does
+// not advertise the elicitation capability, so an agent should not ask.
+func (clientExample) CreateElicitation(ctx context.Context, p CreateElicitationRequest) (CreateElicitationResponse, error) {
+	return CreateElicitationResponse{}, NewMethodNotFound(ClientMethodElicitationCreate)
+}
+
+func (clientExample) CompleteElicitation(ctx context.Context, p CompleteElicitationNotification) error {
+	return nil
+}
+
 func Example_client() {
 	ctx := context.Background()
 	cmd := exec.Command("go", "run", "./example/agent")

@@ -10,38 +10,26 @@ import (
 func (c *ClientSideConnection) handle(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
 	switch method {
 	case ClientMethodElicitationComplete:
-		var p UnstableCompleteElicitationNotification
+		var p CompleteElicitationNotification
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := c.client.(interface {
-			UnstableCompleteElicitation(context.Context, UnstableCompleteElicitationNotification) error
-		})
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		if err := exp.UnstableCompleteElicitation(ctx, p); err != nil {
+		if err := c.client.CompleteElicitation(ctx, p); err != nil {
 			return nil, toReqErr(err)
 		}
 		return nil, nil
 	case ClientMethodElicitationCreate:
-		var p UnstableCreateElicitationRequest
+		var p CreateElicitationRequest
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := c.client.(interface {
-			UnstableCreateElicitation(context.Context, UnstableCreateElicitationRequest) (UnstableCreateElicitationResponse, error)
-		})
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := exp.UnstableCreateElicitation(ctx, p)
+		resp, err := c.client.CreateElicitation(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}

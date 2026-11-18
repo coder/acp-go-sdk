@@ -60,6 +60,14 @@ func (geminiClient) WaitForTerminalExit(ctx context.Context, p WaitForTerminalEx
 
 // Example_gemini connects to a Gemini CLI speaking ACP over stdio,
 // then initializes, opens a session, and sends a prompt.
+func (geminiClient) CreateElicitation(ctx context.Context, p CreateElicitationRequest) (CreateElicitationResponse, error) {
+	return CreateElicitationResponse{}, NewMethodNotFound(ClientMethodElicitationCreate)
+}
+
+func (geminiClient) CompleteElicitation(ctx context.Context, p CompleteElicitationNotification) error {
+	return nil
+}
+
 func Example_gemini() {
 	ctx := context.Background()
 	cmd := exec.Command("gemini", "--experimental-acp")

@@ -15,7 +15,7 @@ func TestUnion_UnmarshalJSON_RejectsAnObjectThatMatchesNoVariant(t *testing.T) {
 		{"embedded resource without text or blob", new(EmbeddedResourceResource), `{"uri":"file:///a"}`},
 		{"tool call content of an unknown type", new(ToolCallContent), `{"type":"bogus"}`},
 		{"MCP server of an unknown type without a command", new(McpServer), `{"type":"bogus","name":"n"}`},
-		{"form elicitation without a scope", new(UnstableCreateElicitationRequest), `{"mode":"form","message":"m","requestedSchema":{"type":"object","properties":{}}}`},
+		{"form elicitation without a scope", new(CreateElicitationRequest), `{"mode":"form","message":"m","requestedSchema":{"type":"object","properties":{}}}`},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -106,7 +106,7 @@ func TestUnion_UnmarshalJSON_NullRequiredKeyLeavesTheOtherVariants(t *testing.T)
 	if err := json.Unmarshal([]byte(`{"uri":"file:///a","text":null,"blob":"b"}`), &resource); err != nil || resource.BlobResourceContents == nil {
 		t.Errorf("resource with a null text and a blob = %+v (error %v), want the blob variant", resource, err)
 	}
-	var mode UnstableElicitationFormMode
+	var mode ElicitationFormMode
 	in := `{"requestedSchema":{"type":"object","properties":{}},"requestId":null}`
 	if err := json.Unmarshal([]byte(in), &mode); err != nil || mode.Request == nil {
 		t.Errorf("form mode with a null requestId, which accepts null, = %+v (error %v), want the request scope", mode, err)

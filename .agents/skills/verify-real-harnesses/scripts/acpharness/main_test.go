@@ -64,10 +64,11 @@ func TestPickSwitchTarget_SkipsAliasesAndLesserModels(t *testing.T) {
 
 func TestClassify_SDKLogLines(t *testing.T) {
 	cases := map[string]string{
-		`failed to handle notification method=auth/status_update err={"code":-32601,"message":"Method not found"}`: methodNotFound,
-		`failed to parse incoming message err=invalid character 'x'`:                                               decodeError,
-		`failed to handle notification method=session/update err={"code":-32602,"message":"Invalid params"}`:       decodeError,
-		`connection closed cause=peer connection closed`:                                                           "",
+		`failed to handle notification method=auth/status_update err={"code":-32601,"message":"Method not found"}`:  methodNotFound,
+		`ignored unhandled notification method=auth/status_update err={"code":-32601,"message":"Method not found"}`: methodNotFound,
+		`failed to parse incoming message err=invalid character 'x'`:                                                decodeError,
+		`failed to handle notification method=session/update err={"code":-32602,"message":"Invalid params"}`:        decodeError,
+		`connection closed cause=peer connection closed`:                                                            "",
 	}
 	for text, want := range cases {
 		if got := classify(text); got != want {
@@ -503,6 +504,36 @@ func TestRecorder_CountsEverySDKErrorLog(t *testing.T) {
 	findings, _ := r.snapshot()
 	if len(findings) != 2 || findings[0].Kind != decodeError || findings[1].Kind != decodeError {
 		t.Fatalf("findings %+v, want two decode errors: the unknown ERROR and the parse failure", findings)
+	}
+}
+
+// The clients of connections 2 and 3 do not implement auth/status_update, so
+// the SDK may ignore it there below the error level. Every other "Method not
+// found" stays a finding: at the error level, on connection 1, or for
+// another method. A decode failure of auth/status_update stays one too.
+func TestRecorder_IgnoredAuthStatusOnlyBelowErrorOnLaterConns(t *testing.T) {
+	r, err := newRecorder(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const notFound = ` err={"code":-32601,"message":"Method not found"}`
+	r.logged(2, slog.LevelDebug, `ignored unhandled notification method=auth/status_update`+notFound)
+	r.logged(3, slog.LevelDebug, `ignored unhandled notification method=auth/status_update`+notFound)
+	r.logged(1, slog.LevelDebug, `ignored unhandled notification method=auth/status_update`+notFound)
+	r.logged(3, slog.LevelError, `failed to handle notification method=auth/status_update`+notFound)
+	r.logged(3, slog.LevelDebug, `ignored unhandled notification method=session/new_thing`+notFound)
+	r.logged(3, slog.LevelError, `failed to handle notification method=auth/status_update err={"code":-32602,"message":"Invalid params"}`)
+	findings, _ := r.snapshot()
+	var got []string
+	for _, f := range findings {
+		got = append(got, fmt.Sprintf("%d %s", f.Conn, f.Kind))
+	}
+	want := []string{"1 " + methodNotFound, "3 " + methodNotFound, "3 " + methodNotFound, "3 " + decodeError}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("findings %v, want %v", got, want)
+	}
+	if n := r.ignoredCount(); n != 2 {
+		t.Fatalf("ignored %d, want 2", n)
 	}
 }
 

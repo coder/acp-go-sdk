@@ -7,7 +7,8 @@ An editor that sends something the agent cannot serve gets a JSON-RPC error, and
 - `err-unknown-method` answers an unknown request with `-32601`.
 - `err-ext-request` answers an `_` request without a handler with `-32601`.
 - `err-ext-notify` ignores an `_` notification and logs nothing about it.
-- `err-unknown-notify` logs `failed to handle notification` for an unknown notification without `_`.
+- `err-unknown-notify` ignores an unknown notification without `_` below the default log level: the SDK logs it at DEBUG, and the example agent logs from INFO up.
+- `err-notify-params` logs `failed to handle notification` at ERROR for a `session/cancel` notification whose params do not decode.
 - `err-invalid-params` answers `session/new` without `cwd` with `-32602` and `cwd is required`.
 - `err-malformed` logs `failed to parse incoming message` for a line that is not JSON, and keeps serving.
 - `err-eof` exits 0 when its input closes.
@@ -27,7 +28,7 @@ Preconditions:
 Steps:
 
 - **Play all error cases.** Run `"$V" wire errors.jsonl errors`. Each step prints PASS. `unknown method` and `extension request without a handler` print `error -32601 Method not found`. `invalid params` prints `error -32602 Invalid params`. `connection still works` prints no error, and `close stdin` prints `agent exit code 0`.
-- **Agent log.** Run `cat "$ACP_VERIFY_RUN/evidence/errors/agent.stderr.log"`. It has exactly two `ERROR` lines: `failed to handle notification method=foo/notify` and `failed to parse incoming message ... raw="{not json"`. No line names `_example.com/progress`.
+- **Agent log.** Run `cat "$ACP_VERIFY_RUN/evidence/errors/agent.stderr.log"`. It has exactly two `ERROR` lines: `failed to handle notification method=session/cancel` and `failed to parse incoming message ... raw="{not json"`. No line names `_example.com/progress` or `foo/notify`.
 - **Only requests got replies.** Run `jq -r 'select(.dir=="agent->client") | .msg.error.code // "result"' "$ACP_VERIFY_RUN/evidence/errors/transcript.jsonl" | paste -sd' '`. The output is `result -32601 -32601 -32602 result`: one reply for each of the five requests, and none for the notifications or the broken line.
 
 ## Gotchas

@@ -670,8 +670,15 @@ func (c *Connection) handleInbound(ctx context.Context, req *anyMessage) {
 	if req.ID == nil {
 		// Notification: no response is sent; log handler errors to surface decode failures.
 		if err != nil {
-			// Per ACP, unknown extension notifications should be ignored.
-			if err.Code == -32601 && strings.HasPrefix(req.Method, "_") {
+			if err.Code == -32601 {
+				// Per ACP, unknown extension notifications should be ignored.
+				if strings.HasPrefix(req.Method, "_") {
+					return
+				}
+				// A notification needs no answer, so one that this side does
+				// not handle, such as an optional method that the Client or
+				// Agent does not implement, is not a failure.
+				c.loggerOrDefault().Debug("ignored unhandled notification", "method", req.Method, "err", err)
 				return
 			}
 			c.loggerOrDefault().Error("failed to handle notification", "method", req.Method, "err", err)

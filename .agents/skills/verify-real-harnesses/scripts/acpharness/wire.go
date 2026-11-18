@@ -54,6 +54,9 @@ type recorder struct {
 	// it has: a client callback or a "failed to handle notification" log.
 	notified map[int]int
 	handled  map[int]int
+	// auth/status_update notifications that the SDK logged as ignored below
+	// the error level on a connection whose client does not implement it.
+	ignored int
 	// Agent requests per connection, and the SDK's replies to them.
 	requested map[int]int
 	answered  map[int]int
@@ -306,6 +309,10 @@ func (r *recorder) pending(conn int) int {
 // logged records an SDK log record as a finding when classify knows its
 // text, or when it is an error that classify does not know, such as a
 // message with neither id nor method: every SDK error log fails a row.
+//
+// The client of each connection after the first does not implement the
+// optional auth/status_update, so the SDK may log that it ignored one below
+// the error level. That is counted, not a finding.
 func (r *recorder) logged(conn int, level slog.Level, text string) {
 	kind := classify(text)
 	if kind == "" && level >= slog.LevelError {
@@ -316,6 +323,11 @@ func (r *recorder) logged(conn int, level slog.Level, text string) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if kind == methodNotFound && conn > 1 && level < slog.LevelError &&
+		strings.Contains(text, " method="+acp.ClientMethodAuthStatusUpdate+" ") {
+		r.ignored++
+		return
+	}
 	r.findings = append(r.findings, finding{Kind: kind, Source: "sdk-log", Conn: conn, Scenario: r.current(), Text: text})
 }
 
@@ -339,6 +351,14 @@ func (r *recorder) close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.writeErr
+}
+
+// ignoredCount returns how many auth/status_update notifications the SDK
+// logged as ignored on the connections whose client does not implement it.
+func (r *recorder) ignoredCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ignored
 }
 
 func (r *recorder) snapshot() ([]finding, map[string]int) {
@@ -374,7 +394,7 @@ func (h *logTap) Handle(ctx context.Context, rec slog.Record) error {
 		return true
 	})
 	h.rec.logged(h.conn, rec.Level, text.String())
-	if rec.Message == "failed to handle notification" {
+	if rec.Message == "failed to handle notification" || rec.Message == "ignored unhandled notification" {
 		h.rec.handledOne(h.conn)
 	}
 	rec.AddAttrs(slog.Int("conn", h.conn), slog.String("scenario", h.rec.current()))
@@ -520,7 +540,14 @@ func (h *harness) startAgent() (*agentConn, error) {
 	}()
 
 	a.client = newHarnessClient(h, n)
-	a.conn = acp.NewClientSideConnection(a.client, &tapWriter{w: stdin, rec: h.rec, conn: n}, pr)
+	var client acp.Client = a.client
+	if n > 1 {
+		// The connections that reopen a session play a client that
+		// implements acp.Client and no optional interface, so the SDK must
+		// ignore auth/status_update quietly.
+		client = struct{ acp.Client }{a.client}
+	}
+	a.conn = acp.NewClientSideConnection(client, &tapWriter{w: stdin, rec: h.rec, conn: n}, pr)
 	a.conn.SetLogger(slog.New(&logTap{next: h.sdkLog, rec: h.rec, conn: n}))
 	close(ready)
 	// When the SDK stops reading, such as after a line over its size limit,

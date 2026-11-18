@@ -57,8 +57,9 @@ func decodedName(n *string) string {
 
 // checkToolNames compares the name of every tool call on the wire with the
 // name that the SDK decoded for it. It passes when each one matches and at
-// least one carries a name. With -only, a run without any tool call skips.
-func checkToolNames(wire, decoded []toolName, only bool) (status, string) {
+// least one carries a name. With -only, a run without any tool call skips,
+// and with -sends-none tool-call-name, so does a run without a name.
+func checkToolNames(wire, decoded []toolName, only, sendsNone bool) (status, string) {
 	type names struct{ wire, decoded []string }
 	byCall := map[string]*names{}
 	at := func(t toolName) *names {
@@ -103,7 +104,10 @@ func checkToolNames(wire, decoded []toolName, only bool) (status, string) {
 	if len(wire) == 0 && only {
 		return skip, skipNotSelected + ": no selected scenario made a tool call"
 	}
-	if len(distinct) == 0 {
+	switch {
+	case len(distinct) == 0 && sendsNone:
+		return skip, skipSendsNone + ": -sends-none tool-call-name, and no tool call on the wire carried a name; " + detail
+	case len(distinct) == 0:
 		return fail, "no tool call on the wire carried a name; " + detail
 	}
 	list := make([]string, 0, len(distinct))
@@ -111,7 +115,11 @@ func checkToolNames(wire, decoded []toolName, only bool) (status, string) {
 		list = append(list, n)
 	}
 	sort.Strings(list)
-	return pass, fmt.Sprintf("%s, each decoded as on the wire; %d distinct: %s", detail, len(list), clip(strings.Join(list, " "), 200))
+	detail = fmt.Sprintf("%s, each decoded as on the wire; %d distinct: %s", detail, len(list), clip(strings.Join(list, " "), 200))
+	if sendsNone {
+		detail += "; the agent sent a name despite -sends-none tool-call-name, so drop that flag from the adapter table"
+	}
+	return pass, detail
 }
 
 func showNames(names []string) string {

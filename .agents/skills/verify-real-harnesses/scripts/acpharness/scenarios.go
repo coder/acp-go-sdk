@@ -234,18 +234,21 @@ type turn struct {
 }
 
 func (t turn) describe() string {
-	var kinds []string
-	for k, n := range t.kinds {
-		kinds = append(kinds, fmt.Sprintf("%s=%d", k, n))
+	return fmt.Sprintf("stopReason %s, reply %q, models %v, %s, %.1fs",
+		t.resp.StopReason, clip(t.text, 60), t.models, countKinds(t.kinds, t.tools), float64(t.ms)/1000)
+}
+
+// countKinds lists update kinds and tool call statuses with their counts.
+func countKinds(kinds, tools map[string]int) string {
+	list := func(m map[string]int) string {
+		var out []string
+		for k, n := range m {
+			out = append(out, fmt.Sprintf("%s=%d", k, n))
+		}
+		sort.Strings(out)
+		return strings.Join(out, " ")
 	}
-	sort.Strings(kinds)
-	var tools []string
-	for k, n := range t.tools {
-		tools = append(tools, fmt.Sprintf("%s=%d", k, n))
-	}
-	sort.Strings(tools)
-	return fmt.Sprintf("stopReason %s, reply %q, models %v, updates [%s], tool statuses [%s], %.1fs",
-		t.resp.StopReason, clip(t.text, 60), t.models, strings.Join(kinds, " "), strings.Join(tools, " "), float64(t.ms)/1000)
+	return fmt.Sprintf("updates [%s], tool statuses [%s]", list(kinds), list(tools))
 }
 
 func (h *harness) prompt(a *agentConn, sid acp.SessionId, text string) turn {
@@ -1087,6 +1090,14 @@ func (h *harness) noticeTurn(a *agentConn) (status, string) {
 	sid := h.sessions["N"]
 	t := h.prompt(a, sid, pongPrompt)
 	notices, err := h.sent(a, sid, 0, 0, "notice")
+	kinds, tools := map[string]int{}, map[string]int{}
+	for _, ev := range a.client.since(sid, 0) {
+		kinds[ev.Kind]++
+		if ev.Status != "" {
+			tools[ev.Status]++
+		}
+	}
+	got := "since session/new, session N got " + countKinds(kinds, tools)
 	switch {
 	case t.err != nil:
 		return fail, "session/prompt: " + errText(t.err)
@@ -1095,11 +1106,11 @@ func (h *harness) noticeTurn(a *agentConn) (status, string) {
 	case err != nil:
 		return fail, err.Error()
 	case len(notices) == 0 && h.opts.sendsNone["notice"]:
-		return skip, skipSendsNone + ": -sends-none notice, and session N got no notice; " + t.describe()
+		return skip, skipSendsNone + ": -sends-none notice, and " + got + "; pong turn: " + t.describe()
 	case len(notices) == 0:
-		return fail, "no notice update arrived for the MCP server that cannot start; " + t.describe()
+		return fail, "no notice update arrived for the MCP server that cannot start; " + got + "; pong turn: " + t.describe()
 	}
-	return pass, fmt.Sprintf("%d notice(s), each decoded as on the wire: %s; %s%s", len(notices), describeNotices(notices), t.describe(), h.staleSendsNone("notice"))
+	return pass, fmt.Sprintf("%d notice(s), each decoded as on the wire: %s; pong turn: %s%s", len(notices), describeNotices(notices), t.describe(), h.staleSendsNone("notice"))
 }
 
 // compactTurn runs a pong turn in session C, then the /compact command,

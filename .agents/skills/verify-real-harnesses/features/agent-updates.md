@@ -30,5 +30,6 @@ Steps:
 
 - The Claude adapter reports the failed MCP server in its first prompt turn, from the agent SDK's `system/init` message, so the notice arrives during the pong turn, not after `session/new`. The scenario counts every update of session N.
 - codex-acp sends no notice for an MCP server that cannot start. It sends a `tool_call` with status `failed` and title `mcp__harness-broken__startup`, without a name. Its notices come from Codex config warnings, deprecation notices, `warning` events, hooks that stop a turn and model reroutes, which the driver does not provoke. The adapter table gives codex `-sends-none notice`, so its `notice` row is a `SKIP` with `adapter sends none`.
-- A `-only` run without a scenario that uses a tool has no tool call, so `tool-call-name` skips. `g5 codex notice` alone fails it, because the failed MCP server start is a tool call without a name.
+- codex-acp 2.7.0 names only a few tools, such as `view_image` and `request_permissions`, and none of the file edits and permission requests that a run makes. The adapter table gives codex `-sends-none tool-call-name`, so its `tool-call-name` row is a `SKIP` with `adapter sends none`, and still fails on a decode mismatch: every unnamed tool call must decode without a name.
+- A `-only` run without a scenario that uses a tool has no tool call, so `tool-call-name` skips with `not selected by -only`.
 - The Claude adapter sends `completed` twice for one compaction, the first time with the summary. The predicate reads the last `compaction_update` of each id.

@@ -64,7 +64,7 @@ func TestCheckToolNames_ComparesTheWireWithTheDecodedName(t *testing.T) {
 		deliver(t, rec, c, line)
 	}
 	wire, decoded := rec.toolNamesOnWire(), c.decodedToolNames()
-	st, detail := checkToolNames(wire, decoded, false)
+	st, detail := checkToolNames(wire, decoded, false, false)
 	if st != pass || !strings.Contains(detail, "1 of 2 tool_call,") || !strings.Contains(detail, "1 of 1 session/request_permission") || !strings.HasSuffix(detail, `1 distinct: "Write"`) {
 		t.Fatalf("checkToolNames = %s %q", st, detail)
 	}
@@ -74,20 +74,30 @@ func TestCheckToolNames_ComparesTheWireWithTheDecodedName(t *testing.T) {
 	invented := append([]toolName(nil), decoded...)
 	invented[2].Name = `"Write"` // the SDK named the update, whose wire has no name
 	for name, d := range map[string][]toolName{"SDK lost a name": dropped, "SDK invented a name": invented, "SDK lost an update": decoded[:3]} {
-		if st, detail := checkToolNames(wire, d, false); st != fail || !strings.HasPrefix(detail, "decode mismatch: ") {
+		if st, detail := checkToolNames(wire, d, false, false); st != fail || !strings.HasPrefix(detail, "decode mismatch: ") {
 			t.Errorf("%s: %s %q, want a decode mismatch", name, st, detail)
 		}
 	}
 	unnamed := wire[3:]
 	for _, only := range []bool{false, true} {
-		if st, detail := checkToolNames(unnamed, decoded[3:], only); st != fail || !strings.HasPrefix(detail, "no tool call on the wire carried a name") {
+		if st, detail := checkToolNames(unnamed, decoded[3:], only, false); st != fail || !strings.HasPrefix(detail, "no tool call on the wire carried a name") {
 			t.Errorf("tool calls without a name, only=%v: %s %q, want FAIL", only, st, detail)
 		}
 	}
-	if st, detail := checkToolNames(nil, nil, true); st != skip || !strings.HasPrefix(detail, skipNotSelected+": ") {
+	// codex-acp 2.7.0 names none of the tool calls that a full run makes.
+	if st, detail := checkToolNames(unnamed, decoded[3:], false, true); st != skip || !strings.HasPrefix(detail, skipSendsNone+": ") {
+		t.Errorf("no name with -sends-none tool-call-name: %s %q, want a documented SKIP", st, detail)
+	}
+	if st, detail := checkToolNames(wire, dropped, false, true); st != fail || !strings.HasPrefix(detail, "decode mismatch: ") {
+		t.Errorf("a lost name with -sends-none tool-call-name: %s %q, want a decode mismatch", st, detail)
+	}
+	if st, detail := checkToolNames(wire, decoded, false, true); st != pass || !strings.Contains(detail, "drop that flag") {
+		t.Errorf("a name despite -sends-none tool-call-name: %s %q, want PASS that flags the table", st, detail)
+	}
+	if st, detail := checkToolNames(nil, nil, true, true); st != skip || !strings.HasPrefix(detail, skipNotSelected+": ") {
 		t.Errorf("no tool call in a -only run: %s %q, want a documented SKIP", st, detail)
 	}
-	if st, _ := checkToolNames(nil, nil, false); st != fail {
+	if st, _ := checkToolNames(nil, nil, false, false); st != fail {
 		t.Errorf("no tool call in a full run: %s, want FAIL", st)
 	}
 }

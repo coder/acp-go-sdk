@@ -72,9 +72,9 @@ It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncom
 | Adapter | Private config | Driver flags |
 | --- | --- | --- |
 | `claude` | `CLAUDE_CONFIG_DIR=work/home/claude` | `-ask-mode default` |
-| `codex` | `CODEX_HOME=work/home/codex` | `-auth api-key -ask-mode read-only -sends-none notice` |
+| `codex` | `CODEX_HOME=work/home/codex` | `-auth api-key -ask-mode read-only -sends-none notice,tool-call-name` |
 
-`-sends-none SCENARIO,...` records that the adapter is known not to send the update that `notice` or `compaction` waits for. Such a scenario still runs its turn and checks it, but when no such update arrives it is a `SKIP` (`adapter sends none`) instead of a `FAIL`. When the update arrives anyway, the scenario checks it as usual and its detail says to drop the flag.
+`-sends-none ROW,...` records that the adapter is known not to send what `notice`, `compaction` or `tool-call-name` waits for: a notice, a compaction update or a tool call name. Such a row still runs and checks what did arrive, a decode mismatch included, but when nothing that it waits for arrives it is a `SKIP` (`adapter sends none`) instead of a `FAIL`. When it arrives anyway, the row checks it as usual and its detail says to drop the flag.
 
 Codex ignores `OPENAI_BASE_URL`. When the variable is set, `g5 codex` writes `work/home/codex/config.toml` with a `model_provider` whose `base_url` is the variable's value, `env_key = "OPENAI_API_KEY"` and `wire_api = "responses"`. That file stays in `work/` and never goes into the evidence. Run one `g5` at a time per run folder. A second one refuses to start, because both would read the same remaining budget. Running `g5` again for the same adapter writes a new label, such as `g5-claude.2`. `report` shows a label whose driver did not finish, or left a partial `summary.json` or `result.txt`, as `INCOMPLETE`, with the first line of the driver's stderr, and then exits 1.
 
@@ -112,7 +112,7 @@ Whether the agent advertises a session method or a model option comes from the r
 | `no-decode-errors` | all | The SDK logged no parse, unmarshal or invalid-params error, and no other error-level record except the "Method not found" records that the row above counts, such as a message with neither id nor method. It sent no `-32602` or `-32700` reply, it decoded the same total cost as the raw `usage_update` lines report, and it finished reading and routing each agent's output within 5 s after the agent ended. |
 | `no-agent-errors` | all | The agent sent no JSON-RPC error response, including one that the SDK drops because no request waits for it. |
 | `no-refused-calls` | all | The agent called no `fs/*` or `terminal/*` method. The client offers neither, so it refuses such a call, and `summary.json` lists it under `refusedCalls`. |
-| `tool-call-name` | all | For every `tool_call` and `tool_call_update` update and every `session/request_permission` `toolCall` on the wire, the `name` that the SDK decoded equals the wire's, and an absent or `null` name decodes as absent. At least one carries a name. The detail counts the names on each of the three, and lists the distinct names. A `-only` run in which no tool call crossed the wire skips it (`not selected by -only`). The `smoke` profile of `g4` does not have this row, because the TypeScript example agent names no tool call. |
+| `tool-call-name` | all | For every `tool_call` and `tool_call_update` update and every `session/request_permission` `toolCall` on the wire, the `name` that the SDK decoded equals the wire's, and an absent or `null` name decodes as absent. At least one carries a name. The detail counts the names on each of the three, and lists the distinct names. A `-only` run in which no tool call crossed the wire skips it (`not selected by -only`). With `-sends-none tool-call-name` and no name on the wire, it is a `SKIP` (`adapter sends none`). The `smoke` profile of `g4` does not have this row, because the TypeScript example agent names no tool call. |
 | `known-skips` | all | Every `SKIP` has one of the documented reasons below. |
 
 The model switch never picks a lesser model. It takes the first option, in the agent's order, that is not the current value, not `default`, not named in the current option's name or description (Claude's `default` says `Opus`, so `opus` is an alias), and has no word such as `legacy`, `older`, `fast`, `affordable` or `efficient` in its name or description. `pickSwitchTarget` in `scripts/acpharness/scenarios.go` holds the rule.
@@ -131,7 +131,7 @@ A `SKIP` detail starts with its reason. These are the documented reasons:
 | `no other model` | `config-option` | Every other model is the current one, an alias of it or a lesser model, by the rule above. |
 | `no boolean option` | `config-boolean` | The raw `session/new` result has no option of type `boolean`. |
 | `not selected by -only` | all but `initialize`, `authenticate` and `session/new` | The scenario list of `g5 ADAPTER SCENARIO,...` left the scenario out. `tool-call-name` also skips when no selected scenario made a tool call. |
-| `adapter sends none` | `notice`, `compaction` | The adapter table gives the adapter `-sends-none` for the scenario, and the agent sent none of its updates. |
+| `adapter sends none` | `notice`, `compaction`, `tool-call-name` | The adapter table gives the adapter `-sends-none` for the row, and the agent sent none of what the row waits for. |
 
 Any other `SKIP` fails `known-skips`, so the run exits 1: a scenario blocked by an earlier failure (`blocked: ...`), or a scenario that the budget stopped (`budget: ...`).
 
@@ -144,7 +144,7 @@ Name the scenarios after the adapter, separated by commas:
 "$V" g5 codex prompt,session/list
 ```
 
-The run gets its own label, such as `g5-claude.2`, and `g5` tracks, budgets and reports it like a full run. The driver rejects a name that is not a scenario of the live profile with exit 64, and `g5` then records no run and exits 64. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and every other scenario is a `SKIP` with `not selected by -only`. A scenario that needs the state of a left-out one can fail, or skip with `blocked`, which fails `known-skips`. For example, `config-option` without `prompt` has no model to compare with, `session/delete` without a permission or cancel scenario has no session B, codex-acp does not list session A in `session/list` until `prompt` has run a turn in it, and `g5 codex notice` fails `tool-call-name`, because its only tool call, the failed MCP server start, has no name.
+The run gets its own label, such as `g5-claude.2`, and `g5` tracks, budgets and reports it like a full run. The driver rejects a name that is not a scenario of the live profile with exit 64, and `g5` then records no run and exits 64. The setup scenarios (`initialize`, `authenticate`, `session/new`) always run, and every other scenario is a `SKIP` with `not selected by -only`. A scenario that needs the state of a left-out one can fail, or skip with `blocked`, which fails `known-skips`. For example, `config-option` without `prompt` has no model to compare with, `session/delete` without a permission or cancel scenario has no session B, and codex-acp does not list session A in `session/list` until `prompt` has run a turn in it.
 
 Do not run `acpharness` by hand against a real adapter. Outside `g5`, nothing records its process groups for `cleanup`, passes it the budget that is left, or counts its cost in `report`.
 

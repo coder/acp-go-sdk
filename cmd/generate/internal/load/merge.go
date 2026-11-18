@@ -316,29 +316,21 @@ func markUnstableAdditions(s, u *Definition, defs map[string]*Definition) {
 		}
 	}
 	for _, alts := range [][2][]*Definition{{s.AnyOf, u.AnyOf}, {s.OneOf, u.OneOf}} {
-		known := map[string]*Definition{}
-		for _, alt := range alts[0] {
-			known[alternativeKey(alt)] = alt
-		}
-		for _, alt := range alts[1] {
-			if salt, ok := known[alternativeKey(alt)]; ok {
-				markUnstableAdditions(salt, alt, defs)
+		for i, salt := range counterparts(alts[0], alts[1]) {
+			if salt != nil {
+				markUnstableAdditions(salt, alts[1][i], defs)
 			} else {
-				markUnstable(alt)
+				markUnstable(alts[1][i])
 			}
 		}
 	}
 	markUnstableAdditions(s.Items, u.Items, defs)
 	markUnstableAdditions(s.AdditionalProperties.Schema, u.AdditionalProperties.Schema, defs)
-	parts := map[string]*Definition{}
-	for _, part := range s.AllOf {
-		parts[alternativeKey(part)] = part
-	}
-	for i, part := range u.AllOf {
-		if spart, ok := parts[alternativeKey(part)]; ok {
-			markUnstableAdditions(spart, part, defs)
+	for i, spart := range counterparts(s.AllOf, u.AllOf) {
+		if spart != nil {
+			markUnstableAdditions(spart, u.AllOf[i], defs)
 		} else {
-			u.AllOf[i] = markAddedPart(part, defs, map[string]bool{})
+			u.AllOf[i] = markAddedPart(u.AllOf[i], defs, map[string]bool{})
 		}
 	}
 	values := map[string]bool{}
@@ -387,19 +379,72 @@ func markUnstable(d *Definition) {
 	d.Description = strings.TrimSpace(unstableNote + "\n\n" + d.Description)
 }
 
+// counterparts returns, for each alternative or allOf part in us, the one in
+// ss that is its stable version, or nil for one that only the unstable schema
+// has. A part with an identity (alternativeKey) matches the part with the
+// same identity. A part without one matches a part of equal shape, else the
+// part without an identity whose properties it has, all of them and the most
+// of them, so that a property added to an anonymous alternative counts as an
+// addition to that alternative.
+func counterparts(ss, us []*Definition) []*Definition {
+	out := make([]*Definition, len(us))
+	used := map[*Definition]bool{}
+	byKey := map[string]*Definition{}
+	for _, s := range ss {
+		key, _ := alternativeKey(s)
+		byKey[key] = s
+	}
+	for i, u := range us {
+		key, _ := alternativeKey(u)
+		if s := byKey[key]; s != nil && !used[s] {
+			out[i], used[s] = s, true
+		}
+	}
+	for i, u := range us {
+		if _, identity := alternativeKey(u); out[i] != nil || identity || u == nil {
+			continue
+		}
+		var best *Definition
+		for _, s := range ss {
+			if _, identity := alternativeKey(s); used[s] || identity || s == nil ||
+				fmt.Sprint(s.Type) != fmt.Sprint(u.Type) || !hasAllProperties(u, s) {
+				continue
+			}
+			if best == nil || len(s.Properties) > len(best.Properties) {
+				best = s
+			}
+		}
+		if best != nil {
+			out[i], used[best] = best, true
+		}
+	}
+	return out
+}
+
+// hasAllProperties reports whether u has every property that s has.
+func hasAllProperties(u, s *Definition) bool {
+	for name := range s.Properties {
+		if _, ok := u.Properties[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // alternativeKey names an alternative of a union across schema versions: by
 // its title, its const, its $ref, the const of one of its properties (the
-// discriminator), or the $ref of an allOf part, else by its whole shape.
-func alternativeKey(d *Definition) string {
+// discriminator), or the $ref of an allOf part, which identify it, else by
+// its whole shape. identity reports which.
+func alternativeKey(d *Definition) (key string, identity bool) {
 	switch {
 	case d == nil:
-		return ""
+		return "", false
 	case d.Title != "":
-		return "title:" + d.Title
+		return "title:" + d.Title, true
 	case d.Const != nil:
-		return fmt.Sprintf("const:%v", d.Const)
+		return fmt.Sprintf("const:%v", d.Const), true
 	case d.Ref != "":
-		return "ref:" + d.Ref
+		return "ref:" + d.Ref, true
 	}
 	names := make([]string, 0, len(d.Properties))
 	for name := range d.Properties {
@@ -408,16 +453,16 @@ func alternativeKey(d *Definition) string {
 	sort.Strings(names)
 	for _, name := range names {
 		if p := d.Properties[name]; p != nil && p.Const != nil {
-			return fmt.Sprintf("prop:%s=%v", name, p.Const)
+			return fmt.Sprintf("prop:%s=%v", name, p.Const), true
 		}
 	}
 	for _, part := range d.AllOf {
 		if part != nil && part.Ref != "" {
-			return "ref:" + part.Ref
+			return "ref:" + part.Ref, true
 		}
 	}
 	b, _ := json.Marshal(withoutDescriptions(d))
-	return string(b)
+	return string(b), false
 }
 
 // sameShape reports whether two definitions describe the same JSON, that is

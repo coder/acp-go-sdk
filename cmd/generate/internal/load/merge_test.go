@@ -460,15 +460,19 @@ func TestMergeStableAndUnstable_MarksUnstableAdditions(t *testing.T) {
 }
 
 // An addition below the top level of a shared definition is marked too: a
-// property of an inline property, of an alternative that both versions have,
-// or of array items, and an alternative of a property's union. An added enum
-// value gets the note in EnumNotes.
+// property of an inline property, of an alternative that both versions have
+// (with or without a discriminator), or of array items, and an alternative of
+// a property's union. An added enum value gets the note in EnumNotes.
 func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 	stableSchema := &Schema{Defs: map[string]*Definition{
 		"Caps": {Type: "object", Properties: map[string]*Definition{
 			"terminal": {Type: "object", Properties: map[string]*Definition{"output": {Type: "boolean"}}},
 			"auth":     {AnyOf: []*Definition{{Title: "token", Type: "object"}}},
 			"tags":     {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}}}},
+			"transport": {AnyOf: []*Definition{
+				{Type: "object", Properties: map[string]*Definition{"host": {Type: "string", Description: "Host."}}},
+				{Type: "null"},
+			}},
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}}, Description: "HTTP."}}},
 		"Mode":   {Type: "string", Enum: []any{"ask"}},
@@ -481,6 +485,11 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 			"terminal": {Type: "object", Properties: map[string]*Definition{"output": {Type: "boolean"}, "pty": {Type: "boolean", Description: "A pty."}}},
 			"auth":     {AnyOf: []*Definition{{Title: "token", Type: "object"}, {Title: "oauth", Type: "object", Description: "OAuth."}}},
 			"tags":     {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}, "color": {Type: "string"}}}},
+			"transport": {AnyOf: []*Definition{
+				{Type: "object", Properties: map[string]*Definition{"host": {Type: "string", Description: "Host."}, "port": {Type: "integer", Description: "Port."}}},
+				{Type: "null"},
+				{Type: "string", Description: "A URL."},
+			}},
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}, "url": {Type: "string", Description: "The URL."}}, Description: "HTTP."}}},
 		"Mode":   {Type: "string", Enum: []any{"ask", "auto"}},
@@ -499,14 +508,19 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 	_, combined := mustMerge(t, meta, stableSchema, meta, unstableSchema)
 	caps := combined.Defs["Caps"].Properties
 	for where, got := range map[string]string{
-		"Caps.terminal.pty":    caps["terminal"].Properties["pty"].Description,
-		"Caps.auth oauth":      caps["auth"].AnyOf[1].Description,
-		"Caps.tags[].color":    caps["tags"].Items.Properties["color"].Description,
-		"Server http .url":     combined.Defs["Server"].AnyOf[0].Properties["url"].Description,
-		"Caps.terminal.output": caps["terminal"].Properties["output"].Description,
+		"Caps.terminal.pty":           caps["terminal"].Properties["pty"].Description,
+		"Caps.auth oauth":             caps["auth"].AnyOf[1].Description,
+		"Caps.tags[].color":           caps["tags"].Items.Properties["color"].Description,
+		"Server http .url":            combined.Defs["Server"].AnyOf[0].Properties["url"].Description,
+		"Caps.transport object .port": caps["transport"].AnyOf[0].Properties["port"].Description,
+		"Caps.transport string":       caps["transport"].AnyOf[2].Description,
+		"Caps.terminal.output":        caps["terminal"].Properties["output"].Description,
+		"Caps.transport object":       caps["transport"].AnyOf[0].Description,
+		"Caps.transport object .host": caps["transport"].AnyOf[0].Properties["host"].Description,
 	} {
 		want := strings.HasPrefix(got, unstableNote)
-		if where == "Caps.terminal.output" {
+		switch where {
+		case "Caps.terminal.output", "Caps.transport object", "Caps.transport object .host":
 			want = !want
 		}
 		if !want {

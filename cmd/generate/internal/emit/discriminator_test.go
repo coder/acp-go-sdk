@@ -56,6 +56,12 @@ const discriminatedUnionSchema = `{"$defs": {
   "Runners": {"anyOf": [
     {"title": "flat", "type": "array", "items": {"$ref": "#/$defs/Option"}},
     {"title": "local", "type": "array", "items": {"$ref": "#/$defs/Launch"}}
+  ]},
+  "Code": {"anyOf": [
+    {"title": "low", "type": "integer", "const": 1},
+    {"title": "high", "type": "integer", "const": 2},
+    {"title": "auto", "type": "string", "const": "auto"},
+    {"title": "other", "type": "integer"}
   ]}
 }}`
 
@@ -124,6 +130,35 @@ func TestUnion_UnmarshalJSON_MatchesAVariantOnlyWithItsConstValue(t *testing.T) 
 		}
 		if out, err := json.Marshal(v); err != nil || string(out) != tt.want {
 			t.Errorf("%s decodes and encodes to %s (error %v), want %s", tt.in, out, err, tt.want)
+		}
+	}
+}
+
+func TestCode_UnmarshalJSON_SelectsTheVariantOfTheConst(t *testing.T) {
+	tests := []struct {
+		in      string
+		variant string
+		set     func(Code) bool
+	}{
+		{"1", "low", func(c Code) bool { return c.Low != nil }},
+		{"2", "high", func(c Code) bool { return c.High != nil }},
+		{` + "`" + `"auto"` + "`" + `, "auto", func(c Code) bool { return c.Auto != nil }},
+		{"3", "other", func(c Code) bool { return c.Other != nil }},
+	}
+	for _, tt := range tests {
+		var code Code
+		if err := json.Unmarshal([]byte(tt.in), &code); err != nil || !tt.set(code) {
+			t.Errorf("%s decodes to %+v (error %v), want the variant %s", tt.in, code, err, tt.variant)
+			continue
+		}
+		if out, err := json.Marshal(code); err != nil || string(out) != tt.in {
+			t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", tt.in, out, err)
+		}
+	}
+	var code Code
+	for _, in := range []string{` + "`" + `"manual"` + "`" + `, "1.5"} {
+		if err := json.Unmarshal([]byte(in), &code); err == nil {
+			t.Errorf("unmarshal %s gives %+v, want an error", in, code)
 		}
 	}
 }

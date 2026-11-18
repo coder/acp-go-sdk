@@ -152,6 +152,34 @@ func TestUnion_UnmarshalJSON_SelectsAVariantByExactKeys(t *testing.T) {
 	}
 }
 
+func TestErrorCode_UnmarshalJSON_SelectsTheVariantOfTheCode(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in      string
+		variant string
+		set     func(ErrorCode) bool
+	}{
+		{"-32700", "ParseError", func(c ErrorCode) bool { return c.ParseError != nil }},
+		{"-32600", "InvalidRequest", func(c ErrorCode) bool { return c.InvalidRequest != nil }},
+		{"-32601", "MethodNotFound", func(c ErrorCode) bool { return c.MethodNotFound != nil }},
+		{"-32602", "InvalidParams", func(c ErrorCode) bool { return c.InvalidParams != nil }},
+		{"-32603", "InternalError", func(c ErrorCode) bool { return c.InternalError != nil }},
+		{"-32000", "AuthenticationRequired", func(c ErrorCode) bool { return c.AuthenticationRequired != nil }},
+		{"-32002", "ResourceNotFound", func(c ErrorCode) bool { return c.ResourceNotFound != nil }},
+		{"7", "Other", func(c ErrorCode) bool { return c.Other != nil }},
+	}
+	for _, tt := range tests {
+		var code ErrorCode
+		if err := json.Unmarshal([]byte(tt.in), &code); err != nil || !tt.set(code) {
+			t.Errorf("%s decodes to %+v (error %v), want the variant %s", tt.in, code, err, tt.variant)
+			continue
+		}
+		if out, err := json.Marshal(code); err != nil || string(out) != tt.in {
+			t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", tt.in, out, err)
+		}
+	}
+}
+
 func TestToolCall_UnmarshalJSON_DropsContentOfAnUnknownType(t *testing.T) {
 	t.Parallel()
 	var call ToolCall

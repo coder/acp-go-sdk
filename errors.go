@@ -7,11 +7,13 @@ import (
 	"fmt"
 )
 
-// RequestError represents a JSON-RPC error response.
+// RequestError represents a JSON-RPC error response. Data holds the JSON of
+// the error's data as it was read, so a number keeps every digit. The New*
+// constructors encode their data argument into it.
 type RequestError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 func (e *RequestError) Error() string {
@@ -22,49 +24,52 @@ func (e *RequestError) Error() string {
 		return "<nil>"
 	}
 	// Try to pretty-print compact JSON for stability in logs.
-	type view struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Data    any    `json:"data,omitempty"`
-	}
-	v := view{Code: e.Code, Message: e.Message, Data: e.Data}
-	b, err := json.Marshal(v)
+	type view RequestError
+	b, err := json.Marshal(view(*e))
 	if err == nil {
 		return string(b)
 	}
-	// Fallback if marshal fails.
+	// Data is not valid JSON.
 	if e.Data != nil {
-		return fmt.Sprintf("code %d: %s (data: %v)", e.Code, e.Message, e.Data)
+		return fmt.Sprintf("code %d: %s (data: %s)", e.Code, e.Message, e.Data)
 	}
 	return fmt.Sprintf("code %d: %s", e.Code, e.Message)
 }
 
+// NewRequestError returns the error with code and message, and with data
+// encoded as JSON. A nil data, or one that json.Marshal cannot encode, gives
+// an error without data. The other New* constructors set a code of the
+// JSON-RPC or ACP specification the same way.
+func NewRequestError(code int, message string, data any) *RequestError {
+	return &RequestError{Code: code, Message: message, Data: encodeRaw(data)}
+}
+
 func NewParseError(data any) *RequestError {
-	return &RequestError{Code: -32700, Message: "Parse error", Data: data}
+	return NewRequestError(-32700, "Parse error", data)
 }
 
 func NewInvalidRequest(data any) *RequestError {
-	return &RequestError{Code: -32600, Message: "Invalid request", Data: data}
+	return NewRequestError(-32600, "Invalid request", data)
 }
 
 func NewMethodNotFound(method string) *RequestError {
-	return &RequestError{Code: -32601, Message: "Method not found", Data: map[string]any{"method": method}}
+	return NewRequestError(-32601, "Method not found", map[string]string{"method": method})
 }
 
 func NewInvalidParams(data any) *RequestError {
-	return &RequestError{Code: -32602, Message: "Invalid params", Data: data}
+	return NewRequestError(-32602, "Invalid params", data)
 }
 
 func NewInternalError(data any) *RequestError {
-	return &RequestError{Code: -32603, Message: "Internal error", Data: data}
+	return NewRequestError(-32603, "Internal error", data)
 }
 
 func NewRequestCancelled(data any) *RequestError {
-	return &RequestError{Code: -32800, Message: "Request cancelled", Data: data}
+	return NewRequestError(-32800, "Request cancelled", data)
 }
 
 func NewAuthRequired(data any) *RequestError {
-	return &RequestError{Code: -32000, Message: "Authentication required", Data: data}
+	return NewRequestError(-32000, "Authentication required", data)
 }
 
 // toReqErr coerces arbitrary errors into JSON-RPC RequestError.

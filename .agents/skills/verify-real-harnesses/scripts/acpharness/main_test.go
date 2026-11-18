@@ -100,7 +100,7 @@ func TestRecorder_CountsTheSDKsErrorReplies(t *testing.T) {
 }
 
 func TestMetaModels_FindsModelKeysAtAnyDepth(t *testing.T) {
-	var meta map[string]any
+	var meta acp.Meta
 	raw := `{"_claude/model":"claude-opus-5-5","quota":{"model_usage":[{"model":"claude-opus-5-5"},{"model":"claude-fable-5-2"}]}}`
 	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
 		t.Fatal(err)

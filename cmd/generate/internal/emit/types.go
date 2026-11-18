@@ -245,8 +245,10 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			f.Type().Id(name).Struct()
 			f.Line()
 		default:
-			f.Comment(fmt.Sprintf("%s is a union or complex schema; represented generically.", name))
-			f.Type().Id(name).Any()
+			// An alias keeps the methods of json.RawMessage, which a defined
+			// type would drop.
+			f.Comment(fmt.Sprintf("%s is a union or complex schema; it holds the JSON as it was read.", name))
+			f.Type().Id(name).Op("=").Add(rawJSON())
 			f.Line()
 		}
 
@@ -620,9 +622,38 @@ func expandAllOf(schema *load.Schema, d *load.Definition) *load.Definition {
 	return &merged
 }
 
+// rawJSON is the Go type of a value that the schema leaves free. It holds the
+// JSON as it was read, so a number keeps every digit.
+func rawJSON() *Statement { return Qual("encoding/json", "RawMessage") }
+
+// memberType is the Go type of each member of d, an object schema without
+// properties: the members that additionalProperties allows.
+func memberType(d *load.Definition) Code {
+	if !freeMembers(d) {
+		return Any()
+	}
+	return rawJSON()
+}
+
+// freeMembers reports whether d takes every value for a member that its
+// properties do not name: additionalProperties is absent, true, or a schema
+// that leaves the value free.
+func freeMembers(d *load.Definition) bool {
+	s := d.AdditionalProperties.Schema
+	return s == nil || leavesFree(s)
+}
+
+// leavesFree reports whether d accepts every JSON value: it has no keyword
+// that constrains a value, as {} or a schema with only a description.
+func leavesFree(d *load.Definition) bool {
+	return d.Type == nil && d.Ref == "" && len(d.AnyOf) == 0 && len(d.OneOf) == 0 && len(d.AllOf) == 0 &&
+		len(d.Enum) == 0 && d.Const == nil && len(d.Properties) == 0 && len(d.Required) == 0 && d.Items == nil &&
+		d.Not == nil && d.AdditionalProperties.Schema == nil
+}
+
 func jenTypeFor(d *load.Definition) Code {
 	if d == nil {
-		return Any()
+		return rawJSON()
 	}
 
 	// JSON Schema 2020-12 commonly uses allOf wrappers around a single $ref so a property can
@@ -646,7 +677,7 @@ func jenTypeFor(d *load.Definition) Code {
 		if strings.HasPrefix(d.Ref, "#/$defs/") {
 			return Id(d.Ref[len("#/$defs/"):])
 		}
-		return Any()
+		return rawJSON()
 	}
 	if len(d.Enum) > 0 {
 		return String()
@@ -663,15 +694,12 @@ func jenTypeFor(d *load.Definition) Code {
 	case "array":
 		return Index().Add(jenTypeFor(d.Items))
 	case "object":
-		if len(d.Properties) == 0 {
-			return Map(String()).Any()
-		}
-		return Map(String()).Any()
+		// An object property with properties gets a struct of its own before
+		// it gets here, so this object is a map.
+		return Map(String()).Add(memberType(d))
 	default:
-		if len(d.AnyOf) > 0 || len(d.OneOf) > 0 {
-			return Any()
-		}
-		return Any()
+		// A union that is not a named type, or a value of any kind.
+		return rawJSON()
 	}
 }
 
@@ -699,7 +727,7 @@ func nonNullAlternative(d *load.Definition) *load.Definition {
 // jenTypeForOptional maps unions that include null to pointer types where applicable.
 func jenTypeForOptional(d *load.Definition) Code {
 	if d == nil {
-		return Any()
+		return rawJSON()
 	}
 	// Case: property type is a union like ["string","null"]
 	if arr, ok := d.Type.([]any); ok && len(arr) == 2 {

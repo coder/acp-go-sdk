@@ -442,7 +442,7 @@ func blockText(b acp.ContentBlock) string {
 // key named "model" or ending in "/model", at any depth. Claude names its
 // model in usage_update as "_claude/model"; both adapters list
 // quota.model_usage[].model in the prompt response.
-func metaModels(meta map[string]any) []string {
+func metaModels(meta acp.Meta) []string {
 	seen := map[string]bool{}
 	var walk func(v any)
 	walk = func(v any) {
@@ -460,7 +460,12 @@ func metaModels(meta map[string]any) []string {
 			}
 		}
 	}
-	walk(meta)
+	for k, raw := range meta {
+		var v any
+		if json.Unmarshal(raw, &v) == nil {
+			walk(map[string]any{k: v})
+		}
+	}
 	out := make([]string, 0, len(seen))
 	for s := range seen {
 		out = append(out, s)

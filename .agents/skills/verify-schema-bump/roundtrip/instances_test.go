@@ -11,6 +11,10 @@ import (
 // Deeper, only required properties are set, so recursive defs end.
 const maxDepth = 5
 
+// freeInteger is the value of each member that a schema leaves free: an
+// integer above 2^53, which a decode into a float64 rounds.
+const freeInteger = json.Number("9007199254740993")
+
 // instanceGen builds JSON values that a schema accepts. With full set it
 // fills every property, else only required ones. It keeps no state.
 type instanceGen struct {
@@ -24,7 +28,7 @@ func (g instanceGen) value(node any, depth, variant int) (any, bool) {
 	m, ok := node.(map[string]any)
 	if !ok {
 		b, isBool := node.(bool)
-		return map[string]any{"example": "value"}, isBool && b
+		return map[string]any{"example": freeInteger}, isBool && b
 	}
 	if c, ok := m["const"]; ok {
 		return c, true
@@ -135,7 +139,7 @@ func (g instanceGen) ofType(typ string, m map[string]any, depth int) (any, bool)
 			for i := 2; names[key]; i++ {
 				key = fmt.Sprintf("example%d", i)
 			}
-			obj[key] = "value"
+			obj[key] = freeInteger
 		case len(props) == 0:
 			if v, ok := g.value(ap, depth+1, -1); ok && depth < maxDepth {
 				obj["example"] = v
@@ -172,7 +176,7 @@ func (g instanceGen) ofType(typ string, m map[string]any, depth int) (any, bool)
 	case "null":
 		return nil, true
 	case "any":
-		return map[string]any{"example": "value"}, true
+		return map[string]any{"example": freeInteger}, true
 	}
 	return nil, false
 }
@@ -331,12 +335,12 @@ func TestInstanceGen_FullValueHasAMemberThatTheSchemaDoesNotName(t *testing.T) {
 		obj, _ := v.(map[string]any)
 		var got []string
 		for _, k := range sortedKeys(obj) {
-			if obj[k] == "value" {
+			if obj[k] == freeInteger {
 				got = append(got, k)
 			}
 		}
 		if !ok || strings.Join(got, " ") != want {
-			t.Errorf("full value of %s = %v; want the unnamed member %q and no named one set to \"value\"", def, v, want)
+			t.Errorf("full value of %s = %v; want the unnamed member %q and no named one set to %s", def, v, want, freeInteger)
 		}
 	}
 }

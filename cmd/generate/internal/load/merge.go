@@ -68,7 +68,13 @@ func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta
 		combinedSchema.Defs[name] = def
 	}
 
-	promotedSharedDefs := promoteChangedSharedDefs(combinedSchema, stableSchema, unstableSchema, stableWires)
+	wires := map[string]struct{}{}
+	for _, set := range []map[string]struct{}{stableWires, unstableOnlyWires} {
+		for wire := range set {
+			wires[wire] = struct{}{}
+		}
+	}
+	promotedSharedDefs := promoteChangedSharedDefs(combinedSchema, stableSchema, unstableSchema, stableWires, wires)
 	ensureRefsAvailable(combinedSchema, unstableSchema, promotedSharedDefs)
 
 	dupSet, err := buildUnstableDuplicateSet(combinedSchema, unstableSchema, unstableOnlyWires)
@@ -203,17 +209,25 @@ func buildUnstableDuplicateSet(combinedSchema *Schema, unstableSchema *Schema, u
 
 // promoteChangedSharedDefs writes into the combined schema the unstable
 // version of each definition that both schemas have, that differs in shape,
-// and that the Request, Response, or Notification of a method reaches through
-// unstable $refs, and each definition that only the unstable schema has and
-// that a stable method reaches. It returns their names. The unions of every
-// request, response, or notification of a side (AgentRequest and the like)
-// are no method's types, so they keep their stable version.
-func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires map[string]struct{}) map[string]struct{} {
+// and that the Request, Response, or Notification of a method in wires (the
+// methods of the combined metadata) reaches through unstable $refs, and each
+// definition that only the unstable schema has and that a stable method
+// reaches. It returns their names. A definition with x-method whose method
+// the metadata does not list, such as proxy/initialize, gets no Go method, so
+// it promotes nothing. The unions of every request, response, or
+// notification of a side (AgentRequest and the like) are no method's types,
+// so they keep their stable version.
+func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires, wires map[string]struct{}) map[string]struct{} {
 	promoted := map[string]struct{}{}
 	var methodRoots []string
 	for name, udef := range unstableSchema.Defs {
-		if udef != nil && udef.XMethod != "" && udef.XSide != "" &&
-			(strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification")) {
+		if udef == nil || udef.XMethod == "" || udef.XSide == "" {
+			continue
+		}
+		if _, ok := wires[udef.XMethod]; !ok {
+			continue
+		}
+		if strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification") {
 			methodRoots = append(methodRoots, name)
 		}
 	}
@@ -372,11 +386,26 @@ func markAddedPart(part *Definition, defs map[string]*Definition, seen map[strin
 	return part
 }
 
+// markUnstable marks d, an addition of the unstable schema, and everything
+// inside it: its properties, alternatives, inline allOf parts, items, and
+// enum values, which become Go types, fields, and constants too. A $ref is
+// not followed. A const inside d, such as the discriminator of a variant,
+// says no more than d does, so it is left as it is.
 func markUnstable(d *Definition) {
-	if d == nil || strings.Contains(d.Description, "UNSTABLE") {
-		return
-	}
-	d.Description = strings.TrimSpace(unstableNote + "\n\n" + d.Description)
+	visitDefinition(d, func(n *Definition) {
+		if n != d && n.Const != nil {
+			return
+		}
+		if !strings.Contains(n.Description, "UNSTABLE") {
+			n.Description = strings.TrimSpace(unstableNote + "\n\n" + n.Description)
+		}
+		for _, v := range n.Enum {
+			if n.EnumNotes == nil {
+				n.EnumNotes = map[string]string{}
+			}
+			n.EnumNotes[fmt.Sprint(v)] = unstableNote
+		}
+	})
 }
 
 // counterparts returns, for each alternative or allOf part in us, the one in

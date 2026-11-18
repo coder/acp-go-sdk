@@ -552,3 +552,80 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		t.Error("the unstable input changed")
 	}
 }
+
+// A property or alternative that only the unstable version has is marked with
+// everything inside it, as its descendants become Go types, fields, and
+// constants too. A const inside it, such as a variant's discriminator, is
+// left as it is.
+func TestMergeStableAndUnstable_MarksTheWholeAddedSubtree(t *testing.T) {
+	stableSchema := &Schema{Defs: map[string]*Definition{
+		"Caps": {Type: "object", Properties: map[string]*Definition{"fs": {Type: "boolean"}}},
+	}}
+	unstableSchema := &Schema{Defs: map[string]*Definition{
+		"Caps": {Type: "object", Properties: map[string]*Definition{
+			"fs": {Type: "boolean"},
+			"terminal": {Type: "object", Description: "Terminals.", Properties: map[string]*Definition{
+				"shell": {Type: "string", Description: "The shell."},
+				"mode":  {Type: "string", Enum: []any{"pty", "pipe"}},
+				"envs":  {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}}}},
+				"kind": {OneOf: []*Definition{
+					{Type: "object", Properties: map[string]*Definition{"type": {Const: "local"}, "path": {Type: "string"}}},
+				}},
+			}},
+		}},
+	}}
+	for _, schema := range []*Schema{stableSchema, unstableSchema} {
+		schema.Defs["InitRequest"] = &Definition{Type: "object", XMethod: "init", XSide: "agent", Properties: map[string]*Definition{"caps": ref("Caps")}}
+	}
+	meta := &Meta{Version: 1, AgentMethods: map[string]string{"init": "init"}}
+	_, combined := mustMerge(t, meta, stableSchema, meta, unstableSchema)
+	terminal := combined.Defs["Caps"].Properties["terminal"]
+	kind := terminal.Properties["kind"].OneOf[0]
+	for where, got := range map[string]string{
+		"terminal":                 terminal.Description,
+		"terminal.shell":           terminal.Properties["shell"].Description,
+		"terminal.envs[].name":     terminal.Properties["envs"].Items.Properties["name"].Description,
+		"terminal.kind local":      kind.Description,
+		"terminal.kind local.path": kind.Properties["path"].Description,
+	} {
+		if !strings.HasPrefix(got, unstableNote) {
+			t.Errorf("%s description = %q, want the note", where, got)
+		}
+	}
+	if got := kind.Properties["type"].Description; got != "" {
+		t.Errorf("the discriminator description = %q, want it left out", got)
+	}
+	if got := terminal.Properties["mode"].EnumNotes; len(got) != 2 {
+		t.Errorf("terminal.mode EnumNotes = %v, want both values", got)
+	}
+	if got := combined.Defs["Caps"].Properties["fs"].Description; got != "" {
+		t.Errorf("fs description = %q, want it unmarked", got)
+	}
+}
+
+// A definition with x-method whose method the metadata does not list, such
+// as proxy/initialize, gets no Go method, so the shared definitions that it
+// reaches keep their stable version.
+func TestMergeStableAndUnstable_IgnoresRootsThatTheMetadataDoesNotList(t *testing.T) {
+	shared := func(props ...string) *Definition {
+		d := &Definition{Type: "object", Properties: map[string]*Definition{}}
+		for _, p := range props {
+			d.Properties[p] = &Definition{Type: "string"}
+		}
+		return d
+	}
+	stableSchema := &Schema{Defs: map[string]*Definition{
+		"Shared":      shared("id"),
+		"InitRequest": {Type: "object", XMethod: "init", XSide: "agent", Properties: map[string]*Definition{"id": {Type: "string"}}},
+	}}
+	unstableSchema := &Schema{Defs: map[string]*Definition{
+		"Shared":       shared("id", "hop"),
+		"InitRequest":  {Type: "object", XMethod: "init", XSide: "agent", Properties: map[string]*Definition{"id": {Type: "string"}}},
+		"ProxyRequest": {Type: "object", XMethod: "proxy/initialize", XSide: "agent", Properties: map[string]*Definition{"shared": ref("Shared")}},
+	}}
+	meta := &Meta{Version: 1, AgentMethods: map[string]string{"init": "init"}}
+	_, combined := mustMerge(t, meta, stableSchema, meta, unstableSchema)
+	if got := combined.Defs["Shared"].Properties; len(got) != 1 {
+		t.Errorf("Shared properties = %v, want the stable version", got)
+	}
+}

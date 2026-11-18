@@ -101,7 +101,9 @@ release:
 	@printf '%s\n' "$(VERSION)" > version
 	@[ -z "$(SCHEMA)" ] || printf '%s\n' "$(SCHEMA)" > schema/version
 	$(MAKE) generate
-	$(MAKE) fmt
+# The treefmt cache would skip README.md, whose install line mdsh builds
+# from version.
+	TREEFMT_NO_CACHE=1 $(MAKE) fmt
 	GOCACHE=$(GOCACHE) $(MAKE) test
 	@echo
 	@echo "Release candidate v$(VERSION) (ACP schema $$(cat schema/version)) is ready."

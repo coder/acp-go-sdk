@@ -9,6 +9,23 @@ import (
 
 func (a *AgentSideConnection) handle(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
 	switch method {
+	case AgentMethodAuthStatus:
+		var p UnstableAuthStatusRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		impl, ok := a.agent.(AgentUnstableAuthStatus)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := impl.UnstableAuthStatus(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
 	case AgentMethodAuthenticate:
 		var p AuthenticateRequest
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -22,86 +39,6 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return resp, nil
-	case AgentMethodDocumentDidChange:
-		var p UnstableDidChangeDocumentNotification
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableDidChangeDocument)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		if err := impl.UnstableDidChangeDocument(ctx, p); err != nil {
-			return nil, toReqErr(err)
-		}
-		return nil, nil
-	case AgentMethodDocumentDidClose:
-		var p UnstableDidCloseDocumentNotification
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableDidCloseDocument)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		if err := impl.UnstableDidCloseDocument(ctx, p); err != nil {
-			return nil, toReqErr(err)
-		}
-		return nil, nil
-	case AgentMethodDocumentDidFocus:
-		var p UnstableDidFocusDocumentNotification
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableDidFocusDocument)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		if err := impl.UnstableDidFocusDocument(ctx, p); err != nil {
-			return nil, toReqErr(err)
-		}
-		return nil, nil
-	case AgentMethodDocumentDidOpen:
-		var p UnstableDidOpenDocumentNotification
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableDidOpenDocument)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		if err := impl.UnstableDidOpenDocument(ctx, p); err != nil {
-			return nil, toReqErr(err)
-		}
-		return nil, nil
-	case AgentMethodDocumentDidSave:
-		var p UnstableDidSaveDocumentNotification
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableDidSaveDocument)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		if err := impl.UnstableDidSaveDocument(ctx, p); err != nil {
-			return nil, toReqErr(err)
-		}
-		return nil, nil
 	case AgentMethodInitialize:
 		var p InitializeRequest
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -144,89 +81,6 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return nil, nil
-	case AgentMethodNesAccept:
-		var p UnstableAcceptNesNotification
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableAcceptNes)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		if err := impl.UnstableAcceptNes(ctx, p); err != nil {
-			return nil, toReqErr(err)
-		}
-		return nil, nil
-	case AgentMethodNesClose:
-		var p UnstableCloseNesRequest
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableCloseNes)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := impl.UnstableCloseNes(ctx, p)
-		if err != nil {
-			return nil, toReqErr(err)
-		}
-		return resp, nil
-	case AgentMethodNesReject:
-		var p UnstableRejectNesNotification
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableRejectNes)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		if err := impl.UnstableRejectNes(ctx, p); err != nil {
-			return nil, toReqErr(err)
-		}
-		return nil, nil
-	case AgentMethodNesStart:
-		var p UnstableStartNesRequest
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableStartNes)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := impl.UnstableStartNes(ctx, p)
-		if err != nil {
-			return nil, toReqErr(err)
-		}
-		return resp, nil
-	case AgentMethodNesSuggest:
-		var p UnstableSuggestNesRequest
-		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		if err := p.Validate(); err != nil {
-			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-		}
-		impl, ok := a.agent.(AgentUnstableSuggestNes)
-		if !ok {
-			return nil, NewMethodNotFound(method)
-		}
-		resp, err := impl.UnstableSuggestNes(ctx, p)
-		if err != nil {
-			return nil, toReqErr(err)
-		}
-		return resp, nil
 	case AgentMethodProvidersDisable:
 		var p UnstableDisableProviderRequest
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -274,6 +128,23 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, NewMethodNotFound(method)
 		}
 		resp, err := impl.UnstableSetProvider(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case AgentMethodSessionArchive:
+		var p UnstableArchiveSessionRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		impl, ok := a.agent.(AgentUnstableArchiveSession)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := impl.UnstableArchiveSession(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}
@@ -377,6 +248,23 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return resp, nil
+	case AgentMethodSessionOptions:
+		var p UnstableSessionOptionsRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		impl, ok := a.agent.(AgentUnstableSessionOptions)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := impl.UnstableSessionOptions(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
 	case AgentMethodSessionPrompt:
 		var p PromptRequest
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -434,9 +322,63 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 			return nil, toReqErr(err)
 		}
 		return resp, nil
+	case AgentMethodSessionSetTitle:
+		var p UnstableSetSessionTitleRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		impl, ok := a.agent.(AgentUnstableSetSessionTitle)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := impl.UnstableSetSessionTitle(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case AgentMethodSessionStatus:
+		var p UnstableSessionStatusRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		impl, ok := a.agent.(AgentUnstableSessionStatus)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := impl.UnstableSessionStatus(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
+	case AgentMethodSessionUnarchive:
+		var p UnstableUnarchiveSessionRequest
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		if err := p.Validate(); err != nil {
+			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		}
+		impl, ok := a.agent.(AgentUnstableUnarchiveSession)
+		if !ok {
+			return nil, NewMethodNotFound(method)
+		}
+		resp, err := impl.UnstableUnarchiveSession(ctx, p)
+		if err != nil {
+			return nil, toReqErr(err)
+		}
+		return resp, nil
 	default:
 		return nil, NewMethodNotFound(method)
 	}
+}
+func (c *AgentSideConnection) UnstableAuthStatusUpdate(ctx context.Context, params UnstableAuthStatusUpdateNotification) error {
+	return c.conn.SendNotification(ctx, ClientMethodAuthStatusUpdate, params)
 }
 func (c *AgentSideConnection) CompleteElicitation(ctx context.Context, params CompleteElicitationNotification) error {
 	return c.conn.SendNotification(ctx, ClientMethodElicitationComplete, params)

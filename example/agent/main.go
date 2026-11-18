@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,8 @@ type agentSession struct {
 	// The session's config options, see configOptions.
 	model     acp.SessionConfigValueId
 	webSearch bool
+	// systemPrompt is the text of the client's system prompt, if any.
+	systemPrompt string
 }
 
 type exampleAgent struct {
@@ -213,19 +216,51 @@ func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequ
 			SessionCapabilities: acp.SessionCapabilities{
 				List:   &acp.SessionListCapabilities{},
 				Delete: &acp.SessionDeleteCapabilities{},
+				// A system prompt in append mode, the one mode that every
+				// agent with the capability supports.
+				SystemPrompt: &acp.SessionSystemPromptCapabilities{},
 			},
 		},
 	}, nil
 }
 
 func (a *exampleAgent) NewSession(ctx context.Context, params acp.NewSessionRequest) (acp.NewSessionResponse, error) {
+	prompt, err := systemPromptText(params.SystemPrompt)
+	if err != nil {
+		return acp.NewSessionResponse{}, err
+	}
 	sid := randomID("sess_")
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.nextSeq++
-	s := &agentSession{cwd: params.Cwd, seq: a.nextSeq, model: modelFast}
+	s := &agentSession{cwd: params.Cwd, seq: a.nextSeq, model: modelFast, systemPrompt: prompt}
 	a.sessions[sid] = s
 	return acp.NewSessionResponse{SessionId: acp.SessionId(sid), ConfigOptions: a.configOptions(s)}, nil
+}
+
+// systemPromptText returns the text of a client's system prompt. The agent
+// advertises append mode only, and it must reject a prompt that it cannot
+// apply instead of creating the session: another mode, an empty prompt, or a
+// block that is not text.
+func systemPromptText(p *acp.SystemPrompt) (string, error) {
+	if p == nil {
+		return "", nil
+	}
+	invalid := func(msg string) error { return acp.NewInvalidParams(map[string]any{"error": msg}) }
+	if p.Mode != acp.SystemPromptModeAppend {
+		return "", invalid(fmt.Sprintf("systemPrompt mode %q is not supported", p.Mode))
+	}
+	if len(p.Content) == 0 {
+		return "", invalid("systemPrompt content is empty")
+	}
+	parts := make([]string, 0, len(p.Content))
+	for _, b := range p.Content {
+		if b.Text == nil {
+			return "", invalid("systemPrompt content must be text blocks")
+		}
+		parts = append(parts, b.Text.Text)
+	}
+	return strings.Join(parts, "\n\n"), nil
 }
 
 func (a *exampleAgent) Authenticate(ctx context.Context, _ acp.AuthenticateRequest) (acp.AuthenticateResponse, error) {
@@ -366,6 +401,22 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	}
 	if err := pause(ctx, 250*time.Millisecond); err != nil {
 		return err
+	}
+	// A scripted agent cannot follow a system prompt, so it shows the one
+	// that it would follow.
+	a.mu.Lock()
+	var prompt string
+	if s, ok := a.sessions[sid]; ok {
+		prompt = s.systemPrompt
+	}
+	a.mu.Unlock()
+	if prompt != "" {
+		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{
+			SessionId: acp.SessionId(sid),
+			Update:    acp.UpdateAgentMessageText("Following your system prompt: " + prompt),
+		}); err != nil {
+			return err
+		}
 	}
 	// initial message chunk
 	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{

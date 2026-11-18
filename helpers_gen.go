@@ -11,15 +11,6 @@ func NewPlanUpdateContentItems(planId PlanId, entries []PlanEntry) PlanUpdateCon
 	}}
 }
 
-// NewPlanUpdateContentFile constructs a PlanUpdateContent using the 'file' variant.
-func NewPlanUpdateContentFile(planId PlanId, uri string) PlanUpdateContent {
-	return PlanUpdateContent{File: &PlanUpdateContentFile{
-		PlanId: planId,
-		Type:   "file",
-		Uri:    uri,
-	}}
-}
-
 // NewPlanUpdateContentMarkdown constructs a PlanUpdateContent using the 'markdown' variant.
 func NewPlanUpdateContentMarkdown(planId PlanId, content string) PlanUpdateContent {
 	return PlanUpdateContent{Markdown: &PlanUpdateContentMarkdown{
@@ -59,44 +50,19 @@ func NewSessionConfigOptionBoolean(currentValue bool) SessionConfigOption {
 	}}
 }
 
-// NewUnstableNesSuggestionEdit constructs a UnstableNesSuggestion using the 'edit' variant.
-func NewUnstableNesSuggestionEdit(id UnstableNesSuggestionId, uri string, edits []UnstableNesTextEdit) UnstableNesSuggestion {
-	return UnstableNesSuggestion{Edit: &UnstableNesSuggestionEdit{
-		Edits: edits,
-		Id:    id,
-		Kind:  "edit",
-		Uri:   uri,
+// NewUnstableSessionConfigOptionSelect constructs a UnstableSessionConfigOption using the 'select' variant.
+func NewUnstableSessionConfigOptionSelect(currentValue SessionConfigValueId, options SessionConfigSelectOptions) UnstableSessionConfigOption {
+	return UnstableSessionConfigOption{Select: &UnstableSessionConfigOptionSelect{
+		CurrentValue: currentValue,
+		Options:      options,
+		Type:         "select",
 	}}
 }
 
-// NewUnstableNesSuggestionJump constructs a UnstableNesSuggestion using the 'jump' variant.
-func NewUnstableNesSuggestionJump(id UnstableNesSuggestionId, uri string, position UnstablePosition) UnstableNesSuggestion {
-	return UnstableNesSuggestion{Jump: &UnstableNesSuggestionJump{
-		Id:       id,
-		Kind:     "jump",
-		Position: position,
-		Uri:      uri,
-	}}
-}
-
-// NewUnstableNesSuggestionRename constructs a UnstableNesSuggestion using the 'rename' variant.
-func NewUnstableNesSuggestionRename(id UnstableNesSuggestionId, uri string, position UnstablePosition, newName string) UnstableNesSuggestion {
-	return UnstableNesSuggestion{Rename: &UnstableNesSuggestionRename{
-		Id:       id,
-		Kind:     "rename",
-		NewName:  newName,
-		Position: position,
-		Uri:      uri,
-	}}
-}
-
-// NewUnstableNesSuggestionSearchAndReplace constructs a UnstableNesSuggestion using the 'searchAndReplace' variant.
-func NewUnstableNesSuggestionSearchAndReplace(id UnstableNesSuggestionId, uri string, search string, replace string) UnstableNesSuggestion {
-	return UnstableNesSuggestion{SearchAndReplace: &UnstableNesSuggestionSearchAndReplace{
-		Id:      id,
-		Kind:    "searchAndReplace",
-		Replace: replace,
-		Search:  search,
-		Uri:     uri,
+// NewUnstableSessionConfigOptionBoolean constructs a UnstableSessionConfigOption using the 'boolean' variant.
+func NewUnstableSessionConfigOptionBoolean(currentValue bool) UnstableSessionConfigOption {
+	return UnstableSessionConfigOption{Boolean: &UnstableSessionConfigOptionBoolean{
+		CurrentValue: currentValue,
+		Type:         "boolean",
 	}}
 }

@@ -34,6 +34,8 @@ var (
 		func(c acp.AgentCapabilities) bool { return c.SessionCapabilities.Delete != nil }}
 	capResume = capability{"agentCapabilities.sessionCapabilities.resume",
 		func(c acp.AgentCapabilities) bool { return c.SessionCapabilities.Resume != nil }}
+	capSystemPrompt = capability{"agentCapabilities.sessionCapabilities.systemPrompt",
+		func(c acp.AgentCapabilities) bool { return c.SessionCapabilities.SystemPrompt != nil }}
 )
 
 // advertises reports whether the agent on a advertises c in its raw

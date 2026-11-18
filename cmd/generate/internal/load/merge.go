@@ -153,7 +153,7 @@ func buildUnstableDuplicateSet(stableSchema *Schema, unstableSchema *Schema, uns
 	newOrChanged := map[string]bool{}
 	for name, udef := range unstableSchema.Defs {
 		sdef := stableSchema.Defs[name]
-		if sdef == nil || !reflect.DeepEqual(sdef, udef) {
+		if sdef == nil || !sameShape(sdef, udef) {
 			newOrChanged[name] = true
 		}
 	}
@@ -271,7 +271,7 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 			continue
 		}
 		sdef := stableSchema.Defs[name]
-		if sdef == nil || !reflect.DeepEqual(sdef, udef) {
+		if sdef == nil || !sameShape(sdef, udef) {
 			combinedSchema.Defs[name] = deepCopyDefinition(udef)
 			promoted[name] = struct{}{}
 		}
@@ -288,6 +288,20 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 	}
 
 	return promoted
+}
+
+// sameShape reports whether two definitions describe the same JSON, that is
+// whether they are equal but for their descriptions. From schema 1.27.0 on,
+// the unstable schema's descriptions link to the draft docs, so most of its
+// definitions differ from their stable twins in text only.
+func sameShape(a, b *Definition) bool {
+	return reflect.DeepEqual(withoutDescriptions(a), withoutDescriptions(b))
+}
+
+func withoutDescriptions(d *Definition) *Definition {
+	c := deepCopyDefinition(d)
+	visitDefinition(c, func(n *Definition) { n.Description = "" })
+	return c
 }
 
 func ensureRefsAvailable(combinedSchema *Schema, unstableSchema *Schema, roots map[string]struct{}) {

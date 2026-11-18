@@ -25,7 +25,7 @@ grep -oE 'SUMMARY .*' "$run/test.log" | tee -a "$run/summary.txt" || true
 # with the number of distinct lines that have it, so that two runs diff by
 # def and property and not by error text, while a new kind of failure at a
 # known key still changes its count. details.txt keeps the whole lines.
-sed -nE 's/^ +[a-z_]+_test\.go:[0-9]+: ((NO-TYPE|DECODE|VALIDATE|LOSSY|SCHEMA|HINT) .*)/\1/p' "$run/test.log" | sort -u >"$run/details.txt"
+sed -nE 's/^ +[a-z_]+_test\.go:[0-9]+: ((NO-TYPE|DECODE|VALIDATE|LOSSY|SCHEMA|HINT|PATCH) .*)/\1/p' "$run/test.log" | sort -u >"$run/details.txt"
 sed -E 's/: .*//' "$run/details.txt" | sort | uniq -c | sed -E 's/^ *([0-9]+) (.*)/\2 (\1)/' >"$run/failures.txt"
 echo "distinct problems by kind:" | tee -a "$run/summary.txt"
 awk '{ print $1 }' "$run/failures.txt" | sort | uniq -c | tee -a "$run/summary.txt"

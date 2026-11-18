@@ -19,6 +19,8 @@ The package imports only `fmt`, `sort`, `strings`, and the sibling `load` and `u
 - `type Lenient struct` with the `bool` fields `DefaultOnError`, `DefaultOnNull`, and `SkipInvalidItems`: the decode leniency that the `x-deserialize-*` hints of one property ask for. The zero value is strict [field.go:Lenient]
 - `type Field struct` with fields `Prop` (the property name on the wire), `Name` (the exported Go field name), `Def` (`*load.Definition`, the property's schema), `Required` (`bool`), and `Lenient` (`Lenient`) [field.go:Field]
 - `func Fields(props map[string]*load.Definition, required []string) []Field` returns one `Field` per property of an object schema [field.go:Fields]
+- `func PatchFields(schema *load.Schema) map[*load.Definition]bool` returns the patch fields of the schema, keyed by the property's definition [patch.go:PatchFields]
+- `func NullAsAbsent(schema *load.Schema) map[*load.Definition]bool` returns the patch fields for which the schema defines no clear, keyed by the property's definition [patch.go:NullAsAbsent]
 
 ## Invariants
 
@@ -36,6 +38,8 @@ The package imports only `fmt`, `sort`, `strings`, and the sibling `load` and `u
 - `Fields` returns the fields sorted by property name. `Name` is `util.ToExportedField` of the property name, and `Required` is true for a property that `required` lists. `Lenient` copies the three hint fields of the property's `load.Definition` [field.go:Fields] [field_test.go:TestFields_ReadsNamesRequiredAndHints]
 - `Fields` returns no field for an optional property whose type is `"null"` alone. Such a property can hold no value, as `stopReason` in the `none` variant of `IdleStateUpdate`. A required one keeps its field, so that the struct writes the member as `null`. No schema from 0.13.5 through 1.32.0 has one [field.go:Fields] [field_test.go:TestFields_SkipsAnOptionalPropertyWhoseTypeIsOnlyNull]
 - `Fields` panics when a property that is not an array has `x-deserialize-skip-invalid-items` [field.go:Fields] [field_test.go:TestFields_PanicsOnSkipInvalidItemsOutsideAnArray]
+- A patch field is an optional property of an update that changes a value the receiver stores: absent leaves it, `null` clears it, and a value replaces it. The schema says so only in prose, so `PatchFields` reads the descriptions. Every optional property of an object is one when the object's description matches `only changed fields`, `partial update(s)` or `omitted patch fields` (`ToolCallUpdate`, `SessionInfoUpdate`, `SubagentUpdate`). A property is one when the object's description names it in backticks in a sentence with `have patch semantics` (`CompactionUpdate`: `summary`, `error`, `_meta`), or when its own description says that omitted means unchanged, that `null` clears or removes it, or `Set to null to clear` (`SessionMessage`). A required property is never one. A union variant that takes an object's properties through `allOf` shares their definitions, so its fields are patch fields too [patch.go:PatchFields] [patch_test.go:TestPatchFields_ReadsTheDescriptions]
+- A patch field has no clear when its object's description matches only `only changed fields` or `partial update(s)`, and its own description does not mention `null`: all of `ToolCallUpdate` but `name`, and `_meta` of `SessionInfoUpdate`. ACP v1 peers, the Rust SDK among them, read `null` there as absent, so `NullAsAbsent` returns these fields and the emitter says so in their docs [patch.go:NullAsAbsent] [patch_test.go:TestNullAsAbsent_ReadsTheDescriptions]
 
 ## Side Effects
 

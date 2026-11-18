@@ -300,7 +300,7 @@ func (c *elicitClient) SessionUpdate(context.Context, acp.SessionNotification) e
 func (c *elicitClient) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.edit = p.ToolCall.RawInput
+	c.edit, _ = p.ToolCall.RawInput.Value()
 	return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: "allow"}}}, nil
 }
 
@@ -486,7 +486,7 @@ func TestExampleAgent_NoticesCompactionAndToolNames(t *testing.T) {
 				t.Errorf("tool call names = %v, want %v", names, want)
 			}
 			client.mu.Lock()
-			if len(client.asked) != 1 || deref(client.asked[0].Name) != "write_file" {
+			if len(client.asked) != 1 || deref(patchPtr(client.asked[0].Name)) != "write_file" {
 				t.Errorf("permission tool calls = %+v, want one named write_file", client.asked)
 			}
 			client.mu.Unlock()
@@ -517,6 +517,14 @@ func TestExampleAgent_NoticesCompactionAndToolNames(t *testing.T) {
 			}
 		})
 	}
+}
+
+// patchPtr returns the value of a set patch, and nil otherwise.
+func patchPtr[T any](p acp.Patch[T]) *T {
+	if v, ok := p.Value(); ok {
+		return &v
+	}
+	return nil
 }
 
 func deref(s *string) string {

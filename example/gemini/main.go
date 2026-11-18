@@ -42,10 +42,7 @@ func (c *replClient) RequestPermission(ctx context.Context, params acp.RequestPe
 		return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}}}, nil
 	}
 
-	title := ""
-	if params.ToolCall.Title != nil {
-		title = *params.ToolCall.Title
-	}
+	title, _ := params.ToolCall.Title.Value()
 	fmt.Printf("\n🔐 Permission requested: %s\n", title)
 	fmt.Println("\nOptions:")
 	for i, opt := range params.Options {
@@ -82,10 +79,7 @@ func (c *replClient) SessionUpdate(ctx context.Context, params acp.SessionNotifi
 	case u.ToolCall != nil:
 		fmt.Printf("\n🔧 %s (%s)\n", u.ToolCall.Title, u.ToolCall.Status)
 	case u.ToolCallUpdate != nil:
-		status := ""
-		if u.ToolCallUpdate.Status != nil {
-			status = string(*u.ToolCallUpdate.Status)
-		}
+		status, _ := u.ToolCallUpdate.Status.Value()
 		fmt.Printf("\n🔧 Tool call `%s` updated: %s\n\n", u.ToolCallUpdate.ToolCallId, status)
 	case u.Plan != nil:
 		fmt.Println("[plan update]")

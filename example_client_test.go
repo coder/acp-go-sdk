@@ -43,7 +43,9 @@ func (clientExample) SessionUpdate(ctx context.Context, n SessionNotification) e
 		title := u.ToolCall.Title
 		fmt.Printf("\n[tool] %s (%s)\n", title, u.ToolCall.Status)
 	case u.ToolCallUpdate != nil:
-		fmt.Printf("\n[tool] %s -> %v\n", u.ToolCallUpdate.ToolCallId, u.ToolCallUpdate.Status)
+		if status, ok := u.ToolCallUpdate.Status.Value(); ok {
+			fmt.Printf("\n[tool] %s -> %s\n", u.ToolCallUpdate.ToolCallId, status)
+		}
 	}
 	return nil
 }

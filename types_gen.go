@@ -1385,15 +1385,35 @@ func (v *CompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 // 'summary: []' also clears the summary.
 type CompactionUpdate struct {
 	// Extensible metadata patch for this compaction.
-	Meta Meta `json:"_meta,omitempty"`
+	Meta Patch[Meta] `json:"_meta"`
 	// The Agent-owned ID of this compaction, unique within the session.
 	CompactionId CompactionId `json:"compactionId"`
 	// Human-readable error details for the compaction.
-	Error *string `json:"error,omitempty"`
+	Error Patch[string] `json:"error"`
 	// Current lifecycle status.
 	Status CompactionStatus `json:"status"`
 	// Complete replacement user-displayable summary content for the compaction.
-	Summary []ContentBlock `json:"summary,omitempty"`
+	Summary Patch[[]ContentBlock] `json:"summary"`
+}
+
+func (v CompactionUpdate) MarshalJSON() ([]byte, error) {
+	type Alias CompactionUpdate
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta         *Patch[Meta]           `json:"_meta,omitempty"`
+		CompactionId CompactionId           `json:"compactionId"`
+		Error        *Patch[string]         `json:"error,omitempty"`
+		Status       CompactionStatus       `json:"status"`
+		Summary      *Patch[[]ContentBlock] `json:"summary,omitempty"`
+	}
+	return json.Marshal(patched{
+		CompactionId: a.CompactionId,
+		Error:        a.Error.orNil(),
+		Meta:         a.Meta.orNil(),
+		Status:       a.Status,
+		Summary:      a.Summary.orNil(),
+	})
 }
 
 func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
@@ -1408,9 +1428,9 @@ func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Error, &v.Error)
-	decodeLenientItems(raw.Summary, &v.Summary, shapeContentBlock)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(raw.Error, &v.Error)
+	decodePatchItems(raw.Summary, &v.Summary, shapeContentBlock)
 	return nil
 }
 
@@ -9263,11 +9283,30 @@ type SessionInfoUpdate struct {
 	// these keys.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Meta Patch[Meta] `json:"_meta"`
 	// Human-readable title for the session. Set to null to clear.
-	Title *string `json:"title,omitempty"`
+	Title Patch[string] `json:"title"`
 	// ISO 8601 timestamp of last activity. Set to null to clear.
-	UpdatedAt *string `json:"updatedAt,omitempty"`
+	UpdatedAt Patch[string] `json:"updatedAt"`
+}
+
+func (v SessionInfoUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SessionInfoUpdate
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta      *Patch[Meta]   `json:"_meta,omitempty"`
+		Title     *Patch[string] `json:"title,omitempty"`
+		UpdatedAt *Patch[string] `json:"updatedAt,omitempty"`
+	}
+	return json.Marshal(patched{
+		Meta:      a.Meta.orNil(),
+		Title:     a.Title.orNil(),
+		UpdatedAt: a.UpdatedAt.orNil(),
+	})
 }
 
 func (v *SessionInfoUpdate) UnmarshalJSON(b []byte) error {
@@ -9282,9 +9321,9 @@ func (v *SessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Title, &v.Title)
-	decodeLenient(raw.UpdatedAt, &v.UpdatedAt)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(raw.Title, &v.Title)
+	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
 	return nil
 }
 
@@ -9323,10 +9362,10 @@ type SessionMessage struct {
 	// Omitted leaves metadata unchanged. 'null' removes it.
 	//
 	// Implementations MUST NOT make assumptions about values in '_meta'.
-	Meta Meta `json:"_meta,omitempty"`
+	Meta Patch[Meta] `json:"_meta"`
 	// Omitted leaves content unchanged. 'null' or '[]' clears it.
 	// A non-empty array replaces all content.
-	Content []ContentBlock `json:"content,omitempty"`
+	Content Patch[[]ContentBlock] `json:"content"`
 	// Identifier of this message within the enclosing session's transcript.
 	MessageId MessageId `json:"messageId"`
 	// On an outgoing view, the 'messageId' of the same message's incoming view in the
@@ -9334,21 +9373,45 @@ type SessionMessage struct {
 	//
 	// Omitted leaves the stored value unchanged. 'null' clears it. A value replaces it. It can arrive
 	// after the message starts streaming.
-	RecipientMessageId *MessageId `json:"recipientMessageId,omitempty"`
+	RecipientMessageId Patch[MessageId] `json:"recipientMessageId"`
 	// The receiving session.
 	//
 	// Omitted leaves the stored value unchanged. 'null' clears it. A value replaces it.
-	RecipientSessionId *SessionId `json:"recipientSessionId,omitempty"`
+	RecipientSessionId Patch[SessionId] `json:"recipientSessionId"`
 	// On an incoming view, the 'messageId' of the same message's outgoing view in the
 	// sender's transcript.
 	//
 	// Omitted leaves the stored value unchanged. 'null' clears it. A value replaces it. It can arrive
 	// after the message starts streaming.
-	SenderMessageId *MessageId `json:"senderMessageId,omitempty"`
+	SenderMessageId Patch[MessageId] `json:"senderMessageId"`
 	// The sending session.
 	//
 	// Omitted leaves the stored value unchanged. 'null' clears it. A value replaces it.
-	SenderSessionId *SessionId `json:"senderSessionId,omitempty"`
+	SenderSessionId Patch[SessionId] `json:"senderSessionId"`
+}
+
+func (v SessionMessage) MarshalJSON() ([]byte, error) {
+	type Alias SessionMessage
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta               *Patch[Meta]           `json:"_meta,omitempty"`
+		Content            *Patch[[]ContentBlock] `json:"content,omitempty"`
+		MessageId          MessageId              `json:"messageId"`
+		RecipientMessageId *Patch[MessageId]      `json:"recipientMessageId,omitempty"`
+		RecipientSessionId *Patch[SessionId]      `json:"recipientSessionId,omitempty"`
+		SenderMessageId    *Patch[MessageId]      `json:"senderMessageId,omitempty"`
+		SenderSessionId    *Patch[SessionId]      `json:"senderSessionId,omitempty"`
+	}
+	return json.Marshal(patched{
+		Content:            a.Content.orNil(),
+		MessageId:          a.MessageId,
+		Meta:               a.Meta.orNil(),
+		RecipientMessageId: a.RecipientMessageId.orNil(),
+		RecipientSessionId: a.RecipientSessionId.orNil(),
+		SenderMessageId:    a.SenderMessageId.orNil(),
+		SenderSessionId:    a.SenderSessionId.orNil(),
+	})
 }
 
 func (v *SessionMessage) UnmarshalJSON(b []byte) error {
@@ -9366,12 +9429,12 @@ func (v *SessionMessage) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content, shapeContentBlock)
-	decodeLenient(raw.RecipientMessageId, &v.RecipientMessageId)
-	decodeLenient(raw.RecipientSessionId, &v.RecipientSessionId)
-	decodeLenient(raw.SenderMessageId, &v.SenderMessageId)
-	decodeLenient(raw.SenderSessionId, &v.SenderSessionId)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatchItems(raw.Content, &v.Content, shapeContentBlock)
+	decodePatch(raw.RecipientMessageId, &v.RecipientMessageId)
+	decodePatch(raw.RecipientSessionId, &v.RecipientSessionId)
+	decodePatch(raw.SenderMessageId, &v.SenderMessageId)
+	decodePatch(raw.SenderSessionId, &v.SenderSessionId)
 	return nil
 }
 
@@ -9948,29 +10011,85 @@ type SessionToolCallUpdate struct {
 	// these keys.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
-	Content []ToolCallContent `json:"content,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
-	Kind *ToolKind `json:"kind,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
-	Locations []ToolCallLocation `json:"locations,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
 	// the existing name is left unchanged.
-	Name *string `json:"name,omitempty"`
+	Name Patch[string] `json:"name"`
 	// Update the raw input.
-	RawInput json.RawMessage `json:"rawInput,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
-	RawOutput     json.RawMessage `json:"rawOutput,omitempty"`
-	SessionUpdate string          `json:"sessionUpdate"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	RawOutput     Patch[json.RawMessage] `json:"rawOutput"`
+	SessionUpdate string                 `json:"sessionUpdate"`
 	// Update the execution status.
-	Status *ToolCallStatus `json:"status,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
-	Title *string `json:"title,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
+}
+
+func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SessionToolCallUpdate
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta          *Patch[Meta]               `json:"_meta,omitempty"`
+		Content       *Patch[[]ToolCallContent]  `json:"content,omitempty"`
+		Kind          *Patch[ToolKind]           `json:"kind,omitempty"`
+		Locations     *Patch[[]ToolCallLocation] `json:"locations,omitempty"`
+		Name          *Patch[string]             `json:"name,omitempty"`
+		RawInput      *Patch[json.RawMessage]    `json:"rawInput,omitempty"`
+		RawOutput     *Patch[json.RawMessage]    `json:"rawOutput,omitempty"`
+		SessionUpdate string                     `json:"sessionUpdate"`
+		Status        *Patch[ToolCallStatus]     `json:"status,omitempty"`
+		Title         *Patch[string]             `json:"title,omitempty"`
+		ToolCallId    ToolCallId                 `json:"toolCallId"`
+	}
+	return json.Marshal(patched{
+		Content:       a.Content.orNil(),
+		Kind:          a.Kind.orNil(),
+		Locations:     a.Locations.orNil(),
+		Meta:          a.Meta.orNil(),
+		Name:          a.Name.orNil(),
+		RawInput:      a.RawInput.orNil(),
+		RawOutput:     a.RawOutput.orNil(),
+		SessionUpdate: a.SessionUpdate,
+		Status:        a.Status.orNil(),
+		Title:         a.Title.orNil(),
+		ToolCallId:    a.ToolCallId,
+	})
 }
 
 func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
@@ -9991,15 +10110,15 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content, shapeToolCallContent)
-	decodeLenient(raw.Kind, &v.Kind)
-	decodeLenientItems(raw.Locations, &v.Locations, shapeToolCallLocation)
-	decodeLenient(raw.Name, &v.Name)
-	decodeLenient(raw.RawInput, &v.RawInput)
-	decodeLenient(raw.RawOutput, &v.RawOutput)
-	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
-	decodeLenient(raw.Title, &v.Title)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatchItems(raw.Content, &v.Content, shapeToolCallContent)
+	decodePatch(raw.Kind, &v.Kind)
+	decodePatchItems(raw.Locations, &v.Locations, shapeToolCallLocation)
+	decodePatch(raw.Name, &v.Name)
+	decodePatch(raw.RawInput, &v.RawInput)
+	decodePatch(raw.RawOutput, &v.RawOutput)
+	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
+	decodePatch(raw.Title, &v.Title)
 	return nil
 }
 
@@ -10228,12 +10347,33 @@ type SessionSessionInfoUpdate struct {
 	// these keys.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
-	Meta          Meta   `json:"_meta,omitempty"`
-	SessionUpdate string `json:"sessionUpdate"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Meta          Patch[Meta] `json:"_meta"`
+	SessionUpdate string      `json:"sessionUpdate"`
 	// Human-readable title for the session. Set to null to clear.
-	Title *string `json:"title,omitempty"`
+	Title Patch[string] `json:"title"`
 	// ISO 8601 timestamp of last activity. Set to null to clear.
-	UpdatedAt *string `json:"updatedAt,omitempty"`
+	UpdatedAt Patch[string] `json:"updatedAt"`
+}
+
+func (v SessionSessionInfoUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SessionSessionInfoUpdate
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta          *Patch[Meta]   `json:"_meta,omitempty"`
+		SessionUpdate string         `json:"sessionUpdate"`
+		Title         *Patch[string] `json:"title,omitempty"`
+		UpdatedAt     *Patch[string] `json:"updatedAt,omitempty"`
+	}
+	return json.Marshal(patched{
+		Meta:          a.Meta.orNil(),
+		SessionUpdate: a.SessionUpdate,
+		Title:         a.Title.orNil(),
+		UpdatedAt:     a.UpdatedAt.orNil(),
+	})
 }
 
 func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
@@ -10248,9 +10388,9 @@ func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Title, &v.Title)
-	decodeLenient(raw.UpdatedAt, &v.UpdatedAt)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(raw.Title, &v.Title)
+	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
 	return nil
 }
 
@@ -10329,16 +10469,38 @@ func (v *SessionUpdateNotice) UnmarshalJSON(b []byte) error {
 // the 'session.compaction' Client capability.
 type SessionCompactionUpdate struct {
 	// Extensible metadata patch for this compaction.
-	Meta Meta `json:"_meta,omitempty"`
+	Meta Patch[Meta] `json:"_meta"`
 	// The Agent-owned ID of this compaction, unique within the session.
 	CompactionId CompactionId `json:"compactionId"`
 	// Human-readable error details for the compaction.
-	Error         *string `json:"error,omitempty"`
-	SessionUpdate string  `json:"sessionUpdate"`
+	Error         Patch[string] `json:"error"`
+	SessionUpdate string        `json:"sessionUpdate"`
 	// Current lifecycle status.
 	Status CompactionStatus `json:"status"`
 	// Complete replacement user-displayable summary content for the compaction.
-	Summary []ContentBlock `json:"summary,omitempty"`
+	Summary Patch[[]ContentBlock] `json:"summary"`
+}
+
+func (v SessionCompactionUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SessionCompactionUpdate
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta          *Patch[Meta]           `json:"_meta,omitempty"`
+		CompactionId  CompactionId           `json:"compactionId"`
+		Error         *Patch[string]         `json:"error,omitempty"`
+		SessionUpdate string                 `json:"sessionUpdate"`
+		Status        CompactionStatus       `json:"status"`
+		Summary       *Patch[[]ContentBlock] `json:"summary,omitempty"`
+	}
+	return json.Marshal(patched{
+		CompactionId:  a.CompactionId,
+		Error:         a.Error.orNil(),
+		Meta:          a.Meta.orNil(),
+		SessionUpdate: a.SessionUpdate,
+		Status:        a.Status,
+		Summary:       a.Summary.orNil(),
+	})
 }
 
 func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
@@ -10353,9 +10515,9 @@ func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Error, &v.Error)
-	decodeLenientItems(raw.Summary, &v.Summary, shapeContentBlock)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(raw.Error, &v.Error)
+	decodePatchItems(raw.Summary, &v.Summary, shapeContentBlock)
 	return nil
 }
 
@@ -10452,7 +10614,7 @@ type SessionSubagentUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	// Omitted means unchanged. 'null' removes the metadata.
-	Meta Meta `json:"_meta,omitempty"`
+	Meta Patch[Meta] `json:"_meta"`
 	// Additional workspace roots for the child. Each path must be absolute.
 	//
 	// Optional and nullable. Omitted means unchanged. 'null' clears the
@@ -10460,27 +10622,27 @@ type SessionSubagentUpdate struct {
 	// effective additional directories, independently of 'cwd'. A concrete
 	// array replaces the whole list. '[]' reports no additional directories.
 	// Clients use these values for the child's root set.
-	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`
+	AdditionalDirectories Patch[[]string] `json:"additionalDirectories"`
 	// Client-initiated session mutations permitted for this subagent session.
 	//
 	// Omitted means unchanged. 'null' clears the capability set and disables
 	// child mutations. If never supplied, no session mutations are permitted.
 	// Read-only operations retain their normal protocol semantics and capability
 	// requirements. A concrete object replaces the whole capability set.
-	Capabilities *SubagentSessionCapabilities `json:"capabilities,omitempty"`
+	Capabilities Patch[SubagentSessionCapabilities] `json:"capabilities"`
 	// The child's working directory. Must be an absolute path.
 	//
 	// Optional and nullable. Omitted means unchanged. 'null' clears the
 	// reported value. While unset, the child inherits its immediate parent's
 	// effective working directory. Clients use this value for the child's
 	// root set and as the default terminal working directory.
-	Cwd *string `json:"cwd,omitempty"`
+	Cwd Patch[string] `json:"cwd"`
 	// The parent's human-readable description of the child's role or purpose.
 	//
 	// Omitted means unchanged. 'null' clears it. If unset, the Client chooses
 	// a fallback presentation. This is current display metadata, not the
 	// history of instructions sent to the child.
-	Description *string `json:"description,omitempty"`
+	Description Patch[string] `json:"description"`
 	// The opaque session ID identifying the child in all ACP messages.
 	SessionId     SessionId `json:"sessionId"`
 	SessionUpdate string    `json:"sessionUpdate"`
@@ -10490,12 +10652,40 @@ type SessionSubagentUpdate struct {
 	// asserting idle or sending an 'unknown' snapshot. A concrete state
 	// replaces the previous state object wholesale. If never supplied, the
 	// current activity is unset/unconfirmed.
-	State *StateUpdate `json:"state,omitempty"`
+	State Patch[StateUpdate] `json:"state"`
 	// The parent's human-readable display title for this child. It need not be unique.
 	//
 	// Omitted means unchanged. 'null' clears it. If unset, the Client chooses
 	// a fallback presentation.
-	Title *string `json:"title,omitempty"`
+	Title Patch[string] `json:"title"`
+}
+
+func (v SessionSubagentUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SessionSubagentUpdate
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta                  *Patch[Meta]                        `json:"_meta,omitempty"`
+		AdditionalDirectories *Patch[[]string]                    `json:"additionalDirectories,omitempty"`
+		Capabilities          *Patch[SubagentSessionCapabilities] `json:"capabilities,omitempty"`
+		Cwd                   *Patch[string]                      `json:"cwd,omitempty"`
+		Description           *Patch[string]                      `json:"description,omitempty"`
+		SessionId             SessionId                           `json:"sessionId"`
+		SessionUpdate         string                              `json:"sessionUpdate"`
+		State                 *Patch[StateUpdate]                 `json:"state,omitempty"`
+		Title                 *Patch[string]                      `json:"title,omitempty"`
+	}
+	return json.Marshal(patched{
+		AdditionalDirectories: a.AdditionalDirectories.orNil(),
+		Capabilities:          a.Capabilities.orNil(),
+		Cwd:                   a.Cwd.orNil(),
+		Description:           a.Description.orNil(),
+		Meta:                  a.Meta.orNil(),
+		SessionId:             a.SessionId,
+		SessionUpdate:         a.SessionUpdate,
+		State:                 a.State.orNil(),
+		Title:                 a.Title.orNil(),
+	})
 }
 
 func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
@@ -10512,11 +10702,11 @@ func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Capabilities, &v.Capabilities)
-	decodeLenient(raw.Description, &v.Description)
-	decodeLenient(raw.State, &v.State, shapeStateUpdate)
-	decodeLenient(raw.Title, &v.Title)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(raw.Capabilities, &v.Capabilities)
+	decodePatch(raw.Description, &v.Description)
+	decodePatch(raw.State, &v.State, shapeStateUpdate)
+	decodePatch(raw.Title, &v.Title)
 	return nil
 }
 
@@ -10530,10 +10720,10 @@ type SessionUpdateSessionMessage struct {
 	// Omitted leaves metadata unchanged. 'null' removes it.
 	//
 	// Implementations MUST NOT make assumptions about values in '_meta'.
-	Meta Meta `json:"_meta,omitempty"`
+	Meta Patch[Meta] `json:"_meta"`
 	// Omitted leaves content unchanged. 'null' or '[]' clears it.
 	// A non-empty array replaces all content.
-	Content []ContentBlock `json:"content,omitempty"`
+	Content Patch[[]ContentBlock] `json:"content"`
 	// Identifier of this message within the enclosing session's transcript.
 	MessageId MessageId `json:"messageId"`
 	// On an outgoing view, the 'messageId' of the same message's incoming view in the
@@ -10541,22 +10731,48 @@ type SessionUpdateSessionMessage struct {
 	//
 	// Omitted leaves the stored value unchanged. 'null' clears it. A value replaces it. It can arrive
 	// after the message starts streaming.
-	RecipientMessageId *MessageId `json:"recipientMessageId,omitempty"`
+	RecipientMessageId Patch[MessageId] `json:"recipientMessageId"`
 	// The receiving session.
 	//
 	// Omitted leaves the stored value unchanged. 'null' clears it. A value replaces it.
-	RecipientSessionId *SessionId `json:"recipientSessionId,omitempty"`
+	RecipientSessionId Patch[SessionId] `json:"recipientSessionId"`
 	// On an incoming view, the 'messageId' of the same message's outgoing view in the
 	// sender's transcript.
 	//
 	// Omitted leaves the stored value unchanged. 'null' clears it. A value replaces it. It can arrive
 	// after the message starts streaming.
-	SenderMessageId *MessageId `json:"senderMessageId,omitempty"`
+	SenderMessageId Patch[MessageId] `json:"senderMessageId"`
 	// The sending session.
 	//
 	// Omitted leaves the stored value unchanged. 'null' clears it. A value replaces it.
-	SenderSessionId *SessionId `json:"senderSessionId,omitempty"`
-	SessionUpdate   string     `json:"sessionUpdate"`
+	SenderSessionId Patch[SessionId] `json:"senderSessionId"`
+	SessionUpdate   string           `json:"sessionUpdate"`
+}
+
+func (v SessionUpdateSessionMessage) MarshalJSON() ([]byte, error) {
+	type Alias SessionUpdateSessionMessage
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta               *Patch[Meta]           `json:"_meta,omitempty"`
+		Content            *Patch[[]ContentBlock] `json:"content,omitempty"`
+		MessageId          MessageId              `json:"messageId"`
+		RecipientMessageId *Patch[MessageId]      `json:"recipientMessageId,omitempty"`
+		RecipientSessionId *Patch[SessionId]      `json:"recipientSessionId,omitempty"`
+		SenderMessageId    *Patch[MessageId]      `json:"senderMessageId,omitempty"`
+		SenderSessionId    *Patch[SessionId]      `json:"senderSessionId,omitempty"`
+		SessionUpdate      string                 `json:"sessionUpdate"`
+	}
+	return json.Marshal(patched{
+		Content:            a.Content.orNil(),
+		MessageId:          a.MessageId,
+		Meta:               a.Meta.orNil(),
+		RecipientMessageId: a.RecipientMessageId.orNil(),
+		RecipientSessionId: a.RecipientSessionId.orNil(),
+		SenderMessageId:    a.SenderMessageId.orNil(),
+		SenderSessionId:    a.SenderSessionId.orNil(),
+		SessionUpdate:      a.SessionUpdate,
+	})
 }
 
 func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
@@ -10574,12 +10790,12 @@ func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content, shapeContentBlock)
-	decodeLenient(raw.RecipientMessageId, &v.RecipientMessageId)
-	decodeLenient(raw.RecipientSessionId, &v.RecipientSessionId)
-	decodeLenient(raw.SenderMessageId, &v.SenderMessageId)
-	decodeLenient(raw.SenderSessionId, &v.SenderSessionId)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatchItems(raw.Content, &v.Content, shapeContentBlock)
+	decodePatch(raw.RecipientMessageId, &v.RecipientMessageId)
+	decodePatch(raw.RecipientSessionId, &v.RecipientSessionId)
+	decodePatch(raw.SenderMessageId, &v.SenderMessageId)
+	decodePatch(raw.SenderSessionId, &v.SenderSessionId)
 	return nil
 }
 
@@ -12414,7 +12630,7 @@ type SubagentUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	// Omitted means unchanged. 'null' removes the metadata.
-	Meta Meta `json:"_meta,omitempty"`
+	Meta Patch[Meta] `json:"_meta"`
 	// Additional workspace roots for the child. Each path must be absolute.
 	//
 	// Optional and nullable. Omitted means unchanged. 'null' clears the
@@ -12422,27 +12638,27 @@ type SubagentUpdate struct {
 	// effective additional directories, independently of 'cwd'. A concrete
 	// array replaces the whole list. '[]' reports no additional directories.
 	// Clients use these values for the child's root set.
-	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`
+	AdditionalDirectories Patch[[]string] `json:"additionalDirectories"`
 	// Client-initiated session mutations permitted for this subagent session.
 	//
 	// Omitted means unchanged. 'null' clears the capability set and disables
 	// child mutations. If never supplied, no session mutations are permitted.
 	// Read-only operations retain their normal protocol semantics and capability
 	// requirements. A concrete object replaces the whole capability set.
-	Capabilities *SubagentSessionCapabilities `json:"capabilities,omitempty"`
+	Capabilities Patch[SubagentSessionCapabilities] `json:"capabilities"`
 	// The child's working directory. Must be an absolute path.
 	//
 	// Optional and nullable. Omitted means unchanged. 'null' clears the
 	// reported value. While unset, the child inherits its immediate parent's
 	// effective working directory. Clients use this value for the child's
 	// root set and as the default terminal working directory.
-	Cwd *string `json:"cwd,omitempty"`
+	Cwd Patch[string] `json:"cwd"`
 	// The parent's human-readable description of the child's role or purpose.
 	//
 	// Omitted means unchanged. 'null' clears it. If unset, the Client chooses
 	// a fallback presentation. This is current display metadata, not the
 	// history of instructions sent to the child.
-	Description *string `json:"description,omitempty"`
+	Description Patch[string] `json:"description"`
 	// The opaque session ID identifying the child in all ACP messages.
 	SessionId SessionId `json:"sessionId"`
 	// Current state snapshot for the child session.
@@ -12451,12 +12667,38 @@ type SubagentUpdate struct {
 	// asserting idle or sending an 'unknown' snapshot. A concrete state
 	// replaces the previous state object wholesale. If never supplied, the
 	// current activity is unset/unconfirmed.
-	State *StateUpdate `json:"state,omitempty"`
+	State Patch[StateUpdate] `json:"state"`
 	// The parent's human-readable display title for this child. It need not be unique.
 	//
 	// Omitted means unchanged. 'null' clears it. If unset, the Client chooses
 	// a fallback presentation.
-	Title *string `json:"title,omitempty"`
+	Title Patch[string] `json:"title"`
+}
+
+func (v SubagentUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SubagentUpdate
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta                  *Patch[Meta]                        `json:"_meta,omitempty"`
+		AdditionalDirectories *Patch[[]string]                    `json:"additionalDirectories,omitempty"`
+		Capabilities          *Patch[SubagentSessionCapabilities] `json:"capabilities,omitempty"`
+		Cwd                   *Patch[string]                      `json:"cwd,omitempty"`
+		Description           *Patch[string]                      `json:"description,omitempty"`
+		SessionId             SessionId                           `json:"sessionId"`
+		State                 *Patch[StateUpdate]                 `json:"state,omitempty"`
+		Title                 *Patch[string]                      `json:"title,omitempty"`
+	}
+	return json.Marshal(patched{
+		AdditionalDirectories: a.AdditionalDirectories.orNil(),
+		Capabilities:          a.Capabilities.orNil(),
+		Cwd:                   a.Cwd.orNil(),
+		Description:           a.Description.orNil(),
+		Meta:                  a.Meta.orNil(),
+		SessionId:             a.SessionId,
+		State:                 a.State.orNil(),
+		Title:                 a.Title.orNil(),
+	})
 }
 
 func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
@@ -12473,11 +12715,11 @@ func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Capabilities, &v.Capabilities)
-	decodeLenient(raw.Description, &v.Description)
-	decodeLenient(raw.State, &v.State, shapeStateUpdate)
-	decodeLenient(raw.Title, &v.Title)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(raw.Capabilities, &v.Capabilities)
+	decodePatch(raw.Description, &v.Description)
+	decodePatch(raw.State, &v.State, shapeStateUpdate)
+	decodePatch(raw.Title, &v.Title)
 	return nil
 }
 
@@ -13185,28 +13427,82 @@ type ToolCallUpdate struct {
 	// these keys.
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
-	Meta Meta `json:"_meta,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
-	Content []ToolCallContent `json:"content,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
-	Kind *ToolKind `json:"kind,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
-	Locations []ToolCallLocation `json:"locations,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
 	// the existing name is left unchanged.
-	Name *string `json:"name,omitempty"`
+	Name Patch[string] `json:"name"`
 	// Update the raw input.
-	RawInput json.RawMessage `json:"rawInput,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
-	RawOutput json.RawMessage `json:"rawOutput,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	RawOutput Patch[json.RawMessage] `json:"rawOutput"`
 	// Update the execution status.
-	Status *ToolCallStatus `json:"status,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
-	Title *string `json:"title,omitempty"`
+	//
+	// ACP v1 does not say that null clears this field, and the Rust SDK
+	// reads null here as absent: treat IsNull like IsUnset.
+	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
+}
+
+func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
+	type Alias ToolCallUpdate
+	var a Alias
+	a = Alias(v)
+	type patched struct {
+		Meta       *Patch[Meta]               `json:"_meta,omitempty"`
+		Content    *Patch[[]ToolCallContent]  `json:"content,omitempty"`
+		Kind       *Patch[ToolKind]           `json:"kind,omitempty"`
+		Locations  *Patch[[]ToolCallLocation] `json:"locations,omitempty"`
+		Name       *Patch[string]             `json:"name,omitempty"`
+		RawInput   *Patch[json.RawMessage]    `json:"rawInput,omitempty"`
+		RawOutput  *Patch[json.RawMessage]    `json:"rawOutput,omitempty"`
+		Status     *Patch[ToolCallStatus]     `json:"status,omitempty"`
+		Title      *Patch[string]             `json:"title,omitempty"`
+		ToolCallId ToolCallId                 `json:"toolCallId"`
+	}
+	return json.Marshal(patched{
+		Content:    a.Content.orNil(),
+		Kind:       a.Kind.orNil(),
+		Locations:  a.Locations.orNil(),
+		Meta:       a.Meta.orNil(),
+		Name:       a.Name.orNil(),
+		RawInput:   a.RawInput.orNil(),
+		RawOutput:  a.RawOutput.orNil(),
+		Status:     a.Status.orNil(),
+		Title:      a.Title.orNil(),
+		ToolCallId: a.ToolCallId,
+	})
 }
 
 func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
@@ -13227,15 +13523,15 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenientItems(raw.Content, &v.Content, shapeToolCallContent)
-	decodeLenient(raw.Kind, &v.Kind)
-	decodeLenientItems(raw.Locations, &v.Locations, shapeToolCallLocation)
-	decodeLenient(raw.Name, &v.Name)
-	decodeLenient(raw.RawInput, &v.RawInput)
-	decodeLenient(raw.RawOutput, &v.RawOutput)
-	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
-	decodeLenient(raw.Title, &v.Title)
+	decodePatch(raw.Meta, &v.Meta)
+	decodePatchItems(raw.Content, &v.Content, shapeToolCallContent)
+	decodePatch(raw.Kind, &v.Kind)
+	decodePatchItems(raw.Locations, &v.Locations, shapeToolCallLocation)
+	decodePatch(raw.Name, &v.Name)
+	decodePatch(raw.RawInput, &v.RawInput)
+	decodePatch(raw.RawOutput, &v.RawOutput)
+	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
+	decodePatch(raw.Title, &v.Title)
 	return nil
 }
 
@@ -16653,6 +16949,40 @@ func propertyError(err error, structName, prop string) error {
 		}
 	}
 	return err
+}
+
+// decodePatch decodes a patch field that has x-deserialize-default-on-error.
+// An absent field leaves dst alone, null clears it, and a value that is not a
+// valid T, or that does not fit the shape check, leaves it unset.
+func decodePatch[T any](raw json.RawMessage, dst *Patch[T], check ...shapeID) {
+	switch {
+	case raw == nil:
+	case string(raw) == "null":
+		*dst = PatchNull[T]()
+	default:
+		var v T
+		*dst = Patch[T]{}
+		if decodeLenient(raw, &v, check...) {
+			*dst = PatchSet(v)
+		}
+	}
+}
+
+// decodePatchItems decodes a patch field that has both hints: it also drops
+// the items that are null, that are not a valid T, or that do not fit the shape
+// check.
+func decodePatchItems[T any](raw json.RawMessage, dst *Patch[[]T], check ...shapeID) {
+	switch {
+	case raw == nil:
+	case string(raw) == "null":
+		*dst = PatchNull[[]T]()
+	default:
+		var v []T
+		*dst = Patch[[]T]{}
+		if decodeLenientItems(raw, &v, check...) {
+			*dst = PatchSet(v)
+		}
+	}
 }
 
 // additionalProperties returns the members of the JSON object b that named

@@ -637,12 +637,12 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 		SessionId: acp.SessionId(sid),
 		ToolCall: acp.ToolCallUpdate{
 			ToolCallId: editID,
-			Title:      acp.Ptr("Modifying critical configuration file"),
-			Name:       acp.Ptr("write_file"),
-			Kind:       acp.Ptr(acp.ToolKindEdit),
-			Status:     acp.Ptr(acp.ToolCallStatusPending),
-			Locations:  []acp.ToolCallLocation{{Path: "/project/config.json"}},
-			RawInput:   edit,
+			Title:      acp.PatchSet("Modifying critical configuration file"),
+			Name:       acp.PatchSet("write_file"),
+			Kind:       acp.PatchSet(acp.ToolKindEdit),
+			Status:     acp.PatchSet(acp.ToolCallStatusPending),
+			Locations:  acp.PatchSet([]acp.ToolCallLocation{{Path: "/project/config.json"}}),
+			RawInput:   acp.PatchSet[json.RawMessage](edit),
 		},
 		Options: []acp.PermissionOption{
 			{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow this change", OptionId: acp.PermissionOptionId("allow")},

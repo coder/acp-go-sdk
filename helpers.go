@@ -200,7 +200,7 @@ func UpdateToolCall(id ToolCallId, opts ...ToolCallUpdateOpt) SessionUpdate {
 // WithUpdateTitle sets the title for a tool_call_update.
 func WithUpdateTitle(t string) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.Title = Ptr(t)
+		tu.Title = PatchSet(t)
 	}
 }
 
@@ -208,43 +208,55 @@ func WithUpdateTitle(t string) ToolCallUpdateOpt {
 // tool_call_update.
 func WithUpdateName(n string) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.Name = Ptr(n)
+		tu.Name = PatchSet(n)
 	}
 }
 
 // WithUpdateKind sets the kind for a tool_call_update.
 func WithUpdateKind(k ToolKind) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.Kind = Ptr(k)
+		tu.Kind = PatchSet(k)
 	}
 }
 
 // WithUpdateStatus sets the status for a tool_call_update.
 func WithUpdateStatus(s ToolCallStatus) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.Status = Ptr(s)
+		tu.Status = PatchSet(s)
 	}
 }
 
 // WithUpdateContent replaces the content collection for a tool_call_update.
+// A nil c leaves the field unset, so the content stays as it is; an empty
+// non-nil c sends [], which replaces it with none.
 func WithUpdateContent(c []ToolCallContent) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.Content = c
+		tu.Content = patchSlice(c)
 	}
 }
 
 // WithUpdateLocations replaces the locations collection for a tool_call_update.
+// A nil l leaves the field unset, so the locations stay as they are; an empty
+// non-nil l sends [], which replaces them with none.
 func WithUpdateLocations(l []ToolCallLocation) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.Locations = l
+		tu.Locations = patchSlice(l)
 	}
+}
+
+// patchSlice returns the Patch that sets s, or an unset one for a nil s.
+func patchSlice[T any](s []T) Patch[[]T] {
+	if s == nil {
+		return Patch[[]T]{}
+	}
+	return PatchSet(s)
 }
 
 // WithUpdateRawInput sets rawInput for a tool_call_update to v encoded as
 // JSON, as WithStartRawInput does.
 func WithUpdateRawInput(v any) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.RawInput = encodeRaw(v)
+		tu.RawInput = patchRaw(v)
 	}
 }
 
@@ -252,7 +264,7 @@ func WithUpdateRawInput(v any) ToolCallUpdateOpt {
 // JSON, as WithStartRawInput does.
 func WithUpdateRawOutput(v any) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.RawOutput = encodeRaw(v)
+		tu.RawOutput = patchRaw(v)
 	}
 }
 
@@ -284,6 +296,16 @@ func encodeRaw(v any) json.RawMessage {
 		return nil
 	}
 	return raw
+}
+
+// patchRaw returns the Patch that sets v encoded as JSON, or an unset one when
+// v is nil or json.Marshal cannot encode it.
+func patchRaw(v any) Patch[json.RawMessage] {
+	raw := encodeRaw(v)
+	if raw == nil {
+		return Patch[json.RawMessage]{}
+	}
+	return PatchSet(raw)
 }
 
 // withPath returns rawInput with the member path set to path, when rawInput

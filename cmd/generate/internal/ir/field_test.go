@@ -60,3 +60,18 @@ func TestFields_PanicsOnSkipInvalidItemsOutsideAnArray(t *testing.T) {
 	}()
 	Fields(def.Properties, def.Required)
 }
+
+func TestFields_SkipsAnOptionalPropertyWhoseTypeIsOnlyNull(t *testing.T) {
+	def := parseObject(t, `{"type": "object", "required": ["marker"], "properties": {
+		"marker": {"type": "null"},
+		"stopReason": {"type": "null"},
+		"usage": {"type": ["integer", "null"]}
+	}}`)
+	var got []string
+	for _, f := range Fields(def.Properties, def.Required) {
+		got = append(got, f.Prop)
+	}
+	if want := []string{"marker", "usage"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Fields() has the properties %v, want %v: the required marker, and not the optional stopReason", got, want)
+	}
+}

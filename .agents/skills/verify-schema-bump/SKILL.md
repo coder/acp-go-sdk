@@ -76,11 +76,14 @@ For each value the test decodes it into the def's SDK type, calls its `Validate`
 | `HINT` | The SDK ignores an `x-deserialize-*` hint. |
 | `UNKNOWN` | Logged, not a failure: the input has a member that no node of the schema defines, such as a field from a newer schema version, and the SDK drops it. Listed in `unknown.txt`. |
 
-`TestHints` finds each property that carries a hint, in a def or in one of its top-level alternatives, in each schema file (a def that both files share is checked once per file, because the files can define it differently), and builds a value of the def around it:
+`TestHints` finds each property that carries a hint in each schema file (a def that both files share is checked once per file, because the files can define it differently). It looks in each def, in each top-level alternative of the def, and in the items of an alternative that is an array, and it follows `$ref` and `allOf`. So `args` of `McpServerStdio` is checked in that type and again in `McpServer`, the union that must select the stdio variant before the SDK can honor the hint. The test builds a value of the def around the property:
 
-- `x-deserialize-default-on-error`: the value with a good property must be schema-valid, else the site is skipped. Then the property gets the first of `"malformed"`, `12345`, `true`, `{"malformed":true}`, `["malformed"]` that the schema rejects. The SDK must decode it without an error, to the same JSON as the value without the property.
-- `x-deserialize-skip-invalid-items`: the array gets one good item and one bad one. The SDK must decode it to the same JSON as the array with the good item only.
-- `x-deserialize-default-on-null` (schema 1.27.0 and later): the property is `null`. The SDK must decode it to the same JSON as the value without the property, and must not write the property back as `null` unless it does so for the value without it too.
+- `x-deserialize-default-on-error`: the value with a good property must be schema-valid, else the site is skipped. Then the property gets two bad values in turn, each only when the schema rejects it: `null`, and the first of `"malformed"`, `12345`, `true`, `{"malformed":true}`, `["malformed"]`. The SDK must decode each without an error, to the same JSON as the value without the property.
+- A property whose type is a closed enum with the member `other`, such as `ToolKind`, never gets a string as the bad value. The Rust types mark that member `#[serde(other)]` and read every string that the enum does not list as `other`, and so does the SDK. The schema does not say so, which is why the test goes by the member's name.
+- `x-deserialize-skip-invalid-items`: the array gets one good item and one bad one, chosen the same way. The SDK must decode it to the same JSON as the array with the good item only.
+- `x-deserialize-default-on-null` (schema 1.27.0 and later): the property is `null`. The SDK must decode it to the same JSON as the value without the property.
+- A property that is `null` in the input must not come back as `null`, unless the SDK writes it so for the value without the property too.
+- For a required array, the value without the property is the value with an empty array instead. A union selects no variant without its required keys, and the Rust types read the bad value as an empty array. Every required property with a hint is an array in the 25 schema releases up to 1.32.0.
 
 A schema without hints logs `SUMMARY hints: no hints in this schema`.
 
@@ -113,7 +116,7 @@ None of the gates runs in `make test`. G1 and G7 need the network. G2 needs the 
 
 ## Known results at schema 0.13.5
 
-`main` at `a0c38c3` (after #90) with this skill merged, measured on 2026-11-17.
+Measured on 2026-11-17. G1 and G7: `main` at `a0c38c3` (after #90) with this skill merged. G2: after #93, #94, #95 and #97, which fixed the decode problems that G2 found.
 
 G1 at 0.13.5 alone (`g1-walk 0.13.5`): `gen`, `idem`, `drift`, `build` and `vet` pass; `methods` reports 2 gaps: `mcp/message` (`x-side: both`) has no dispatcher case on either side. The API diff against `v0.13.5` is empty.
 
@@ -126,11 +129,11 @@ G1 from 0.13.5 to 1.32.0 (`g1-walk 1.32.0`, 25 releases): every release generate
 
 From 1.24.0 on, `methods` passes: the generator dispatches `mcp/message` on both sides. `apidiff` at 1.32.0 is skipped because the target does not build. The `helpers.go:71` failure hides later errors: with it fixed, 1.32.0 has 31 compile errors in `example/` and `go vet` fails on `acp_test.go`.
 
-G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; the 13 without one are unstable-only elicitation schema defs, listed, not failed. Every stable def at every bump target (1.13.7, 1.20.0, 1.21.0, 1.25.0, 1.32.0) has one. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). G2 fails with 183 distinct problems:
+G2 (`g2-roundtrip`): 242 of 255 defs have an SDK type; the 13 without one are unstable-only elicitation schema defs, listed, not failed. Every stable def at every bump target (1.13.7, 1.20.0, 1.21.0, 1.25.0, 1.32.0) has one. 879 built values and 51 transcript messages are checked (8 extension messages and 2 `auth/status_update` notifications skipped). All 211 hint sites pass (72 in `schema.json`, 139 in `schema.unstable.json`). 46 of them are a property of a union alternative. G2 still fails, with 3 distinct problems:
 
-- `HINT` 165 (51 in `schema.json`, 114 in `schema.unstable.json`): the SDK honors no hint. 122 `x-deserialize-default-on-error` and 43 `x-deserialize-skip-invalid-items` sites fail to decode a bad value.
-- `LOSSY` 14: `ContentBlock` drops `_meta` and `annotations` (6 lines: also `Content`, `ContentChunk`, `ToolCallContent`, `PromptRequest.prompt` and `SessionUpdate`, which hold one); the unstable elicitation types drop `sessionId`, `toolCallId`, `elicitationId`, `url` and `requestedSchema` (5 lines); the SDK writes the unstable `auth: {}` capability into `ClientCapabilities` built from `schema.json`, which does not define it (3 lines).
-- `SCHEMA` 4: the encoded `CreateElicitationRequest`, `ElicitationFormMode` and `ElicitationUrlMode` miss required properties.
+- `LOSSY` 3: the SDK writes the unstable `auth: {}` capability into `ClientCapabilities` built from `schema.json`, which does not define it (`ClientCapabilities` once and `InitializeRequest` twice). These lines are accepted. They go away at schema 1.21.0, where `auth` becomes stable.
 - `UNKNOWN` 3 (not failures): the adapters send fields that 0.13.5 does not define, and the SDK drops them: `agentCapabilities.auth.status`, `agentCapabilities.sessionCapabilities.options`, `.status`, `.systemPrompt` and `.title`, and `NewSessionResponse.models`.
+
+Before those four PRs, G2 reported 183 distinct problems on `main` at `a0c38c3`: `HINT` 165 (the SDK honored no hint, and the test did not check a property in its union yet), `LOSSY` 14 (the 3 lines above, `_meta` and `annotations` of a `ContentBlock`, and properties of the unstable elicitation types) and `SCHEMA` 4 (encoded elicitation types without required properties).
 
 G7 (`g7-canary`): passes. `docker/docker-agent` at `19a7356` (1 package), `jaegertracing/jaeger` at `f141f57` (3 packages) and `coder/coder` at `a3f25a4` (2 packages: `agent/x/agentacp`, `coderd/x/chatd`) build against `main`. A checkout with `NewInvalidParams` and `PromptResponse.StopReason` renamed fails docker-agent with two groups, `acp.NewInvalidParams (29)` and `acp.PromptResponse.StopReason (5)`.

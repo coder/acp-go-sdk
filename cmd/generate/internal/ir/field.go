@@ -33,7 +33,9 @@ type Field struct {
 }
 
 // Fields returns one Field per property of an object schema, sorted by
-// property name. It panics when a property that is not an array has
+// property name. An optional property whose type is "null" alone gets none: it
+// can hold no value. A required one keeps its field, so that the struct writes
+// the member. It panics when a property that is not an array has
 // x-deserialize-skip-invalid-items.
 func Fields(props map[string]*load.Definition, required []string) []Field {
 	isRequired := make(map[string]bool, len(required))
@@ -48,6 +50,9 @@ func Fields(props map[string]*load.Definition, required []string) []Field {
 	fields := make([]Field, 0, len(names))
 	for _, name := range names {
 		def := props[name]
+		if t, ok := def.Type.(string); ok && t == "null" && !isRequired[name] {
+			continue
+		}
 		if def.SkipInvalidItems && PrimaryType(def) != "array" {
 			panic(fmt.Sprintf("property %q has x-deserialize-skip-invalid-items but is not an array", name))
 		}

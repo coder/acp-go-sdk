@@ -194,6 +194,9 @@ type AgentResponse struct {
 
 func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	*u = AgentResponse{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -219,7 +222,7 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 			if _, ok := m["id"]; !ok {
 				match = false
 			}
-			if _, ok := m["error"]; !ok {
+			if raw := string(m["error"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -246,7 +249,7 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -257,7 +260,7 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -516,6 +519,9 @@ type AuthMethod struct {
 
 func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 	*u = AuthMethod{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -541,55 +547,12 @@ func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 			}
 		}
 		{
-			var v AuthMethodEnvVarInline
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if _, ok := m["vars"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.EnvVar = &v
-				return nil
-			}
-		}
-		{
-			var v AuthMethodTerminalInline
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Terminal = &v
-				return nil
-			}
-		}
-		{
 			var v AuthMethodAgent
 			var match bool = true
-			if _, ok := m["id"]; !ok {
+			if raw := string(m["id"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["name"]; !ok {
+			if raw := string(m["name"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -616,11 +579,11 @@ func (u AuthMethod) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "env_var"
+		m["type"] = json.RawMessage("\"env_var\"")
 		return json.Marshal(m)
 	}
 	if u.Terminal != nil {
@@ -628,11 +591,11 @@ func (u AuthMethod) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "terminal"
+		m["type"] = json.RawMessage("\"terminal\"")
 		return json.Marshal(m)
 	}
 	if u.Agent != nil {
@@ -640,7 +603,7 @@ func (u AuthMethod) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -803,12 +766,15 @@ type AvailableCommandInput struct {
 
 func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 	*u = AvailableCommandInput{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
 			var v UnstructuredCommandInput
 			var match bool = true
-			if _, ok := m["hint"]; !ok {
+			if raw := string(m["hint"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -835,7 +801,7 @@ func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -1102,6 +1068,9 @@ type ClientResponse struct {
 
 func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	*u = ClientResponse{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1127,7 +1096,7 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 			if _, ok := m["id"]; !ok {
 				match = false
 			}
-			if _, ok := m["error"]; !ok {
+			if raw := string(m["error"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -1154,7 +1123,7 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -1165,7 +1134,7 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -1458,6 +1427,9 @@ type ContentBlock struct {
 
 func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 	*u = ContentBlock{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1503,100 +1475,6 @@ func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v ContentBlockText
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["text"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Text = &v
-				return nil
-			}
-		}
-		{
-			var v ContentBlockImage
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["data"]; !ok {
-				match = false
-			}
-			if _, ok := m["mimeType"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Image = &v
-				return nil
-			}
-		}
-		{
-			var v ContentBlockAudio
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["data"]; !ok {
-				match = false
-			}
-			if _, ok := m["mimeType"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Audio = &v
-				return nil
-			}
-		}
-		{
-			var v ContentBlockResourceLink
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if _, ok := m["uri"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.ResourceLink = &v
-				return nil
-			}
-		}
-		{
-			var v ContentBlockResource
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["resource"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Resource = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -1613,11 +1491,11 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "text"
+		m["type"] = json.RawMessage("\"text\"")
 		return json.Marshal(m)
 	}
 	if u.Image != nil {
@@ -1625,11 +1503,11 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "image"
+		m["type"] = json.RawMessage("\"image\"")
 		return json.Marshal(m)
 	}
 	if u.Audio != nil {
@@ -1637,11 +1515,11 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "audio"
+		m["type"] = json.RawMessage("\"audio\"")
 		return json.Marshal(m)
 	}
 	if u.ResourceLink != nil {
@@ -1649,11 +1527,11 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "resource_link"
+		m["type"] = json.RawMessage("\"resource_link\"")
 		return json.Marshal(m)
 	}
 	if u.Resource != nil {
@@ -1661,11 +1539,11 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "resource"
+		m["type"] = json.RawMessage("\"resource\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -1913,15 +1791,18 @@ type EmbeddedResourceResource struct {
 
 func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 	*u = EmbeddedResourceResource{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
 			var v TextResourceContents
 			var match bool = true
-			if _, ok := m["text"]; !ok {
+			if raw := string(m["text"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["uri"]; !ok {
+			if raw := string(m["uri"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -1935,10 +1816,10 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 		{
 			var v BlobResourceContents
 			var match bool = true
-			if _, ok := m["blob"]; !ok {
+			if raw := string(m["blob"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["uri"]; !ok {
+			if raw := string(m["uri"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -1965,7 +1846,7 @@ func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -1976,7 +1857,7 @@ func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -2070,6 +1951,9 @@ type ErrorCode struct {
 
 func (u *ErrorCode) UnmarshalJSON(b []byte) error {
 	*u = ErrorCode{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 	} else {
@@ -2868,6 +2752,9 @@ type McpServer struct {
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
 	*u = McpServer{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -2900,84 +2787,18 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 			}
 		}
 		{
-			var v McpServerHttpInline
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if _, ok := m["url"]; !ok {
-				match = false
-			}
-			if _, ok := m["headers"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Http = &v
-				return nil
-			}
-		}
-		{
-			var v McpServerSseInline
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if _, ok := m["url"]; !ok {
-				match = false
-			}
-			if _, ok := m["headers"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Sse = &v
-				return nil
-			}
-		}
-		{
-			var v McpServerAcpInline
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Acp = &v
-				return nil
-			}
-		}
-		{
 			var v McpServerStdio
 			var match bool = true
-			if _, ok := m["name"]; !ok {
+			if raw := string(m["name"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["command"]; !ok {
+			if raw := string(m["command"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["args"]; !ok {
+			if raw := string(m["args"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["env"]; !ok {
+			if raw := string(m["env"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -3004,11 +2825,11 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "http"
+		m["type"] = json.RawMessage("\"http\"")
 		return json.Marshal(m)
 	}
 	if u.Sse != nil {
@@ -3016,11 +2837,11 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "sse"
+		m["type"] = json.RawMessage("\"sse\"")
 		return json.Marshal(m)
 	}
 	if u.Acp != nil {
@@ -3028,11 +2849,11 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "acp"
+		m["type"] = json.RawMessage("\"acp\"")
 		return json.Marshal(m)
 	}
 	if u.Stdio != nil {
@@ -3040,7 +2861,7 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -3893,6 +3714,9 @@ type PlanUpdateContent struct {
 
 func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
 	*u = PlanUpdateContent{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -3924,66 +3748,6 @@ func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v PlanUpdateContentItems
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["entries"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Items = &v
-				return nil
-			}
-		}
-		{
-			var v PlanUpdateContentFile
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["uri"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.File = &v
-				return nil
-			}
-		}
-		{
-			var v PlanUpdateContentMarkdown
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["content"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Markdown = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -4000,11 +3764,11 @@ func (u PlanUpdateContent) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "items"
+		m["type"] = json.RawMessage("\"items\"")
 		return json.Marshal(m)
 	}
 	if u.File != nil {
@@ -4012,11 +3776,11 @@ func (u PlanUpdateContent) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "file"
+		m["type"] = json.RawMessage("\"file\"")
 		return json.Marshal(m)
 	}
 	if u.Markdown != nil {
@@ -4024,11 +3788,11 @@ func (u PlanUpdateContent) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "markdown"
+		m["type"] = json.RawMessage("\"markdown\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -4381,13 +4145,6 @@ func (u *RequestId) UnmarshalJSON(b []byte) error {
 	if json.Unmarshal(b, &arr) == nil {
 	}
 	{
-		var v RequestIdNull
-		if json.Unmarshal(b, &v) == nil {
-			u.Null = &v
-			return nil
-		}
-	}
-	{
 		var v RequestIdNumber
 		if json.Unmarshal(b, &v) == nil {
 			u.Number = &v
@@ -4464,6 +4221,9 @@ type RequestPermissionOutcome struct {
 
 func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 	*u = RequestPermissionOutcome{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -4488,37 +4248,6 @@ func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v RequestPermissionOutcomeCancelled
-			var match bool = true
-			if _, ok := m["outcome"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Cancelled = &v
-				return nil
-			}
-		}
-		{
-			var v RequestPermissionOutcomeSelected
-			var match bool = true
-			if _, ok := m["outcome"]; !ok {
-				match = false
-			}
-			if _, ok := m["optionId"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Selected = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -4535,11 +4264,11 @@ func (u RequestPermissionOutcome) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["outcome"] = "cancelled"
+		m["outcome"] = json.RawMessage("\"cancelled\"")
 		return json.Marshal(m)
 	}
 	if u.Selected != nil {
@@ -4547,11 +4276,11 @@ func (u RequestPermissionOutcome) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["outcome"] = "selected"
+		m["outcome"] = json.RawMessage("\"selected\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -4948,6 +4677,9 @@ type SessionConfigOption struct {
 
 func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
 	*u = SessionConfigOption{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -4972,43 +4704,6 @@ func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v SessionConfigOptionSelect
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["currentValue"]; !ok {
-				match = false
-			}
-			if _, ok := m["options"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Select = &v
-				return nil
-			}
-		}
-		{
-			var v SessionConfigOptionBoolean
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["currentValue"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Boolean = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -5025,11 +4720,11 @@ func (u SessionConfigOption) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "select"
+		m["type"] = json.RawMessage("\"select\"")
 		return json.Marshal(m)
 	}
 	if u.Boolean != nil {
@@ -5037,11 +4732,11 @@ func (u SessionConfigOption) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "boolean"
+		m["type"] = json.RawMessage("\"boolean\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -5154,6 +4849,9 @@ type SessionConfigSelectOptions struct {
 
 func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 	*u = SessionConfigSelectOptions{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 	} else {
@@ -5167,10 +4865,10 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 			var v SessionConfigSelectOptionsUngrouped
 			var match bool = true
 			for _, elem := range arr {
-				if _, ok := elem["name"]; !ok {
+				if raw := string(elem["name"]); raw == "" || raw == "null" {
 					match = false
 				}
-				if _, ok := elem["value"]; !ok {
+				if raw := string(elem["value"]); raw == "" || raw == "null" {
 					match = false
 				}
 			}
@@ -5186,13 +4884,13 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 			var v SessionConfigSelectOptionsGrouped
 			var match bool = true
 			for _, elem := range arr {
-				if _, ok := elem["group"]; !ok {
+				if raw := string(elem["group"]); raw == "" || raw == "null" {
 					match = false
 				}
-				if _, ok := elem["name"]; !ok {
+				if raw := string(elem["name"]); raw == "" || raw == "null" {
 					match = false
 				}
-				if _, ok := elem["options"]; !ok {
+				if raw := string(elem["options"]); raw == "" || raw == "null" {
 					match = false
 				}
 			}
@@ -5589,7 +5287,7 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenientItems(raw.Content, &v.Content)
-	decodeLenient(raw.Kind, &v.Kind, (*ToolKind).valid)
+	decodeLenient(raw.Kind, &v.Kind)
 	decodeLenientItems(raw.Locations, &v.Locations)
 	decodeLenient(raw.Status, &v.Status, (*ToolCallStatus).valid)
 	return nil
@@ -5861,6 +5559,9 @@ type SessionUpdate struct {
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 	*u = SessionUpdate{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -5962,230 +5663,6 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v SessionUpdateUserMessageChunk
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["content"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.UserMessageChunk = &v
-				return nil
-			}
-		}
-		{
-			var v SessionUpdateAgentMessageChunk
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["content"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.AgentMessageChunk = &v
-				return nil
-			}
-		}
-		{
-			var v SessionUpdateAgentThoughtChunk
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["content"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.AgentThoughtChunk = &v
-				return nil
-			}
-		}
-		{
-			var v SessionUpdateToolCall
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["toolCallId"]; !ok {
-				match = false
-			}
-			if _, ok := m["title"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.ToolCall = &v
-				return nil
-			}
-		}
-		{
-			var v SessionToolCallUpdate
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["toolCallId"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.ToolCallUpdate = &v
-				return nil
-			}
-		}
-		{
-			var v SessionUpdatePlan
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["entries"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Plan = &v
-				return nil
-			}
-		}
-		{
-			var v SessionPlanUpdate
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["plan"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.PlanUpdate = &v
-				return nil
-			}
-		}
-		{
-			var v SessionUpdatePlanRemoved
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.PlanRemoved = &v
-				return nil
-			}
-		}
-		{
-			var v SessionAvailableCommandsUpdate
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["availableCommands"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.AvailableCommandsUpdate = &v
-				return nil
-			}
-		}
-		{
-			var v SessionCurrentModeUpdate
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["currentModeId"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.CurrentModeUpdate = &v
-				return nil
-			}
-		}
-		{
-			var v SessionConfigOptionUpdate
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["configOptions"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.ConfigOptionUpdate = &v
-				return nil
-			}
-		}
-		{
-			var v SessionSessionInfoUpdate
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.SessionInfoUpdate = &v
-				return nil
-			}
-		}
-		{
-			var v SessionUsageUpdate
-			var match bool = true
-			if _, ok := m["sessionUpdate"]; !ok {
-				match = false
-			}
-			if _, ok := m["used"]; !ok {
-				match = false
-			}
-			if _, ok := m["size"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.UsageUpdate = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -6202,11 +5679,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "user_message_chunk"
+		m["sessionUpdate"] = json.RawMessage("\"user_message_chunk\"")
 		return json.Marshal(m)
 	}
 	if u.AgentMessageChunk != nil {
@@ -6214,11 +5691,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "agent_message_chunk"
+		m["sessionUpdate"] = json.RawMessage("\"agent_message_chunk\"")
 		return json.Marshal(m)
 	}
 	if u.AgentThoughtChunk != nil {
@@ -6226,11 +5703,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "agent_thought_chunk"
+		m["sessionUpdate"] = json.RawMessage("\"agent_thought_chunk\"")
 		return json.Marshal(m)
 	}
 	if u.ToolCall != nil {
@@ -6238,11 +5715,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "tool_call"
+		m["sessionUpdate"] = json.RawMessage("\"tool_call\"")
 		return json.Marshal(m)
 	}
 	if u.ToolCallUpdate != nil {
@@ -6250,11 +5727,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "tool_call_update"
+		m["sessionUpdate"] = json.RawMessage("\"tool_call_update\"")
 		return json.Marshal(m)
 	}
 	if u.Plan != nil {
@@ -6262,11 +5739,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "plan"
+		m["sessionUpdate"] = json.RawMessage("\"plan\"")
 		return json.Marshal(m)
 	}
 	if u.PlanUpdate != nil {
@@ -6274,11 +5751,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "plan_update"
+		m["sessionUpdate"] = json.RawMessage("\"plan_update\"")
 		return json.Marshal(m)
 	}
 	if u.PlanRemoved != nil {
@@ -6286,11 +5763,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "plan_removed"
+		m["sessionUpdate"] = json.RawMessage("\"plan_removed\"")
 		return json.Marshal(m)
 	}
 	if u.AvailableCommandsUpdate != nil {
@@ -6298,11 +5775,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "available_commands_update"
+		m["sessionUpdate"] = json.RawMessage("\"available_commands_update\"")
 		return json.Marshal(m)
 	}
 	if u.CurrentModeUpdate != nil {
@@ -6310,11 +5787,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "current_mode_update"
+		m["sessionUpdate"] = json.RawMessage("\"current_mode_update\"")
 		return json.Marshal(m)
 	}
 	if u.ConfigOptionUpdate != nil {
@@ -6322,11 +5799,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "config_option_update"
+		m["sessionUpdate"] = json.RawMessage("\"config_option_update\"")
 		return json.Marshal(m)
 	}
 	if u.SessionInfoUpdate != nil {
@@ -6334,11 +5811,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "session_info_update"
+		m["sessionUpdate"] = json.RawMessage("\"session_info_update\"")
 		return json.Marshal(m)
 	}
 	if u.UsageUpdate != nil {
@@ -6346,11 +5823,11 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["sessionUpdate"] = "usage_update"
+		m["sessionUpdate"] = json.RawMessage("\"usage_update\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -6454,6 +5931,9 @@ type SetSessionConfigOptionRequest struct {
 
 func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 	*u = SetSessionConfigOptionRequest{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -6472,26 +5952,9 @@ func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 			}
 		}
 		{
-			var v SetSessionConfigOptionBoolean
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["value"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Boolean = &v
-				return nil
-			}
-		}
-		{
 			var v SetSessionConfigOptionValueId
 			var match bool = true
-			if _, ok := m["value"]; !ok {
+			if raw := string(m["value"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -6518,11 +5981,11 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "boolean"
+		m["type"] = json.RawMessage("\"boolean\"")
 		return json.Marshal(m)
 	}
 	if u.ValueId != nil {
@@ -6530,7 +5993,7 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -6869,6 +6332,9 @@ type ToolCallContent struct {
 
 func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 	*u = ToolCallContent{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -6900,60 +6366,6 @@ func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v ToolCallContentContent
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["content"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Content = &v
-				return nil
-			}
-		}
-		{
-			var v ToolCallContentDiff
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["path"]; !ok {
-				match = false
-			}
-			if _, ok := m["newText"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Diff = &v
-				return nil
-			}
-		}
-		{
-			var v ToolCallContentTerminal
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["terminalId"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Terminal = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -6970,11 +6382,11 @@ func (u ToolCallContent) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "content"
+		m["type"] = json.RawMessage("\"content\"")
 		return json.Marshal(m)
 	}
 	if u.Diff != nil {
@@ -6982,11 +6394,11 @@ func (u ToolCallContent) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "diff"
+		m["type"] = json.RawMessage("\"diff\"")
 		return json.Marshal(m)
 	}
 	if u.Terminal != nil {
@@ -6994,11 +6406,11 @@ func (u ToolCallContent) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "terminal"
+		m["type"] = json.RawMessage("\"terminal\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -7102,7 +6514,7 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenientItems(raw.Content, &v.Content)
-	decodeLenient(raw.Kind, &v.Kind, (*ToolKind).valid)
+	decodeLenient(raw.Kind, &v.Kind)
 	decodeLenientItems(raw.Locations, &v.Locations)
 	decodeLenient(raw.Status, &v.Status, (*ToolCallStatus).valid)
 	return nil
@@ -7135,6 +6547,24 @@ const (
 	ToolKindSwitchMode ToolKind = "switch_mode"
 	ToolKindOther      ToolKind = "other"
 )
+
+// UnmarshalJSON reads a string that ToolKind does not list as ToolKindOther.
+func (v *ToolKind) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	switch member := ToolKind(s); member {
+	case ToolKindRead, ToolKindEdit, ToolKindDelete, ToolKindMove, ToolKindSearch, ToolKindExecute, ToolKindThink, ToolKindFetch, ToolKindSwitchMode, ToolKindOther:
+		*v = member
+	default:
+		*v = ToolKindOther
+	}
+	return nil
+}
 
 // Notification sent when a suggestion is accepted.
 type UnstableAcceptNesNotification struct {
@@ -7303,6 +6733,9 @@ type UnstableCreateElicitationForm struct {
 
 func (u *UnstableCreateElicitationForm) UnmarshalJSON(b []byte) error {
 	*u = UnstableCreateElicitationForm{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7318,7 +6751,7 @@ func (u *UnstableCreateElicitationForm) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
-			if _, ok := m["sessionId"]; !ok {
+			if raw := string(m["sessionId"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -7365,7 +6798,7 @@ func (u UnstableCreateElicitationForm) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -7379,7 +6812,7 @@ func (u UnstableCreateElicitationForm) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -7415,6 +6848,9 @@ type UnstableCreateElicitationUrl struct {
 
 func (u *UnstableCreateElicitationUrl) UnmarshalJSON(b []byte) error {
 	*u = UnstableCreateElicitationUrl{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7430,7 +6866,7 @@ func (u *UnstableCreateElicitationUrl) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
-			if _, ok := m["sessionId"]; !ok {
+			if raw := string(m["sessionId"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -7477,7 +6913,7 @@ func (u UnstableCreateElicitationUrl) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -7491,7 +6927,7 @@ func (u UnstableCreateElicitationUrl) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -7512,6 +6948,9 @@ type UnstableCreateElicitationRequest struct {
 
 func (u *UnstableCreateElicitationRequest) UnmarshalJSON(b []byte) error {
 	*u = UnstableCreateElicitationRequest{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7536,43 +6975,6 @@ func (u *UnstableCreateElicitationRequest) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v UnstableCreateElicitationForm
-			var match bool = true
-			if _, ok := m["mode"]; !ok {
-				match = false
-			}
-			if _, ok := m["requestedSchema"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Form = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableCreateElicitationUrl
-			var match bool = true
-			if _, ok := m["mode"]; !ok {
-				match = false
-			}
-			if _, ok := m["elicitationId"]; !ok {
-				match = false
-			}
-			if _, ok := m["url"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Url = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -7589,11 +6991,11 @@ func (u UnstableCreateElicitationRequest) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["mode"] = "form"
+		m["mode"] = json.RawMessage("\"form\"")
 		return json.Marshal(m)
 	}
 	if u.Url != nil {
@@ -7601,11 +7003,11 @@ func (u UnstableCreateElicitationRequest) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["mode"] = "url"
+		m["mode"] = json.RawMessage("\"url\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -7686,6 +7088,9 @@ type UnstableCreateElicitationResponse struct {
 
 func (u *UnstableCreateElicitationResponse) UnmarshalJSON(b []byte) error {
 	*u = UnstableCreateElicitationResponse{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -7717,48 +7122,6 @@ func (u *UnstableCreateElicitationResponse) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v UnstableCreateElicitationAccept
-			var match bool = true
-			if _, ok := m["action"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Accept = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableCreateElicitationDecline
-			var match bool = true
-			if _, ok := m["action"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Decline = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableCreateElicitationCancel
-			var match bool = true
-			if _, ok := m["action"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Cancel = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -7775,11 +7138,11 @@ func (u UnstableCreateElicitationResponse) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["action"] = "accept"
+		m["action"] = json.RawMessage("\"accept\"")
 		return json.Marshal(m)
 	}
 	if u.Decline != nil {
@@ -7787,11 +7150,11 @@ func (u UnstableCreateElicitationResponse) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["action"] = "decline"
+		m["action"] = json.RawMessage("\"decline\"")
 		return json.Marshal(m)
 	}
 	if u.Cancel != nil {
@@ -7799,11 +7162,11 @@ func (u UnstableCreateElicitationResponse) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["action"] = "cancel"
+		m["action"] = json.RawMessage("\"cancel\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -8112,6 +7475,9 @@ type UnstableElicitationFormMode struct {
 
 func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
 	*u = UnstableElicitationFormMode{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8127,7 +7493,7 @@ func (u *UnstableElicitationFormMode) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
-			if _, ok := m["sessionId"]; !ok {
+			if raw := string(m["sessionId"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -8174,7 +7540,7 @@ func (u UnstableElicitationFormMode) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -8188,7 +7554,7 @@ func (u UnstableElicitationFormMode) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -8315,6 +7681,9 @@ type UnstableElicitationUrlMode struct {
 
 func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
 	*u = UnstableElicitationUrlMode{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8330,7 +7699,7 @@ func (u *UnstableElicitationUrlMode) UnmarshalJSON(b []byte) error {
 		{
 			var v UnstableElicitationSessionScope
 			var match bool = true
-			if _, ok := m["sessionId"]; !ok {
+			if raw := string(m["sessionId"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -8377,7 +7746,7 @@ func (u UnstableElicitationUrlMode) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -8391,7 +7760,7 @@ func (u UnstableElicitationUrlMode) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -8692,6 +8061,9 @@ type UnstableMcpServer struct {
 
 func (u *UnstableMcpServer) UnmarshalJSON(b []byte) error {
 	*u = UnstableMcpServer{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -8724,84 +8096,18 @@ func (u *UnstableMcpServer) UnmarshalJSON(b []byte) error {
 			}
 		}
 		{
-			var v UnstableMcpServerHttp
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if _, ok := m["url"]; !ok {
-				match = false
-			}
-			if _, ok := m["headers"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Http = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableMcpServerSse
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if _, ok := m["url"]; !ok {
-				match = false
-			}
-			if _, ok := m["headers"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Sse = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableMcpServerAcpInline
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["name"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Acp = &v
-				return nil
-			}
-		}
-		{
 			var v McpServerStdio
 			var match bool = true
-			if _, ok := m["name"]; !ok {
+			if raw := string(m["name"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["command"]; !ok {
+			if raw := string(m["command"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["args"]; !ok {
+			if raw := string(m["args"]); raw == "" || raw == "null" {
 				match = false
 			}
-			if _, ok := m["env"]; !ok {
+			if raw := string(m["env"]); raw == "" || raw == "null" {
 				match = false
 			}
 			if match {
@@ -8828,11 +8134,11 @@ func (u UnstableMcpServer) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "http"
+		m["type"] = json.RawMessage("\"http\"")
 		return json.Marshal(m)
 	}
 	if u.Sse != nil {
@@ -8840,11 +8146,11 @@ func (u UnstableMcpServer) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "sse"
+		m["type"] = json.RawMessage("\"sse\"")
 		return json.Marshal(m)
 	}
 	if u.Acp != nil {
@@ -8852,11 +8158,11 @@ func (u UnstableMcpServer) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "acp"
+		m["type"] = json.RawMessage("\"acp\"")
 		return json.Marshal(m)
 	}
 	if u.Stdio != nil {
@@ -8864,7 +8170,7 @@ func (u UnstableMcpServer) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
@@ -9303,6 +8609,9 @@ type UnstableNesSuggestion struct {
 
 func (u *UnstableNesSuggestion) UnmarshalJSON(b []byte) error {
 	*u = UnstableNesSuggestion{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -9341,104 +8650,6 @@ func (u *UnstableNesSuggestion) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v UnstableNesSuggestionEdit
-			var match bool = true
-			if _, ok := m["kind"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["uri"]; !ok {
-				match = false
-			}
-			if _, ok := m["edits"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Edit = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableNesSuggestionJump
-			var match bool = true
-			if _, ok := m["kind"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["uri"]; !ok {
-				match = false
-			}
-			if _, ok := m["position"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Jump = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableNesSuggestionRename
-			var match bool = true
-			if _, ok := m["kind"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["uri"]; !ok {
-				match = false
-			}
-			if _, ok := m["position"]; !ok {
-				match = false
-			}
-			if _, ok := m["newName"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Rename = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableNesSuggestionSearchAndReplace
-			var match bool = true
-			if _, ok := m["kind"]; !ok {
-				match = false
-			}
-			if _, ok := m["id"]; !ok {
-				match = false
-			}
-			if _, ok := m["uri"]; !ok {
-				match = false
-			}
-			if _, ok := m["search"]; !ok {
-				match = false
-			}
-			if _, ok := m["replace"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.SearchAndReplace = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -9455,11 +8666,11 @@ func (u UnstableNesSuggestion) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["kind"] = "edit"
+		m["kind"] = json.RawMessage("\"edit\"")
 		return json.Marshal(m)
 	}
 	if u.Jump != nil {
@@ -9467,11 +8678,11 @@ func (u UnstableNesSuggestion) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["kind"] = "jump"
+		m["kind"] = json.RawMessage("\"jump\"")
 		return json.Marshal(m)
 	}
 	if u.Rename != nil {
@@ -9479,11 +8690,11 @@ func (u UnstableNesSuggestion) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["kind"] = "rename"
+		m["kind"] = json.RawMessage("\"rename\"")
 		return json.Marshal(m)
 	}
 	if u.SearchAndReplace != nil {
@@ -9491,11 +8702,11 @@ func (u UnstableNesSuggestion) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["kind"] = "searchAndReplace"
+		m["kind"] = json.RawMessage("\"searchAndReplace\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -9767,6 +8978,9 @@ type UnstableSessionConfigOption struct {
 
 func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
 	*u = UnstableSessionConfigOption{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -9791,43 +9005,6 @@ func (u *UnstableSessionConfigOption) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		{
-			var v UnstableSessionConfigOptionSelect
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["currentValue"]; !ok {
-				match = false
-			}
-			if _, ok := m["options"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Select = &v
-				return nil
-			}
-		}
-		{
-			var v UnstableSessionConfigOptionBoolean
-			var match bool = true
-			if _, ok := m["type"]; !ok {
-				match = false
-			}
-			if _, ok := m["currentValue"]; !ok {
-				match = false
-			}
-			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
-				u.Boolean = &v
-				return nil
-			}
-		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
 			return err
@@ -9844,11 +9021,11 @@ func (u UnstableSessionConfigOption) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "select"
+		m["type"] = json.RawMessage("\"select\"")
 		return json.Marshal(m)
 	}
 	if u.Boolean != nil {
@@ -9856,11 +9033,11 @@ func (u UnstableSessionConfigOption) MarshalJSON() ([]byte, error) {
 		if _e != nil {
 			return []byte{}, _e
 		}
-		var m map[string]any
+		var m map[string]json.RawMessage
 		if json.Unmarshal(_b, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
-		m["type"] = "boolean"
+		m["type"] = json.RawMessage("\"boolean\"")
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
@@ -10466,14 +9643,6 @@ func (v Role) valid() bool {
 func (v ToolCallStatus) valid() bool {
 	switch v {
 	case ToolCallStatusPending, ToolCallStatusInProgress, ToolCallStatusCompleted, ToolCallStatusFailed:
-		return true
-	}
-	return false
-}
-
-func (v ToolKind) valid() bool {
-	switch v {
-	case ToolKindRead, ToolKindEdit, ToolKindDelete, ToolKindMove, ToolKindSearch, ToolKindExecute, ToolKindThink, ToolKindFetch, ToolKindSwitchMode, ToolKindOther:
 		return true
 	}
 	return false

@@ -20,16 +20,16 @@ func TestUnmarshalJSON_HonorsDeserializeHints(t *testing.T) {
 			want: `{"toolCallId":"t","title":"run"}`,
 		},
 		{
-			name: "tool call update with enum values that the schema does not define",
+			name: "tool call update with a kind and a status that the schema does not define",
 			into: func() any { return new(ToolCallUpdate) },
 			in:   `{"toolCallId":"t","kind":"teleport","status":"paused"}`,
-			want: `{"toolCallId":"t"}`,
+			want: `{"toolCallId":"t","kind":"other"}`,
 		},
 		{
 			name: "tool call update inside a session notification",
 			into: func() any { return new(SessionNotification) },
 			in:   `{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"t","kind":"teleport","locations":[{"path":"/a"},"oops"]}}`,
-			want: `{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"t","locations":[{"path":"/a"}]}}`,
+			want: `{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"t","kind":"other","locations":[{"path":"/a"}]}}`,
 		},
 		{
 			name: "plan with one entry of the wrong shape",
@@ -112,6 +112,24 @@ func TestToolCallUpdate_UnmarshalJSON_KeepsFieldsThatTheJSONOmits(t *testing.T) 
 	}
 	if update.Status == nil || *update.Status != ToolCallStatusCompleted {
 		t.Errorf("status = %v, want %q from the second update", update.Status, ToolCallStatusCompleted)
+	}
+}
+
+func TestToolKind_UnmarshalJSON_ReadsAnUnknownKindAsOther(t *testing.T) {
+	t.Parallel()
+	var call ToolCall
+	if err := json.Unmarshal([]byte(`{"toolCallId":"t","title":"x","kind":"teleport"}`), &call); err != nil {
+		t.Fatalf("unmarshal a tool call with an unknown kind: %v", err)
+	}
+	if call.Kind != ToolKindOther {
+		t.Errorf("kind = %q, want %q for a kind that the schema does not list", call.Kind, ToolKindOther)
+	}
+	if err := json.Unmarshal([]byte(`{"toolCallId":"t","title":"x","kind":"edit"}`), &call); err != nil || call.Kind != ToolKindEdit {
+		t.Errorf("kind = %q (error %v), want the listed kind %q kept", call.Kind, err, ToolKindEdit)
+	}
+	var kind ToolKind
+	if err := json.Unmarshal([]byte(`7`), &kind); err == nil {
+		t.Errorf("a number decoded as the kind %q without an error", kind)
 	}
 }
 

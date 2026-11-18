@@ -2,6 +2,7 @@ package emit
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -140,12 +141,13 @@ func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
 }
 
 type typesBuilder struct {
-	f                 *File
-	schema            *load.Schema
-	usedTypeNames     map[string]bool
-	variants          map[string][]unionVariant
-	validatedEnums    map[string]bool
-	usesDecodeHelpers bool
+	f                        *File
+	schema                   *load.Schema
+	usedTypeNames            map[string]bool
+	variants                 map[string][]unionVariant
+	validatedEnums           map[string]bool
+	usesDecodeHelpers        bool
+	usesAdditionalProperties bool
 }
 
 // buildTypesJen builds the types_gen.go file. It also returns, per oneOf union,
@@ -200,30 +202,8 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 		// so emitUnion writes its Validate.
 		unionWrapper := false
 		switch {
-		case len(def.Enum) > 0:
-			f.Type().Id(name).String()
-			defs := []Code{}
-			for _, v := range def.Enum {
-				s := fmt.Sprint(v)
-				defs = append(defs, Id(util.ToEnumConst(name, s)).Id(name).Op("=").Lit(s))
-			}
-			if len(defs) > 0 {
-				f.Const().Defs(defs...)
-			}
-			f.Line()
-		case isStringConstUnion(def):
-			f.Type().Id(name).String()
-			defs := []Code{}
-			for _, v := range def.OneOf {
-				if v != nil && v.Const != nil {
-					s := fmt.Sprint(v.Const)
-					defs = append(defs, Id(util.ToEnumConst(name, s)).Id(name).Op("=").Lit(s))
-				}
-			}
-			if len(defs) > 0 {
-				f.Const().Defs(defs...)
-			}
-			f.Line()
+		case len(def.Enum) > 0, isStringConstUnion(def):
+			b.emitEnum(name, def)
 		case len(def.AnyOf) > 0 && isOpenStringEnum(def):
 			// "Open" string enum: `anyOf` of string consts plus (typically) a
 			// free-form string catch-all. Emit as a named string type with
@@ -253,9 +233,9 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			// Use the same implementation, but require exactly one variant
 			unionWrapper = true
 			b.emitUnion(name, def, def.OneOf, true, true)
-		case ir.PrimaryType(def) == "object" && len(def.Properties) > 0:
+		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || bool(def.AdditionalProperties)):
 			fields := ir.Fields(def.Properties, def.Required)
-			b.emitStruct(name, fields, b.emitNestedStructs(name, fields))
+			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), bool(def.AdditionalProperties))
 		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":
 			f.Type().Id(name).Add(primitiveJenType(ir.PrimaryType(def)))
 			f.Line()
@@ -380,6 +360,51 @@ func isStringConstUnion(def *load.Definition) bool {
 		}
 	}
 	return true
+}
+
+// otherEnumValue is the member of a closed enum that stands for every value the
+// enum does not list. The Rust schema crate marks that member #[serde(other)].
+const otherEnumValue = "other"
+
+func hasOtherMember(def *load.Definition) bool {
+	return slices.Contains(enumValues(def), otherEnumValue)
+}
+
+// emitEnum declares the closed string enum name with one constant per member.
+// An enum with the member "other" also gets an UnmarshalJSON that reads every
+// string the enum does not list as that member.
+func (b *typesBuilder) emitEnum(name string, def *load.Definition) {
+	f := b.f
+	f.Type().Id(name).String()
+	members := []Code{}
+	defs := []Code{}
+	for _, value := range enumValues(def) {
+		members = append(members, Id(util.ToEnumConst(name, value)))
+		defs = append(defs, Id(util.ToEnumConst(name, value)).Id(name).Op("=").Lit(value))
+	}
+	if len(defs) > 0 {
+		f.Const().Defs(defs...)
+	}
+	f.Line()
+	if !hasOtherMember(def) {
+		return
+	}
+
+	other := util.ToEnumConst(name, otherEnumValue)
+	f.Comment(fmt.Sprintf("UnmarshalJSON reads a string that %s does not list as %s.", name, other))
+	f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().Block(
+		If(Id("string").Call(Id("b")).Op("==").Lit("null")).Block(Return(Nil())),
+		Var().Id("s").String(),
+		If(Id("err").Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("s")), Id("err").Op("!=").Nil()).Block(
+			Return(Id("err")),
+		),
+		Switch(Id("member").Op(":=").Id(name).Call(Id("s")), Id("member")).Block(
+			Case(members...).Block(Op("*").Id("v").Op("=").Id("member")),
+			Default().Block(Op("*").Id("v").Op("=").Id(other)),
+		),
+		Return(Nil()),
+	)
+	f.Line()
 }
 
 // isOpenStringEnum reports whether def is an "open" string enum: an `anyOf`
@@ -517,6 +542,27 @@ func includesNull(d *load.Definition) bool {
 		}
 	}
 	return false
+}
+
+// acceptsNull reports whether JSON null is a valid value of d. A nil d stands
+// for a property without a schema, which accepts every value.
+func acceptsNull(schema *load.Schema, d *load.Definition) bool {
+	switch {
+	case d == nil:
+		return true
+	case d.Ref != "":
+		return acceptsNull(schema, schema.Defs[strings.TrimPrefix(d.Ref, "#/$defs/")])
+	case d.Type != nil:
+		return d.Type == "null" || includesNull(d)
+	case d.Const != nil || len(d.Enum) > 0:
+		return false
+	}
+	alternatives := append(append([]*load.Definition{}, d.AnyOf...), d.OneOf...)
+	if slices.ContainsFunc(alternatives, func(alt *load.Definition) bool { return acceptsNull(schema, alt) }) {
+		return true
+	}
+	rejects := func(part *load.Definition) bool { return !acceptsNull(schema, part) }
+	return len(alternatives) == 0 && !slices.ContainsFunc(d.AllOf, rejects)
 }
 
 // expandAllOf merges JSON Schema allOf nodes into a shallow composite definition.
@@ -849,16 +895,39 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		fieldName         string
 		typeName          string
 		required          []string
+		props             map[string]*load.Definition
 		isObject          bool
 		isArray           bool
 		arrayItemRequired []string
+		arrayItemProps    map[string]*load.Definition
 		discValue         string
 		constPairs        [][2]string
-		isNull            bool
-		description       string
+		// openDiscriminator says that the discriminator of this variant is a
+		// string without a const, as in a catch-all variant.
+		openDiscriminator bool
+		// nullKeys are the properties whose type is "null" alone, as in a
+		// "none" variant. The variant matches when they are absent or null.
+		nullKeys    []string
+		isNull      bool
+		description string
 		// sharedChecks hold Validate statements for the union's own required
 		// properties, which an inline object variant copies into its struct.
 		sharedChecks []Code
+	}
+	// matchesByKeys says that an object selects the variant by its keys, and
+	// never by the order of the variants.
+	matchesByKeys := func(vi variantInfo) bool {
+		return vi.isObject && (len(vi.required) > 0 || len(vi.constPairs) > 0 || len(vi.nullKeys) > 0)
+	}
+	// requireKey returns the statement that clears match unless the JSON object
+	// obj has the required key. A null value counts only when def, the schema
+	// of the key, accepts null or has a hint that reads null as the default.
+	requireKey := func(obj, key string, def *load.Definition) Code {
+		noMatch := Id("match").Op("=").Lit(false)
+		if acceptsNull(schema, def) || def.DefaultOnNull || def.DefaultOnError {
+			return If(List(Id("_"), Id("ok")).Op(":=").Id(obj).Index(Lit(key)), Op("!").Id("ok")).Block(noMatch)
+		}
+		return If(Id("raw").Op(":=").Id("string").Call(Id(obj).Index(Lit(key))), Id("raw").Op("==").Lit("").Op("||").Id("raw").Op("==").Lit("null")).Block(noMatch)
 	}
 	variants := []variantInfo{}
 	discKey := ""
@@ -963,6 +1032,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		isObj := len(v.Properties) > 0
 		isArray := ir.PrimaryType(v) == "array"
 		arrayItemRequired := []string{}
+		var arrayItemProps map[string]*load.Definition
 		if isArray && v.Items != nil {
 			item := v.Items
 			if item.Ref != "" && strings.HasPrefix(item.Ref, "#/$defs/") {
@@ -974,6 +1044,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			if ir.PrimaryType(item) == "object" && len(item.Required) > 0 {
 				arrayItemRequired = append(arrayItemRequired, item.Required...)
 				sort.Strings(arrayItemRequired)
+				arrayItemProps = item.Properties
 			}
 		}
 		// collect const properties (e.g., type, outcome), in sorted key order so
@@ -984,6 +1055,16 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				if s, ok := pd.Const.(string); ok {
 					consts = append(consts, [2]string{pk, s})
 				}
+			}
+		}
+		openDiscriminator := false
+		if pd := v.Properties[discKey]; pd != nil && pd.Const == nil {
+			openDiscriminator = pd.Type == "string"
+		}
+		var nullKeys []string
+		for _, pk := range sortedPropertyKeys(v.Properties) {
+			if pd := v.Properties[pk]; pd != nil && pd.Type == "null" {
+				nullKeys = append(nullKeys, pk)
 			}
 		}
 		var sharedChecks []Code
@@ -1029,7 +1110,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				if len(nested) > 0 {
 					nestedVariants = b.emitUnion(tname, &load.Definition{Properties: mergedProps, Required: required, Discriminator: v.Discriminator}, nested, len(v.OneOf) > 0, false)
 				} else {
-					b.emitStruct(tname, fields, nil)
+					b.emitStruct(tname, fields, nil, bool(v.AdditionalProperties))
 				}
 			default:
 				// Title-only variants: check if they're extension types
@@ -1060,11 +1141,15 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			fieldName:         fieldName,
 			typeName:          tname,
 			required:          v.Required,
+			props:             v.Properties,
 			isObject:          isObj,
 			isArray:           isArray,
 			arrayItemRequired: arrayItemRequired,
+			arrayItemProps:    arrayItemProps,
 			discValue:         dv,
 			constPairs:        consts,
+			openDiscriminator: openDiscriminator,
+			nullKeys:          nullKeys,
 			isNull:            isNull,
 			description:       v.Description,
 			sharedChecks:      sharedChecks,
@@ -1103,27 +1188,29 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	// Unmarshal
 	f.Func().Params(Id("u").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
 		g.Op("*").Id("u").Op("=").Id(name).Values()
-		// Handle literal null if a null-only variant exists
-		{
-			varNullHandled := false
-			for _, vi := range variants {
-				if vi.isNull {
-					// emit once for the first null variant
-					if !varNullHandled {
-						g.If(Id("string").Call(Id("b")).Op("==").Lit("null")).Block(
-							Var().Id("v").Id(vi.typeName),
-							Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
-							Return(Nil()),
-						)
-						varNullHandled = true
-					}
-				}
+		// JSON null selects the null variant and no other, and the null
+		// variant takes nothing else.
+		g.If(Id("string").Call(Id("b")).Op("==").Lit("null")).BlockFunc(func(null *Group) {
+			if i := slices.IndexFunc(variants, func(vi variantInfo) bool { return vi.isNull }); i >= 0 {
+				null.Var().Id("v").Id(variants[i].typeName)
+				null.Id("u").Dot(variants[i].fieldName).Op("=").Op("&").Id("v")
+				null.Return(Nil())
+				return
 			}
-		}
+			null.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
+		})
 		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
 		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
 			if len(wrapperFields) > 0 {
 				obj.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", customDecoded(wrapperPlans)) })
+			}
+			if parentDef != nil && parentDef.Properties[discKey] != nil && parentDef.Properties[discKey].DefaultOnError {
+				// The discriminator has x-deserialize-default-on-error: a value
+				// that is neither a string nor null reads as absent.
+				obj.If(
+					Id("raw").Op(":=").Id("string").Call(Id("m").Index(Lit(discKey))),
+					Id("raw").Op("!=").Lit("").Op("&&").Id("raw").Op("!=").Lit("null").Op("&&").Op("!").Qual("strings", "HasPrefix").Call(Id("raw"), Lit("\"")),
+				).Block(Id("delete").Call(Id("m"), Lit(discKey)))
 			}
 			// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
 			if discKey != "" {
@@ -1146,14 +1233,37 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					})
 				})
 			}
-			// required-key match
+			// A variant matches when the object has its required keys, each
+			// const property that is present holds its value, and each
+			// null-only property is absent or null. A required key that is
+			// null counts as absent unless its schema accepts null or a hint
+			// reads null as the default. The switch above settled a variant
+			// whose only const is the required discriminator.
 			for _, vi := range variants {
-				if vi.isObject && len(vi.required) > 0 {
+				switchSettled := vi.discValue != "" && len(vi.constPairs) == 1 && slices.Contains(vi.required, discKey)
+				if matchesByKeys(vi) && !switchSettled {
 					obj.BlockFunc(func(h *Group) {
 						h.Var().Id("v").Id(vi.typeName)
 						h.Var().Id("match").Bool().Op("=").Lit(true)
 						for _, rk := range vi.required {
-							h.If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+							if rk == discKey && vi.openDiscriminator {
+								h.If(Op("!").Qual("strings", "HasPrefix").Call(Id("string").Call(Id("m").Index(Lit(rk))), Lit("\""))).Block(Id("match").Op("=").Lit(false))
+								continue
+							}
+							def, ok := vi.props[rk]
+							if !ok && parentDef != nil {
+								def = parentDef.Properties[rk]
+							}
+							h.Add(requireKey("m", rk, def))
+						}
+						for _, pair := range vi.constPairs {
+							h.If(List(Id("raw"), Id("ok")).Op(":=").Id("m").Index(Lit(pair[0])), Id("ok")).Block(
+								Var().Id("value").String(),
+								If(Qual("encoding/json", "Unmarshal").Call(Id("raw"), Op("&").Id("value")).Op("!=").Nil().Op("||").Id("value").Op("!=").Lit(pair[1])).Block(Id("match").Op("=").Lit(false)),
+							)
+						}
+						for _, nk := range vi.nullKeys {
+							h.If(Id("raw").Op(":=").Id("string").Call(Id("m").Index(Lit(nk))), Id("raw").Op("!=").Lit("").Op("&&").Id("raw").Op("!=").Lit("null")).Block(Id("match").Op("=").Lit(false))
 						}
 						h.If(Id("match")).Block(
 							If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
@@ -1179,7 +1289,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					h.Var().Id("match").Bool().Op("=").Lit(true)
 					h.For(List(Id("_"), Id("elem")).Op(":=").Range().Id("arr")).BlockFunc(func(loop *Group) {
 						for _, rk := range vi.arrayItemRequired {
-							loop.If(List(Id("_"), Id("ok")).Op(":=").Id("elem").Index(Lit(rk)), Op("!").Id("ok")).Block(Id("match").Op("=").Lit(false))
+							loop.Add(requireKey("elem", rk, vi.arrayItemProps[rk]))
 						}
 					})
 					h.If(Id("match")).Block(
@@ -1190,10 +1300,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				})
 			}
 		})
-		// A variant with required keys had its turn above, and does not match
-		// an input without them. The others are tried in order.
+		// A variant that matches by its keys had its turn above. The others
+		// are tried in order.
 		for _, vi := range variants {
-			if (vi.isObject && len(vi.required) > 0) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
+			if vi.isNull || matchesByKeys(vi) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
 				continue
 			}
 			g.Block(
@@ -1228,19 +1338,22 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 						gg.Return(Id("_b"), Nil())
 						return
 					}
-					// Marshal object variant to map for discriminant injection and shaping.
-					gg.Var().Id("m").Map(String()).Any()
+					// The const properties and the union's own fields go into the
+					// object of the variant. Its members stay raw JSON, so that a
+					// number keeps every digit.
+					gg.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
 					notAnObject := Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload")))
 					if !vi.isObject {
 						// JSON Schema applies the union's own properties to objects only.
 						notAnObject = Return(Id("_b"), Nil())
 					}
 					gg.If(Qual("encoding/json", "Unmarshal").Call(Id("_b"), Op("&").Id("m")).Op("!=").Nil()).Block(notAnObject)
-					// Inject const discriminants
-					if len(vi.constPairs) > 0 {
-						for _, kv := range vi.constPairs {
-							gg.Id("m").Index(Lit(kv[0])).Op("=").Lit(kv[1])
+					for _, kv := range vi.constPairs {
+						value, err := json.Marshal(kv[1])
+						if err != nil {
+							panic(fmt.Sprintf("encode the const %q of union %q: %v", kv[1], name, err))
 						}
+						gg.Id("m").Index(Lit(kv[0])).Op("=").Qual("encoding/json", "RawMessage").Call(Lit(string(value)))
 					}
 					if len(wrapperFields) > 0 {
 						gg.If(Qual("encoding/json", "Unmarshal").Call(Id("ownJSON"), Op("&").Id("m")).Op("!=").Nil()).Block(Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload"))))

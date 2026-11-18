@@ -168,3 +168,61 @@ func TestNewSessionRequest_UnmarshalJSON_ReadsNullOnlyWhereHinted(t *testing.T) 
 func TestWriteTypesJen_RequiredArrayIsNeverNull(t *testing.T) {
 	checkGenerated(t, requiredArraySchema, map[string]string{"required_array_test.go": requiredArrayTest})
 }
+
+// otherEnumSchema models ToolKind: a closed enum whose member "other" stands
+// for every value that the enum does not list. Level writes the same enum
+// with the "enum" keyword.
+const otherEnumSchema = `{"$defs": {
+  "Kind": {"oneOf": [{"const": "read", "type": "string"}, {"const": "other", "type": "string"}]},
+  "Level": {"type": "string", "enum": ["low", "other"]},
+  "Call": {"type": "object", "required": ["id"], "properties": {
+    "id": {"type": "string"},
+    "kind": {"allOf": [{"$ref": "#/$defs/Kind"}]},
+    "level": {"anyOf": [{"$ref": "#/$defs/Level"}, {"type": "null"}], "x-deserialize-default-on-error": true},
+    "kinds": {"type": "array", "items": {"$ref": "#/$defs/Kind"}, "x-deserialize-skip-invalid-items": true}
+  }}
+}}`
+
+const otherEnumTest = `package acp
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestCall_UnmarshalJSON_ReadsAnUnknownEnumValueAsOther(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"listed values are kept",
+			` + "`" + `{"id":"c","kind":"read","kinds":["read","other"],"level":"low"}` + "`" + `,
+			` + "`" + `{"id":"c","kind":"read","kinds":["read","other"],"level":"low"}` + "`" + `},
+		{"a string that the enum does not list reads as other",
+			` + "`" + `{"id":"c","kind":"teleport","level":"","kinds":["READ","read"]}` + "`" + `,
+			` + "`" + `{"id":"c","kind":"other","kinds":["other","read"],"level":"other"}` + "`" + `},
+		{"a value that is no string stays a bad value where a hint allows one",
+			` + "`" + `{"id":"c","level":7,"kinds":[7,"read"]}` + "`" + `,
+			` + "`" + `{"id":"c","kinds":["read"]}` + "`" + `},
+		{"null leaves the property unset",
+			` + "`" + `{"id":"c","kind":null,"level":null}` + "`" + `,
+			` + "`" + `{"id":"c"}` + "`" + `},
+	}
+	for _, tt := range tests {
+		var call Call
+		if err := json.Unmarshal([]byte(tt.in), &call); err != nil {
+			t.Errorf("%s: unmarshal %s: %v", tt.name, tt.in, err)
+			continue
+		}
+		if out, err := json.Marshal(call); err != nil || string(out) != tt.want {
+			t.Errorf("%s: %s decodes and encodes to %s (error %v), want %s", tt.name, tt.in, out, err, tt.want)
+		}
+	}
+
+	var call Call
+	if err := json.Unmarshal([]byte(` + "`" + `{"id":"c","kind":7}` + "`" + `), &call); err == nil {
+		t.Errorf("a number as kind, which has no hint, decodes to %+v, want an error", call)
+	}
+}
+`
+
+func TestWriteTypesJen_EnumWithOtherReadsUnknownValuesAsOther(t *testing.T) {
+	checkGenerated(t, otherEnumSchema, map[string]string{"other_enum_test.go": otherEnumTest})
+}

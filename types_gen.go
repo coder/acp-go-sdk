@@ -2224,6 +2224,8 @@ type CreateElicitationOther struct {
 	// Tied to a specific JSON-RPC request outside of a session
 	// (e.g., during auth/configuration phases before any session is started).
 	Request *ElicitationRequestScope `json:"-"`
+	// AdditionalProperties holds the members that the schema does not name.
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
 func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
@@ -2245,6 +2247,7 @@ func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
 			}
 			decodeLenient(raw.Meta, &u.Meta)
 		}
+		u.AdditionalProperties = additionalProperties(b, "_meta", "message", "mode", "requestId", "sessionId", "toolCallId")
 		{
 			var v ElicitationSessionScope
 			var match bool = true
@@ -2302,6 +2305,11 @@ func (u CreateElicitationOther) MarshalJSON() ([]byte, error) {
 		if json.Unmarshal(ownJSON, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
 		}
+		for k, raw := range u.AdditionalProperties {
+			if _, ok := m[k]; !ok {
+				m[k] = raw
+			}
+		}
 		return json.Marshal(m)
 	}
 	if u.Request != nil {
@@ -2315,6 +2323,11 @@ func (u CreateElicitationOther) MarshalJSON() ([]byte, error) {
 		}
 		if json.Unmarshal(ownJSON, &m) != nil {
 			return []byte{}, errors.New("invalid variant payload")
+		}
+		for k, raw := range u.AdditionalProperties {
+			if _, ok := m[k]; !ok {
+				m[k] = raw
+			}
 		}
 		return json.Marshal(m)
 	}

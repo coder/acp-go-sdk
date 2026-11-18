@@ -195,7 +195,7 @@ func (b *typesBuilder) emitNestedStructs(parent string, fields []ir.Field) map[s
 		if prop.Description != "" {
 			emitDocComment(f, prop.Description)
 		}
-		b.emitStruct(nestedTypeName, ir.Fields(prop.Properties, prop.Required), nil, prop.AdditionalProperties.Open)
+		b.emitStruct(nestedTypeName, ir.Fields(prop.Properties, prop.Required), nil, opensMembers(prop))
 	}
 	return nestedTypeNames
 }

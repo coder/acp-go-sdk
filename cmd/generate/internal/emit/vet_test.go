@@ -97,9 +97,85 @@ const scopedUnionSchema = `{"$defs": {
       {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "form"}},
         "allOf": [{"$ref": "#/$defs/FormMode"}]},
       {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "url"}},
-        "allOf": [{"$ref": "#/$defs/UrlMode"}]}
+        "allOf": [{"$ref": "#/$defs/UrlMode"}]},
+      {"title": "other", "type": "object", "required": ["mode"], "properties": {"mode": {"type": "string"}},
+        "anyOf": [
+          {"title": "Session", "allOf": [{"$ref": "#/$defs/SessionScope"}]},
+          {"title": "Request", "allOf": [{"$ref": "#/$defs/RequestScope"}]}],
+        "unevaluatedProperties": true,
+        "not": {"anyOf": [
+          {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "form"}}},
+          {"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "url"}}}]}}
     ]}
 }}`
+
+// openUnionSchema has open unions whose variants are a direct $ref, or
+// come from an allOf.
+const openUnionSchema = `{"$defs": {
+  "SessionScope": {"type": "object", "required": ["sessionId"], "properties": {"sessionId": {"type": "string"}}},
+  "RequestScope": {"type": "object", "required": ["requestId"], "properties": {"requestId": {"type": "string"}}},
+  "Scope": {"anyOf": [{"$ref": "#/$defs/SessionScope"}, {"$ref": "#/$defs/RequestScope"}], "unevaluatedProperties": true},
+  "TitledScope": {"anyOf": [
+    {"title": "Session", "allOf": [{"$ref": "#/$defs/SessionScope"}]},
+    {"title": "Request", "allOf": [{"$ref": "#/$defs/RequestScope"}]}], "unevaluatedProperties": true},
+  "Mode": {"oneOf": [
+    {"title": "other", "type": "object", "required": ["mode"], "properties": {"mode": {"type": "string"}},
+      "allOf": [{"$ref": "#/$defs/TitledScope"}]}]},
+  "Inner": {"anyOf": [
+    {"title": "X", "type": "object", "required": ["x"], "properties": {"x": {"type": "string"}, "y": {"type": "string"}}},
+    {"title": "Z", "type": "object", "required": ["z"], "properties": {"z": {"type": "string"}}}]},
+  "Nested": {"anyOf": [{"$ref": "#/$defs/Inner"}], "unevaluatedProperties": true},
+  "Plain": {"type": "object", "properties": {"a": {"type": "string"}}, "unevaluatedProperties": true}
+}}`
+
+const openUnionTest = `package acp
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestOpenUnions_KeepUnnamedMembers(t *testing.T) {
+	for _, tt := range []struct {
+		into func() any
+		in   string
+	}{
+		{func() any { return new(Scope) }, ` + "`" + `{"sessionId":"s","extra":1}` + "`" + `},
+		{func() any { return new(Mode) }, ` + "`" + `{"mode":"m","requestId":"r","extra":{"k":[1]}}` + "`" + `},
+		{func() any { return new(Nested) }, ` + "`" + `{"x":"1","y":"2","extra":1}` + "`" + `},
+		{func() any { return new(Plain) }, ` + "`" + `{"a":"1","extra":[true]}` + "`" + `},
+	} {
+		v := tt.into()
+		if err := json.Unmarshal([]byte(tt.in), v); err != nil {
+			t.Fatalf("unmarshal %s: %v", tt.in, err)
+		}
+		out, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", tt.in, err)
+		}
+		var a, b any
+		json.Unmarshal(out, &a)
+		json.Unmarshal([]byte(tt.in), &b)
+		if ja, _ := json.Marshal(a); string(ja) != func() string { jb, _ := json.Marshal(b); return string(jb) }() {
+			t.Errorf("round trip of %s gives %s", tt.in, out)
+		}
+	}
+	var scope Scope
+	if err := json.Unmarshal([]byte(` + "`" + `{"sessionId":"s","extra":1}` + "`" + `), &scope); err != nil {
+		t.Fatal(err)
+	}
+	if len(scope.AdditionalProperties) != 1 {
+		t.Errorf("AdditionalProperties = %s, want only extra", scope.AdditionalProperties)
+	}
+	var nested Nested
+	if err := json.Unmarshal([]byte(` + "`" + `{"x":"1","y":"2","extra":1}` + "`" + `), &nested); err != nil {
+		t.Fatal(err)
+	}
+	if len(nested.AdditionalProperties) != 1 {
+		t.Errorf("Nested.AdditionalProperties = %s, want only extra", nested.AdditionalProperties)
+	}
+}
+`
 
 const scopedUnionTest = `package acp
 
@@ -143,11 +219,29 @@ func TestScopedUnions_RoundTripOwnPropertiesAndScope(t *testing.T) {
 		{func() any { return new(UrlMode) }, ` + "`" + `{"url":"https://example.com","sessionId":"s"}` + "`" + `},
 		{func() any { return new(CreateElicitationRequest) }, ` + "`" + `{"mode":"form","message":"m","requestedSchema":{"a":1},"fields":["f"],"sessionId":"s","toolCallId":"t"}` + "`" + `},
 		{func() any { return new(CreateElicitationRequest) }, ` + "`" + `{"mode":"url","message":"m","url":"https://example.com","requestId":"r"}` + "`" + `},
+		{func() any { return new(CreateElicitationRequest) }, ` + "`" + `{"mode":"_x","message":"m","sessionId":"s","extra":{"k":1},"n":12345678901234567890}` + "`" + `},
+		{func() any { return new(CreateElicitationRequest) }, ` + "`" + `{"mode":"_x","message":"m","requestId":"r"}` + "`" + `},
 	}
 	for _, tt := range tests {
 		if out := roundTrip(t, tt.into(), tt.in); !sameJSON(t, out, tt.in) {
 			t.Errorf("round trip of %s gives %s", tt.in, out)
 		}
+	}
+}
+
+func TestCreateElicitationOther_KeepsTheMembersThatNoPartNames(t *testing.T) {
+	var req CreateElicitationRequest
+	roundTrip(t, &req, ` + "`" + `{"mode":"_x","message":"m","sessionId":"s","toolCallId":"t","extra":1}` + "`" + `)
+	if req.Other == nil || len(req.Other.AdditionalProperties) != 1 || string(req.Other.AdditionalProperties["extra"]) != "1" {
+		t.Fatalf("decoded %+v, want the other mode with only extra unnamed", req.Other)
+	}
+	req.Other.AdditionalProperties["message"] = json.RawMessage(` + "`" + `"x"` + "`" + `)
+	out, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := ` + "`" + `{"mode":"_x","message":"m","sessionId":"s","toolCallId":"t","extra":1}` + "`" + `; !sameJSON(t, string(out), want) {
+		t.Errorf("encoded %s, want %s: a named member keeps its value", out, want)
 	}
 }
 
@@ -282,6 +376,11 @@ func TestWriteTypesJen_GeneratedPackagePassesVetAndTests(t *testing.T) {
 			name:   "unions with own properties and a nested scope",
 			schema: scopedUnionSchema,
 			extra:  map[string]string{"scoped_test.go": scopedUnionTest},
+		},
+		{
+			name:   "open unions with referenced variants",
+			schema: openUnionSchema,
+			extra:  map[string]string{"open_test.go": openUnionTest},
 		},
 		{
 			name:   "union with own properties and a string alternative",

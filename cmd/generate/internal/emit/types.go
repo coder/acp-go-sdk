@@ -233,9 +233,9 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			// Use the same implementation, but require exactly one variant
 			unionWrapper = true
 			b.emitUnion(name, def, def.OneOf, true, true)
-		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || def.AdditionalProperties.Open):
+		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || opensMembers(def)):
 			fields := ir.Fields(def.Properties, def.Required)
-			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), def.AdditionalProperties.Open)
+			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), opensMembers(def))
 		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":
 			f.Type().Id(name).Add(primitiveJenType(ir.PrimaryType(def)))
 			f.Line()
@@ -594,6 +594,8 @@ func expandAllOf(schema *load.Schema, d *load.Definition) *load.Definition {
 		if len(merged.OneOf) == 0 && len(resolved.OneOf) > 0 {
 			merged.OneOf = resolved.OneOf
 		}
+		// The alternatives above take their unnamed members along.
+		merged.UnevaluatedProperties = merged.UnevaluatedProperties || resolved.UnevaluatedProperties
 
 		if len(resolved.Properties) > 0 {
 			if merged.Properties == nil {
@@ -871,6 +873,31 @@ func scalarConstOf(v *load.Definition) Code {
 	return nil
 }
 
+// opensMembers reports whether d takes members that it does not name:
+// "additionalProperties": true or "unevaluatedProperties": true.
+func opensMembers(d *load.Definition) bool {
+	return d.AdditionalProperties.Open || bool(d.UnevaluatedProperties)
+}
+
+// namedProperties returns the properties that d names: its own, those of
+// its $ref and allOf, and those of each of its anyOf and oneOf
+// alternatives, at any depth.
+func namedProperties(schema *load.Schema, d *load.Definition, seen map[*load.Definition]bool) []string {
+	if d == nil || seen[d] {
+		return nil
+	}
+	seen[d] = true
+	d = expandAllOf(schema, d)
+	keys := sortedPropertyKeys(d.Properties)
+	if d.Ref != "" {
+		keys = append(keys, namedProperties(schema, schema.Defs[strings.TrimPrefix(d.Ref, "#/$defs/")], seen)...)
+	}
+	for _, alt := range append(append([]*load.Definition{}, d.AnyOf...), d.OneOf...) {
+		keys = append(keys, namedProperties(schema, alt, seen)...)
+	}
+	return keys
+}
+
 // emitUnion emits the union wrapper type name and its variants. With exactlyOne
 // (a oneOf), the wrapper's Validate requires exactly one variant. Validate is
 // emitted when exactlyOne or validate is set. It also checks the union's own
@@ -947,6 +974,9 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			sharedRequired[r] = struct{}{}
 		}
 	}
+	// open says that the union takes members that no part of it names. The
+	// wrapper keeps them in AdditionalProperties.
+	open := parentDef != nil && opensMembers(parentDef)
 	alts := unionAlternatives(schema, defs)
 	var wrapperFields []ir.Field
 	if len(sharedProps) > 0 && !allInlineObjects(alts) {
@@ -1097,9 +1127,12 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					nested = v.OneOf
 				}
 				if len(nested) > 0 {
-					nestedVariants = b.emitUnion(tname, &load.Definition{Properties: mergedProps, Required: required, Discriminator: v.Discriminator}, nested, len(v.OneOf) > 0, false)
+					nestedVariants = b.emitUnion(tname, &load.Definition{
+						Properties: mergedProps, Required: required, Discriminator: v.Discriminator,
+						AdditionalProperties: v.AdditionalProperties, UnevaluatedProperties: v.UnevaluatedProperties,
+					}, nested, len(v.OneOf) > 0, false)
 				} else {
-					b.emitStruct(tname, fields, nil, v.AdditionalProperties.Open)
+					b.emitStruct(tname, fields, nil, opensMembers(v))
 				}
 			default:
 				// Title-only variants: check if they're extension types
@@ -1173,6 +1206,26 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		}
 		st = append(st, Id(vi.fieldName).Op("*").Id(vi.typeName).Tag(map[string]string{"json": "-"}))
 	}
+	// named lists the members that the union or one of its variants names.
+	var named []Code
+	if open {
+		if wrapperFieldNames[additionalPropertiesField] || slices.ContainsFunc(variants, func(vi variantInfo) bool { return vi.fieldName == additionalPropertiesField }) {
+			panic(fmt.Sprintf("union %q takes unnamed members and has a property or variant that maps to the field %q", name, additionalPropertiesField))
+		}
+		b.usesAdditionalProperties = true
+		st = append(st,
+			Comment("AdditionalProperties holds the members that the schema does not name."),
+			Id(additionalPropertiesField).Map(String()).Qual("encoding/json", "RawMessage").Tag(map[string]string{"json": "-"}),
+		)
+		keys := sortedPropertyKeys(parentDef.Properties)
+		for _, alt := range alts {
+			keys = append(keys, namedProperties(schema, alt.expanded, map[*load.Definition]bool{})...)
+		}
+		sort.Strings(keys)
+		for _, k := range slices.Compact(keys) {
+			named = append(named, Lit(k))
+		}
+	}
 	f.Type().Id(name).Struct(st...)
 	f.Line()
 	// Unmarshal
@@ -1193,6 +1246,9 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
 			if len(wrapperFields) > 0 {
 				obj.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", customDecoded(wrapperPlans)) })
+			}
+			if open {
+				obj.Id("u").Dot(additionalPropertiesField).Op("=").Id("additionalProperties").Call(append([]Code{Id("b")}, named...)...)
 			}
 			if parentDef != nil && parentDef.Properties[discKey] != nil && parentDef.Properties[discKey].DefaultOnError {
 				// The discriminator has x-deserialize-default-on-error: a value
@@ -1327,7 +1383,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				} else {
 					gg.List(Id("_b"), Id("_e")).Op(":=").Qual("encoding/json", "Marshal").Call(Op("*").Id("u").Dot(vi.fieldName))
 					gg.If(Id("_e").Op("!=").Nil()).Block(Return(Index().Byte().Values(), Id("_e")))
-					if !vi.isObject && len(wrapperFields) == 0 {
+					if !vi.isObject && len(wrapperFields) == 0 && !open {
 						// Non-object variants (e.g., arrays/primitives) are already in final wire shape.
 						gg.Return(Id("_b"), Nil())
 						return
@@ -1351,6 +1407,12 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					}
 					if len(wrapperFields) > 0 {
 						gg.If(Qual("encoding/json", "Unmarshal").Call(Id("ownJSON"), Op("&").Id("m")).Op("!=").Nil()).Block(Return(Index().Byte().Values(), Qual("errors", "New").Call(Lit("invalid variant payload"))))
+					}
+					if open {
+						// A member that the union names keeps its value.
+						gg.For(List(Id("k"), Id("raw")).Op(":=").Range().Id("u").Dot(additionalPropertiesField)).Block(
+							If(List(Id("_"), Id("ok")).Op(":=").Id("m").Index(Id("k")), Op("!").Id("ok")).Block(Id("m").Index(Id("k")).Op("=").Id("raw")),
+						)
 					}
 					gg.Return(Qual("encoding/json", "Marshal").Call(Id("m")))
 				}

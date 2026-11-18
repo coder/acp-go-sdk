@@ -67,6 +67,10 @@ type Definition struct {
 	// Not is a schema that a value must not match. The catch-all variant of
 	// a union uses it to leave out the discriminator values of the others.
 	Not *Definition `json:"not"`
+	// UnevaluatedProperties is set when the schema says
+	// "unevaluatedProperties": true: the object takes members that no part of
+	// the schema names, its anyOf alternatives included.
+	UnevaluatedProperties isTrue `json:"unevaluatedProperties"`
 
 	// boolSchema records whether this definition was a boolean schema (true/false).
 	// JSON Schema allows boolean schemas, where true matches anything and false matches nothing.
@@ -92,6 +96,14 @@ func (m *Members) UnmarshalJSON(b []byte) error {
 		m.Schema = new(Definition)
 		return json.Unmarshal(b, m.Schema)
 	}
+	return nil
+}
+
+// isTrue decodes the JSON literal true as true and any other value as false.
+type isTrue bool
+
+func (t *isTrue) UnmarshalJSON(b []byte) error {
+	*t = isTrue(bytes.Equal(bytes.TrimSpace(b), []byte("true")))
 	return nil
 }
 

@@ -125,10 +125,19 @@ func (g instanceGen) ofType(typ string, m map[string]any, depth int) (any, bool)
 			obj[name] = v
 		}
 		// A free-form object such as _meta or a map type gets one member.
-		if ap := m["additionalProperties"]; len(props) == 0 && g.full {
-			if ap == true {
-				obj["example"] = "value"
-			} else if v, ok := g.value(ap, depth+1, -1); ok && depth < maxDepth {
+		// So does an object that takes members its schema does not name.
+		ap := m["additionalProperties"]
+		switch {
+		case !g.full:
+		case ap == true || m["unevaluatedProperties"] == true:
+			names := namedKeys(g.defs, m, map[string]bool{})
+			key := "example"
+			for i := 2; names[key]; i++ {
+				key = fmt.Sprintf("example%d", i)
+			}
+			obj[key] = "value"
+		case len(props) == 0:
+			if v, ok := g.value(ap, depth+1, -1); ok && depth < maxDepth {
 				obj["example"] = v
 			}
 		}
@@ -166,6 +175,32 @@ func (g instanceGen) ofType(typ string, m map[string]any, depth int) (any, bool)
 		return map[string]any{"example": "value"}, true
 	}
 	return nil, false
+}
+
+// namedKeys returns the property names that node and the nodes it reaches
+// through $ref, allOf, anyOf and oneOf name. seen holds the $refs followed.
+func namedKeys(defs map[string]any, node any, seen map[string]bool) map[string]bool {
+	names := map[string]bool{}
+	m, _ := node.(map[string]any)
+	props, _ := m["properties"].(map[string]any)
+	for name := range props {
+		names[name] = true
+	}
+	var parts []any
+	for _, key := range []string{"allOf", "anyOf", "oneOf"} {
+		alts, _ := m[key].([]any)
+		parts = append(parts, alts...)
+	}
+	if ref, ok := m["$ref"].(string); ok && !seen[ref] {
+		seen[ref] = true
+		parts = append(parts, defs[strings.TrimPrefix(ref, "#/$defs/")])
+	}
+	for _, part := range parts {
+		for name := range namedKeys(defs, part, seen) {
+			names[name] = true
+		}
+	}
+	return names
 }
 
 // schemaType is the node's first non-null type, "null" when null is its
@@ -276,4 +311,32 @@ func TestInstances(t *testing.T) {
 	}
 	t.Logf("SUMMARY instances: %d checked, %d builder gaps skipped, %d unstable-only defs without an SDK type %v",
 		checked, invalid, len(noType), noType)
+}
+
+// An object whose schema takes members it does not name gets one in a full
+// value, so that the round trip shows whether the SDK keeps it.
+func TestInstanceGen_FullValueHasAMemberThatTheSchemaDoesNotName(t *testing.T) {
+	defs := map[string]any{}
+	if err := json.Unmarshal([]byte(`{
+		"Open": {"type": "object", "properties": {"mode": {"type": "string"}}, "additionalProperties": true},
+		"Unevaluated": {"type": "object", "properties": {"mode": {"type": "string"}}, "unevaluatedProperties": true},
+		"Closed": {"type": "object", "properties": {"mode": {"type": "string"}}},
+		"Named": {"type": "object", "properties": {"example": {"type": "integer"}}, "additionalProperties": true},
+		"Nested": {"type": "object", "properties": {"mode": {"type": "string"}}, "unevaluatedProperties": true,
+			"anyOf": [{"$ref": "#/$defs/Named"}]}}`), &defs); err != nil {
+		t.Fatal(err)
+	}
+	for def, want := range map[string]string{"Open": "example", "Unevaluated": "example", "Closed": "", "Named": "example2", "Nested": "example2"} {
+		v, ok := instanceGen{defs: defs, full: true}.value(defs[def], 0, -1)
+		obj, _ := v.(map[string]any)
+		var got []string
+		for _, k := range sortedKeys(obj) {
+			if obj[k] == "value" {
+				got = append(got, k)
+			}
+		}
+		if !ok || strings.Join(got, " ") != want {
+			t.Errorf("full value of %s = %v; want the unnamed member %q and no named one set to \"value\"", def, v, want)
+		}
+	}
 }

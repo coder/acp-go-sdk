@@ -11,15 +11,6 @@ func NewPlanUpdateContentItems(planId PlanId, entries []PlanEntry) PlanUpdateCon
 	}}
 }
 
-// NewPlanUpdateContentFile constructs a PlanUpdateContent using the 'file' variant.
-func NewPlanUpdateContentFile(planId PlanId, uri string) PlanUpdateContent {
-	return PlanUpdateContent{File: &PlanUpdateContentFile{
-		PlanId: planId,
-		Type:   "file",
-		Uri:    uri,
-	}}
-}
-
 // NewPlanUpdateContentMarkdown constructs a PlanUpdateContent using the 'markdown' variant.
 func NewPlanUpdateContentMarkdown(planId PlanId, content string) PlanUpdateContent {
 	return PlanUpdateContent{Markdown: &PlanUpdateContentMarkdown{
@@ -59,44 +50,62 @@ func NewSessionConfigOptionBoolean(currentValue bool) SessionConfigOption {
 	}}
 }
 
-// NewUnstableNesSuggestionEdit constructs a UnstableNesSuggestion using the 'edit' variant.
-func NewUnstableNesSuggestionEdit(id UnstableNesSuggestionId, uri string, edits []UnstableNesTextEdit) UnstableNesSuggestion {
-	return UnstableNesSuggestion{Edit: &UnstableNesSuggestionEdit{
-		Edits: edits,
-		Id:    id,
-		Kind:  "edit",
-		Uri:   uri,
+// NewUnstableContentBlockText constructs a UnstableContentBlock using the 'text' variant.
+func NewUnstableContentBlockText(text string) UnstableContentBlock {
+	return UnstableContentBlock{Text: &UnstableContentBlockText{
+		Text: text,
+		Type: "text",
 	}}
 }
 
-// NewUnstableNesSuggestionJump constructs a UnstableNesSuggestion using the 'jump' variant.
-func NewUnstableNesSuggestionJump(id UnstableNesSuggestionId, uri string, position UnstablePosition) UnstableNesSuggestion {
-	return UnstableNesSuggestion{Jump: &UnstableNesSuggestionJump{
-		Id:       id,
-		Kind:     "jump",
-		Position: position,
-		Uri:      uri,
+// NewUnstableContentBlockImage constructs a UnstableContentBlock using the 'image' variant.
+func NewUnstableContentBlockImage(data string, mimeType string) UnstableContentBlock {
+	return UnstableContentBlock{Image: &UnstableContentBlockImage{
+		Data:     data,
+		MimeType: mimeType,
+		Type:     "image",
 	}}
 }
 
-// NewUnstableNesSuggestionRename constructs a UnstableNesSuggestion using the 'rename' variant.
-func NewUnstableNesSuggestionRename(id UnstableNesSuggestionId, uri string, position UnstablePosition, newName string) UnstableNesSuggestion {
-	return UnstableNesSuggestion{Rename: &UnstableNesSuggestionRename{
-		Id:       id,
-		Kind:     "rename",
-		NewName:  newName,
-		Position: position,
-		Uri:      uri,
+// NewUnstableContentBlockAudio constructs a UnstableContentBlock using the 'audio' variant.
+func NewUnstableContentBlockAudio(data string, mimeType string) UnstableContentBlock {
+	return UnstableContentBlock{Audio: &UnstableContentBlockAudio{
+		Data:     data,
+		MimeType: mimeType,
+		Type:     "audio",
 	}}
 }
 
-// NewUnstableNesSuggestionSearchAndReplace constructs a UnstableNesSuggestion using the 'searchAndReplace' variant.
-func NewUnstableNesSuggestionSearchAndReplace(id UnstableNesSuggestionId, uri string, search string, replace string) UnstableNesSuggestion {
-	return UnstableNesSuggestion{SearchAndReplace: &UnstableNesSuggestionSearchAndReplace{
-		Id:      id,
-		Kind:    "searchAndReplace",
-		Replace: replace,
-		Search:  search,
-		Uri:     uri,
+// NewUnstableContentBlockResourceLink constructs a UnstableContentBlock using the 'resource_link' variant.
+func NewUnstableContentBlockResourceLink(name string, uri string) UnstableContentBlock {
+	return UnstableContentBlock{ResourceLink: &UnstableContentBlockResourceLink{
+		Name: name,
+		Type: "resource_link",
+		Uri:  uri,
+	}}
+}
+
+// NewUnstableContentBlockResource constructs a UnstableContentBlock using the 'resource' variant.
+func NewUnstableContentBlockResource(resource UnstableEmbeddedResourceResource) UnstableContentBlock {
+	return UnstableContentBlock{Resource: &UnstableContentBlockResource{
+		Resource: resource,
+		Type:     "resource",
+	}}
+}
+
+// NewUnstableSessionConfigOptionSelect constructs a UnstableSessionConfigOption using the 'select' variant.
+func NewUnstableSessionConfigOptionSelect(currentValue SessionConfigValueId, options UnstableSessionConfigSelectOptions) UnstableSessionConfigOption {
+	return UnstableSessionConfigOption{Select: &UnstableSessionConfigOptionSelect{
+		CurrentValue: currentValue,
+		Options:      options,
+		Type:         "select",
+	}}
+}
+
+// NewUnstableSessionConfigOptionBoolean constructs a UnstableSessionConfigOption using the 'boolean' variant.
+func NewUnstableSessionConfigOptionBoolean(currentValue bool) UnstableSessionConfigOption {
+	return UnstableSessionConfigOption{Boolean: &UnstableSessionConfigOptionBoolean{
+		CurrentValue: currentValue,
+		Type:         "boolean",
 	}}
 }

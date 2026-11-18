@@ -144,44 +144,24 @@ type agentFuncs struct {
 	LogoutFunc                 func(context.Context, LogoutRequest) (LogoutResponse, error)
 	DeleteSessionFunc          func(context.Context, DeleteSessionRequest) (DeleteSessionResponse, error)
 	// Unstable (schema/meta.unstable.json)
-	UnstableDidChangeDocumentFunc func(context.Context, UnstableDidChangeDocumentNotification) error
-	UnstableDidCloseDocumentFunc  func(context.Context, UnstableDidCloseDocumentNotification) error
-	UnstableDidFocusDocumentFunc  func(context.Context, UnstableDidFocusDocumentNotification) error
-	UnstableDidOpenDocumentFunc   func(context.Context, UnstableDidOpenDocumentNotification) error
-	UnstableDidSaveDocumentFunc   func(context.Context, UnstableDidSaveDocumentNotification) error
-	UnstableAcceptNesFunc         func(context.Context, UnstableAcceptNesNotification) error
-	UnstableCloseNesFunc          func(context.Context, UnstableCloseNesRequest) (UnstableCloseNesResponse, error)
-	UnstableRejectNesFunc         func(context.Context, UnstableRejectNesNotification) error
-	UnstableStartNesFunc          func(context.Context, UnstableStartNesRequest) (UnstableStartNesResponse, error)
-	UnstableSuggestNesFunc        func(context.Context, UnstableSuggestNesRequest) (UnstableSuggestNesResponse, error)
-	UnstableDisableProviderFunc   func(context.Context, UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error)
-	UnstableListProvidersFunc     func(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
-	UnstableSetProviderFunc       func(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
-	UnstableForkSessionFunc       func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
-	UnstableMessageMcpFunc        func(context.Context, UnstableMessageMcpNotification) error
+	UnstableDisableProviderFunc func(context.Context, UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error)
+	UnstableListProvidersFunc   func(context.Context, UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
+	UnstableSetProviderFunc     func(context.Context, UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
+	UnstableForkSessionFunc     func(context.Context, UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
+	UnstableMessageMcpFunc      func(context.Context, UnstableMessageMcpNotification) error
 
 	HandleExtensionMethodFunc func(context.Context, string, json.RawMessage) (any, error)
 }
 
 var (
-	_ Agent                          = (*agentFuncs)(nil)
-	_ AgentLoader                    = (*agentFuncs)(nil)
-	_ AgentUnstableAcceptNes         = (*agentFuncs)(nil)
-	_ AgentUnstableCloseNes          = (*agentFuncs)(nil)
-	_ AgentUnstableDidChangeDocument = (*agentFuncs)(nil)
-	_ AgentUnstableDidCloseDocument  = (*agentFuncs)(nil)
-	_ AgentUnstableDidFocusDocument  = (*agentFuncs)(nil)
-	_ AgentUnstableDidOpenDocument   = (*agentFuncs)(nil)
-	_ AgentUnstableDidSaveDocument   = (*agentFuncs)(nil)
-	_ AgentUnstableDisableProvider   = (*agentFuncs)(nil)
-	_ AgentUnstableForkSession       = (*agentFuncs)(nil)
-	_ AgentUnstableListProviders     = (*agentFuncs)(nil)
-	_ AgentUnstableMessageMcp        = (*agentFuncs)(nil)
-	_ AgentUnstableRejectNes         = (*agentFuncs)(nil)
-	_ AgentUnstableSetProvider       = (*agentFuncs)(nil)
-	_ AgentUnstableStartNes          = (*agentFuncs)(nil)
-	_ AgentUnstableSuggestNes        = (*agentFuncs)(nil)
-	_ ExtensionMethodHandler         = (*agentFuncs)(nil)
+	_ Agent                        = (*agentFuncs)(nil)
+	_ AgentLoader                  = (*agentFuncs)(nil)
+	_ AgentUnstableDisableProvider = (*agentFuncs)(nil)
+	_ AgentUnstableForkSession     = (*agentFuncs)(nil)
+	_ AgentUnstableListProviders   = (*agentFuncs)(nil)
+	_ AgentUnstableMessageMcp      = (*agentFuncs)(nil)
+	_ AgentUnstableSetProvider     = (*agentFuncs)(nil)
+	_ ExtensionMethodHandler       = (*agentFuncs)(nil)
 )
 
 func (a agentFuncs) Initialize(ctx context.Context, p InitializeRequest) (InitializeResponse, error) {
@@ -289,81 +269,11 @@ func (a agentFuncs) UnstableMessageMcp(ctx context.Context, params UnstableMessa
 	return nil
 }
 
-func (a agentFuncs) UnstableDidChangeDocument(ctx context.Context, params UnstableDidChangeDocumentNotification) error {
-	if a.UnstableDidChangeDocumentFunc != nil {
-		return a.UnstableDidChangeDocumentFunc(ctx, params)
-	}
-	return nil
-}
-
-func (a agentFuncs) UnstableDidCloseDocument(ctx context.Context, params UnstableDidCloseDocumentNotification) error {
-	if a.UnstableDidCloseDocumentFunc != nil {
-		return a.UnstableDidCloseDocumentFunc(ctx, params)
-	}
-	return nil
-}
-
-func (a agentFuncs) UnstableDidFocusDocument(ctx context.Context, params UnstableDidFocusDocumentNotification) error {
-	if a.UnstableDidFocusDocumentFunc != nil {
-		return a.UnstableDidFocusDocumentFunc(ctx, params)
-	}
-	return nil
-}
-
-func (a agentFuncs) UnstableDidOpenDocument(ctx context.Context, params UnstableDidOpenDocumentNotification) error {
-	if a.UnstableDidOpenDocumentFunc != nil {
-		return a.UnstableDidOpenDocumentFunc(ctx, params)
-	}
-	return nil
-}
-
-func (a agentFuncs) UnstableDidSaveDocument(ctx context.Context, params UnstableDidSaveDocumentNotification) error {
-	if a.UnstableDidSaveDocumentFunc != nil {
-		return a.UnstableDidSaveDocumentFunc(ctx, params)
-	}
-	return nil
-}
-
 func (a agentFuncs) Logout(ctx context.Context, params LogoutRequest) (LogoutResponse, error) {
 	if a.LogoutFunc != nil {
 		return a.LogoutFunc(ctx, params)
 	}
 	return LogoutResponse{}, nil
-}
-
-func (a agentFuncs) UnstableAcceptNes(ctx context.Context, params UnstableAcceptNesNotification) error {
-	if a.UnstableAcceptNesFunc != nil {
-		return a.UnstableAcceptNesFunc(ctx, params)
-	}
-	return nil
-}
-
-func (a agentFuncs) UnstableCloseNes(ctx context.Context, params UnstableCloseNesRequest) (UnstableCloseNesResponse, error) {
-	if a.UnstableCloseNesFunc != nil {
-		return a.UnstableCloseNesFunc(ctx, params)
-	}
-	return UnstableCloseNesResponse{}, nil
-}
-
-func (a agentFuncs) UnstableRejectNes(ctx context.Context, params UnstableRejectNesNotification) error {
-	if a.UnstableRejectNesFunc != nil {
-		return a.UnstableRejectNesFunc(ctx, params)
-	}
-	return nil
-}
-
-func (a agentFuncs) UnstableStartNes(ctx context.Context, params UnstableStartNesRequest) (UnstableStartNesResponse, error) {
-	if a.UnstableStartNesFunc != nil {
-		return a.UnstableStartNesFunc(ctx, params)
-	}
-	return UnstableStartNesResponse{}, nil
-}
-
-func (a agentFuncs) UnstableSuggestNes(ctx context.Context, params UnstableSuggestNesRequest) (UnstableSuggestNesResponse, error) {
-	if a.UnstableSuggestNesFunc != nil {
-		return a.UnstableSuggestNesFunc(ctx, params)
-	}
-	return UnstableSuggestNesResponse{}, nil
 }
 
 func (a agentFuncs) UnstableDisableProvider(ctx context.Context, params UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error) {

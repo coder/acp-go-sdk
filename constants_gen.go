@@ -6,27 +6,19 @@ package acp
 const ProtocolVersionNumber = 1
 
 // SchemaVersion is the ACP schema release that this SDK's generated code targets.
-const SchemaVersion = "1.25.0"
+const SchemaVersion = "1.32.0"
 
 // Agent method names
 const (
+	AgentMethodAuthStatus             = "auth/status"
 	AgentMethodAuthenticate           = "authenticate"
-	AgentMethodDocumentDidChange      = "document/didChange"
-	AgentMethodDocumentDidClose       = "document/didClose"
-	AgentMethodDocumentDidFocus       = "document/didFocus"
-	AgentMethodDocumentDidOpen        = "document/didOpen"
-	AgentMethodDocumentDidSave        = "document/didSave"
 	AgentMethodInitialize             = "initialize"
 	AgentMethodLogout                 = "logout"
 	AgentMethodMcpMessage             = "mcp/message"
-	AgentMethodNesAccept              = "nes/accept"
-	AgentMethodNesClose               = "nes/close"
-	AgentMethodNesReject              = "nes/reject"
-	AgentMethodNesStart               = "nes/start"
-	AgentMethodNesSuggest             = "nes/suggest"
 	AgentMethodProvidersDisable       = "providers/disable"
 	AgentMethodProvidersList          = "providers/list"
 	AgentMethodProvidersSet           = "providers/set"
+	AgentMethodSessionArchive         = "session/archive"
 	AgentMethodSessionCancel          = "session/cancel"
 	AgentMethodSessionClose           = "session/close"
 	AgentMethodSessionDelete          = "session/delete"
@@ -34,14 +26,19 @@ const (
 	AgentMethodSessionList            = "session/list"
 	AgentMethodSessionLoad            = "session/load"
 	AgentMethodSessionNew             = "session/new"
+	AgentMethodSessionOptions         = "session/options"
 	AgentMethodSessionPrompt          = "session/prompt"
 	AgentMethodSessionResume          = "session/resume"
 	AgentMethodSessionSetConfigOption = "session/set_config_option"
 	AgentMethodSessionSetMode         = "session/set_mode"
+	AgentMethodSessionSetTitle        = "session/set_title"
+	AgentMethodSessionStatus          = "session/status"
+	AgentMethodSessionUnarchive       = "session/unarchive"
 )
 
 // Client method names
 const (
+	ClientMethodAuthStatusUpdate         = "auth/status_update"
 	ClientMethodElicitationComplete      = "elicitation/complete"
 	ClientMethodElicitationCreate        = "elicitation/create"
 	ClientMethodFsReadTextFile           = "fs/read_text_file"

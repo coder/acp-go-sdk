@@ -32,7 +32,7 @@ const rpcTimeout = 2 * time.Minute
 // profiles lists the scenarios of each profile in the order they run.
 // runLive and runSmoke must match it; -only accepts only these names.
 var profiles = map[string][]string{
-	"live": {"initialize", "authenticate", "session/new", "prompt", "config-option", "permission-allow",
+	"live": {"initialize", "authenticate", "session/new", "prompt", "config-option", "config-boolean", "permission-allow",
 		"permission-reject", "cancel", "session/list", "session/close", "session/delete", "session/load", "session/resume"},
 	"smoke": {"initialize", "authenticate", "session/new", "prompt"},
 }
@@ -49,6 +49,7 @@ func (h *harness) runLive() {
 	h.step("session/new", func() (status, string) { return h.newSession(a, "A") })
 	h.step("prompt", func() (status, string) { return h.plainPrompt(a) })
 	h.step("config-option", func() (status, string) { return h.switchModel(a) })
+	h.step("config-boolean", func() (status, string) { return h.toggleBoolean(a) })
 	h.step("permission-allow", func() (status, string) { return h.permissionTurn(a, answerAllow) })
 	h.step("permission-reject", func() (status, string) { return h.permissionTurn(a, answerReject) })
 	h.step("cancel", func() (status, string) { return h.cancelTurn(a) })
@@ -93,9 +94,12 @@ func (h *harness) runSmoke() {
 
 func initRequest() acp.InitializeRequest {
 	return acp.InitializeRequest{
-		ProtocolVersion:    acp.ProtocolVersionNumber,
-		ClientCapabilities: acp.ClientCapabilities{},
-		ClientInfo:         &acp.Implementation{Name: "acpharness", Version: "0"},
+		ProtocolVersion: acp.ProtocolVersionNumber,
+		// Accept boolean config options, so an agent may offer them.
+		ClientCapabilities: acp.ClientCapabilities{Session: &acp.ClientSessionCapabilities{
+			ConfigOptions: &acp.SessionConfigOptionsCapabilities{Boolean: &acp.BooleanConfigOptionCapabilities{}},
+		}},
+		ClientInfo: &acp.Implementation{Name: "acpharness", Version: "0"},
 	}
 }
 
@@ -374,6 +378,54 @@ func (h *harness) setOption(a *agentConn, sid acp.SessionId, id acp.SessionConfi
 		}
 	}
 	return fmt.Errorf("response has no config option %s", id)
+}
+
+// toggleBoolean checks that the SDK decoded every config option of session A
+// as the wire has it, then turns the first boolean option (one in the
+// model_config category first) to the other value and back.
+func (h *harness) toggleBoolean(a *agentConn) (status, string) {
+	sid, ok := h.sessions["A"]
+	if !ok {
+		return skip, "blocked: session/new failed"
+	}
+	opt, all, err := configBoolean(h.newResults["A"], h.configs["A"], acp.SessionConfigOptionCategoryModelConfig)
+	if err != nil {
+		return fail, "session/new: " + err.Error()
+	}
+	if opt == nil {
+		return skip, skipNoBooleanOption + ": session/new on the wire offered no boolean option; options " + clip(fmt.Sprint(all), 200)
+	}
+	orig := opt.CurrentValue == "true"
+	detail := fmt.Sprintf("%s (category %s) %v -> %v -> %v; options %s", opt.ID, opt.Category, orig, !orig, orig, clip(fmt.Sprint(all), 200))
+	if err := h.setBoolean(a, sid, acp.SessionConfigId(opt.ID), !orig); err != nil {
+		return fail, fmt.Sprintf("set %s to %v: %v; %s", opt.ID, !orig, err, detail)
+	}
+	if err := h.setBoolean(a, sid, acp.SessionConfigId(opt.ID), orig); err != nil {
+		return fail, fmt.Sprintf("set %s back to %v: %v; %s", opt.ID, orig, err, detail)
+	}
+	return pass, detail
+}
+
+// setBoolean sets a boolean config option and checks that the response
+// reports the new value.
+func (h *harness) setBoolean(a *agentConn, sid acp.SessionId, id acp.SessionConfigId, value bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+	resp, err := a.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{Boolean: &acp.SetSessionConfigOptionBoolean{
+		SessionId: sid, ConfigId: id, Type: "boolean", Value: value,
+	}})
+	if err != nil {
+		return errors.New(errText(err))
+	}
+	for _, o := range resp.ConfigOptions {
+		if o.Boolean != nil && o.Boolean.Id == id {
+			if o.Boolean.CurrentValue != value {
+				return fmt.Errorf("response reports currentValue %v", o.Boolean.CurrentValue)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("response has no boolean config option %s", id)
 }
 
 // ensureB creates session B, the one that asks before edits, on first use.

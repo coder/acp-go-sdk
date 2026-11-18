@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -176,6 +177,11 @@ func expand(schemas []schemaRef, v any) []schemaRef {
 		if !ok || depth > 16 || !fits(m, v) {
 			return
 		}
+		// A catch-all variant leaves out the values of the other variants
+		// with not, so it does not describe them.
+		if not, ok := m["not"]; ok && matches(r.defs, not, v, 0) {
+			return
+		}
 		out = append(out, r)
 		if ref, ok := m["$ref"].(string); ok {
 			visit(schemaRef{r.defs, r.defs[strings.TrimPrefix(ref, "#/$defs/")]}, depth+1)
@@ -191,6 +197,43 @@ func expand(schemas []schemaRef, v any) []schemaRef {
 		visit(r, 0)
 	}
 	return out
+}
+
+// matches reports whether v fits node by its type, its consts, its
+// required members, its $ref and allOf, and one of its anyOf or oneOf
+// alternatives: enough to tell the variants of a union apart.
+func matches(defs map[string]any, node, v any, depth int) bool {
+	m, ok := node.(map[string]any)
+	if !ok || depth > 16 {
+		return ok
+	}
+	if !fits(m, v) {
+		return false
+	}
+	if obj, isObj := v.(map[string]any); isObj {
+		names, _ := m["required"].([]any)
+		for _, name := range names {
+			if _, present := obj[name.(string)]; !present {
+				return false
+			}
+		}
+	}
+	if ref, ok := m["$ref"].(string); ok && !matches(defs, defs[strings.TrimPrefix(ref, "#/$defs/")], v, depth+1) {
+		return false
+	}
+	parts, _ := m["allOf"].([]any)
+	for _, part := range parts {
+		if !matches(defs, part, v, depth+1) {
+			return false
+		}
+	}
+	for _, key := range []string{"anyOf", "oneOf"} {
+		alts, _ := m[key].([]any)
+		if len(alts) > 0 && !slices.ContainsFunc(alts, func(alt any) bool { return matches(defs, alt, v, depth+1) }) {
+			return false
+		}
+	}
+	return true
 }
 
 func fits(m map[string]any, v any) bool {
@@ -313,6 +356,14 @@ func TestCompareJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	open := []schemaRef{{unevaluated, unevaluated["O"]}}
+	union := map[string]any{}
+	if err := json.Unmarshal([]byte(`{"U": {"anyOf": [
+		{"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string", "const": "form"}}},
+		{"type": "object", "required": ["mode"], "properties": {"mode": {"type": "string"}}, "unevaluatedProperties": true,
+			"not": {"anyOf": [{"type": "object", "required": ["mode"], "properties": {"mode": {"const": "form"}}}]}}]}}`), &union); err != nil {
+		t.Fatal(err)
+	}
+	catchAll := []schemaRef{{union, union["U"]}}
 	for _, tc := range []struct {
 		name, in, out string
 		schemas       []schemaRef
@@ -329,6 +380,8 @@ func TestCompareJSON(t *testing.T) {
 		{"undefined member dropped", `{"name":"x","extra":1}`, `{"name":"x"}`, d, 0, 1},
 		{"free-form member dropped", `{"meta":{"k":"v"}}`, `{}`, d, 1, 0},
 		{"unevaluated member dropped", `{"mode":"x","extra":1}`, `{"mode":"x"}`, open, 1, 0},
+		{"undefined member of a known variant dropped", `{"mode":"form","extra":1}`, `{"mode":"form"}`, catchAll, 0, 1},
+		{"unevaluated member of the catch-all dropped", `{"mode":"_x","extra":1}`, `{"mode":"_x"}`, catchAll, 1, 0},
 		{"files disagree on the default", `{"flag":false}`, `{}`, both, 1, 0},
 	} {
 		c, err := compareJSON([]byte(tc.in), []byte(tc.out), tc.schemas)

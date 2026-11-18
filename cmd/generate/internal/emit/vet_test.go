@@ -120,7 +120,11 @@ const openUnionSchema = `{"$defs": {
     {"title": "Request", "allOf": [{"$ref": "#/$defs/RequestScope"}]}], "unevaluatedProperties": true},
   "Mode": {"oneOf": [
     {"title": "other", "type": "object", "required": ["mode"], "properties": {"mode": {"type": "string"}},
-      "allOf": [{"$ref": "#/$defs/TitledScope"}]}]}
+      "allOf": [{"$ref": "#/$defs/TitledScope"}]}]},
+  "Inner": {"anyOf": [
+    {"title": "X", "type": "object", "required": ["x"], "properties": {"x": {"type": "string"}, "y": {"type": "string"}}},
+    {"title": "Z", "type": "object", "required": ["z"], "properties": {"z": {"type": "string"}}}]},
+  "Nested": {"anyOf": [{"$ref": "#/$defs/Inner"}], "unevaluatedProperties": true}
 }}`
 
 const openUnionTest = `package acp
@@ -137,6 +141,7 @@ func TestOpenUnions_KeepUnnamedMembers(t *testing.T) {
 	}{
 		{func() any { return new(Scope) }, ` + "`" + `{"sessionId":"s","extra":1}` + "`" + `},
 		{func() any { return new(Mode) }, ` + "`" + `{"mode":"m","requestId":"r","extra":{"k":[1]}}` + "`" + `},
+		{func() any { return new(Nested) }, ` + "`" + `{"x":"1","y":"2","extra":1}` + "`" + `},
 	} {
 		v := tt.into()
 		if err := json.Unmarshal([]byte(tt.in), v); err != nil {
@@ -159,6 +164,13 @@ func TestOpenUnions_KeepUnnamedMembers(t *testing.T) {
 	}
 	if len(scope.AdditionalProperties) != 1 {
 		t.Errorf("AdditionalProperties = %s, want only extra", scope.AdditionalProperties)
+	}
+	var nested Nested
+	if err := json.Unmarshal([]byte(` + "`" + `{"x":"1","y":"2","extra":1}` + "`" + `), &nested); err != nil {
+		t.Fatal(err)
+	}
+	if len(nested.AdditionalProperties) != 1 {
+		t.Errorf("Nested.AdditionalProperties = %s, want only extra", nested.AdditionalProperties)
 	}
 }
 `

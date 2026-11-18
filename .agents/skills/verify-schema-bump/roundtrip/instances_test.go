@@ -130,7 +130,11 @@ func (g instanceGen) ofType(typ string, m map[string]any, depth int) (any, bool)
 		switch {
 		case !g.full:
 		case ap == true || m["unevaluatedProperties"] == true:
-			obj["example"] = "value"
+			key := "example"
+			for i := 2; props[key] != nil; i++ {
+				key = fmt.Sprintf("example%d", i)
+			}
+			obj[key] = "value"
 		case len(props) == 0:
 			if v, ok := g.value(ap, depth+1, -1); ok && depth < maxDepth {
 				obj["example"] = v
@@ -289,14 +293,21 @@ func TestInstanceGen_FullValueHasAMemberThatTheSchemaDoesNotName(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{
 		"Open": {"type": "object", "properties": {"mode": {"type": "string"}}, "additionalProperties": true},
 		"Unevaluated": {"type": "object", "properties": {"mode": {"type": "string"}}, "unevaluatedProperties": true},
-		"Closed": {"type": "object", "properties": {"mode": {"type": "string"}}}}`), &defs); err != nil {
+		"Closed": {"type": "object", "properties": {"mode": {"type": "string"}}},
+		"Named": {"type": "object", "properties": {"example": {"type": "integer"}}, "additionalProperties": true}}`), &defs); err != nil {
 		t.Fatal(err)
 	}
-	for def, want := range map[string]bool{"Open": true, "Unevaluated": true, "Closed": false} {
+	for def, want := range map[string]string{"Open": "example", "Unevaluated": "example", "Closed": "", "Named": "example2"} {
 		v, ok := instanceGen{defs: defs, full: true}.value(defs[def], 0, -1)
 		obj, _ := v.(map[string]any)
-		if _, got := obj["example"]; !ok || got != want {
-			t.Errorf("full value of %s = %v; want an unnamed member: %v", def, v, want)
+		got := ""
+		for k, x := range obj {
+			if x == "value" {
+				got = k
+			}
+		}
+		if !ok || got != want {
+			t.Errorf("full value of %s = %v; want the unnamed member %q", def, v, want)
 		}
 	}
 }

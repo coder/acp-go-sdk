@@ -873,6 +873,25 @@ func scalarConstOf(v *load.Definition) Code {
 	return nil
 }
 
+// namedProperties returns the properties that d names: its own, those of
+// its $ref and allOf, and those of each of its anyOf and oneOf
+// alternatives, at any depth.
+func namedProperties(schema *load.Schema, d *load.Definition, seen map[*load.Definition]bool) []string {
+	if d == nil || seen[d] {
+		return nil
+	}
+	seen[d] = true
+	d = expandAllOf(schema, d)
+	keys := sortedPropertyKeys(d.Properties)
+	if d.Ref != "" {
+		keys = append(keys, namedProperties(schema, schema.Defs[strings.TrimPrefix(d.Ref, "#/$defs/")], seen)...)
+	}
+	for _, alt := range append(append([]*load.Definition{}, d.AnyOf...), d.OneOf...) {
+		keys = append(keys, namedProperties(schema, alt, seen)...)
+	}
+	return keys
+}
+
 // emitUnion emits the union wrapper type name and its variants. With exactlyOne
 // (a oneOf), the wrapper's Validate requires exactly one variant. Validate is
 // emitted when exactlyOne or validate is set. It also checks the union's own
@@ -1194,11 +1213,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		)
 		keys := sortedPropertyKeys(parentDef.Properties)
 		for _, alt := range alts {
-			props := alt.expanded.Properties
-			if def := schema.Defs[strings.TrimPrefix(alt.ref, "#/$defs/")]; def != nil {
-				props = expandAllOf(schema, def).Properties
-			}
-			keys = append(keys, sortedPropertyKeys(props)...)
+			keys = append(keys, namedProperties(schema, alt.expanded, map[*load.Definition]bool{})...)
 		}
 		sort.Strings(keys)
 		for _, k := range slices.Compact(keys) {

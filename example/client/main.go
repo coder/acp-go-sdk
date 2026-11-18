@@ -137,15 +137,14 @@ func (e *exampleClient) ReadTextFile(ctx context.Context, params acp.ReadTextFil
 	// Apply optional line/limit (1-based line index)
 	if params.Line != nil || params.Limit != nil {
 		lines := strings.Split(content, "\n")
+		// Line and Limit are int64; clamp them to the lines before converting.
 		start := 0
 		if params.Line != nil && *params.Line > 0 {
-			start = min(max(*params.Line-1, 0), len(lines))
+			start = int(min(*params.Line-1, int64(len(lines))))
 		}
 		end := len(lines)
 		if params.Limit != nil && *params.Limit > 0 {
-			if start+*params.Limit < end {
-				end = start + *params.Limit
-			}
+			end = int(min(int64(start)+*params.Limit, int64(end)))
 		}
 		content = strings.Join(lines[start:end], "\n")
 	}

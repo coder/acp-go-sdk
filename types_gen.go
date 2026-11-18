@@ -2778,7 +2778,7 @@ type CreateTerminalRequest struct {
 	// The Client MUST ensure truncation happens at a character boundary to maintain valid
 	// string output, even if this means the retained output is slightly less than the
 	// specified limit.
-	OutputByteLimit *int `json:"outputByteLimit,omitempty"`
+	OutputByteLimit *int64 `json:"outputByteLimit,omitempty"`
 	// The session ID for this request.
 	SessionId SessionId `json:"sessionId"`
 }
@@ -3293,11 +3293,11 @@ type ElicitationPropertySchemaString struct {
 	// Maximum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum length constraint.
-	MaxLength *int `json:"maxLength,omitempty"`
+	MaxLength *int64 `json:"maxLength,omitempty"`
 	// Minimum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum length constraint.
-	MinLength *int `json:"minLength,omitempty"`
+	MinLength *int64 `json:"minLength,omitempty"`
 	// Titled enum options for titled single-select enums.
 	// Optional. Omitted and 'null' are equivalent and mean no titled single-select choices are
 	// declared by 'oneOf'.
@@ -3507,11 +3507,11 @@ type ElicitationPropertySchemaArray struct {
 	// Maximum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum selection count.
-	MaxItems *int `json:"maxItems,omitempty"`
+	MaxItems *int64 `json:"maxItems,omitempty"`
 	// Minimum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum selection count.
-	MinItems *int `json:"minItems,omitempty"`
+	MinItems *int64 `json:"minItems,omitempty"`
 	// Optional title for the property.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
@@ -6558,11 +6558,11 @@ type MultiSelectPropertySchema struct {
 	// Maximum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum selection count.
-	MaxItems *int `json:"maxItems,omitempty"`
+	MaxItems *int64 `json:"maxItems,omitempty"`
 	// Minimum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum selection count.
-	MinItems *int `json:"minItems,omitempty"`
+	MinItems *int64 `json:"minItems,omitempty"`
 	// Optional title for the property.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
@@ -7809,9 +7809,9 @@ type ReadTextFileRequest struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Maximum number of lines to read.
-	Limit *int `json:"limit,omitempty"`
+	Limit *int64 `json:"limit,omitempty"`
 	// Line number to start reading from (1-based).
-	Line *int `json:"line,omitempty"`
+	Line *int64 `json:"line,omitempty"`
 	// Absolute path to the file to read.
 	Path string `json:"path"`
 	// The session ID for this request.
@@ -10406,9 +10406,9 @@ type SessionUsageUpdate struct {
 	Cost          *Cost  `json:"cost,omitempty"`
 	SessionUpdate string `json:"sessionUpdate"`
 	// Total context window size in tokens.
-	Size int `json:"size"`
+	Size int64 `json:"size"`
 	// Tokens currently in context.
-	Used int `json:"used"`
+	Used int64 `json:"used"`
 }
 
 func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
@@ -12493,11 +12493,11 @@ type StringPropertySchema struct {
 	// Maximum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum length constraint.
-	MaxLength *int `json:"maxLength,omitempty"`
+	MaxLength *int64 `json:"maxLength,omitempty"`
 	// Minimum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum length constraint.
-	MinLength *int `json:"minLength,omitempty"`
+	MinLength *int64 `json:"minLength,omitempty"`
 	// Titled enum options for titled single-select enums.
 	// Optional. Omitted and 'null' are equivalent and mean no titled single-select choices are
 	// declared by 'oneOf'.
@@ -12828,7 +12828,7 @@ type TerminalExitStatus struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The process exit code (may be null if terminated by signal).
-	ExitCode *int `json:"exitCode,omitempty"`
+	ExitCode *int64 `json:"exitCode,omitempty"`
 	// The signal that terminated the process (may be null if exited normally).
 	Signal *string `json:"signal,omitempty"`
 }
@@ -13380,7 +13380,7 @@ type ToolCallLocation struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Optional 1-based line number within the file.
-	Line *int `json:"line,omitempty"`
+	Line *int64 `json:"line,omitempty"`
 	// The absolute file path being accessed or modified.
 	Path string `json:"path"`
 }
@@ -15733,17 +15733,17 @@ type Usage struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Total cache read tokens.
-	CachedReadTokens *int `json:"cachedReadTokens,omitempty"`
+	CachedReadTokens *int64 `json:"cachedReadTokens,omitempty"`
 	// Total cache write tokens.
-	CachedWriteTokens *int `json:"cachedWriteTokens,omitempty"`
+	CachedWriteTokens *int64 `json:"cachedWriteTokens,omitempty"`
 	// Total input tokens across all turns.
-	InputTokens int `json:"inputTokens"`
+	InputTokens int64 `json:"inputTokens"`
 	// Total output tokens across all turns.
-	OutputTokens int `json:"outputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
 	// Total thought/reasoning tokens
-	ThoughtTokens *int `json:"thoughtTokens,omitempty"`
+	ThoughtTokens *int64 `json:"thoughtTokens,omitempty"`
 	// Sum of all token types across session.
-	TotalTokens int `json:"totalTokens"`
+	TotalTokens int64 `json:"totalTokens"`
 }
 
 func (v *Usage) UnmarshalJSON(b []byte) error {
@@ -15777,9 +15777,9 @@ type UsageUpdate struct {
 	// Cumulative session cost (optional).
 	Cost *Cost `json:"cost,omitempty"`
 	// Total context window size in tokens.
-	Size int `json:"size"`
+	Size int64 `json:"size"`
 	// Tokens currently in context.
-	Used int `json:"used"`
+	Used int64 `json:"used"`
 }
 
 func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
@@ -15839,7 +15839,7 @@ type WaitForTerminalExitResponse struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The process exit code (may be null if terminated by signal).
-	ExitCode *int `json:"exitCode,omitempty"`
+	ExitCode *int64 `json:"exitCode,omitempty"`
 	// The signal that terminated the process (may be null if exited normally).
 	Signal *string `json:"signal,omitempty"`
 }

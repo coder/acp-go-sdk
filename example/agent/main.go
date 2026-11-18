@@ -285,13 +285,15 @@ func (a *exampleAgent) LoadSession(ctx context.Context, params acp.LoadSessionRe
 	if err != nil {
 		return acp.LoadSessionResponse{}, err
 	}
-	invalid := func(msg string) error { return acp.NewInvalidParams(map[string]any{"error": msg}) }
+	// An unknown session gets -32002 (resource not found) with the requested
+	// sessionId in data, as the protocol asks of the session methods.
+	notFound := &acp.RequestError{Code: -32002, Message: "Resource not found", Data: map[string]any{"sessionId": params.SessionId}}
 	sid := string(params.SessionId)
 	a.mu.Lock()
 	s := a.sessions[sid]
 	a.mu.Unlock()
 	if s == nil {
-		return acp.LoadSessionResponse{}, invalid("unknown session")
+		return acp.LoadSessionResponse{}, notFound
 	}
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
@@ -299,10 +301,10 @@ func (a *exampleAgent) LoadSession(ctx context.Context, params acp.LoadSessionRe
 	switch {
 	case a.sessions[sid] != s: // deleted while this call waited for sendMu
 		a.mu.Unlock()
-		return acp.LoadSessionResponse{}, invalid("unknown session")
+		return acp.LoadSessionResponse{}, notFound
 	case params.Cwd != s.cwd:
 		a.mu.Unlock()
-		return acp.LoadSessionResponse{}, invalid("cwd does not match the session")
+		return acp.LoadSessionResponse{}, acp.NewInvalidParams(map[string]any{"error": "cwd does not match the session"})
 	}
 	if params.SystemPrompt != nil {
 		s.systemPrompt = prompt
@@ -320,7 +322,8 @@ func (a *exampleAgent) LoadSession(ctx context.Context, params acp.LoadSessionRe
 }
 
 // sessionUpdate sends an update of a session and adds it to the session's
-// history. See agentSession.sendMu.
+// history, except a notice: notices are live events, not session history.
+// See agentSession.sendMu.
 func (a *exampleAgent) sessionUpdate(ctx context.Context, n acp.SessionNotification) error {
 	a.mu.Lock()
 	s := a.sessions[string(n.SessionId)]
@@ -333,10 +336,25 @@ func (a *exampleAgent) sessionUpdate(ctx context.Context, n acp.SessionNotificat
 	if err := a.conn.SessionUpdate(ctx, n); err != nil {
 		return err
 	}
-	a.mu.Lock()
-	s.history = append(s.history, n.Update)
-	a.mu.Unlock()
+	if n.Update.Notice == nil {
+		a.mu.Lock()
+		s.history = append(s.history, n.Update)
+		a.mu.Unlock()
+	}
 	return nil
+}
+
+// recordPrompt adds the blocks of a user's prompt to the session's history,
+// under sendMu, so an update that an earlier turn is sending lands before or
+// after the whole prompt, in the order that the client saw them.
+func (a *exampleAgent) recordPrompt(s *agentSession, prompt []acp.ContentBlock) {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, block := range prompt {
+		s.history = append(s.history, acp.UpdateUserMessage(block))
+	}
 }
 
 // Cancel cancels the session's running turn. It copies the cancel func under
@@ -370,14 +388,12 @@ func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (ac
 	s.cancel = cancel
 	s.turn++
 	turn := s.turn
-	for _, block := range params.Prompt {
-		s.history = append(s.history, acp.UpdateUserMessage(block))
-	}
 	a.mu.Unlock()
 	// cancel any previous turn
 	if prev != nil {
 		prev()
 	}
+	a.recordPrompt(s, params.Prompt)
 
 	// /compact compacts the session; any other prompt runs the demo turn with
 	// streaming updates and a permission request

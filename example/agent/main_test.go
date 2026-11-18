@@ -529,7 +529,10 @@ func TestExampleAgent_LoadSession(t *testing.T) {
 	ctx := context.Background()
 	client := &recordClient{}
 	c, _ := connectClient(t, client)
-	init, err := c.Initialize(ctx, acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber})
+	init, err := c.Initialize(ctx, acp.InitializeRequest{
+		ProtocolVersion:    acp.ProtocolVersionNumber,
+		ClientCapabilities: acp.ClientCapabilities{Session: &acp.ClientSessionCapabilities{Notices: &acp.NoticeCapabilities{}}},
+	})
 	if err != nil || !init.AgentCapabilities.LoadSession {
 		t.Fatalf("initialize = %+v, %v; want loadSession", init.AgentCapabilities, err)
 	}
@@ -582,8 +585,22 @@ func TestExampleAgent_LoadSession(t *testing.T) {
 		}
 		return ""
 	}
-	if got := follows(prompt("hi")); got != "Following your system prompt: Answer like a parrot." {
+	turn := prompt("hi")
+	if got := follows(turn); got != "Following your system prompt: Answer like a parrot." {
 		t.Fatalf("turn after the load showed %q, want the parrot prompt", got)
+	}
+
+	// A notice is a live event, not session history, so no replay has it.
+	if turn[0].Notice == nil {
+		t.Fatalf("first update of the turn = %+v, want the demo notice", turn[0])
+	}
+	if _, err := load(acp.LoadSessionRequest{}); err != nil {
+		t.Fatalf("second session/load: %v", err)
+	}
+	want = append(append(want, acp.UpdateUserMessageText("hi")), turn[1:]...)
+	got, _ = json.Marshal(client.take())
+	if wantJSON, _ := json.Marshal(want); string(got) != string(wantJSON) {
+		t.Fatalf("second replay = %s, want %s", got, wantJSON)
 	}
 
 	for _, tc := range []struct {
@@ -601,8 +618,8 @@ func TestExampleAgent_LoadSession(t *testing.T) {
 	}
 	_, err = c.LoadSession(ctx, acp.LoadSessionRequest{SessionId: "sess_unknown", Cwd: "/w", McpServers: []acp.McpServer{}})
 	var re *acp.RequestError
-	if !errors.As(err, &re) || re.Code != -32602 {
-		t.Errorf("session/load of an unknown session = %v, want -32602", err)
+	if !errors.As(err, &re) || re.Code != -32002 || fmt.Sprint(re.Data) != fmt.Sprint(map[string]any{"sessionId": "sess_unknown"}) {
+		t.Errorf("session/load of an unknown session = %v, want -32002 with the sessionId", err)
 	}
 	if got := client.take(); len(got) != 0 {
 		t.Errorf("a refused load sent %d updates, want none", len(got))

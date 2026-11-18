@@ -66,7 +66,9 @@ func PatchNull[T any]() Patch[T] {
 }
 
 // Value returns the value of a set Patch and true, or the zero T and false
-// when p is unset or null.
+// when p is unset or null. A Patch from WithUpdateRawInput or
+// WithUpdateRawOutput whose value did not encode reads as set with a nil
+// value; only MarshalJSON returns its error.
 func (p Patch[T]) Value() (T, bool) {
 	return p.value, p.state == patchSet
 }

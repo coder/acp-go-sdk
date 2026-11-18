@@ -14,11 +14,14 @@ Learn more about the protocol itself at <https://agentclientprotocol.com>.
 <!-- `$ printf 'go get github.com/coder/acp-go-sdk@v%s\n' "$(cat version)"` as bash -->
 
 ```bash
-go get github.com/coder/acp-go-sdk@v0.19.0
+go get github.com/coder/acp-go-sdk@v0.20.0
 ```
 
 The SDK has its own semver, separate from the ACP schema version.
 `acp.SchemaVersion` names the ACP schema release that an SDK version targets.
+
+Upgrading from v0.19.x? v0.20.0 makes every planned API break at once:
+follow [MIGRATION_v0.20.md](MIGRATION_v0.20.md).
 
 ## Get Started
 

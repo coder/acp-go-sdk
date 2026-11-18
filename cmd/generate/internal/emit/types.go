@@ -257,94 +257,61 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 
 	// Append Agent & Client interfaces from method groups
 	groups := ir.BuildMethodGroups(schema, meta)
-
-	// Agent
-	agentMethods := []Code{}
-	agentLoaderMethods := []Code{}
-	agentExperimentalMethods := []Code{}
-	for _, k := range ir.SortedKeys(meta.AgentMethods) {
-		wire := meta.AgentMethods[k]
-		mi := groups["agent|"+wire]
-		if mi == nil {
-			continue
-		}
-		target := &agentMethods
-		switch mi.Binding {
-		case ir.BindAgentLoader:
-			target = &agentLoaderMethods
-		case ir.BindAgentExperimental:
-			target = &agentExperimentalMethods
-		}
-		if desc := methodDescription(schema, mi); desc != "" {
-			// Method descriptions can be multi-line, format them properly
-			*target = appendDocComments(*target, desc)
-		}
-		if mi.Notif != "" {
-			name := ir.DispatchMethodNameForNotification(k, mi.Notif)
-			*target = append(*target, Id(name).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Notif)).Error())
-		} else if mi.Req != "" {
-			respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
-			methodName := strings.TrimSuffix(mi.Req, "Request")
-			if ir.IsNullResponse(schema.Defs[respName]) {
-				*target = append(*target, Id(methodName).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Error())
-			} else {
-				*target = append(*target, Id(methodName).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Params(Id(respName), Error()))
-			}
-		}
-	}
-	f.Type().Id("Agent").Interface(agentMethods...)
-	if len(agentLoaderMethods) > 0 {
-		f.Comment("AgentLoader defines optional support for loading sessions. Implement and advertise the capability to enable 'session/load'.")
-		f.Type().Id("AgentLoader").Interface(agentLoaderMethods...)
-	}
-	// Always emit AgentExperimental, even if empty.
-	f.Comment("AgentExperimental defines unstable methods that are not part of the official spec. These may change or be removed without notice.")
-	f.Type().Id("AgentExperimental").Interface(agentExperimentalMethods...)
-
-	// Client
-	clientStable := []Code{}
-	clientExperimental := []Code{}
-	clientTerminal := []Code{}
-	for _, k := range ir.SortedKeys(meta.ClientMethods) {
-		wire := meta.ClientMethods[k]
-		mi := groups["client|"+wire]
-		if mi == nil {
-			continue
-		}
-		target := &clientStable
-		switch mi.Binding {
-		case ir.BindClientExperimental:
-			target = &clientExperimental
-		case ir.BindClientTerminal:
-			target = &clientTerminal
-		}
-		if desc := methodDescription(schema, mi); desc != "" {
-			// Method descriptions can be multi-line, format them properly
-			*target = appendDocComments(*target, desc)
-		}
-		if mi.Notif != "" {
-			name := ir.DispatchMethodNameForNotification(k, mi.Notif)
-			*target = append(*target, Id(name).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Notif)).Error())
-		} else if mi.Req != "" {
-			respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
-			methodName := strings.TrimSuffix(mi.Req, "Request")
-			if ir.IsNullResponse(schema.Defs[respName]) {
-				*target = append(*target, Id(methodName).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Error())
-			} else {
-				*target = append(*target, Id(methodName).Params(Id("ctx").Qual("context", "Context"), Id("params").Id(mi.Req)).Params(Id(respName), Error()))
-			}
-		}
-	}
-	f.Type().Id("Client").Interface(clientStable...)
-	if len(clientTerminal) > 0 {
-		f.Comment("ClientTerminal defines terminal-related experimental methods (x-docs-ignore). Implement and advertise 'terminal: true' to enable 'terminal/*'.")
-		f.Type().Id("ClientTerminal").Interface(clientTerminal...)
-	}
-	// Always emit ClientExperimental, even if empty.
-	f.Comment("ClientExperimental defines unstable methods that are not part of the official spec. These may change or be removed without notice.")
-	f.Type().Id("ClientExperimental").Interface(clientExperimental...)
+	b.emitInterfaces("agent", meta.AgentMethods, groups)
+	b.emitInterfaces("client", meta.ClientMethods, groups)
 	b.emitSupport()
 	return f, emitted
+}
+
+// emitInterfaces declares the interface that every agent or client implements,
+// Agent or Client, and then one optional interface for each method outside it.
+func (b *typesBuilder) emitInterfaces(side string, methods map[string]string, groups ir.Groups) {
+	iface := util.TitleWord(side)
+	required := []Code{}
+	optional := []*ir.MethodInfo{}
+	for _, k := range ir.SortedKeys(methods) {
+		mi := groups[side+"|"+methods[k]]
+		if mi == nil || (mi.Notif == "" && mi.Req == "") {
+			continue
+		}
+		if mi.Optional == "" {
+			required = append(required, b.interfaceMethod(mi)...)
+		} else {
+			optional = append(optional, mi)
+		}
+	}
+	b.f.Comment(fmt.Sprintf("%s is the interface that every %s implements.", iface, side))
+	b.f.Comment(fmt.Sprintf("Its methods are the stable %s methods of ACP schema 1.25.0.", side))
+	b.f.Comment(fmt.Sprintf("Every other %s method has its own optional interface, so a schema release never adds a method to %s.", side, iface))
+	b.f.Type().Id(iface).Interface(required...)
+	for _, mi := range optional {
+		if b.usedTypeNames[mi.Optional] {
+			panic(fmt.Sprintf("BUG: optional interface %s of %s %q collides with a generated type", mi.Optional, side, mi.Method))
+		}
+		b.usedTypeNames[mi.Optional] = true
+		reply := fmt.Sprintf("answers %q with -32601 (method not found)", mi.Method)
+		if mi.Notif != "" {
+			reply = fmt.Sprintf("drops %q and logs a -32601 (method not found) error", mi.Method)
+		}
+		b.f.Comment(fmt.Sprintf("%s is the optional interface for the %s method %q.", mi.Optional, side, mi.Method))
+		b.f.Comment(fmt.Sprintf("When the %s does not implement it, [%sSideConnection] %s.", side, iface, reply))
+		b.f.Type().Id(mi.Optional).Interface(b.interfaceMethod(mi)...)
+	}
+}
+
+// interfaceMethod returns the doc comment and the signature of the Go method
+// that handles mi.
+func (b *typesBuilder) interfaceMethod(mi *ir.MethodInfo) []Code {
+	code := appendDocComments(nil, methodDescription(b.schema, mi))
+	ctx := Id("ctx").Qual("context", "Context")
+	if mi.Notif != "" {
+		return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Notif)).Error())
+	}
+	respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
+	if ir.IsNullResponse(b.schema.Defs[respName]) {
+		return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Req)).Error())
+	}
+	return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Req)).Params(Id(respName), Error()))
 }
 
 func isStringConstUnion(def *load.Definition) bool {

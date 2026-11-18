@@ -15427,6 +15427,9 @@ func (v *WriteTextFileResponse) Validate() error {
 	return nil
 }
 
+// Agent is the interface that every agent implements.
+// Its methods are the stable agent methods of ACP schema 1.25.0.
+// Every other agent method has its own optional interface, so a schema release never adds a method to Agent.
 type Agent interface {
 	// Request parameters for the authenticate method.
 	//
@@ -15485,28 +15488,44 @@ type Agent interface {
 	SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error)
 }
 
-// AgentLoader defines optional support for loading sessions. Implement and advertise the capability to enable 'session/load'.
-type AgentLoader interface {
-	// Request parameters for loading an existing session.
-	//
-	// Only available if the Agent supports the 'loadSession' capability.
-	//
-	// See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
-	LoadSession(ctx context.Context, params LoadSessionRequest) (LoadSessionResponse, error)
-}
-
-// AgentExperimental defines unstable methods that are not part of the official spec. These may change or be removed without notice.
-type AgentExperimental interface {
+// AgentUnstableDidChangeDocument is the optional interface for the agent method "document/didChange".
+// When the agent does not implement it, [AgentSideConnection] drops "document/didChange" and logs a -32601 (method not found) error.
+type AgentUnstableDidChangeDocument interface {
 	// Notification sent when a file is edited.
 	UnstableDidChangeDocument(ctx context.Context, params UnstableDidChangeDocumentNotification) error
+}
+
+// AgentUnstableDidCloseDocument is the optional interface for the agent method "document/didClose".
+// When the agent does not implement it, [AgentSideConnection] drops "document/didClose" and logs a -32601 (method not found) error.
+type AgentUnstableDidCloseDocument interface {
 	// Notification sent when a file is closed.
 	UnstableDidCloseDocument(ctx context.Context, params UnstableDidCloseDocumentNotification) error
+}
+
+// AgentUnstableDidFocusDocument is the optional interface for the agent method "document/didFocus".
+// When the agent does not implement it, [AgentSideConnection] drops "document/didFocus" and logs a -32601 (method not found) error.
+type AgentUnstableDidFocusDocument interface {
 	// Notification sent when a file becomes the active editor tab.
 	UnstableDidFocusDocument(ctx context.Context, params UnstableDidFocusDocumentNotification) error
+}
+
+// AgentUnstableDidOpenDocument is the optional interface for the agent method "document/didOpen".
+// When the agent does not implement it, [AgentSideConnection] drops "document/didOpen" and logs a -32601 (method not found) error.
+type AgentUnstableDidOpenDocument interface {
 	// Notification sent when a file is opened in the editor.
 	UnstableDidOpenDocument(ctx context.Context, params UnstableDidOpenDocumentNotification) error
+}
+
+// AgentUnstableDidSaveDocument is the optional interface for the agent method "document/didSave".
+// When the agent does not implement it, [AgentSideConnection] drops "document/didSave" and logs a -32601 (method not found) error.
+type AgentUnstableDidSaveDocument interface {
 	// Notification sent when a file is saved.
 	UnstableDidSaveDocument(ctx context.Context, params UnstableDidSaveDocumentNotification) error
+}
+
+// AgentUnstableMessageMcp is the optional interface for the agent method "mcp/message".
+// When the agent does not implement it, [AgentSideConnection] drops "mcp/message" and logs a -32601 (method not found) error.
+type AgentUnstableMessageMcp interface {
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -15516,31 +15535,71 @@ type AgentExperimental interface {
 	// Sent by the provider to the consumer for an active request (including
 	// subscription acknowledgements and updates); the outer envelope has no 'id'.
 	UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpNotification) error
+}
+
+// AgentUnstableAcceptNes is the optional interface for the agent method "nes/accept".
+// When the agent does not implement it, [AgentSideConnection] drops "nes/accept" and logs a -32601 (method not found) error.
+type AgentUnstableAcceptNes interface {
 	// Notification sent when a suggestion is accepted.
 	UnstableAcceptNes(ctx context.Context, params UnstableAcceptNesNotification) error
+}
+
+// AgentUnstableCloseNes is the optional interface for the agent method "nes/close".
+// When the agent does not implement it, [AgentSideConnection] answers "nes/close" with -32601 (method not found).
+type AgentUnstableCloseNes interface {
 	// Request to close an NES session.
 	//
 	// The agent **must** cancel any ongoing work related to the NES session
 	// and then free up any resources associated with the session.
 	UnstableCloseNes(ctx context.Context, params UnstableCloseNesRequest) (UnstableCloseNesResponse, error)
+}
+
+// AgentUnstableRejectNes is the optional interface for the agent method "nes/reject".
+// When the agent does not implement it, [AgentSideConnection] drops "nes/reject" and logs a -32601 (method not found) error.
+type AgentUnstableRejectNes interface {
 	// Notification sent when a suggestion is rejected.
 	UnstableRejectNes(ctx context.Context, params UnstableRejectNesNotification) error
+}
+
+// AgentUnstableStartNes is the optional interface for the agent method "nes/start".
+// When the agent does not implement it, [AgentSideConnection] answers "nes/start" with -32601 (method not found).
+type AgentUnstableStartNes interface {
 	// Request to start an NES session.
 	UnstableStartNes(ctx context.Context, params UnstableStartNesRequest) (UnstableStartNesResponse, error)
+}
+
+// AgentUnstableSuggestNes is the optional interface for the agent method "nes/suggest".
+// When the agent does not implement it, [AgentSideConnection] answers "nes/suggest" with -32601 (method not found).
+type AgentUnstableSuggestNes interface {
 	// Request for a code suggestion.
 	UnstableSuggestNes(ctx context.Context, params UnstableSuggestNesRequest) (UnstableSuggestNesResponse, error)
+}
+
+// AgentUnstableDisableProvider is the optional interface for the agent method "providers/disable".
+// When the agent does not implement it, [AgentSideConnection] answers "providers/disable" with -32601 (method not found).
+type AgentUnstableDisableProvider interface {
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
 	//
 	// Request parameters for 'providers/disable'.
 	UnstableDisableProvider(ctx context.Context, params UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error)
+}
+
+// AgentUnstableListProviders is the optional interface for the agent method "providers/list".
+// When the agent does not implement it, [AgentSideConnection] answers "providers/list" with -32601 (method not found).
+type AgentUnstableListProviders interface {
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
 	//
 	// Request parameters for 'providers/list'.
 	UnstableListProviders(ctx context.Context, params UnstableListProvidersRequest) (UnstableListProvidersResponse, error)
+}
+
+// AgentUnstableSetProvider is the optional interface for the agent method "providers/set".
+// When the agent does not implement it, [AgentSideConnection] answers "providers/set" with -32601 (method not found).
+type AgentUnstableSetProvider interface {
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -15549,6 +15608,11 @@ type AgentExperimental interface {
 	//
 	// Replaces the full configuration for one provider ID.
 	UnstableSetProvider(ctx context.Context, params UnstableSetProviderRequest) (UnstableSetProviderResponse, error)
+}
+
+// AgentUnstableForkSession is the optional interface for the agent method "session/fork".
+// When the agent does not implement it, [AgentSideConnection] answers "session/fork" with -32601 (method not found).
+type AgentUnstableForkSession interface {
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -15561,6 +15625,21 @@ type AgentExperimental interface {
 	// Only available if the Agent supports the 'session.fork' capability.
 	UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error)
 }
+
+// AgentLoader is the optional interface for the agent method "session/load".
+// When the agent does not implement it, [AgentSideConnection] answers "session/load" with -32601 (method not found).
+type AgentLoader interface {
+	// Request parameters for loading an existing session.
+	//
+	// Only available if the Agent supports the 'loadSession' capability.
+	//
+	// See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
+	LoadSession(ctx context.Context, params LoadSessionRequest) (LoadSessionResponse, error)
+}
+
+// Client is the interface that every client implements.
+// Its methods are the stable client methods of ACP schema 1.25.0.
+// Every other client method has its own optional interface, so a schema release never adds a method to Client.
 type Client interface {
 	// Notification sent by the agent when a URL-based elicitation is complete.
 	CompleteElicitation(ctx context.Context, params CompleteElicitationNotification) error
@@ -15602,8 +15681,9 @@ type Client interface {
 	WaitForTerminalExit(ctx context.Context, params WaitForTerminalExitRequest) (WaitForTerminalExitResponse, error)
 }
 
-// ClientExperimental defines unstable methods that are not part of the official spec. These may change or be removed without notice.
-type ClientExperimental interface {
+// ClientUnstableMessageMcp is the optional interface for the client method "mcp/message".
+// When the client does not implement it, [ClientSideConnection] answers "mcp/message" with -32601 (method not found).
+type ClientUnstableMessageMcp interface {
 	// **UNSTABLE**
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.

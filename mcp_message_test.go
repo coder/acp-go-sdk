@@ -15,7 +15,7 @@ type mcpClient struct {
 	got chan UnstableMessageMcpRequest
 }
 
-var _ ClientExperimental = (*mcpClient)(nil)
+var _ ClientUnstableMessageMcp = (*mcpClient)(nil)
 
 func (c *mcpClient) UnstableMessageMcp(_ context.Context, p UnstableMessageMcpRequest) (UnstableMessageMcpResponse, error) {
 	c.got <- p

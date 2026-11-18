@@ -68,13 +68,11 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		exp, ok := c.client.(interface {
-			UnstableMessageMcp(context.Context, UnstableMessageMcpRequest) (UnstableMessageMcpResponse, error)
-		})
+		impl, ok := c.client.(ClientUnstableMessageMcp)
 		if !ok {
 			return nil, NewMethodNotFound(method)
 		}
-		resp, err := exp.UnstableMessageMcp(ctx, p)
+		resp, err := impl.UnstableMessageMcp(ctx, p)
 		if err != nil {
 			return nil, toReqErr(err)
 		}

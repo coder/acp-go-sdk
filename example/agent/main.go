@@ -46,10 +46,14 @@ type exampleAgent struct {
 	mu sync.Mutex
 }
 
+// The example agent implements acp.Agent and two optional interfaces. An
+// agent asserts each optional interface it implements, so that a schema
+// release that changes the method breaks the build instead of turning the
+// method into -32601 (method not found).
 var (
-	_ acp.Agent             = (*exampleAgent)(nil)
-	_ acp.AgentLoader       = (*exampleAgent)(nil)
-	_ acp.AgentExperimental = (*exampleAgent)(nil)
+	_ acp.Agent                   = (*exampleAgent)(nil)
+	_ acp.AgentLoader             = (*exampleAgent)(nil)
+	_ acp.AgentUnstableMessageMcp = (*exampleAgent)(nil)
 )
 
 func newExampleAgent() *exampleAgent {
@@ -59,11 +63,6 @@ func newExampleAgent() *exampleAgent {
 // SetSessionMode implements acp.Agent.
 func (a *exampleAgent) SetSessionMode(ctx context.Context, params acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
 	return acp.SetSessionModeResponse{}, nil
-}
-
-// UnstableForkSession implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableForkSession(ctx context.Context, params acp.UnstableForkSessionRequest) (acp.UnstableForkSessionResponse, error) {
-	return acp.UnstableForkSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionFork)
 }
 
 // ListSessions implements acp.Agent. It returns every session, or those in
@@ -177,81 +176,16 @@ func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.Se
 	return acp.SetSessionConfigOptionResponse{ConfigOptions: a.configOptions(s)}, nil
 }
 
-// UnstableMessageMcp implements acp.AgentExperimental. The example agent
+// UnstableMessageMcp implements acp.AgentUnstableMessageMcp. The example agent
 // sends no mcp/message request, so it has no active request for a client's
 // MCP notification to belong to, and drops it.
 func (a *exampleAgent) UnstableMessageMcp(ctx context.Context, params acp.UnstableMessageMcpNotification) error {
 	return nil
 }
 
-// UnstableDidChangeDocument implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDidChangeDocument(ctx context.Context, params acp.UnstableDidChangeDocumentNotification) error {
-	return nil
-}
-
-// UnstableDidCloseDocument implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDidCloseDocument(ctx context.Context, params acp.UnstableDidCloseDocumentNotification) error {
-	return nil
-}
-
-// UnstableDidFocusDocument implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDidFocusDocument(ctx context.Context, params acp.UnstableDidFocusDocumentNotification) error {
-	return nil
-}
-
-// UnstableDidOpenDocument implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDidOpenDocument(ctx context.Context, params acp.UnstableDidOpenDocumentNotification) error {
-	return nil
-}
-
-// UnstableDidSaveDocument implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDidSaveDocument(ctx context.Context, params acp.UnstableDidSaveDocumentNotification) error {
-	return nil
-}
-
 // Logout implements acp.Agent.
 func (a *exampleAgent) Logout(ctx context.Context, params acp.LogoutRequest) (acp.LogoutResponse, error) {
 	return acp.LogoutResponse{}, acp.NewMethodNotFound(acp.AgentMethodLogout)
-}
-
-// UnstableAcceptNes implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableAcceptNes(ctx context.Context, params acp.UnstableAcceptNesNotification) error {
-	return nil
-}
-
-// UnstableCloseNes implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableCloseNes(ctx context.Context, params acp.UnstableCloseNesRequest) (acp.UnstableCloseNesResponse, error) {
-	return acp.UnstableCloseNesResponse{}, acp.NewMethodNotFound(acp.AgentMethodNesClose)
-}
-
-// UnstableRejectNes implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableRejectNes(ctx context.Context, params acp.UnstableRejectNesNotification) error {
-	return nil
-}
-
-// UnstableStartNes implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableStartNes(ctx context.Context, params acp.UnstableStartNesRequest) (acp.UnstableStartNesResponse, error) {
-	return acp.UnstableStartNesResponse{}, acp.NewMethodNotFound(acp.AgentMethodNesStart)
-}
-
-// UnstableSuggestNes implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableSuggestNes(ctx context.Context, params acp.UnstableSuggestNesRequest) (acp.UnstableSuggestNesResponse, error) {
-	return acp.UnstableSuggestNesResponse{}, acp.NewMethodNotFound(acp.AgentMethodNesSuggest)
-}
-
-// UnstableDisableProvider implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableDisableProvider(ctx context.Context, params acp.UnstableDisableProviderRequest) (acp.UnstableDisableProviderResponse, error) {
-	return acp.UnstableDisableProviderResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersDisable)
-}
-
-// UnstableListProviders implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableListProviders(ctx context.Context, params acp.UnstableListProvidersRequest) (acp.UnstableListProvidersResponse, error) {
-	return acp.UnstableListProvidersResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersList)
-}
-
-// UnstableSetProvider implements acp.AgentExperimental.
-func (a *exampleAgent) UnstableSetProvider(ctx context.Context, params acp.UnstableSetProviderRequest) (acp.UnstableSetProviderResponse, error) {
-	return acp.UnstableSetProviderResponse{}, acp.NewMethodNotFound(acp.AgentMethodProvidersSet)
 }
 
 // CloseSession implements acp.Agent.

@@ -330,7 +330,7 @@ func TestExampleAgent_Elicitation(t *testing.T) {
 		Form: &acp.ElicitationFormCapabilities{},
 		Url:  &acp.ElicitationUrlCapabilities{},
 	}}
-	accept := func(content map[string]any) acp.CreateElicitationResponse {
+	accept := func(content map[string]acp.ElicitationContentValue) acp.CreateElicitationResponse {
 		return acp.CreateElicitationResponse{Accept: &acp.CreateElicitationAccept{Action: "accept", Content: content}}
 	}
 	decline := acp.CreateElicitationResponse{Decline: &acp.CreateElicitationDecline{Action: "decline"}}
@@ -343,12 +343,12 @@ func TestExampleAgent_Elicitation(t *testing.T) {
 		wantHost     string
 		wantComplete bool
 	}{
-		{"accept both", both, accept(map[string]any{"host": "db.internal"}), accept(nil), []string{"form", "url"}, "db.internal", true},
+		{"accept both", both, accept(map[string]acp.ElicitationContentValue{"host": acp.NewElicitationContentValueString("db.internal")}), accept(nil), []string{"form", "url"}, "db.internal", true},
 		{"decline both", both, decline, decline, []string{"form", "url"}, "new-host", false},
 		{"cancel both", both, cancel, cancel, []string{"form", "url"}, "new-host", false},
 		{"accept without a host", both, accept(nil), accept(nil), []string{"form", "url"}, "new-host", true},
 		{"form only", acp.ClientCapabilities{Elicitation: &acp.ElicitationCapabilities{Form: &acp.ElicitationFormCapabilities{}}},
-			accept(map[string]any{"host": "db.internal"}), accept(nil), []string{"form"}, "db.internal", false},
+			accept(map[string]acp.ElicitationContentValue{"host": acp.NewElicitationContentValueString("db.internal")}), accept(nil), []string{"form"}, "db.internal", false},
 		{"no elicitation capability", acp.ClientCapabilities{}, accept(nil), accept(nil), nil, "new-host", false},
 	}
 	for _, tt := range tests {

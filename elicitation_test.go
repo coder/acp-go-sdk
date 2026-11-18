@@ -157,3 +157,51 @@ func TestCreateElicitationRequest_LiteralsCarryTheirScope(t *testing.T) {
 		})
 	}
 }
+
+// A form's fields decode into the property schema union, and the content of
+// an accepted form into the content value union, so a caller reads them
+// without a type assertion and an integer keeps every digit.
+func TestElicitation_TypedMapsRoundTrip(t *testing.T) {
+	t.Parallel()
+	const form = `{"message":"m","mode":"form","requestedSchema":{"properties":{"host":{"title":"Host","type":"string"},"port":{"type":"integer"}},"type":"object"},"sessionId":"s"}`
+	var req CreateElicitationRequest
+	if err := json.Unmarshal([]byte(form), &req); err != nil {
+		t.Fatalf("unmarshal %s: %v", form, err)
+	}
+	props := req.Form.RequestedSchema.Properties
+	if host := props["host"].String; host == nil || host.Title == nil || *host.Title != "Host" {
+		t.Errorf("properties[host] = %+v, want a string field titled Host", props["host"])
+	}
+	if props["port"].Integer == nil {
+		t.Errorf("properties[port] = %+v, want an integer field", props["port"])
+	}
+
+	const accept = `{"action":"accept","content":{"a":["x","y"],"b":true,"f":1.5,"n":9007199254740993,"s":"x"}}`
+	var resp CreateElicitationResponse
+	if err := json.Unmarshal([]byte(accept), &resp); err != nil {
+		t.Fatalf("unmarshal %s: %v", accept, err)
+	}
+	content := resp.Accept.Content
+	if n := content["n"].Integer; n == nil || *n != 9007199254740993 {
+		t.Errorf("content[n] = %+v, want the integer 9007199254740993", content["n"])
+	}
+	if out, err := json.Marshal(resp); err != nil || string(out) != accept {
+		t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", accept, out, err)
+	}
+}
+
+func TestNewElicitationContentValue_EncodesEachKind(t *testing.T) {
+	t.Parallel()
+	content := map[string]ElicitationContentValue{
+		"a": NewElicitationContentValueStringArray("x", "y"),
+		"b": NewElicitationContentValueBoolean(true),
+		"e": NewElicitationContentValueStringArray(),
+		"f": NewElicitationContentValueNumber(1.5),
+		"n": NewElicitationContentValueInteger(9007199254740993),
+		"s": NewElicitationContentValueString("x"),
+	}
+	const want = `{"a":["x","y"],"b":true,"e":[],"f":1.5,"n":9007199254740993,"s":"x"}`
+	if out, err := json.Marshal(content); err != nil || string(out) != want {
+		t.Errorf("content encodes to %s (error %v), want %s", out, err, want)
+	}
+}

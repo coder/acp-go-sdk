@@ -627,12 +627,13 @@ func expandAllOf(schema *load.Schema, d *load.Definition) *load.Definition {
 func rawJSON() *Statement { return Qual("encoding/json", "RawMessage") }
 
 // memberType is the Go type of each member of d, an object schema without
-// properties: the members that additionalProperties allows.
+// properties: the type of the additionalProperties schema, or raw JSON when
+// it leaves the members free.
 func memberType(d *load.Definition) Code {
-	if !freeMembers(d) {
-		return Any()
+	if freeMembers(d) {
+		return rawJSON()
 	}
-	return rawJSON()
+	return jenTypeFor(d.AdditionalProperties.Schema)
 }
 
 // freeMembers reports whether d takes every value for a member that its

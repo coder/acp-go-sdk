@@ -9,7 +9,8 @@ import (
 )
 
 // A value that the schema leaves free is raw JSON, so that a number keeps
-// every digit. _meta is the SDK's Meta.
+// every digit. _meta is the SDK's Meta. A map takes the type of its
+// additionalProperties schema.
 func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 	src, _ := emitUnionFiles(t, `{"$defs": {
   "LooseMeta": {"type": "object", "properties": {
@@ -24,7 +25,8 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
     "items": {"type": "array", "items": {}},
     "either": {"anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "boolean"}]},
     "env": {"type": "object", "additionalProperties": {"type": "string"}},
-    "loose": {"type": "object", "additionalProperties": {"description": "Anything."}}
+    "loose": {"type": "object", "additionalProperties": {"description": "Anything."}},
+    "frees": {"type": "object", "additionalProperties": {"$ref": "#/$defs/Free"}}
   }},
   "Free": {"description": "A payload of any kind."}
 }}`)
@@ -61,8 +63,9 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 		"Open":     "map[string]json.RawMessage",
 		"Items":    "[]json.RawMessage",
 		"Either":   "json.RawMessage",
-		"Env":      "map[string]any",
+		"Env":      "map[string]string",
 		"Loose":    "map[string]json.RawMessage",
+		"Frees":    "map[string]Free",
 	}
 	for name, typ := range want {
 		if fields[name] != typ {

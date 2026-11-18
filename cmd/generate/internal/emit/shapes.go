@@ -112,10 +112,10 @@ func withoutNull(d *load.Definition) *load.Definition {
 
 // untypedRules reports whether n has a rule that goType, the Go type of the
 // decoded value, does not check because it holds any value: raw JSON, or a
-// map or slice of it (Meta is such a map), or the same of any. Such a type
-// checks only that a map is an object and a slice is an array.
+// map or slice of it (Meta is such a map). Such a type checks only that a map
+// is an object and a slice is an array.
 func (n *shapeNode) untypedRules(goType string) bool {
-	untyped := goType == "Meta" || strings.Contains(goType, "RawMessage") || strings.Contains(goType, "any")
+	untyped := goType == "Meta" || strings.Contains(goType, "RawMessage")
 	if n == nil || !untyped {
 		return false
 	}

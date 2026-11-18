@@ -721,7 +721,7 @@ func (a *exampleAgent) askHost(ctx context.Context, sid string, editID acp.ToolC
 		Message: "Which database host should the configuration use?",
 		RequestedSchema: acp.ElicitationSchema{
 			Type: acp.ElicitationSchemaTypeObject,
-			Properties: map[string]any{"host": acp.ElicitationPropertySchema{String: &acp.ElicitationPropertySchemaString{
+			Properties: map[string]acp.ElicitationPropertySchema{"host": {String: &acp.ElicitationPropertySchemaString{
 				Type:      "string",
 				Title:     acp.Ptr("Database host"),
 				Default:   acp.Ptr(defaultHost),
@@ -735,8 +735,8 @@ func (a *exampleAgent) askHost(ctx context.Context, sid string, editID acp.ToolC
 		return "", err
 	}
 	if resp.Accept != nil {
-		if host, ok := resp.Accept.Content["host"].(string); ok && host != "" {
-			return host, nil
+		if host := resp.Accept.Content["host"].String; host != nil && *host != "" {
+			return string(*host), nil
 		}
 	}
 	return defaultHost, nil

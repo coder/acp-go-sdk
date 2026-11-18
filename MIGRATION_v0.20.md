@@ -19,7 +19,7 @@ go build ./...
 
 ## Free-form values are raw JSON
 
-A value that the schema leaves free keeps the JSON as it arrived, so an integer above 2^53, such as a nanosecond timestamp or a 64-bit id, no longer changes on a round trip. `_meta` is `acp.Meta`, a `map[string]json.RawMessage` with `NewMeta`, `Get` and `Set`. `rawInput`, `rawOutput`, `RequestError.Data` and the result of `mcp/message` are `json.RawMessage`. The params of `mcp/message` are a `map[string]json.RawMessage`. `ExtRequest`, `ExtResponse` and `ExtNotification` are aliases of `json.RawMessage` (#117).
+A value that the schema leaves free keeps the JSON as it arrived, so an integer above 2^53, such as a nanosecond timestamp or a 64-bit id, no longer changes on a round trip. `_meta` is `acp.Meta`, a `map[string]json.RawMessage` with `NewMeta`, `Get` and `Set`. `rawInput`, `rawOutput`, `RequestError.Data` and the result of `mcp/message` are `json.RawMessage`. The params of `mcp/message` are a `map[string]json.RawMessage`. `ExtRequest`, `ExtResponse` and `ExtNotification` are aliases of `json.RawMessage`, and the `Params` or `Result` of the envelope types `AgentRequest`, `AgentNotification`, `AgentResult`, `ClientRequest`, `ClientNotification` and `ClientResult` is a `json.RawMessage` too (#117). A struct with a `json.RawMessage` field cannot be compared, so these six types, `AgentError`, `ClientError`, `Error` and `RequestError` are no longer comparable: `==` on them fails to compile, and `==` through an interface panics.
 
 | v0.19.0 | v0.20.0 |
 | --- | --- |
@@ -28,6 +28,8 @@ A value that the schema leaves free keeps the JSON as it arrived, so an integer 
 | `RawInput: map[string]any{"path": p}` | `acp.WithStartRawInput(map[string]any{"path": p})`, or `json.Marshal` it |
 | `in, ok := tc.RawInput.(map[string]any)` (`tc` an `acp.ToolCall`) | `var in map[string]any; err := json.Unmarshal(tc.RawInput, &in)` |
 | `in, ok := u.RawInput.(map[string]any)` (`u` an `acp.ToolCallUpdate`) | `var in map[string]any; if raw, ok := u.RawInput.Value(); ok { err = json.Unmarshal(raw, &in) }` |
+| `acp.ToolCallUpdate{RawInput: v}` | `acp.WithUpdateRawInput(v)`, or `RawInput: acp.PatchSet(json.RawMessage(b))` with `b` the JSON of `v` |
+| `p, ok := req.Params.(map[string]any)` (`req` an `acp.AgentRequest`; also `AgentNotification`, `ClientRequest`, `ClientNotification`, and `Result` of `AgentResult`, `ClientResult`) | `var p map[string]any; err := json.Unmarshal(req.Params, &p)` |
 | `&acp.RequestError{Code: c, Message: m, Data: d}` | `acp.NewRequestError(c, m, d)`; read `re.Data` with `json.Unmarshal` |
 
 In the update types whose fields are [patch fields](#patch-fields), such as `ToolCallUpdate`, `_meta`, `rawInput` and `rawOutput` are a `Patch` of these types: set one with `acp.PatchSet(meta)`, and read it with `Value()` first, as the second `RawInput` row shows.
@@ -37,7 +39,7 @@ The raw helpers (`WithStartRawInput`, `WithStartRawOutput`, `WithUpdateRawInput`
 - `WithUpdateRawInput` and `WithUpdateRawOutput` make the update fail to encode, so `SessionUpdate` returns `-32602` invalid params that name the marshal error, as v0.19.0 did (#121).
 - `WithStartRawInput`, `WithStartRawOutput` and the error constructors leave the field out, and the send succeeds. v0.19.0 failed the send. To see the error, call `json.Marshal` yourself and pass the `json.RawMessage`.
 
-`RequestError` keeps `"data": null`, while the generated `Error` leaves it out. A handler that returns a `RequestError` whose `Data` is not valid JSON now sends `-32603`; before, the response failed to encode and the peer waited (#118).
+**Wire changes.** A free-form value is written back as it was read. Nested values keep their key order and number spelling, where v0.19.0 sorted nested keys and wrote `1e3` as `1000` and `2.0` as `2`; the keys of `_meta` itself are still sorted. `"data": null` in `RequestError` and `UnstableMcpError` is kept, so `Data != nil` is true for it, while the generated `Error` leaves it out. A handler that returns a `RequestError` whose `Data` is not valid JSON now sends `-32603`; before, the response failed to encode and the peer waited (#118).
 
 ## Typed maps
 
@@ -94,7 +96,7 @@ Read one with `Value() (T, bool)`, `Ptr()` (nil unless set), `IsNull()` and `IsU
 An integer of format `int64`, `uint32` or `uint64` is `int64`, so that a 32-bit target (`GOARCH=386`, `arm`) holds every value a peer sends: a Windows exit code such as `3221225477`, or a token count above 2^31 (#118, #120). On a 64-bit target, decoding does not change.
 
 - `*int` to `*int64`: `TerminalExitStatus.ExitCode`, `WaitForTerminalExitResponse.ExitCode`, `ReadTextFileRequest.Line` and `Limit`, `ToolCallLocation.Line`, `CreateTerminalRequest.OutputByteLimit`, `MinLength`/`MaxLength` of `StringPropertySchema` and `ElicitationPropertySchemaString`, `MinItems`/`MaxItems` of `MultiSelectPropertySchema` and `ElicitationPropertySchemaArray`, `ThoughtTokens`, `CachedReadTokens` and `CachedWriteTokens` of `Usage`, `Size` of `ResourceLink` and `ContentBlockResourceLink`, and `Minimum`, `Maximum` and `Default` of `IntegerPropertySchema` and `ElicitationPropertySchemaInteger`.
-- `int` to `int64`: `InputTokens`, `OutputTokens` and `TotalTokens` of `Usage`, and `Used` and `Size` of `UsageUpdate` and the unstable `SessionUsageUpdate`.
+- `int` to `int64`: `InputTokens`, `OutputTokens` and `TotalTokens` of `Usage`, and `Used` and `Size` of `UsageUpdate` and of the `SessionUpdate` variant `SessionUsageUpdate`.
 - `RequestIdNumber` and `ElicitationContentValueInteger` are `int64` too. apidiff calls this compatible, and conversions still compile, but `int(...)` of them truncates on a 32-bit target.
 
 | v0.19.0 | v0.20.0 |
@@ -126,7 +128,7 @@ The fields of the unstable methods' types (`UnstableForkSessionRequest.ConfigOpt
 
 These compile after the migration and behave differently. Find them with `grep`, and check each one.
 
-1. **A free-form value passed to `func(v any)`.** `RawInput` and `RawOutput` of a `ToolCall`, a `Meta` value, and an error's `Data` are now a `json.RawMessage`. `RawInput` and `RawOutput` of a `ToolCallUpdate` are a `Patch[json.RawMessage]`. Either way, an assertion or type switch on `map[string]any`, `[]any`, `string` or `float64` takes its default branch, while `json.Marshal(v)` still writes the same JSON. Decode first: into a typed struct to keep every digit, or into `any` for the v0.19.0 behavior. Find these calls with `grep -nE '\.(RawInput|RawOutput|Data|Meta)\b'`.
+1. **A free-form value passed to `func(v any)`.** `RawInput` and `RawOutput` of a `ToolCall`, a `Meta` value, and an error's `Data` are now a `json.RawMessage`. In a `ToolCallUpdate`, `RawInput` and `RawOutput` are `acp.Patch[json.RawMessage]`: read them with `Value()` first. Either way, an assertion or type switch on `map[string]any`, `[]any`, `string` or `float64` takes its default branch, while `json.Marshal(v)` still writes the same JSON. Decode first: into a typed struct to keep every digit, or into `any` for the v0.19.0 behavior. Find these calls with `grep -nE '\.(RawInput|RawOutput|Data|Meta)\b'`.
 
    For example, jaegertracing/jaeger passes `u.ToolCallUpdate.RawOutput` to its `flattenToolResultContent(raw any)`. The `!= nil` check before the call fails to compile, but once that check is migrated, the call still compiles. It then gets a `Patch` and sends the tool output's JSON instead of its text:
 
@@ -149,7 +151,7 @@ These compile after the migration and behave differently. Find them with `grep`,
 
 1. **Any other `Patch` passed to `func(v any)`.** `json.Marshal` of it writes the same JSON, but a type switch on `*T` or `[]T` no longer matches. Read it with `Value()` first.
 
-1. **`fmt` prints a `Patch` as a struct**, such as `{[...] 2}`. Print `Value()` instead.
+1. **`fmt` prints a `Patch` as a struct**, such as `{[...] 2 <nil>}`. Print `Value()` instead.
 
 1. **`WithUpdateContent` and `WithUpdateLocations` with an empty non-nil slice** now send `[]`, which clears the stored list. v0.19.0 left it out. A nil slice still leaves the field out.
 
@@ -158,5 +160,7 @@ These compile after the migration and behave differently. Find them with `grep`,
 1. **A value that does not encode** given to `WithStartRawInput`, `WithStartRawOutput` or an error constructor is left out, and the send succeeds. v0.19.0 failed the send.
 
 1. **Re-wrapping a `Patch` from `WithUpdateRawInput` or `WithUpdateRawOutput` whose value did not encode**, as `acp.PatchFromPtr(p.Ptr())` or `acp.PatchSet` of its `Value()`, drops its error and writes `null`: such a Patch reads as set with a nil value, and only its `MarshalJSON` returns the error.
+
+1. **`==` through an interface** (`any(a) == any(b)`) panics for the ten types that are no longer comparable: `AgentRequest`, `AgentNotification`, `AgentResult`, `ClientRequest`, `ClientNotification`, `ClientResult`, `AgentError`, `ClientError`, `Error` and `RequestError`. `==` on them directly fails to compile.
 
 1. **Stricter decoding** of elicitation schemas and content, `env` and `headers`: see [Typed maps](#typed-maps).

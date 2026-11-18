@@ -114,7 +114,7 @@ The scripts remove their worktrees and build folders on exit and keep the eviden
 
 ## Not in `make test`
 
-None of the gates runs in `make test`. G1 and G7 need the network. G2 needs the skill module's dependencies in the module cache, and it fails at schema 0.13.5 (below), so it would turn CI red. When G2 passes at the current schema, add `cd .agents/skills/verify-schema-bump && scripts/g2-roundtrip` to `make test`: it takes about a second once the cache is warm.
+None of the gates runs in `make test`. G1 and G7 need the network. G2's data checks (`TestTranscripts`, `TestInstances`, `TestHints`) still fail with the accepted lines below, so they would turn CI red. `make test` runs the module's unit tests instead: it writes the registry with `registrygen`, then runs `go vet ./...` and `go test -skip '^(TestTranscripts|TestInstances|TestHints)$' ./...` in this folder, which covers `methodcheck` and the roundtrip helpers (`TestCompareJSON`, `TestFindHints_*`, `TestCheckHint`, `TestRoute`, `TestCorpusHasNoCredentials`). A new test runs there unless the skip list names it. When G2 passes at the current schema, replace those lines with `cd .agents/skills/verify-schema-bump && scripts/g2-roundtrip`: it takes about a second once the cache is warm.
 
 ## Known results at schema 0.13.5
 

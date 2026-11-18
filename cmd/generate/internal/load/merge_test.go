@@ -458,3 +458,57 @@ func TestMergeStableAndUnstable_MarksUnstableAdditions(t *testing.T) {
 		t.Errorf("the unstable input changed: %q", got)
 	}
 }
+
+// An addition below the top level of a shared definition is marked too: a
+// property of an inline property, of an alternative that both versions have,
+// or of array items, and an alternative of a property's union. An added enum
+// value gets the note in EnumNotes.
+func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
+	stableSchema := &Schema{Defs: map[string]*Definition{
+		"Caps": {Type: "object", Properties: map[string]*Definition{
+			"terminal": {Type: "object", Properties: map[string]*Definition{"output": {Type: "boolean"}}},
+			"auth":     {AnyOf: []*Definition{{Title: "token", Type: "object"}}},
+			"tags":     {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}}}},
+		}},
+		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}}, Description: "HTTP."}}},
+		"Mode":   {Type: "string", Enum: []any{"ask"}},
+	}}
+	unstableSchema := &Schema{Defs: map[string]*Definition{
+		"Caps": {Type: "object", Properties: map[string]*Definition{
+			"terminal": {Type: "object", Properties: map[string]*Definition{"output": {Type: "boolean"}, "pty": {Type: "boolean", Description: "A pty."}}},
+			"auth":     {AnyOf: []*Definition{{Title: "token", Type: "object"}, {Title: "oauth", Type: "object", Description: "OAuth."}}},
+			"tags":     {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}, "color": {Type: "string"}}}},
+		}},
+		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}, "url": {Type: "string", Description: "The URL."}}, Description: "HTTP."}}},
+		"Mode":   {Type: "string", Enum: []any{"ask", "auto"}},
+	}}
+	for _, schema := range []*Schema{stableSchema, unstableSchema} {
+		schema.Defs["InitRequest"] = &Definition{Type: "object", XMethod: "init", XSide: "agent", Properties: map[string]*Definition{
+			"caps": ref("Caps"), "server": ref("Server"), "mode": ref("Mode"),
+		}}
+	}
+	meta := &Meta{Version: 1, AgentMethods: map[string]string{"init": "init"}}
+	_, combined := mustMerge(t, meta, stableSchema, meta, unstableSchema)
+	caps := combined.Defs["Caps"].Properties
+	for where, got := range map[string]string{
+		"Caps.terminal.pty":    caps["terminal"].Properties["pty"].Description,
+		"Caps.auth oauth":      caps["auth"].AnyOf[1].Description,
+		"Caps.tags[].color":    caps["tags"].Items.Properties["color"].Description,
+		"Server http .url":     combined.Defs["Server"].AnyOf[0].Properties["url"].Description,
+		"Caps.terminal.output": caps["terminal"].Properties["output"].Description,
+	} {
+		want := strings.HasPrefix(got, unstableNote)
+		if where == "Caps.terminal.output" {
+			want = !want
+		}
+		if !want {
+			t.Errorf("%s description = %q", where, got)
+		}
+	}
+	if got := combined.Defs["Mode"].EnumNotes; len(got) != 1 || got["auto"] != unstableNote {
+		t.Errorf("Mode.EnumNotes = %v, want the note on auto only", got)
+	}
+	if unstableSchema.Defs["Mode"].EnumNotes != nil {
+		t.Error("the unstable input changed")
+	}
+}

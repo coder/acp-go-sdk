@@ -5,8 +5,12 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 )
 
 // A value that the schema leaves free is raw JSON, so that a number keeps
@@ -125,5 +129,28 @@ func TestWriteTypesJen_EnumConstantsCarryTheirDescriptions(t *testing.T) {
 		if !strings.Contains(src, want) {
 			t.Errorf("types_gen.go lacks %q", want)
 		}
+	}
+}
+
+// The constant of an enum value that the merge marks in EnumNotes takes the
+// note as its doc comment.
+func TestWriteTypesJen_EnumConstantsCarryTheirNotes(t *testing.T) {
+	schema := &load.Schema{Defs: map[string]*load.Definition{
+		"Mode": {Type: "string", Enum: []any{"ask", "auto"}, EnumNotes: map[string]string{"auto": "**UNSTABLE** Auto."}},
+	}}
+	dir := t.TempDir()
+	if err := WriteTypesJen(dir, schema, &load.Meta{}); err != nil {
+		t.Fatalf("WriteTypesJen: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "types_gen.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	if !strings.Contains(src, "// **UNSTABLE** Auto.\n\tModeAuto Mode = \"auto\"") {
+		t.Errorf("types_gen.go lacks the note on ModeAuto:\n%s", src)
+	}
+	if strings.Count(src, "UNSTABLE") != 1 {
+		t.Errorf("types_gen.go has the note on another constant:\n%s", src)
 	}
 }

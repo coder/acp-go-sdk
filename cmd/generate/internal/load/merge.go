@@ -298,23 +298,52 @@ func reachableDefs(schema *Schema, roots []string) map[string]struct{} {
 const unstableNote = "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point."
 
 // markUnstableAdditions marks in u, the unstable version of the stable
-// definition s, each property and each alternative that s does not have, so
-// that its doc comment says that it is unstable.
+// definition s, each property, alternative, and enum value that s does not
+// have, at any depth, so that its doc comment says that it is unstable. A
+// property or alternative that both have is compared in turn, and so are
+// their items, additionalProperties, and allOf parts. An added enum value
+// gets the note in u.EnumNotes, since the schema has no place for its text.
 func markUnstableAdditions(s, u *Definition) {
+	if s == nil || u == nil {
+		return
+	}
 	for name, prop := range u.Properties {
-		if _, ok := s.Properties[name]; !ok {
+		if sprop, ok := s.Properties[name]; ok {
+			markUnstableAdditions(sprop, prop)
+		} else {
 			markUnstable(prop)
 		}
 	}
 	for _, alts := range [][2][]*Definition{{s.AnyOf, u.AnyOf}, {s.OneOf, u.OneOf}} {
-		known := map[string]bool{}
+		known := map[string]*Definition{}
 		for _, alt := range alts[0] {
-			known[alternativeKey(alt)] = true
+			known[alternativeKey(alt)] = alt
 		}
 		for _, alt := range alts[1] {
-			if !known[alternativeKey(alt)] {
+			if salt, ok := known[alternativeKey(alt)]; ok {
+				markUnstableAdditions(salt, alt)
+			} else {
 				markUnstable(alt)
 			}
+		}
+	}
+	markUnstableAdditions(s.Items, u.Items)
+	markUnstableAdditions(s.AdditionalProperties.Schema, u.AdditionalProperties.Schema)
+	if len(s.AllOf) == len(u.AllOf) {
+		for i := range u.AllOf {
+			markUnstableAdditions(s.AllOf[i], u.AllOf[i])
+		}
+	}
+	values := map[string]bool{}
+	for _, v := range s.Enum {
+		values[fmt.Sprint(v)] = true
+	}
+	for _, v := range u.Enum {
+		if value := fmt.Sprint(v); !values[value] {
+			if u.EnumNotes == nil {
+				u.EnumNotes = map[string]string{}
+			}
+			u.EnumNotes[value] = unstableNote
 		}
 	}
 }
@@ -369,7 +398,7 @@ func sameShape(a, b *Definition) bool {
 
 func withoutDescriptions(d *Definition) *Definition {
 	c := deepCopyDefinition(d)
-	visitDefinition(c, func(n *Definition) { n.Description = "" })
+	visitDefinition(c, func(n *Definition) { n.Description, n.EnumNotes = "", nil })
 	return c
 }
 
@@ -491,6 +520,12 @@ func deepCopyDefinition(d *Definition) *Definition {
 	}
 	if d.Enum != nil {
 		copyDef.Enum = append([]any(nil), d.Enum...)
+	}
+	if d.EnumNotes != nil {
+		copyDef.EnumNotes = make(map[string]string, len(d.EnumNotes))
+		for k, v := range d.EnumNotes {
+			copyDef.EnumNotes[k] = v
+		}
 	}
 	if d.Properties != nil {
 		copyDef.Properties = make(map[string]*Definition, len(d.Properties))

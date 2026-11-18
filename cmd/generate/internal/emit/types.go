@@ -365,6 +365,11 @@ func (b *typesBuilder) emitEnum(name string, def *load.Definition) {
 	members := []Code{}
 	defs := []Code{}
 	docs := constDocs(def.OneOf)
+	for value, note := range def.EnumNotes {
+		if docs[value] == "" {
+			docs[value] = note
+		}
+	}
 	for _, value := range enumValues(def) {
 		members = append(members, Id(util.ToEnumConst(name, value)))
 		defs = appendDocComments(defs, docs[value])

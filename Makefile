@@ -80,6 +80,13 @@ test: $(GO_FILES)
 	# ./... skips dot directories, so name the verification drivers directly.
 	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./.agents/skills/verify-real-harnesses/scripts/acpharness/
 	GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./.agents/skills/verify-acp-go-sdk/scripts/acpwire/ ./.agents/skills/verify-real-harnesses/scripts/acpharness/
+	# verify-schema-bump is its own module. Its roundtrip package compiles
+	# only with the registry that registrygen writes (git ignores it). The
+	# G2 gate checks (TestTranscripts, TestInstances, TestHints) stay in
+	# scripts/g2-roundtrip; every other test here is an offline unit test.
+	cd .agents/skills/verify-schema-bump && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go run ./registrygen -sdk ../../.. -out roundtrip/registry_gen_test.go >/dev/null
+	cd .agents/skills/verify-schema-bump && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
+	cd .agents/skills/verify-schema-bump && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test -skip '^(TestTranscripts|TestInstances|TestHints)$$' ./...
 
 .PHONY: clean
 clean:

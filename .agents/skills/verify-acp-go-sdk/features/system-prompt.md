@@ -31,4 +31,4 @@ Steps:
 ## Gotchas
 
 - The agent shows the prompt only in the scripted turn. `/compact` does not show it.
-- `session/load` and `session/resume` also take a `systemPrompt`. The example agent does not advertise either method, so it ignores the field there.
+- `session/load` and `session/resume` also take a `systemPrompt`. The example agent applies the one of `session/load`, see [session-load.md](./session-load.md). It does not offer `session/resume`.

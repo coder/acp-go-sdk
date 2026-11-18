@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -521,4 +523,145 @@ func deref(s *string) string {
 		return "<nil>"
 	}
 	return *s
+}
+
+func TestExampleAgent_LoadSession(t *testing.T) {
+	ctx := context.Background()
+	client := &recordClient{}
+	c, _ := connectClient(t, client)
+	init, err := c.Initialize(ctx, acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber})
+	if err != nil || !init.AgentCapabilities.LoadSession {
+		t.Fatalf("initialize = %+v, %v; want loadSession", init.AgentCapabilities, err)
+	}
+	systemPrompt := func(text string) *acp.SystemPrompt {
+		return &acp.SystemPrompt{Mode: acp.SystemPromptModeAppend, Content: []acp.ContentBlock{acp.TextBlock(text)}}
+	}
+	resp, err := c.NewSession(ctx, acp.NewSessionRequest{Cwd: "/w", McpServers: []acp.McpServer{}, SystemPrompt: systemPrompt("Answer like a pirate.")})
+	if err != nil {
+		t.Fatalf("session/new: %v", err)
+	}
+	sid := resp.SessionId
+	prompt := func(text string) []acp.SessionUpdate {
+		t.Helper()
+		resp, err := c.Prompt(ctx, acp.PromptRequest{SessionId: sid, Prompt: []acp.ContentBlock{acp.TextBlock(text)}})
+		if err != nil || resp.StopReason != acp.StopReasonEndTurn {
+			t.Fatalf("session/prompt %q = %+v, %v; want end_turn", text, resp, err)
+		}
+		return client.take()
+	}
+	load := func(req acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
+		req.SessionId, req.McpServers = sid, []acp.McpServer{}
+		if req.Cwd == "" {
+			req.Cwd = "/w"
+		}
+		return c.LoadSession(ctx, req)
+	}
+
+	// The replay is the user's prompts and the agent's updates, in order,
+	// and arrives before the response.
+	live := append(prompt("/compact"), prompt("/compact")...)
+	if len(live) != 2 {
+		t.Fatalf("two /compact turns sent %d updates, want 2", len(live))
+	}
+	loaded, err := load(acp.LoadSessionRequest{SystemPrompt: systemPrompt("Answer like a parrot.")})
+	if err != nil || len(loaded.ConfigOptions) == 0 {
+		t.Fatalf("session/load = %+v, %v; want the config options", loaded, err)
+	}
+	want := []acp.SessionUpdate{acp.UpdateUserMessageText("/compact"), live[0], acp.UpdateUserMessageText("/compact"), live[1]}
+	got, _ := json.Marshal(client.take())
+	if wantJSON, _ := json.Marshal(want); string(got) != string(wantJSON) {
+		t.Fatalf("replay = %s, want %s", got, wantJSON)
+	}
+
+	// The loaded session follows the system prompt of the load.
+	follows := func(updates []acp.SessionUpdate) string {
+		for _, u := range updates {
+			if m := u.AgentMessageChunk; m != nil && m.Content.Text != nil && strings.HasPrefix(m.Content.Text.Text, "Following your system prompt: ") {
+				return m.Content.Text.Text
+			}
+		}
+		return ""
+	}
+	if got := follows(prompt("hi")); got != "Following your system prompt: Answer like a parrot." {
+		t.Fatalf("turn after the load showed %q, want the parrot prompt", got)
+	}
+
+	for _, tc := range []struct {
+		name, want string
+		req        acp.LoadSessionRequest
+	}{
+		{"another cwd", "cwd does not match the session", acp.LoadSessionRequest{Cwd: "/other"}},
+		{"override mode", `systemPrompt mode "override" is not supported`, acp.LoadSessionRequest{SystemPrompt: &acp.SystemPrompt{Mode: acp.SystemPromptModeOverride, Content: []acp.ContentBlock{acp.TextBlock("x")}}}},
+	} {
+		_, err := load(tc.req)
+		var re *acp.RequestError
+		if !errors.As(err, &re) || re.Code != -32602 || fmt.Sprint(re.Data) != fmt.Sprint(map[string]any{"error": tc.want}) {
+			t.Errorf("%s: session/load error = %v, want -32602 %q", tc.name, err, tc.want)
+		}
+	}
+	_, err = c.LoadSession(ctx, acp.LoadSessionRequest{SessionId: "sess_unknown", Cwd: "/w", McpServers: []acp.McpServer{}})
+	var re *acp.RequestError
+	if !errors.As(err, &re) || re.Code != -32602 {
+		t.Errorf("session/load of an unknown session = %v, want -32602", err)
+	}
+	if got := client.take(); len(got) != 0 {
+		t.Errorf("a refused load sent %d updates, want none", len(got))
+	}
+}
+
+// A load during a turn replays each update that the turn sent before it, and
+// the turn's later updates follow the replay: none is missed or sent twice.
+func TestExampleAgent_LoadSessionDuringTurn(t *testing.T) {
+	ctx := context.Background()
+	client := &recordClient{}
+	c, _ := connectClient(t, client)
+	sid := newSession(t, c, "/w")
+	load := func() {
+		t.Helper()
+		if _, err := c.LoadSession(ctx, acp.LoadSessionRequest{SessionId: sid, Cwd: "/w", McpServers: []acp.McpServer{}}); err != nil {
+			t.Fatalf("session/load: %v", err)
+		}
+	}
+	turn := make(chan error, 1)
+	go func() {
+		_, err := c.Prompt(ctx, acp.PromptRequest{SessionId: sid, Prompt: []acp.ContentBlock{acp.TextBlock("hi")}})
+		turn <- err
+	}()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		client.mu.Lock()
+		n := len(client.updates)
+		client.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the turn sent no update")
+		}
+	}
+	load()
+	if err := <-turn; err != nil {
+		t.Fatalf("session/prompt: %v", err)
+	}
+	seen := client.take()
+	load()
+	full := client.take() // the user's prompt, then every update of the turn
+
+	enc := func(us []acp.SessionUpdate) string {
+		b, _ := json.Marshal(us)
+		return string(b)
+	}
+	// seen is live[:k], then the replay (the prompt and live[:k]), then live[k:].
+	k := -1
+	for i, u := range seen {
+		if u.UserMessageChunk != nil {
+			k = i
+			break
+		}
+	}
+	if k < 1 || len(seen) != len(full)+k || enc(seen[k:2*k+1]) != enc(full[:k+1]) {
+		t.Fatalf("updates during the turn = %s, want the first %d live updates, their replay, then the rest of %s", enc(seen), k, enc(full))
+	}
+	if live := append(append([]acp.SessionUpdate(nil), seen[:k]...), seen[2*k+1:]...); enc(live) != enc(full[1:]) {
+		t.Fatalf("live updates = %s, want %s", enc(live), enc(full[1:]))
+	}
 }

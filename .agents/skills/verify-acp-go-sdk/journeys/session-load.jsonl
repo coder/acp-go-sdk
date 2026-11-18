@@ -1,0 +1,14 @@
+# session/load replays a session's history and takes a new system prompt. Feature: session-load.md
+{"send":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}},"save":"init","expect":{"result.protocolVersion":1,"result.agentCapabilities.loadSession":true}}
+{"send":"session/new","params":{"cwd":"/tmp","mcpServers":[],"systemPrompt":{"mode":"append","content":[{"type":"text","text":"Answer like a pirate."}]}},"save":"new"}
+{"step":"first /compact","send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"/compact"}]},"expect":{"result.stopReason":"end_turn"}}
+{"step":"second /compact","send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"/compact"}]},"expect":{"result.stopReason":"end_turn"}}
+{"step":"load with a new system prompt","send":"session/load","params":{"sessionId":"{{new.result.sessionId}}","cwd":"/tmp","mcpServers":[],"systemPrompt":{"mode":"append","content":[{"type":"text","text":"Answer like a parrot."}]}},"save":"load","expect":{"result.configOptions":[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"demo-fast","options":[{"value":"demo-fast","name":"Demo Fast"},{"value":"demo-deep","name":"Demo Deep"}]}]}}
+{"step":"the replay has both prompts","waitFor":"session/update","where":{"params.update.sessionUpdate":"user_message_chunk","params.update.content.text":"/compact"},"count":2,"timeout":"1s"}
+{"step":"the replay has both replies","waitFor":"session/update","where":{"params.update.sessionUpdate":"agent_message_chunk","params.update.content.text":"Compacted 1 earlier prompt(s) of this demo session."},"count":2,"timeout":"1s"}
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"step":"turn after the load","send":"session/prompt","params":{"sessionId":"{{new.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"timeout":"30s","expect":{"result.stopReason":"end_turn"}}
+{"step":"the turn follows the new system prompt","waitFor":"session/update","where":{"params.update.sessionUpdate":"agent_message_chunk","params.update.content.text":"Following your system prompt: Answer like a parrot."},"timeout":"1s"}
+{"step":"another cwd is refused","send":"session/load","params":{"sessionId":"{{new.result.sessionId}}","cwd":"/other","mcpServers":[]},"expect":{"error.code":-32602,"error.data.error":"cwd does not match the session"}}
+{"step":"an unknown session is refused","send":"session/load","params":{"sessionId":"sess_unknown","cwd":"/tmp","mcpServers":[]},"expect":{"error.code":-32602,"error.data.error":"unknown session"}}
+{"close":true,"expectExit":0}

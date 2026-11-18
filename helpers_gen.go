@@ -50,51 +50,8 @@ func NewSessionConfigOptionBoolean(currentValue bool) SessionConfigOption {
 	}}
 }
 
-// NewUnstableContentBlockText constructs a UnstableContentBlock using the 'text' variant.
-func NewUnstableContentBlockText(text string) UnstableContentBlock {
-	return UnstableContentBlock{Text: &UnstableContentBlockText{
-		Text: text,
-		Type: "text",
-	}}
-}
-
-// NewUnstableContentBlockImage constructs a UnstableContentBlock using the 'image' variant.
-func NewUnstableContentBlockImage(data string, mimeType string) UnstableContentBlock {
-	return UnstableContentBlock{Image: &UnstableContentBlockImage{
-		Data:     data,
-		MimeType: mimeType,
-		Type:     "image",
-	}}
-}
-
-// NewUnstableContentBlockAudio constructs a UnstableContentBlock using the 'audio' variant.
-func NewUnstableContentBlockAudio(data string, mimeType string) UnstableContentBlock {
-	return UnstableContentBlock{Audio: &UnstableContentBlockAudio{
-		Data:     data,
-		MimeType: mimeType,
-		Type:     "audio",
-	}}
-}
-
-// NewUnstableContentBlockResourceLink constructs a UnstableContentBlock using the 'resource_link' variant.
-func NewUnstableContentBlockResourceLink(name string, uri string) UnstableContentBlock {
-	return UnstableContentBlock{ResourceLink: &UnstableContentBlockResourceLink{
-		Name: name,
-		Type: "resource_link",
-		Uri:  uri,
-	}}
-}
-
-// NewUnstableContentBlockResource constructs a UnstableContentBlock using the 'resource' variant.
-func NewUnstableContentBlockResource(resource UnstableEmbeddedResourceResource) UnstableContentBlock {
-	return UnstableContentBlock{Resource: &UnstableContentBlockResource{
-		Resource: resource,
-		Type:     "resource",
-	}}
-}
-
 // NewUnstableSessionConfigOptionSelect constructs a UnstableSessionConfigOption using the 'select' variant.
-func NewUnstableSessionConfigOptionSelect(currentValue SessionConfigValueId, options UnstableSessionConfigSelectOptions) UnstableSessionConfigOption {
+func NewUnstableSessionConfigOptionSelect(currentValue SessionConfigValueId, options SessionConfigSelectOptions) UnstableSessionConfigOption {
 	return UnstableSessionConfigOption{Select: &UnstableSessionConfigOptionSelect{
 		CurrentValue: currentValue,
 		Options:      options,

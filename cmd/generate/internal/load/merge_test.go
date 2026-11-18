@@ -93,7 +93,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 					"params": ref("FooParams"),
 				},
 			},
-			"FooParams": {Description: "unstable params", Type: "object"},
+			"FooParams": {Description: "unstable params", Type: "object", Required: []string{"id"}},
 		}}
 
 		_, combinedSchema := mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
@@ -147,7 +147,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 				},
 			},
 			// Changed descendant reachable only through unchanged Wrapper.
-			"Leaf": {Description: "unstable leaf", Type: "object"},
+			"Leaf": {Description: "unstable leaf", Type: "object", Required: []string{"id"}},
 		}}
 
 		_, combinedSchema := mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
@@ -231,12 +231,13 @@ func TestMergeStableAndUnstable(t *testing.T) {
 					"stable": ref("StableThingRequest"),
 				},
 			},
-			// Changed relative to stable, so it will be duplicated.
+			// Changed relative to stable (a new property), so it will be duplicated.
 			"StableThingRequest": {
 				Description: "unstable StableThingRequest",
 				Type:        "object",
 				XMethod:     "stable/method",
 				XSide:       "agent",
+				Properties:  map[string]*Definition{"extra": {Type: "string"}},
 			},
 		}}
 
@@ -342,7 +343,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 					"params": ref("FooParams"),
 				},
 			},
-			"FooParams": {Description: "unstable params", Type: "object"},
+			"FooParams": {Description: "unstable params", Type: "object", Required: []string{"id"}},
 		}}
 
 		_, _ = mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
@@ -357,4 +358,44 @@ func TestMergeStableAndUnstable(t *testing.T) {
 			t.Fatalf("expected stable meta to remain unchanged; got %q", got)
 		}
 	})
+}
+
+// A definition that differs from its stable twin in description only is not
+// a change: the unstable method keeps using the stable type. A real change,
+// here a new enum value, still gets an unstable copy.
+func TestMergeStableAndUnstable_IgnoresDescriptionOnlyChanges(t *testing.T) {
+	stableSchema := &Schema{Defs: map[string]*Definition{
+		"SessionId": {Type: "string", Description: "See [docs](https://example.com/v1/session)."},
+		"Category":  {Type: "string", Enum: []any{"mode"}},
+	}}
+	unstableSchema := &Schema{Defs: map[string]*Definition{
+		"SessionId": {Type: "string", Description: "See [docs](https://example.com/v1/draft/session)."},
+		"Category":  {Type: "string", Enum: []any{"mode", "speed"}},
+		"ForkSessionRequest": {
+			Type: "object", XMethod: "session/fork", XSide: "agent",
+			Properties: map[string]*Definition{"sessionId": ref("SessionId"), "category": ref("Category")},
+		},
+	}}
+	unstableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"session_fork": "session/fork"}}
+	_, combined := mustMerge(t, &Meta{Version: 1}, stableSchema, unstableMeta, unstableSchema)
+
+	if _, ok := combined.Defs["UnstableSessionId"]; ok {
+		t.Errorf("UnstableSessionId was added for a description-only change")
+	}
+	if combined.Defs["SessionId"].Description != stableSchema.Defs["SessionId"].Description {
+		t.Errorf("SessionId has the unstable description %q", combined.Defs["SessionId"].Description)
+	}
+	if combined.Defs["UnstableCategory"] == nil {
+		t.Fatalf("UnstableCategory is missing for a new enum value")
+	}
+	req := combined.Defs["UnstableForkSessionRequest"]
+	if req == nil {
+		t.Fatalf("UnstableForkSessionRequest is missing")
+	}
+	if got := req.Properties["sessionId"].Ref; got != "#/$defs/SessionId" {
+		t.Errorf("sessionId refers to %q, want the stable SessionId", got)
+	}
+	if got := req.Properties["category"].Ref; got != "#/$defs/UnstableCategory" {
+		t.Errorf("category refers to %q, want UnstableCategory", got)
+	}
 }

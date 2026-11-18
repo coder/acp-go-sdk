@@ -113,3 +113,17 @@ func TestWriteTypesJen_NullAsAbsentPatchFieldSaysSo(t *testing.T) {
 		t.Errorf("types_gen.go has the null note on a field whose description says what null does:\n%s", src)
 	}
 }
+
+// A constant of an enum takes the description of its alternative as its doc
+// comment, so that an unstable value says so.
+func TestWriteTypesJen_EnumConstantsCarryTheirDescriptions(t *testing.T) {
+	src, _ := emitUnionFiles(t, `{"$defs": {
+  "Closed": {"oneOf": [{"const": "a", "type": "string", "description": "The a value."}, {"const": "b", "type": "string"}]},
+  "Open": {"anyOf": [{"const": "x", "type": "string", "description": "**UNSTABLE** The x value."}, {"type": "string"}]}
+}}`)
+	for _, want := range []string{"// The a value.\n\tClosedA Closed = \"a\"", "// **UNSTABLE** The x value.\n\tOpenX Open = \"x\""} {
+		if !strings.Contains(src, want) {
+			t.Errorf("types_gen.go lacks %q", want)
+		}
+	}
+}

@@ -1,19 +1,26 @@
 package load
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 )
 
 // MergeStableAndUnstable combines stable and unstable schema inputs without mutating either.
 //
-// The merged output keeps all stable definitions and method maps unchanged, while adding:
-//   - Unstable-only methods (present only in unstable meta)
-//   - Unstable-only $defs copied from the unstable schema under an "Unstable" prefix
-//
-// Unstable-only RPC root types (Request/Response/Notification) are always copied with the
-// Unstable prefix to avoid changing the stable API surface.
+// The merged output has one definition per name, so that a shape that stable
+// and unstable methods share has one Go type:
+//   - A definition that both schemas have is the unstable version, which
+//     carries the unstable additions. Each property and each alternative that
+//     only the unstable version has is marked **UNSTABLE** in its description,
+//     unless the schema marks it already.
+//   - A definition that only the unstable schema has, and that a stable method
+//     or a definition above reaches, keeps its name.
+//   - Unstable-only methods (present only in unstable meta) are added. Their
+//     Request/Response/Notification types, and the definitions that only they
+//     reach, are copied under an "Unstable" prefix.
 func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta *Meta, unstableSchema *Schema) (*Meta, *Schema, error) {
 	if stableMeta == nil {
 		return nil, nil, fmt.Errorf("stable meta is nil")
@@ -56,7 +63,15 @@ func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta
 		return nil, nil, err
 	}
 
-	dupSet, err := buildUnstableDuplicateSet(stableSchema, unstableSchema, unstableOnlyWires)
+	combinedSchema := &Schema{Defs: make(map[string]*Definition, len(stableSchema.Defs))}
+	for name, def := range stableSchema.Defs {
+		combinedSchema.Defs[name] = def
+	}
+
+	promotedSharedDefs := promoteChangedSharedDefs(combinedSchema, stableSchema, unstableSchema, stableWires)
+	ensureRefsAvailable(combinedSchema, unstableSchema, promotedSharedDefs)
+
+	dupSet, err := buildUnstableDuplicateSet(combinedSchema, unstableSchema, unstableOnlyWires)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -65,14 +80,6 @@ func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta
 	for name := range dupSet {
 		dupMap[name] = "Unstable" + name
 	}
-
-	combinedSchema := &Schema{Defs: make(map[string]*Definition, len(stableSchema.Defs)+len(dupSet))}
-	for name, def := range stableSchema.Defs {
-		combinedSchema.Defs[name] = def
-	}
-
-	promotedSharedDefs := promoteChangedSharedDefs(combinedSchema, stableSchema, unstableSchema, stableWires)
-	ensureRefsAvailable(combinedSchema, unstableSchema, promotedSharedDefs)
 
 	for oldName, newName := range dupMap {
 		if _, exists := combinedSchema.Defs[newName]; exists {
@@ -141,33 +148,23 @@ func mergeUnstableOnlyMethods(dst *map[string]string, src map[string]string, sta
 	return nil
 }
 
-func buildUnstableDuplicateSet(stableSchema *Schema, unstableSchema *Schema, unstableOnlyWires map[string]struct{}) (map[string]struct{}, error) {
-	if stableSchema == nil {
-		return nil, fmt.Errorf("stable schema is nil")
+// buildUnstableDuplicateSet returns the definitions that get an "Unstable"
+// copy: the Request, Response, and Notification types of the unstable-only
+// methods, and each definition that they reach and that the combined schema
+// does not have. A definition that the combined schema has is shared: the
+// copies refer to it by its own name.
+func buildUnstableDuplicateSet(combinedSchema *Schema, unstableSchema *Schema, unstableOnlyWires map[string]struct{}) (map[string]struct{}, error) {
+	if combinedSchema == nil {
+		return nil, fmt.Errorf("combined schema is nil")
 	}
 	if unstableSchema == nil {
 		return nil, fmt.Errorf("unstable schema is nil")
 	}
 
-	// newOrChanged tracks types that are new in unstable, or differ from stable.
-	newOrChanged := map[string]bool{}
-	for name, udef := range unstableSchema.Defs {
-		sdef := stableSchema.Defs[name]
-		if sdef == nil || !sameShape(sdef, udef) {
-			newOrChanged[name] = true
-		}
-	}
-
-	roots := map[string]struct{}{}
-	reachable := map[string]struct{}{}
+	dupSet := map[string]struct{}{}
 	queue := []string{}
-
-	// Seed with request/response/notification types for unstable-only methods.
 	for name, def := range unstableSchema.Defs {
-		if def == nil {
-			continue
-		}
-		if def.XMethod == "" || def.XSide == "" {
+		if def == nil || def.XMethod == "" || def.XSide == "" {
 			continue
 		}
 		if _, ok := unstableOnlyWires[def.XMethod]; !ok {
@@ -176,15 +173,10 @@ func buildUnstableDuplicateSet(stableSchema *Schema, unstableSchema *Schema, uns
 		if !strings.HasSuffix(name, "Request") && !strings.HasSuffix(name, "Response") && !strings.HasSuffix(name, "Notification") {
 			continue
 		}
-		if _, ok := roots[name]; ok {
-			continue
-		}
-		roots[name] = struct{}{}
-		reachable[name] = struct{}{}
+		dupSet[name] = struct{}{}
 		queue = append(queue, name)
 	}
 
-	// Traverse all reachable refs from unstable roots, including unchanged intermediaries.
 	for len(queue) > 0 {
 		name := queue[0]
 		queue = queue[1:]
@@ -192,63 +184,52 @@ func buildUnstableDuplicateSet(stableSchema *Schema, unstableSchema *Schema, uns
 		if def == nil {
 			return nil, fmt.Errorf("unstable schema missing definition %q", name)
 		}
-		refs := collectDefinitionRefs(def)
-		for refName := range refs {
+		for refName := range collectDefinitionRefs(def) {
 			if _, ok := unstableSchema.Defs[refName]; !ok {
 				continue
 			}
-			if _, ok := reachable[refName]; ok {
+			if _, shared := combinedSchema.Defs[refName]; shared {
 				continue
 			}
-			reachable[refName] = struct{}{}
+			if _, ok := dupSet[refName]; ok {
+				continue
+			}
+			dupSet[refName] = struct{}{}
 			queue = append(queue, refName)
 		}
 	}
-
-	dupSet := map[string]struct{}{}
-	for name := range roots {
-		dupSet[name] = struct{}{}
-	}
-
-	// Duplicate reachable defs that are new/changed.
-	for name := range reachable {
-		if newOrChanged[name] {
-			dupSet[name] = struct{}{}
-		}
-	}
-
-	// Fixpoint: if a reachable def references a duplicated def, duplicate that def too so
-	// rewritten unstable refs remain within the unstable-prefixed subgraph.
-	changed := true
-	for changed {
-		changed = false
-		for name := range reachable {
-			if _, ok := dupSet[name]; ok {
-				continue
-			}
-			def := unstableSchema.Defs[name]
-			if def == nil {
-				return nil, fmt.Errorf("unstable schema missing definition %q", name)
-			}
-			refs := collectDefinitionRefs(def)
-			for refName := range refs {
-				if _, ok := dupSet[refName]; ok {
-					dupSet[name] = struct{}{}
-					changed = true
-					break
-				}
-			}
-		}
-	}
-
 	return dupSet, nil
 }
 
+// promoteChangedSharedDefs writes into the combined schema the unstable
+// version of each definition that both schemas have, that differs in shape,
+// and that the Request, Response, or Notification of a method reaches through
+// unstable $refs, and each definition that only the unstable schema has and
+// that a stable method reaches. It returns their names. The unions of every
+// request, response, or notification of a side (AgentRequest and the like)
+// are no method's types, so they keep their stable version.
 func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires map[string]struct{}) map[string]struct{} {
 	promoted := map[string]struct{}{}
+	var methodRoots []string
+	for name, udef := range unstableSchema.Defs {
+		if udef != nil && udef.XMethod != "" && udef.XSide != "" &&
+			(strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification")) {
+			methodRoots = append(methodRoots, name)
+		}
+	}
+	for name := range reachableDefs(unstableSchema, methodRoots) {
+		udef, sdef := unstableSchema.Defs[name], stableSchema.Defs[name]
+		if udef == nil || sdef == nil || sameShape(sdef, udef) {
+			continue
+		}
+		copyDef := deepCopyDefinition(udef)
+		markUnstableAdditions(sdef, copyDef)
+		combinedSchema.Defs[name] = copyDef
+		promoted[name] = struct{}{}
+	}
+
 	queue := []string{}
 	seen := map[string]struct{}{}
-
 	for name, sdef := range stableSchema.Defs {
 		if sdef == nil || sdef.XMethod == "" || sdef.XSide == "" {
 			continue
@@ -262,7 +243,6 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 		queue = append(queue, name)
 		seen[name] = struct{}{}
 	}
-
 	for len(queue) > 0 {
 		name := queue[0]
 		queue = queue[1:]
@@ -270,8 +250,7 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 		if udef == nil {
 			continue
 		}
-		sdef := stableSchema.Defs[name]
-		if sdef == nil || !sameShape(sdef, udef) {
+		if stableSchema.Defs[name] == nil {
 			combinedSchema.Defs[name] = deepCopyDefinition(udef)
 			promoted[name] = struct{}{}
 		}
@@ -288,6 +267,96 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 	}
 
 	return promoted
+}
+
+// reachableDefs returns the definitions of schema that roots reach through
+// $refs, roots included.
+func reachableDefs(schema *Schema, roots []string) map[string]struct{} {
+	seen := map[string]struct{}{}
+	queue := append([]string(nil), roots...)
+	for _, name := range roots {
+		seen[name] = struct{}{}
+	}
+	for len(queue) > 0 {
+		def := schema.Defs[queue[0]]
+		queue = queue[1:]
+		if def == nil {
+			continue
+		}
+		for refName := range collectDefinitionRefs(def) {
+			if _, ok := seen[refName]; !ok && schema.Defs[refName] != nil {
+				seen[refName] = struct{}{}
+				queue = append(queue, refName)
+			}
+		}
+	}
+	return seen
+}
+
+// unstableNote is the text that the unstable schema puts in front of the
+// description of each unstable addition.
+const unstableNote = "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point."
+
+// markUnstableAdditions marks in u, the unstable version of the stable
+// definition s, each property and each alternative that s does not have, so
+// that its doc comment says that it is unstable.
+func markUnstableAdditions(s, u *Definition) {
+	for name, prop := range u.Properties {
+		if _, ok := s.Properties[name]; !ok {
+			markUnstable(prop)
+		}
+	}
+	for _, alts := range [][2][]*Definition{{s.AnyOf, u.AnyOf}, {s.OneOf, u.OneOf}} {
+		known := map[string]bool{}
+		for _, alt := range alts[0] {
+			known[alternativeKey(alt)] = true
+		}
+		for _, alt := range alts[1] {
+			if !known[alternativeKey(alt)] {
+				markUnstable(alt)
+			}
+		}
+	}
+}
+
+func markUnstable(d *Definition) {
+	if d == nil || strings.Contains(d.Description, "UNSTABLE") {
+		return
+	}
+	d.Description = strings.TrimSpace(unstableNote + "\n\n" + d.Description)
+}
+
+// alternativeKey names an alternative of a union across schema versions: by
+// its title, its const, its $ref, the const of one of its properties (the
+// discriminator), or the $ref of an allOf part, else by its whole shape.
+func alternativeKey(d *Definition) string {
+	switch {
+	case d == nil:
+		return ""
+	case d.Title != "":
+		return "title:" + d.Title
+	case d.Const != nil:
+		return fmt.Sprintf("const:%v", d.Const)
+	case d.Ref != "":
+		return "ref:" + d.Ref
+	}
+	names := make([]string, 0, len(d.Properties))
+	for name := range d.Properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if p := d.Properties[name]; p != nil && p.Const != nil {
+			return fmt.Sprintf("prop:%s=%v", name, p.Const)
+		}
+	}
+	for _, part := range d.AllOf {
+		if part != nil && part.Ref != "" {
+			return "ref:" + part.Ref
+		}
+	}
+	b, _ := json.Marshal(withoutDescriptions(d))
+	return string(b)
 }
 
 // sameShape reports whether two definitions describe the same JSON, that is

@@ -49,20 +49,3 @@ func NewSessionConfigOptionBoolean(currentValue bool) SessionConfigOption {
 		Type:         "boolean",
 	}}
 }
-
-// NewUnstableSessionConfigOptionSelect constructs a UnstableSessionConfigOption using the 'select' variant.
-func NewUnstableSessionConfigOptionSelect(currentValue SessionConfigValueId, options SessionConfigSelectOptions) UnstableSessionConfigOption {
-	return UnstableSessionConfigOption{Select: &UnstableSessionConfigOptionSelect{
-		CurrentValue: currentValue,
-		Options:      options,
-		Type:         "select",
-	}}
-}
-
-// NewUnstableSessionConfigOptionBoolean constructs a UnstableSessionConfigOption using the 'boolean' variant.
-func NewUnstableSessionConfigOptionBoolean(currentValue bool) UnstableSessionConfigOption {
-	return UnstableSessionConfigOption{Boolean: &UnstableSessionConfigOptionBoolean{
-		CurrentValue: currentValue,
-		Type:         "boolean",
-	}}
-}

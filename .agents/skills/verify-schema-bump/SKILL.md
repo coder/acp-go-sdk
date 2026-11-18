@@ -154,7 +154,7 @@ With the deep probes (#96, 2026-11-18, schema 1.32.0), `TestHints` tries 1669 ba
 With the harness transcripts in the corpus (2026-11-18, schema 1.32.0, `main` at `020bcaf`), G2 checks 509 transcript messages (19 extension messages skipped) and reports 3 keys, all `LOSSY` with a count of 1:
 
 - `LOSSY InitializeResponse /authMethods/0/env`: the accepted `env: {}` line above.
-- `LOSSY SessionNotification /update/content` and `LOSSY SessionNotification /update/content /update/locations`: Claude sends `content: []` and `locations: []` in a full `tool_call` update, and the SDK leaves the empty arrays out when it encodes the update. These two keys are known, and #106 tracks them. They go away when #106 is fixed (planned for v0.20.0).
+- `LOSSY SessionNotification /update/content` and `LOSSY SessionNotification /update/content /update/locations`: Claude sends `content: []` and `locations: []` in a full `tool_call` update (the `ToolCall` variant, not a `tool_call_update` patch), and the SDK leaves the empty arrays out when it encodes it. The Rust crate `agent-client-protocol-schema` 1.18.0 leaves them out of a full `tool_call` too. Both keys are accepted: in a full `tool_call` an empty array means the same as an absent one. #106 is related: it covers the same arrays in a `tool_call_update` patch, where `[]` means "clear" and the Rust crate keeps them but the SDK drops them.
 
 `unknown.txt` lists 5 keys: `models` of the new, load and resume session responses, and `sessionId` of the load and resume session responses, which Claude sends and schema 1.32.0 does not define.
 

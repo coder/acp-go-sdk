@@ -223,7 +223,7 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 			continue
 		}
 		copyDef := deepCopyDefinition(udef)
-		markUnstableAdditions(sdef, copyDef)
+		markUnstableAdditions(sdef, copyDef, unstableSchema.Defs)
 		combinedSchema.Defs[name] = copyDef
 		promoted[name] = struct{}{}
 	}
@@ -298,18 +298,19 @@ func reachableDefs(schema *Schema, roots []string) map[string]struct{} {
 const unstableNote = "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point."
 
 // markUnstableAdditions marks in u, the unstable version of the stable
-// definition s, each property, alternative, and enum value that s does not
-// have, at any depth, so that its doc comment says that it is unstable. A
-// property or alternative that both have is compared in turn, and so are
-// their items, additionalProperties, and allOf parts. An added enum value
-// gets the note in u.EnumNotes, since the schema has no place for its text.
-func markUnstableAdditions(s, u *Definition) {
+// definition s, each property, alternative, allOf part, and enum value that s
+// does not have, at any depth, so that its doc comment says that it is
+// unstable. A property, alternative, or allOf part that both have is compared
+// in turn, and so are their items and additionalProperties. An added enum
+// value gets the note in u.EnumNotes, since the schema has no place for its
+// text. defs resolves the $refs of the unstable schema (markAddedPart).
+func markUnstableAdditions(s, u *Definition, defs map[string]*Definition) {
 	if s == nil || u == nil {
 		return
 	}
 	for name, prop := range u.Properties {
 		if sprop, ok := s.Properties[name]; ok {
-			markUnstableAdditions(sprop, prop)
+			markUnstableAdditions(sprop, prop, defs)
 		} else {
 			markUnstable(prop)
 		}
@@ -321,17 +322,23 @@ func markUnstableAdditions(s, u *Definition) {
 		}
 		for _, alt := range alts[1] {
 			if salt, ok := known[alternativeKey(alt)]; ok {
-				markUnstableAdditions(salt, alt)
+				markUnstableAdditions(salt, alt, defs)
 			} else {
 				markUnstable(alt)
 			}
 		}
 	}
-	markUnstableAdditions(s.Items, u.Items)
-	markUnstableAdditions(s.AdditionalProperties.Schema, u.AdditionalProperties.Schema)
-	if len(s.AllOf) == len(u.AllOf) {
-		for i := range u.AllOf {
-			markUnstableAdditions(s.AllOf[i], u.AllOf[i])
+	markUnstableAdditions(s.Items, u.Items, defs)
+	markUnstableAdditions(s.AdditionalProperties.Schema, u.AdditionalProperties.Schema, defs)
+	parts := map[string]*Definition{}
+	for _, part := range s.AllOf {
+		parts[alternativeKey(part)] = part
+	}
+	for i, part := range u.AllOf {
+		if spart, ok := parts[alternativeKey(part)]; ok {
+			markUnstableAdditions(spart, part, defs)
+		} else {
+			u.AllOf[i] = markAddedPart(part, defs, map[string]bool{})
 		}
 	}
 	values := map[string]bool{}
@@ -346,6 +353,31 @@ func markUnstableAdditions(s, u *Definition) {
 			u.EnumNotes[value] = unstableNote
 		}
 	}
+}
+
+// markAddedPart marks each property that part, an allOf part that only the
+// unstable version has, brings into the struct that flattens it, and returns
+// the part. A part that refers to a definition becomes an inline copy of it,
+// so that the note does not reach the other users of that definition; seen
+// stops a cycle of such references.
+func markAddedPart(part *Definition, defs map[string]*Definition, seen map[string]bool) *Definition {
+	if part == nil {
+		return nil
+	}
+	if name := strings.TrimPrefix(part.Ref, "#/$defs/"); part.Ref != "" {
+		if seen[name] || defs[name] == nil {
+			return part
+		}
+		seen[name] = true
+		part = deepCopyDefinition(defs[name])
+	}
+	for _, prop := range part.Properties {
+		markUnstable(prop)
+	}
+	for i, sub := range part.AllOf {
+		part.AllOf[i] = markAddedPart(sub, defs, seen)
+	}
+	return part
 }
 
 func markUnstable(d *Definition) {

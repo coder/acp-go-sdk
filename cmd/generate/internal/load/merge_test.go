@@ -472,6 +472,9 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}}, Description: "HTTP."}}},
 		"Mode":   {Type: "string", Enum: []any{"ask"}},
+		"Item":   {Type: "object", AllOf: []*Definition{ref("Base")}},
+		"Base":   {Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
+		"Extra":  {Type: "object", Properties: map[string]*Definition{"extra": {Type: "string", Description: "Extra."}}},
 	}}
 	unstableSchema := &Schema{Defs: map[string]*Definition{
 		"Caps": {Type: "object", Properties: map[string]*Definition{
@@ -481,10 +484,15 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}, "url": {Type: "string", Description: "The URL."}}, Description: "HTTP."}}},
 		"Mode":   {Type: "string", Enum: []any{"ask", "auto"}},
+		"Item": {Type: "object", AllOf: []*Definition{
+			ref("Base"), ref("Extra"), {Type: "object", Properties: map[string]*Definition{"inline": {Type: "string"}}},
+		}},
+		"Base":  {Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
+		"Extra": {Type: "object", Properties: map[string]*Definition{"extra": {Type: "string", Description: "Extra."}}},
 	}}
 	for _, schema := range []*Schema{stableSchema, unstableSchema} {
 		schema.Defs["InitRequest"] = &Definition{Type: "object", XMethod: "init", XSide: "agent", Properties: map[string]*Definition{
-			"caps": ref("Caps"), "server": ref("Server"), "mode": ref("Mode"),
+			"caps": ref("Caps"), "server": ref("Server"), "mode": ref("Mode"), "item": ref("Item"),
 		}}
 	}
 	meta := &Meta{Version: 1, AgentMethods: map[string]string{"init": "init"}}
@@ -504,6 +512,24 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		if !want {
 			t.Errorf("%s description = %q", where, got)
 		}
+	}
+	// An added allOf part marks the properties that it brings into Item. A
+	// part that refers to Extra becomes an inline copy, so that Extra itself
+	// stays as it is.
+	item := combined.Defs["Item"].AllOf
+	if len(item) != 3 || item[0].Ref != "#/$defs/Base" || item[1].Ref != "" {
+		t.Fatalf("Item.allOf = %+v, want Base, an inline copy of Extra, and the inline part", item)
+	}
+	for where, got := range map[string]string{
+		"Item allOf Extra.extra": item[1].Properties["extra"].Description,
+		"Item allOf inline":      item[2].Properties["inline"].Description,
+	} {
+		if !strings.HasPrefix(got, unstableNote) {
+			t.Errorf("%s description = %q", where, got)
+		}
+	}
+	if got := combined.Defs["Extra"].Properties["extra"].Description; got != "Extra." {
+		t.Errorf("Extra.extra description = %q, want it unmarked", got)
 	}
 	if got := combined.Defs["Mode"].EnumNotes; len(got) != 1 || got["auto"] != unstableNote {
 		t.Errorf("Mode.EnumNotes = %v, want the note on auto only", got)

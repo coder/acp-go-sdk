@@ -171,7 +171,9 @@ func WithStartLocations(l []ToolCallLocation) ToolCallStartOpt {
 
 // WithStartRawInput sets rawInput for a tool_call start update to v, encoded
 // with json.Marshal, so a json.RawMessage keeps its JSON. A nil v, or one
-// that json.Marshal cannot encode, leaves rawInput unset.
+// that json.Marshal cannot encode, leaves rawInput unset: the field is raw
+// JSON and cannot hold the error. To see the error, encode v yourself and
+// pass the json.RawMessage.
 func WithStartRawInput(v any) ToolCallStartOpt {
 	return func(tc *SessionUpdateToolCall) {
 		tc.RawInput = encodeRaw(v)
@@ -252,8 +254,10 @@ func patchSlice[T any](s []T) Patch[[]T] {
 	return PatchSet(s)
 }
 
-// WithUpdateRawInput sets rawInput for a tool_call_update to v encoded as
-// JSON, as WithStartRawInput does.
+// WithUpdateRawInput sets rawInput for a tool_call_update to v, encoded with
+// json.Marshal, so a json.RawMessage keeps its JSON. A nil v leaves rawInput
+// unset. When json.Marshal cannot encode v, such as a channel or a NaN, the
+// update fails to encode with that error, so sending it returns the error.
 func WithUpdateRawInput(v any) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
 		tu.RawInput = patchRaw(v)
@@ -261,7 +265,7 @@ func WithUpdateRawInput(v any) ToolCallUpdateOpt {
 }
 
 // WithUpdateRawOutput sets rawOutput for a tool_call_update to v encoded as
-// JSON, as WithStartRawInput does.
+// JSON, as WithUpdateRawInput does.
 func WithUpdateRawOutput(v any) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
 		tu.RawOutput = patchRaw(v)
@@ -298,14 +302,18 @@ func encodeRaw(v any) json.RawMessage {
 	return raw
 }
 
-// patchRaw returns the Patch that sets v encoded as JSON, or an unset one when
-// v is nil or json.Marshal cannot encode it.
+// patchRaw returns the Patch that sets v encoded as JSON, an unset one when v
+// is nil, and one whose MarshalJSON returns the error when json.Marshal cannot
+// encode v.
 func patchRaw(v any) Patch[json.RawMessage] {
-	raw := encodeRaw(v)
-	if raw == nil {
+	if v == nil {
 		return Patch[json.RawMessage]{}
 	}
-	return PatchSet(raw)
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return Patch[json.RawMessage]{state: patchSet, err: err}
+	}
+	return PatchSet(json.RawMessage(raw))
 }
 
 // withPath returns rawInput with the member path set to path, when rawInput

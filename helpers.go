@@ -227,19 +227,29 @@ func WithUpdateStatus(s ToolCallStatus) ToolCallUpdateOpt {
 }
 
 // WithUpdateContent replaces the content collection for a tool_call_update.
-// An empty or nil c clears it.
+// A nil c leaves the field unset, so the content stays as it is; an empty
+// non-nil c sends [], which replaces it with none.
 func WithUpdateContent(c []ToolCallContent) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.Content = PatchSet(c)
+		tu.Content = patchSlice(c)
 	}
 }
 
 // WithUpdateLocations replaces the locations collection for a tool_call_update.
-// An empty or nil l clears it.
+// A nil l leaves the field unset, so the locations stay as they are; an empty
+// non-nil l sends [], which replaces them with none.
 func WithUpdateLocations(l []ToolCallLocation) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.Locations = PatchSet(l)
+		tu.Locations = patchSlice(l)
 	}
+}
+
+// patchSlice returns the Patch that sets s, or an unset one for a nil s.
+func patchSlice[T any](s []T) Patch[[]T] {
+	if s == nil {
+		return Patch[[]T]{}
+	}
+	return PatchSet(s)
 }
 
 // WithUpdateRawInput sets rawInput for a tool_call_update to v encoded as

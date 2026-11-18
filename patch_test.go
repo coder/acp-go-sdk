@@ -109,11 +109,64 @@ func TestPatchSet_WritesANilValueAsItsTypeAsks(t *testing.T) {
 	}
 }
 
-func TestWithUpdateContent_ClearsWithAnEmptySlice(t *testing.T) {
+// WithUpdateContent and WithUpdateLocations leave their field unset for a nil
+// slice, as v0.19.0 left it out, and send [] for an empty non-nil one.
+func TestWithUpdateContent_NilIsUnsetAndEmptyClears(t *testing.T) {
 	t.Parallel()
-	update := UpdateToolCall("t", WithUpdateContent(nil), WithUpdateLocations([]ToolCallLocation{}))
-	const want = `{"content":[],"locations":[],"sessionUpdate":"tool_call_update","toolCallId":"t"}`
-	if out, err := json.Marshal(update); err != nil || string(out) != want {
-		t.Errorf("update encodes to %s (error %v), want %s", out, err, want)
+	tests := []struct {
+		name string
+		opts []ToolCallUpdateOpt
+		want string
+	}{
+		{"nil", []ToolCallUpdateOpt{WithUpdateContent(nil), WithUpdateLocations(nil)}, `{"sessionUpdate":"tool_call_update","toolCallId":"t"}`},
+		{"empty", []ToolCallUpdateOpt{WithUpdateContent([]ToolCallContent{}), WithUpdateLocations([]ToolCallLocation{})}, `{"content":[],"locations":[],"sessionUpdate":"tool_call_update","toolCallId":"t"}`},
+		{"nil after a value", []ToolCallUpdateOpt{WithUpdateLocations([]ToolCallLocation{{Path: "/a"}}), WithUpdateLocations(nil)}, `{"sessionUpdate":"tool_call_update","toolCallId":"t"}`},
+	}
+	for _, tt := range tests {
+		tt := tt // the module is Go 1.21, where each iteration shares tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if out, err := json.Marshal(UpdateToolCall("t", tt.opts...)); err != nil || string(out) != tt.want {
+				t.Errorf("update encodes to %s (error %v), want %s", out, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestPatchFromPtr_NilIsUnset(t *testing.T) {
+	t.Parallel()
+	if p := PatchFromPtr[string](nil); !p.IsUnset() {
+		t.Errorf("PatchFromPtr(nil) = %+v, want unset", p)
+	}
+	title := "x"
+	if v, ok := PatchFromPtr(&title).Value(); !ok || v != "x" {
+		t.Errorf("PatchFromPtr(&title).Value() = %q, %v, want x, true", v, ok)
+	}
+}
+
+func TestPatch_PtrIsNilUnlessSet(t *testing.T) {
+	t.Parallel()
+	if PatchNull[string]().Ptr() != nil || (Patch[string]{}).Ptr() != nil {
+		t.Error("Ptr of a null or unset patch is not nil")
+	}
+	p := PatchSet("x")
+	if v := p.Ptr(); v == nil || *v != "x" {
+		t.Errorf("Ptr of a set patch = %v, want a pointer to x", v)
+	} else if *v = "y"; p.Ptr() == nil || *p.Ptr() != "x" {
+		t.Error("writing through Ptr changed the patch")
+	}
+}
+
+// A set patch whose value encodes as null is null on the wire, so it reads
+// back as a null patch.
+func TestPatchSet_OfANullValueReadsBackAsNull(t *testing.T) {
+	t.Parallel()
+	out, err := json.Marshal(ToolCallUpdate{ToolCallId: "t", RawInput: PatchSet[json.RawMessage](nil)})
+	if err != nil || string(out) != `{"rawInput":null,"toolCallId":"t"}` {
+		t.Fatalf("update encodes to %s (error %v)", out, err)
+	}
+	var u ToolCallUpdate
+	if err := json.Unmarshal(out, &u); err != nil || !u.RawInput.IsNull() {
+		t.Errorf("rawInput reads back as %+v (error %v), want null", u.RawInput, err)
 	}
 }

@@ -528,7 +528,7 @@ func deref(s *string) string {
 func TestExampleAgent_LoadSession(t *testing.T) {
 	ctx := context.Background()
 	client := &recordClient{}
-	c, _ := connectClient(t, client)
+	c, agent := connectClient(t, client)
 	init, err := c.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion:    acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{Session: &acp.ClientSessionCapabilities{Notices: &acp.NoticeCapabilities{}}},
@@ -576,6 +576,13 @@ func TestExampleAgent_LoadSession(t *testing.T) {
 		t.Fatalf("replay = %s, want %s", got, wantJSON)
 	}
 
+	// A load that fails during the replay keeps the session's prompt.
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := agent.LoadSession(cancelled, acp.LoadSessionRequest{SessionId: sid, Cwd: "/w", McpServers: []acp.McpServer{}, SystemPrompt: systemPrompt("Answer like a robot.")}); err == nil {
+		t.Fatal("session/load with a cancelled context succeeded, want an error")
+	}
+
 	// The loaded session follows the system prompt of the load.
 	follows := func(updates []acp.SessionUpdate) string {
 		for _, u := range updates {
@@ -590,14 +597,30 @@ func TestExampleAgent_LoadSession(t *testing.T) {
 		t.Fatalf("turn after the load showed %q, want the parrot prompt", got)
 	}
 
+	// Tool call ids are unique within the session: the next turn does not
+	// reuse call_1 and call_2.
+	turn2 := prompt("hi")
+	toolCalls := func(updates []acp.SessionUpdate) (ids []acp.ToolCallId) {
+		for _, u := range updates {
+			if u.ToolCall != nil {
+				ids = append(ids, u.ToolCall.ToolCallId)
+			}
+		}
+		return ids
+	}
+	if got, want := append(toolCalls(turn), toolCalls(turn2)...), []acp.ToolCallId{"call_1", "call_2", "call_3", "call_4"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("tool calls of two turns = %v, want %v", got, want)
+	}
+
 	// A notice is a live event, not session history, so no replay has it.
-	if turn[0].Notice == nil {
-		t.Fatalf("first update of the turn = %+v, want the demo notice", turn[0])
+	if turn[0].Notice == nil || turn2[0].Notice == nil {
+		t.Fatalf("first updates of the turns = %+v, %+v; want the demo notice", turn[0], turn2[0])
 	}
 	if _, err := load(acp.LoadSessionRequest{}); err != nil {
 		t.Fatalf("second session/load: %v", err)
 	}
 	want = append(append(want, acp.UpdateUserMessageText("hi")), turn[1:]...)
+	want = append(append(want, acp.UpdateUserMessageText("hi")), turn2[1:]...)
 	got, _ = json.Marshal(client.take())
 	if wantJSON, _ := json.Marshal(want); string(got) != string(wantJSON) {
 		t.Fatalf("second replay = %s, want %s", got, wantJSON)

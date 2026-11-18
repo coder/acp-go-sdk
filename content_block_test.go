@@ -41,7 +41,7 @@ func TestContentBlock_MarshalJSON_KeepsMetaAndAnnotations(t *testing.T) {
 func TestContentBlock_MarshalJSON_WritesMetaSetInGo(t *testing.T) {
 	t.Parallel()
 	block := TextBlock("hi")
-	block.Text.Meta = map[string]any{"trace": "abc"}
+	block.Text.Meta = Meta{"trace": json.RawMessage(`"abc"`)}
 	got, err := json.Marshal(block)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

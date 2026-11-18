@@ -291,7 +291,7 @@ type elicitClient struct {
 
 	mu        sync.Mutex
 	asked     []acp.CreateElicitationRequest
-	edit      any // rawInput of the permission request
+	edit      json.RawMessage // rawInput of the permission request
 	completed []acp.ElicitationId
 }
 
@@ -384,8 +384,9 @@ func TestExampleAgent_Elicitation(t *testing.T) {
 				t.Errorf("elicitations = %v, want %v", modes, tt.wantAsked)
 			}
 			wantContent := fmt.Sprintf(`{"database": {"host": %q}}`, tt.wantHost)
-			if edit, _ := client.edit.(map[string]any); edit["content"] != wantContent {
-				t.Errorf("permission rawInput = %v, want content %s", client.edit, wantContent)
+			var edit struct{ Content string }
+			if err := json.Unmarshal(client.edit, &edit); err != nil || edit.Content != wantContent {
+				t.Errorf("permission rawInput = %s, want content %s", client.edit, wantContent)
 			}
 			var wantCompleted []acp.ElicitationId
 			if tt.wantComplete {

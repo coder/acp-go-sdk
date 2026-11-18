@@ -88,15 +88,29 @@ func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 		if !field.Required && !p.fillNilOnEncode {
 			tag += ",omitempty"
 		}
-		var fieldType Code
+		var typ Code
 		if nestedTypeName, ok := nestedTypeNames[field.Prop]; ok {
-			fieldType = Id(nestedTypeName)
+			typ = Id(nestedTypeName)
 		} else {
-			fieldType = jenTypeForOptional(field.Def)
+			typ = fieldType(field)
 		}
-		decls = append(decls, Id(field.Name).Add(fieldType).Tag(map[string]string{"json": tag}))
+		decls = append(decls, Id(field.Name).Add(typ).Tag(map[string]string{"json": tag}))
 	}
 	return decls
+}
+
+// metaProperty is the property that ACP reserves on its types for
+// implementations to attach data to.
+const metaProperty = "_meta"
+
+// fieldType returns the Go type of field, a property without a nested struct.
+// A _meta whose members the schema leaves free is a Meta.
+func fieldType(field ir.Field) Code {
+	def := field.Def
+	if field.Prop == metaProperty && ir.PrimaryType(def) == "object" && len(def.Properties) == 0 && def.AdditionalProperties.Schema == nil {
+		return Id("Meta")
+	}
+	return jenTypeForOptional(def)
 }
 
 // additionalPropertiesField is the field of a struct whose schema says

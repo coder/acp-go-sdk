@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"reflect"
 	"testing"
@@ -22,7 +23,7 @@ func (c *mcpClient) UnstableMessageMcp(_ context.Context, p UnstableMessageMcpRe
 	if p.Method == "tools/call" {
 		return UnstableMessageMcpResponse{Error: &UnstableMessageMcpError{Error: UnstableMcpError{Code: -32602, Message: "unknown tool"}}}, nil
 	}
-	return UnstableMessageMcpResponse{Result: &UnstableMessageMcpResult{Result: map[string]any{"tools": []any{}}}}, nil
+	return UnstableMessageMcpResponse{Result: &UnstableMessageMcpResult{Result: json.RawMessage(`{"tools":[]}`)}}, nil
 }
 
 func TestMcpMessage_ReachesBothSides(t *testing.T) {
@@ -43,7 +44,7 @@ func TestMcpMessage_ReachesBothSides(t *testing.T) {
 	defer cancel()
 
 	// The agent sends an MCP request to a server that the client hosts.
-	req := UnstableMessageMcpRequest{ServerId: "docs", RequestId: "1", Method: "tools/list", Params: map[string]any{"cursor": "c1"}}
+	req := UnstableMessageMcpRequest{ServerId: "docs", RequestId: "1", Method: "tools/list", Params: map[string]json.RawMessage{"cursor": json.RawMessage(`"c1"`)}}
 	resp, err := agentConn.UnstableMessageMcp(ctx, req)
 	if err != nil {
 		t.Fatalf("mcp/message request: %v", err)
@@ -51,7 +52,7 @@ func TestMcpMessage_ReachesBothSides(t *testing.T) {
 	if got := <-client.got; !reflect.DeepEqual(got, req) {
 		t.Errorf("client got %+v, want %+v", got, req)
 	}
-	if resp.Result == nil || !reflect.DeepEqual(resp.Result.Result, map[string]any{"tools": []any{}}) {
+	if resp.Result == nil || string(resp.Result.Result) != `{"tools":[]}` {
 		t.Errorf("agent got result %+v, want {tools: []}", resp.Result)
 	}
 
@@ -66,7 +67,7 @@ func TestMcpMessage_ReachesBothSides(t *testing.T) {
 	}
 
 	// The client forwards a server notification that belongs to the request.
-	note := UnstableMessageMcpNotification{ServerId: "docs", RequestId: "1", Method: "notifications/progress", Params: map[string]any{"progress": float64(1)}}
+	note := UnstableMessageMcpNotification{ServerId: "docs", RequestId: "1", Method: "notifications/progress", Params: map[string]json.RawMessage{"progress": json.RawMessage("1")}}
 	if err := clientConn.UnstableMessageMcp(ctx, note); err != nil {
 		t.Fatalf("mcp/message notification: %v", err)
 	}

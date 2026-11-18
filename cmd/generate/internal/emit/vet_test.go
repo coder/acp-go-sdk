@@ -273,8 +273,8 @@ func TestNewCreateElicitationRequest_EveryConstructorSetsAScope(t *testing.T) {
 		req       CreateElicitationRequest
 		key, want string
 	}{
-		{NewCreateElicitationRequestFormSession(map[string]any{}, []string{}, "s"), "sessionId", "s"},
-		{NewCreateElicitationRequestFormRequest(map[string]any{}, []string{}, "r"), "requestId", "r"},
+		{NewCreateElicitationRequestFormSession(map[string]json.RawMessage{}, []string{}, "s"), "sessionId", "s"},
+		{NewCreateElicitationRequestFormRequest(map[string]json.RawMessage{}, []string{}, "r"), "requestId", "r"},
 		{NewCreateElicitationRequestUrlSession("https://example.com", "s"), "sessionId", "s"},
 		{NewCreateElicitationRequestUrlRequest("https://example.com", "r"), "requestId", "r"},
 	}
@@ -303,7 +303,7 @@ func TestCreateElicitationRequest_NeedsAScopeToDecode(t *testing.T) {
 }
 
 func TestCreateElicitationRequest_NeedsAScopeToEncode(t *testing.T) {
-	req := CreateElicitationRequest{Form: &CreateElicitationForm{Message: "m", RequestedSchema: map[string]any{}}}
+	req := CreateElicitationRequest{Form: &CreateElicitationForm{Message: "m", RequestedSchema: map[string]json.RawMessage{}}}
 	if out, err := json.Marshal(req); err == nil {
 		t.Errorf("a form mode without a scope encodes to %s, want an error", out)
 	}
@@ -416,12 +416,16 @@ func checkGenerated(t *testing.T, schemaJSON string, extra map[string]string) {
 	if err := WriteHelpersJen(dir, &schema, &load.Meta{}); err != nil {
 		t.Fatalf("WriteHelpersJen: %v", err)
 	}
-	// The generated table shapes needs the hand-written walker of the SDK.
-	walker, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "shape.go"))
-	if err != nil {
-		t.Fatalf("read the SDK's shape.go: %v", err)
+	// The generated code needs the hand-written walker of the table shapes
+	// and the type Meta of the SDK.
+	files := map[string]string{"go.mod": "module example.com/acp\n\ngo 1.21\n"}
+	for _, name := range []string{"shape.go", "meta.go"} {
+		src, err := os.ReadFile(filepath.Join("..", "..", "..", "..", name))
+		if err != nil {
+			t.Fatalf("read the SDK's %s: %v", name, err)
+		}
+		files[name] = string(src)
 	}
-	files := map[string]string{"go.mod": "module example.com/acp\n\ngo 1.21\n", "shape.go": string(walker)}
 	for name, src := range extra {
 		files[name] = src
 	}

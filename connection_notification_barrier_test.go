@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -40,7 +41,7 @@ func testLoadSessionRequest(sessionID string) LoadSessionRequest {
 
 func testSessionUpdate(sessionID SessionId, seq int) SessionNotification {
 	return SessionNotification{
-		Meta:      map[string]any{"seq": seq},
+		Meta:      Meta{"seq": json.RawMessage(strconv.Itoa(seq))},
 		SessionId: sessionID,
 		Update: SessionUpdate{
 			AgentMessageChunk: &SessionUpdateAgentMessageChunk{
@@ -53,20 +54,11 @@ func testSessionUpdate(sessionID SessionId, seq int) SessionNotification {
 func notificationSequence(t *testing.T, n SessionNotification) int {
 	t.Helper()
 
-	value, ok := n.Meta["seq"]
-	if !ok {
-		t.Fatalf("notification missing seq metadata")
+	var seq int
+	if err := n.Meta.Get("seq", &seq); err != nil {
+		t.Fatalf("notification seq metadata: %v", err)
 	}
-
-	switch v := value.(type) {
-	case float64:
-		return int(v)
-	case int:
-		return v
-	default:
-		t.Fatalf("unexpected seq metadata type %T", value)
-		return 0
-	}
+	return seq
 }
 
 func waitForPendingRequests(t *testing.T, c *Connection, want int, timeout time.Duration) {

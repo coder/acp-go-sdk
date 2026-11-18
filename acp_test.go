@@ -399,7 +399,7 @@ func TestClientSideConnection_DeleteSession(t *testing.T) {
 	NewAgentSideConnection(agentFuncs{
 		DeleteSessionFunc: func(_ context.Context, p DeleteSessionRequest) (DeleteSessionResponse, error) {
 			got = p
-			return DeleteSessionResponse{Meta: map[string]any{"deleted": true}}, nil
+			return DeleteSessionResponse{Meta: Meta{"deleted": json.RawMessage("true")}}, nil
 		},
 	}, a2cW, c2aR)
 	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
@@ -414,8 +414,9 @@ func TestClientSideConnection_DeleteSession(t *testing.T) {
 	if got.SessionId != "sess-1" {
 		t.Fatalf("agent got session id %q, want %q", got.SessionId, "sess-1")
 	}
-	if resp.Meta["deleted"] != true {
-		t.Fatalf("response _meta = %v, want deleted=true", resp.Meta)
+	var deleted bool
+	if err := resp.Meta.Get("deleted", &deleted); err != nil || !deleted {
+		t.Fatalf("response _meta = %s, want deleted=true (%v)", resp.Meta["deleted"], err)
 	}
 }
 

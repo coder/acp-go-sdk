@@ -1,5 +1,7 @@
 package acp
 
+import "encoding/json"
+
 // TextBlock constructs a text content block.
 func TextBlock(text string) ContentBlock {
 	return ContentBlock{Text: &ContentBlockText{
@@ -156,36 +158,31 @@ func WithStartContent(c []ToolCallContent) ToolCallStartOpt {
 	}
 }
 
-// WithStartLocations sets file locations and, if a single path is provided and rawInput is empty, mirrors it as rawInput.path.
+// WithStartLocations sets file locations. With a single path, it also sets
+// rawInput.path when rawInput is unset or an object without a path.
 func WithStartLocations(l []ToolCallLocation) ToolCallStartOpt {
 	return func(tc *SessionUpdateToolCall) {
 		tc.Locations = l
 		if len(l) == 1 && l[0].Path != "" {
-			if tc.RawInput == nil {
-				tc.RawInput = map[string]any{"path": l[0].Path}
-			} else {
-				m, ok := tc.RawInput.(map[string]any)
-				if ok {
-					if _, exists := m["path"]; !exists {
-						m["path"] = l[0].Path
-					}
-				}
-			}
+			tc.RawInput = withPath(tc.RawInput, l[0].Path)
 		}
 	}
 }
 
-// WithStartRawInput sets rawInput for a tool_call start update.
+// WithStartRawInput sets rawInput for a tool_call start update to v, encoded
+// with json.Marshal, so a json.RawMessage keeps its JSON. A value that
+// json.Marshal cannot encode leaves rawInput unset.
 func WithStartRawInput(v any) ToolCallStartOpt {
 	return func(tc *SessionUpdateToolCall) {
-		tc.RawInput = v
+		tc.RawInput = encodeRaw(v)
 	}
 }
 
-// WithStartRawOutput sets rawOutput for a tool_call start update.
+// WithStartRawOutput sets rawOutput for a tool_call start update to v
+// encoded as JSON, as WithStartRawInput does.
 func WithStartRawOutput(v any) ToolCallStartOpt {
 	return func(tc *SessionUpdateToolCall) {
-		tc.RawOutput = v
+		tc.RawOutput = encodeRaw(v)
 	}
 }
 
@@ -243,17 +240,19 @@ func WithUpdateLocations(l []ToolCallLocation) ToolCallUpdateOpt {
 	}
 }
 
-// WithUpdateRawInput sets rawInput for a tool_call_update.
+// WithUpdateRawInput sets rawInput for a tool_call_update to v encoded as
+// JSON, as WithStartRawInput does.
 func WithUpdateRawInput(v any) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.RawInput = v
+		tu.RawInput = encodeRaw(v)
 	}
 }
 
-// WithUpdateRawOutput sets rawOutput for a tool_call_update.
+// WithUpdateRawOutput sets rawOutput for a tool_call_update to v encoded as
+// JSON, as WithStartRawInput does.
 func WithUpdateRawOutput(v any) ToolCallUpdateOpt {
 	return func(tu *SessionToolCallUpdate) {
-		tu.RawOutput = v
+		tu.RawOutput = encodeRaw(v)
 	}
 }
 
@@ -272,4 +271,30 @@ func StartEditToolCall(id ToolCallId, title string, path string, content any, op
 	})}
 	args := append(base, opts...)
 	return StartToolCall(id, title, args...)
+}
+
+// encodeRaw returns v encoded as JSON, or nil when json.Marshal cannot encode
+// it.
+func encodeRaw(v any) json.RawMessage {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+// withPath returns rawInput with the member path set to path, when rawInput
+// is unset or an object without a path, and rawInput otherwise.
+func withPath(rawInput json.RawMessage, path string) json.RawMessage {
+	members := map[string]json.RawMessage{}
+	if rawInput != nil {
+		if err := json.Unmarshal(rawInput, &members); err != nil || members == nil {
+			return rawInput
+		}
+		if _, ok := members["path"]; ok {
+			return rawInput
+		}
+	}
+	members["path"] = encodeRaw(path)
+	return encodeRaw(members)
 }

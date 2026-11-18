@@ -63,7 +63,7 @@ func newShapeTable(schema *load.Schema) *shapeTable {
 // returns nil when the shape can reject no value that the Go type accepts.
 // The decoder reads null as a bad value itself, so the shape need not.
 func (t *shapeTable) site(owner string, field ir.Field) Code {
-	def, goType := field.Def, jenTypeForOptional(field.Def)
+	def, goType := field.Def, fieldType(field)
 	if field.Lenient.SkipInvalidItems {
 		def, goType = def.Items, jenTypeFor(def.Items)
 	}
@@ -111,16 +111,17 @@ func withoutNull(d *load.Definition) *load.Definition {
 }
 
 // untypedRules reports whether n has a rule that goType, the Go type of the
-// decoded value, does not check because it holds any value: a field of
-// type any, or a map or slice of any. Such a type checks only that a map
-// is an object and a slice is an array.
+// decoded value, does not check because it holds any value: raw JSON, or a
+// map or slice of it (Meta is such a map), or the same of any. Such a type
+// checks only that a map is an object and a slice is an array.
 func (n *shapeNode) untypedRules(goType string) bool {
-	if n == nil || !strings.Contains(goType, "any") {
+	untyped := goType == "Meta" || strings.Contains(goType, "RawMessage") || strings.Contains(goType, "any")
+	if n == nil || !untyped {
 		return false
 	}
 	kinds := []string{"kindNull"}
 	switch {
-	case strings.HasPrefix(goType, "map["):
+	case strings.HasPrefix(goType, "map[") || goType == "Meta":
 		kinds = append(kinds, "kindObject")
 	case strings.HasPrefix(goType, "[]"):
 		kinds = append(kinds, "kindArray")

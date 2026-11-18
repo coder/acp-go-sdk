@@ -627,7 +627,10 @@ func (a *exampleAgent) simulateTurn(ctx context.Context, sid string) error {
 	if err != nil {
 		return err
 	}
-	edit := map[string]any{"path": "/project/config.json", "content": fmt.Sprintf(`{"database": {"host": %s}}`, hostJSON)}
+	edit, err := json.Marshal(map[string]any{"path": "/project/config.json", "content": fmt.Sprintf(`{"database": {"host": %s}}`, hostJSON)})
+	if err != nil {
+		return err
+	}
 
 	// request permission for sensitive operation
 	permResp, err := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{

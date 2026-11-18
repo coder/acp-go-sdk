@@ -26,8 +26,11 @@ A value that the schema leaves free keeps the JSON as it arrived, so an integer 
 | `Meta: map[string]any{"k": v}` | `meta, err := acp.NewMeta(map[string]any{"k": v})`, or `var meta acp.Meta; err := meta.Set("k", v)` |
 | `s, ok := x.Meta["k"].(string)` | `var s string; err := x.Meta.Get("k", &s)`. A missing key returns an error that wraps `acp.ErrMetaKeyNotFound`. |
 | `RawInput: map[string]any{"path": p}` | `acp.WithStartRawInput(map[string]any{"path": p})`, or `json.Marshal` it |
-| `in, ok := u.RawInput.(map[string]any)` | `var in map[string]any; err := json.Unmarshal(u.RawInput, &in)` |
+| `in, ok := tc.RawInput.(map[string]any)` (`tc` an `acp.ToolCall`) | `var in map[string]any; err := json.Unmarshal(tc.RawInput, &in)` |
+| `in, ok := u.RawInput.(map[string]any)` (`u` an `acp.ToolCallUpdate`) | `var in map[string]any; if raw, ok := u.RawInput.Value(); ok { err = json.Unmarshal(raw, &in) }` |
 | `&acp.RequestError{Code: c, Message: m, Data: d}` | `acp.NewRequestError(c, m, d)`; read `re.Data` with `json.Unmarshal` |
+
+In the update types whose fields are [patch fields](#patch-fields), such as `ToolCallUpdate`, `_meta`, `rawInput` and `rawOutput` are a `Patch` of these types: set one with `acp.PatchSet(meta)`, and read it with `Value()` first, as the second `RawInput` row shows.
 
 The raw helpers (`WithStartRawInput`, `WithStartRawOutput`, `WithUpdateRawInput`, `WithUpdateRawOutput`) and the `New*` error constructors still take `any` and encode it. When `json.Marshal` cannot encode the value, such as a channel or a NaN:
 
@@ -123,22 +126,28 @@ The fields of the unstable methods' types (`UnstableForkSessionRequest.ConfigOpt
 
 These compile after the migration and behave differently. Find them with `grep`, and check each one.
 
-1. **A free-form value passed to `func(v any)`.** `RawInput`, `RawOutput`, a `Meta` value or an error's `Data` is now a `json.RawMessage`. An assertion or type switch on `map[string]any`, `[]any`, `string` or `float64` takes its default branch, while `json.Marshal(v)` still writes the same JSON. Decode first, into a typed struct to keep every digit or into `any` for the v0.19.0 behavior. Find them with `grep -nE '\.(RawInput|RawOutput|Data)\b'`. jaegertracing/jaeger's `flattenToolResultContent` builds after the migration but sends the tool output's JSON instead of its text.
+1. **A free-form value passed to `func(v any)`.** `RawInput` and `RawOutput` of a `ToolCall`, a `Meta` value, and an error's `Data` are now a `json.RawMessage`. `RawInput` and `RawOutput` of a `ToolCallUpdate` are a `Patch[json.RawMessage]`. Either way, an assertion or type switch on `map[string]any`, `[]any`, `string` or `float64` takes its default branch, while `json.Marshal(v)` still writes the same JSON. Decode first: into a typed struct to keep every digit, or into `any` for the v0.19.0 behavior. Find these calls with `grep -nE '\.(RawInput|RawOutput|Data|Meta)\b'`.
+
+   For example, jaegertracing/jaeger passes `u.ToolCallUpdate.RawOutput` to its `flattenToolResultContent(raw any)`. The `!= nil` check before the call fails to compile, but once that check is migrated, the call still compiles. It then gets a `Patch` and sends the tool output's JSON instead of its text:
 
    ```go
    // v0.19.0
-   text := flattenToolResultContent(u.ToolCallUpdate.RawOutput)
-   // v0.20.0
-   var out any
-   if err := json.Unmarshal(u.ToolCallUpdate.RawOutput, &out); err != nil {
-   	return err
+   if u.ToolCallUpdate.RawOutput != nil {
+   	text := flattenToolResultContent(u.ToolCallUpdate.RawOutput)
    }
-   text := flattenToolResultContent(out)
+   // v0.20.0
+   if raw, ok := u.ToolCallUpdate.RawOutput.Value(); ok {
+   	var out any
+   	if err := json.Unmarshal(raw, &out); err != nil {
+   		return err
+   	}
+   	text := flattenToolResultContent(out)
+   }
    ```
 
 1. **Elicitation `Content` passed to `func(v any)`**, such as a JSON Schema validator, gets `ElicitationContentValue` structs where it got strings and numbers. Encode the map and decode it into `map[string]any` first. docker/docker-agent passes it to `jsonschema.Resolved.Validate`.
 
-1. **A `Patch` passed to `func(v any)`.** `json.Marshal` of it writes the same JSON, but a type switch on `*T` or `[]T` no longer matches. Read it with `Value()` first.
+1. **Any other `Patch` passed to `func(v any)`.** `json.Marshal` of it writes the same JSON, but a type switch on `*T` or `[]T` no longer matches. Read it with `Value()` first.
 
 1. **`fmt` prints a `Patch` as a struct**, such as `{[...] 2}`. Print `Value()` instead.
 

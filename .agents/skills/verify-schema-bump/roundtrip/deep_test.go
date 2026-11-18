@@ -43,8 +43,9 @@ func (m mutation) String() string {
 
 // mutations lists the deep probes of value, a value of the schema node. It
 // does not look into a member whose own hint tolerates a bad value: that
-// member reads as its default, and the value around it stays. Each probe is
-// a candidate: only a probe that the schema rejects says something.
+// member reads as its default, and the value around it stays. It does drop
+// such a member, because a required one must be there all the same. Each
+// probe is a candidate: only a probe that the schema rejects says something.
 func mutations(defs map[string]any, node, value any) []mutation {
 	var out []mutation
 	var walk func(schemas []schemaRef, v any, path []any)
@@ -55,10 +56,12 @@ func mutations(defs map[string]any, node, value any) []mutation {
 			nodes := expand(schemas, v)
 			for _, k := range sortedKeys(v) {
 				child, hints := memberSchemas(nodes, k)
+				// A required member must be there even when its own
+				// hint reads a bad value as the default.
+				out = append(out, mutation{probeMissing, at(k)})
 				if hints["x-deserialize-default-on-error"] {
 					continue
 				}
-				out = append(out, mutation{probeMissing, at(k)})
 				if !hints["x-deserialize-default-on-null"] {
 					out = append(out, mutation{probeNull, at(k)})
 				}
@@ -186,6 +189,7 @@ func TestMutations_SkipMembersWhoseHintToleratesThem(t *testing.T) {
 		"missing-required /kind", "null-member /kind", "unknown-enum /kind",
 		"missing-required /list", "null-member /list/0", "unknown-enum /list/0",
 		"missing-required /name", "null-member /name", "unknown-enum /name",
+		"missing-required /note",
 		"missing-required /open", "null-member /open",
 		"missing-required /tags", "null-member /tags",
 	}

@@ -30,6 +30,16 @@ const shapedSchema = `{"$defs": {
       "not": {"anyOf": [{"type": "object", "required": ["type"], "properties": {"type": {"type": "string", "const": "diff"}}}]},
       "additionalProperties": true}]},
   "Options": {"type": "object", "properties": {"flag": {"type": "boolean"}}},
+  "A": {"type": "object", "properties": {
+    "bC": {"type": "array", "items": {"type": "string"}, "x-deserialize-default-on-error": true}}},
+  "AB": {"type": "object", "properties": {
+    "c": {"type": "array", "items": {"type": "integer"}, "x-deserialize-default-on-error": true}}},
+  "Loose": {"type": "object", "properties": {
+    "either": {"anyOf": [
+      {"type": "object", "required": ["a"], "properties": {"a": {"type": "string"}}},
+      {"type": "object", "required": ["b"], "properties": {"b": {"type": "string"}}}],
+      "x-deserialize-default-on-error": true},
+    "text": {"anyOf": [{"type": "string"}], "x-deserialize-default-on-error": true}}},
   "Holder": {"type": "object", "properties": {
     "options": {"anyOf": [{"$ref": "#/$defs/Options"}, {"type": "null"}], "x-deserialize-default-on-error": true},
     "entry": {"anyOf": [{"$ref": "#/$defs/Entry"}, {"type": "null"}], "x-deserialize-default-on-error": true},
@@ -104,6 +114,41 @@ func TestHolder_UnmarshalJSON_ChecksHintedValuesAgainstTheirSchema(t *testing.T)
 		}
 		if !jsonEqual(gotJSON, wantJSON) {
 			t.Errorf("%s: %s decoded to %s, want %s", tt.name, tt.in, out, tt.want)
+		}
+	}
+}
+
+func TestShapes_EachPropertyHasItsOwnShape(t *testing.T) {
+	var a A
+	if err := json.Unmarshal([]byte(` + "`" + `{"bC":["x"]}` + "`" + `), &a); err != nil || len(a.BC) != 1 {
+		t.Errorf("A.bC = %v, %v; want [x], nil", a.BC, err)
+	}
+	if err := json.Unmarshal([]byte(` + "`" + `{"bC":["x",null]}` + "`" + `), &a); err != nil || a.BC != nil {
+		t.Errorf("A.bC with a null item = %v, %v; want nil, nil", a.BC, err)
+	}
+	var ab AB
+	if err := json.Unmarshal([]byte(` + "`" + `{"c":[1]}` + "`" + `), &ab); err != nil || len(ab.C) != 1 {
+		t.Errorf("AB.c = %v, %v; want [1], nil", ab.C, err)
+	}
+}
+
+func TestLoose_UnmarshalJSON_ChecksPropertiesOfTypeAny(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{` + "`" + `{"either":{"a":"x"}}` + "`" + `, ` + "`" + `{"either":{"a":"x"}}` + "`" + `},
+		{` + "`" + `{"either":{"b":"x"}}` + "`" + `, ` + "`" + `{"either":{"b":"x"}}` + "`" + `},
+		{` + "`" + `{"either":{"c":"x"}}` + "`" + `, ` + "`" + `{}` + "`" + `},
+		{` + "`" + `{"text":"x"}` + "`" + `, ` + "`" + `{"text":"x"}` + "`" + `},
+		{` + "`" + `{"text":5}` + "`" + `, ` + "`" + `{}` + "`" + `},
+	}
+	for _, tt := range tests {
+		var got Loose
+		if err := json.Unmarshal([]byte(tt.in), &got); err != nil {
+			t.Errorf("unmarshal %s: %v", tt.in, err)
+			continue
+		}
+		out, _ := json.Marshal(got)
+		if string(out) != tt.want {
+			t.Errorf("%s decoded to %s, want %s", tt.in, out, tt.want)
 		}
 	}
 }

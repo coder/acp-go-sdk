@@ -63,30 +63,69 @@ func newShapeTable(schema *load.Schema) *shapeTable {
 // returns nil when the shape can reject no value that the Go type accepts.
 // The decoder reads null as a bad value itself, so the shape need not.
 func (t *shapeTable) site(owner string, field ir.Field) Code {
-	def := field.Def
+	def, goType := field.Def, jenTypeForOptional(field.Def)
 	if field.Lenient.SkipInvalidItems {
-		def = def.Items
+		def, goType = def.Items, jenTypeFor(def.Items)
 	}
 	if def == nil {
 		return nil
 	}
-	if alt := nonNullAlternative(def); alt != nil {
-		def = alt
-	}
-	n := t.node(def)
-	if !t.strict(n) {
+	n := t.node(withoutNull(def))
+	if !t.strict(n) && !n.untypedRules(fmt.Sprintf("%#v", goType)) {
 		return nil
 	}
 	if n.onlyRef() {
 		t.sites[shapeConst(n.ref)] = t.defs[n.ref]
 		return Id(shapeConst(n.ref))
 	}
+	// A $defs entry or another property can have the name already.
 	name := "shape" + owner + field.Name
-	if _, isDef := t.schema.Defs[owner+field.Name]; isDef {
-		panic(fmt.Sprintf("BUG: the shape of property %q of %q and the $defs entry %q have one name", field.Prop, owner, owner+field.Name))
+	for i := 2; t.sites[name] != nil || t.schema.Defs[strings.TrimPrefix(name, "shape")] != nil; i++ {
+		name = fmt.Sprintf("shape%s%s%d", owner, field.Name, i)
 	}
 	t.sites[name] = n
 	return Id(name)
+}
+
+// withoutNull returns the one alternative of d that is not null, when d is
+// an anyOf or oneOf of it and null, and d otherwise.
+func withoutNull(d *load.Definition) *load.Definition {
+	alts := d.AnyOf
+	if len(alts) == 0 {
+		alts = d.OneOf
+	}
+	var other *load.Definition
+	for _, alt := range alts {
+		switch {
+		case alt != nil && alt.Type == "null":
+		case other != nil:
+			return d
+		default:
+			other = alt
+		}
+	}
+	if other == nil {
+		return d
+	}
+	return other
+}
+
+// untypedRules reports whether n has a rule that goType, the Go type of the
+// decoded value, does not check because it holds any value: a field of
+// type any, or a map or slice of any. Such a type checks only that a map
+// is an object and a slice is an array.
+func (n *shapeNode) untypedRules(goType string) bool {
+	if n == nil || !strings.Contains(goType, "any") {
+		return false
+	}
+	kinds := []string{"kindNull"}
+	switch {
+	case strings.HasPrefix(goType, "map["):
+		kinds = append(kinds, "kindObject")
+	case strings.HasPrefix(goType, "[]"):
+		kinds = append(kinds, "kindArray")
+	}
+	return !n.onlyScalar() || n.values != nil || slices.ContainsFunc(n.kinds, func(k string) bool { return !slices.Contains(kinds, k) })
 }
 
 func shapeConst(def string) string { return "shape" + def }

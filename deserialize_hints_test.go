@@ -123,6 +123,20 @@ func TestUnmarshalJSON_DropsHintedValuesThatBreakTheirSchema(t *testing.T) {
 			without: `{"sessionId":"s"}`,
 		},
 		{
+			// A required member must be there even when its own hint reads
+			// a bad value as the default: Rust fails a missing one.
+			name:    "session modes without the list of modes",
+			into:    func() any { return new(NewSessionResponse) },
+			in:      `{"sessionId":"s","modes":{"currentModeId":"a"}}`,
+			without: `{"sessionId":"s"}`,
+		},
+		{
+			name:    "a select option group without its options",
+			into:    func() any { return new(NewSessionResponse) },
+			in:      `{"sessionId":"s","configOptions":[{"id":"m","name":"Model","type":"select","currentValue":"v","options":[{"group":"g","name":"G"}]}]}`,
+			without: `{"sessionId":"s","configOptions":[]}`,
+		},
+		{
 			name:    "a member with its own hint keeps the value around it",
 			into:    func() any { return new(ListSessionsResponse) },
 			in:      `{"sessions":[{"sessionId":"s","cwd":"/w","title":7}]}`,

@@ -51,7 +51,22 @@ func variant(kind string, props map[string]*load.Definition) *load.Definition {
 // into those of an unstable one.
 func schema(change func(defs map[string]*load.Definition)) map[string]*load.Definition {
 	defs := map[string]*load.Definition{
-		"Note": obj(map[string]*load.Definition{"text": str()}, "text"),
+		"Note": obj(map[string]*load.Definition{"text": str(), "pinned": {Type: "boolean"}}, "text", "pinned"),
+		// The decoder checks a hinted value against the shapes table.
+		"Hinted": obj(map[string]*load.Definition{
+			"mode":  {Type: "string", Enum: []any{"ask", "auto"}, DefaultOnError: true},
+			"kind":  {Type: "string", Const: "v1", DefaultOnError: true},
+			"label": {Type: "string", Not: &load.Definition{Const: "none"}, DefaultOnError: true},
+			"event": {AllOf: []*load.Definition{ref("Event")}, DefaultOnError: true},
+		}),
+		// Event leaves the kinds of its other variants out of its catch-all.
+		"Event": {AnyOf: []*load.Definition{
+			variant("start", map[string]*load.Definition{}),
+			{
+				Title: "other", Type: "object", Properties: map[string]*load.Definition{"kind": str()}, Required: []string{"kind"},
+				Not: &load.Definition{AnyOf: []*load.Definition{obj(map[string]*load.Definition{"kind": {Type: "string", Const: "start"}}, "kind")}},
+			},
+		}},
 		// Value tries its variants in order.
 		"Value": {AnyOf: []*load.Definition{{Title: "String", Type: "string"}, {Title: "Integer", Type: "integer"}}},
 		// Shape picks its variant by the const kind.
@@ -88,7 +103,13 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 func TestCompare_AllowsAdditions(t *testing.T) {
 	err := compare(t, schema(nil), schema(func(defs map[string]*load.Definition) {
 		defs["Note"].Properties["lang"] = str()
-		defs["Value"].AnyOf = append(defs["Value"].AnyOf, &load.Definition{Title: "Number", Type: "number"})
+		// Null went to no stable variant.
+		defs["Value"].AnyOf = append(defs["Value"].AnyOf, &load.Definition{Title: "Number", Type: "number"}, &load.Definition{Type: "null"})
+		defs["Hinted"].Properties["mode"].Enum = []any{"ask", "auto", "manual"}
+		// A new kind gets a variant, and the catch-all leaves it out.
+		other := defs["Event"].AnyOf[1]
+		other.Not.AnyOf = append(other.Not.AnyOf, obj(map[string]*load.Definition{"kind": {Type: "string", Const: "stop"}}, "kind"))
+		defs["Event"].AnyOf = []*load.Definition{defs["Event"].AnyOf[0], variant("stop", map[string]*load.Definition{}), other}
 		// A variant with a kind of its own may go anywhere: the kind picks it.
 		defs["Shape"].OneOf = []*load.Definition{defs["Shape"].OneOf[0], variant("triangle", map[string]*load.Definition{"base": {Type: "number"}}), defs["Shape"].OneOf[1]}
 		defs["Level"].Enum = append(defs["Level"].Enum, "mid")
@@ -166,6 +187,35 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 				defs["Count"].Format = "int64"
 			},
 			want: "Count: changed from int to int64",
+		},
+		{
+			// apidiff does not read tags.
+			name: "a stable member is no longer required",
+			change: func(defs map[string]*load.Definition) {
+				defs["Note"].Required = []string{"text"}
+			},
+			want: "Note.Pinned: changes its tag from `json:\"pinned\"` to `json:\"pinned,omitempty\"`",
+		},
+		{
+			name: "a hinted property loses an enum value",
+			change: func(defs map[string]*load.Definition) {
+				defs["Hinted"].Properties["mode"].Enum = []any{"ask"}
+			},
+			want: `shapes[shapeHintedMode]: loses the value "auto"`,
+		},
+		{
+			name: "a hinted property changes its const",
+			change: func(defs map[string]*load.Definition) {
+				defs["Hinted"].Properties["kind"].Const = "v2"
+			},
+			want: `shapes[shapeHintedKind]: loses the value "v1"`,
+		},
+		{
+			name: "a hinted property changes its not rule",
+			change: func(defs map[string]*load.Definition) {
+				defs["Hinted"].Properties["label"].Not = &load.Definition{Const: "nothing"}
+			},
+			want: `shapes[shapeHintedLabel].not: loses the value "none"`,
 		},
 		{
 			name: "a hint on a stable property gives a type a decoder",

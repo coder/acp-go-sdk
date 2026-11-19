@@ -17,8 +17,8 @@ import (
 //     carries the unstable additions. Each property and each alternative that
 //     only the unstable version has is marked **UNSTABLE** in its description,
 //     unless the schema marks it already. The merge fails, naming the
-//     change, when the unstable version removes a property, alternative, or
-//     enum value, requires a member, or changes a type (nonAdditiveChanges).
+//     change, when the unstable version removes a property, requires a
+//     member, or changes a type (nonAdditiveChanges).
 //   - A definition that only the unstable schema has, and that a stable method
 //     or a definition above reaches, keeps its name.
 //   - Unstable-only methods (present only in unstable meta) are added. Their
@@ -223,8 +223,8 @@ func buildUnstableDuplicateSet(combinedSchema *Schema, unstableSchema *Schema, u
 // it promotes nothing. The unions of every request, response, or
 // notification of a side (AgentRequest and the like) are no method's types,
 // so they keep their stable version. It fails when the unstable version of
-// a shared definition removes a property, alternative, or enum value,
-// requires a member, or changes a type (nonAdditiveChanges).
+// a shared definition removes a property, requires a member, or changes a
+// type (nonAdditiveChanges).
 func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires, wires map[string]struct{}) (map[string]struct{}, error) {
 	promoted := map[string]struct{}{}
 	var methodRoots []string
@@ -303,14 +303,12 @@ type versions struct{ stable, unstable map[string]*Definition }
 
 // nonAdditiveChanges returns a line for each of these changes from s, the
 // stable version of a definition, to u, its unstable version, at any depth:
-// a removed property, alternative, allOf part, or enum value; a member that
-// u, or an allOf part that only u has, requires and s does not; and a
-// changed type keyword, whose list form is a set. path names the node, and
-// nodes are paired as markUnstableAdditions pairs them. The generator's own
-// check (stablecheck) compares the Go code of the stable types, which catches
-// more; these lines name the change in the schema, and cover what no Go
-// declaration shows: a new required member, and the enum values and
-// alternatives of a property whose hints the decoder checks against a shape.
+// a removed property; a member that u, or an allOf part that only u has,
+// requires and s does not; and a changed type keyword, whose list form is a
+// set. path names the node, and nodes are paired as markUnstableAdditions
+// pairs them. The generator's own check (stablecheck) compares the Go code of
+// the stable types, which catches more; these lines name the change in the
+// schema, and a new required member is one that no Go declaration shows.
 func (vs versions) nonAdditiveChanges(s, u *Definition, path string) []string {
 	if s == nil || u == nil {
 		return nil
@@ -326,28 +324,17 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string) []string {
 	if typeSet(s.Type) != typeSet(u.Type) {
 		out = append(out, fmt.Sprintf("%s: changes type from %s to %s", path, jsonText(s.Type), jsonText(u.Type)))
 	}
-	for _, v := range s.Enum {
-		if !slices.ContainsFunc(u.Enum, func(w any) bool { return fmt.Sprint(w) == fmt.Sprint(v) }) {
-			out = append(out, fmt.Sprintf("%s: removes enum value %v", path, v))
-		}
-	}
 	required := u.Required
 	for _, parts := range []struct {
 		keyword string
 		s, u    []*Definition
 	}{{"anyOf", s.AnyOf, u.AnyOf}, {"oneOf", s.OneOf, u.OneOf}, {"allOf", s.AllOf, u.AllOf}} {
-		matched := counterparts(parts.s, parts.u)
-		for i, spart := range matched {
+		for i, spart := range counterparts(parts.s, parts.u) {
 			switch {
 			case spart != nil:
 				out = append(out, vs.nonAdditiveChanges(spart, parts.u[i], fmt.Sprintf("%s.%s[%d]", path, parts.keyword, slices.Index(parts.s, spart)))...)
 			case parts.keyword == "allOf":
 				required = append(required, requiredBy(parts.u[i], vs.unstable, map[*Definition]bool{})...)
-			}
-		}
-		for i, spart := range parts.s {
-			if !slices.Contains(matched, spart) {
-				out = append(out, fmt.Sprintf("%s.%s[%d]: removed", path, parts.keyword, i))
 			}
 		}
 	}

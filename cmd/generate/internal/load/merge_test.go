@@ -763,20 +763,6 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			want:     `Options.tags.items: changes type from "string" to "integer"`,
 		},
 		{
-			name:     "an alternative is removed",
-			stable:   options(&Definition{AnyOf: []*Definition{stdio(), {Title: "http", Type: "object"}}}),
-			unstable: options(&Definition{AnyOf: []*Definition{stdio()}}),
-			want:     `Options.anyOf[1]: removed`,
-		},
-		{
-			// A property's enum can be visible only in the shape that the
-			// decoder checks a hinted value against.
-			name:     "an enum value is removed",
-			stable:   options(obj(map[string]*Definition{"mode": {Type: "string", Enum: []any{"ask", "auto"}}})),
-			unstable: options(obj(map[string]*Definition{"mode": {Type: "string", Enum: []any{"ask"}}})),
-			want:     `Options.mode: removes enum value auto`,
-		},
-		{
 			name:     "an added allOf part requires a member",
 			stable:   options(obj(map[string]*Definition{"mode": str()})),
 			unstable: options(&Definition{Type: "object", Properties: map[string]*Definition{"mode": str()}, AllOf: []*Definition{{Required: []string{"mode"}}}}),

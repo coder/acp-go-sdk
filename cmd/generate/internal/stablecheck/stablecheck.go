@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,8 @@ type Run struct {
 //     receiver type and new package-level names (newProjection);
 //   - a method that merged adds to a stable type and that refers to a stable
 //     name, such as an UnmarshalJSON for a hint on a stable property;
+//   - a field tag that changes, such as one that gains omitempty;
+//   - an entry of the shapes table that loses a rule (shapeChanges);
 //   - in an UnmarshalJSON method, such an added statement that can return
 //     with a nil error before code for a stable field, which can then decode
 //     a stable value as the new one. A return in a literal case of a switch
@@ -81,7 +84,9 @@ func Compare(pkgDir, schemaVersion string, stable, merged Run) error {
 			changes = append(changes, c.Message)
 		}
 	}
+	changes = append(changes, tagChanges(old, new)...)
 	changes = append(changes, bodyChanges(old, new)...)
+	changes = append(changes, shapeChanges(old, new)...)
 	if len(changes) > 0 {
 		return fmt.Errorf("cannot merge unstable schema: the merged schema changes stable Go types:\n\t%s", strings.Join(changes, "\n\t"))
 	}
@@ -99,13 +104,15 @@ type side struct {
 	// declared holds the package-level names that the generated files
 	// declare.
 	declared map[string]bool
+	// vars holds the package-level variables of the generated files.
+	vars map[string]*ast.ValueSpec
 }
 
 // typecheck type-checks the package of the hand-written files in pkgDir and
 // the generated files in genDir. Type errors do not stop it: the
 // hand-written code may refer to what only the merged files declare.
 func typecheck(fset *token.FileSet, imp types.Importer, pkgDir, genDir string) (*side, error) {
-	s := &side{fset: fset, funcs: map[string]*ast.FuncDecl{}, declared: map[string]bool{}}
+	s := &side{fset: fset, funcs: map[string]*ast.FuncDecl{}, declared: map[string]bool{}, vars: map[string]*ast.ValueSpec{}}
 	hand, err := filepath.Glob(filepath.Join(pkgDir, "*.go"))
 	if err != nil {
 		return nil, err
@@ -150,6 +157,9 @@ func (s *side) index(f *ast.File) {
 				case *ast.ValueSpec:
 					for _, name := range spec.Names {
 						s.declared[name.Name] = true
+						if decl.Tok == token.VAR {
+							s.vars[name.Name] = spec
+						}
 					}
 				}
 			}
@@ -200,6 +210,35 @@ func (s *side) fields(name string) (map[string]bool, bool) {
 	return out, true
 }
 
+// tagChanges compares the tag of each field of each struct type that old's
+// generated files declare with its version in new: apidiff does not read
+// tags, and a json tag that gains omitempty drops a zero value from the wire.
+func tagChanges(old, new *side) []string {
+	var out []string
+	for _, name := range sortedKeys(old.declared) {
+		ost, nst := structOf(old, name), structOf(new, name)
+		if ost == nil || nst == nil {
+			continue
+		}
+		for i := 0; i < ost.NumFields(); i++ {
+			for j := 0; j < nst.NumFields(); j++ {
+				if f := ost.Field(i); f.Name() == nst.Field(j).Name() && ost.Tag(i) != nst.Tag(j) {
+					out = append(out, fmt.Sprintf("%s.%s: changes its tag from `%s` to `%s`", name, f.Name(), ost.Tag(i), nst.Tag(j)))
+				}
+			}
+		}
+	}
+	return out
+}
+
+func structOf(s *side, name string) *types.Struct {
+	if obj, ok := s.pkg.Scope().Lookup(name).(*types.TypeName); ok {
+		st, _ := obj.Type().Underlying().(*types.Struct)
+		return st
+	}
+	return nil
+}
+
 // bodyChanges compares the body of each function and method of old's
 // generated files that is not a method of a hand-written type with its
 // version in new, and checks each method that new adds to a type that old
@@ -220,6 +259,7 @@ func bodyChanges(old, new *side) []string {
 		}
 		p := newProjection(old, new, recv, isMethod)
 		body := p.block(nf.Body)
+		p.acceptRejected(of.Body)
 		if strings.HasSuffix(name, ".UnmarshalJSON") {
 			out = append(out, p.earlyReturns(name, body)...)
 		}
@@ -250,7 +290,7 @@ func bodyChanges(old, new *side) []string {
 // enum. The added names are the fields that new adds to the receiver and the
 // package-level names that only new declares.
 func newProjection(old, new *side, recv string, isMethod bool) *projection {
-	p := &projection{stable: old.declared, added: map[string]bool{}, addedFields: map[string]bool{}}
+	p := &projection{stable: old.declared, added: map[string]bool{}, addedFields: map[string]bool{}, guards: map[string]*ast.IfStmt{}}
 	if stable, ok := old.fields(recv); isMethod && ok {
 		p.stable = stable
 		fields, _ := new.fields(recv)
@@ -285,6 +325,40 @@ type projection struct {
 	// addedFields holds the fields of the receiver type in added.
 	addedFields map[string]bool
 	early       []ast.Node
+	// guards holds the removed if statements without init or else, by the
+	// text of their condition.
+	guards map[string]*ast.IfStmt
+}
+
+// acceptRejected lets a removed if statement take the place of a stable one
+// with its condition that only returns an error, as when a union gains a null
+// alternative: the merged code then accepts only values that the stable code
+// rejected. It removes those stable statements from old, the stable body, and
+// drops the removed ones from the early returns.
+func (p *projection) acceptRejected(old *ast.BlockStmt) {
+	ast.Inspect(old, func(n ast.Node) bool {
+		b, ok := n.(*ast.BlockStmt)
+		if !ok {
+			return true
+		}
+		b.List = slices.DeleteFunc(b.List, func(s ast.Stmt) bool {
+			guard, ok := s.(*ast.IfStmt)
+			if !ok || guard.Init != nil || guard.Else != nil || len(guard.Body.List) != 1 {
+				return false
+			}
+			ret, ok := guard.Body.List[0].(*ast.ReturnStmt)
+			if !ok || len(ret.Results) == 0 || returnsNil(ret) {
+				return false
+			}
+			merged := p.guards[types.ExprString(guard.Cond)]
+			if merged == nil {
+				return false
+			}
+			p.early = slices.DeleteFunc(p.early, func(e ast.Node) bool { return e == merged })
+			return true
+		})
+		return true
+	})
 }
 
 // refers reports whether n names something in added, and something in
@@ -337,6 +411,9 @@ func filter[T ast.Node](p *projection, list []T, tagged bool) []T {
 		}
 		if clause, ok := ast.Node(n).(*ast.CaseClause); (!tagged || !ok || !literalCase(clause)) && returnsNil(n) {
 			p.early = append(p.early, n)
+		}
+		if guard, ok := ast.Node(n).(*ast.IfStmt); ok && guard.Init == nil && guard.Else == nil {
+			p.guards[types.ExprString(guard.Cond)] = guard
 		}
 	}
 	return out

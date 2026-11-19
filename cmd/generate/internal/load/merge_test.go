@@ -464,7 +464,9 @@ func TestMergeStableAndUnstable_MarksUnstableAdditions(t *testing.T) {
 // An addition below the top level of a shared definition is marked too: a
 // property of an inline property, of an alternative that both versions have
 // (with or without a discriminator), or of array items, and an alternative of
-// a property's union. An added enum value gets the note in EnumNotes.
+// a property's union. An added enum value gets the note in EnumNotes. (A
+// property whose alternatives are a value and null is a pointer, so it may
+// not gain one: TestMergeStableAndUnstable_FailsOnNonAdditiveChanges.)
 func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 	stableSchema := &Schema{Defs: map[string]*Definition{
 		"Caps": {Type: "object", Properties: map[string]*Definition{
@@ -473,7 +475,7 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 			"tags":     {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}}}},
 			"transport": {AnyOf: []*Definition{
 				{Type: "object", Properties: map[string]*Definition{"host": {Type: "string", Description: "Host."}}},
-				{Type: "null"},
+				{Type: "boolean"},
 			}},
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}}, Description: "HTTP."}}},
@@ -486,7 +488,7 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 			"tags":     {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}, "color": {Type: "string"}}}},
 			"transport": {AnyOf: []*Definition{
 				{Type: "object", Properties: map[string]*Definition{"host": {Type: "string", Description: "Host."}, "port": {Type: "integer", Description: "Port."}}},
-				{Type: "null"},
+				{Type: "boolean"},
 				{Type: "string", Description: "A URL."},
 			}},
 		}},
@@ -778,6 +780,29 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			want:     []string{`Item: adds allOf part 1, which can change its Go type`},
 		},
 		{
+			// The emitter writes a struct as a union wrapper once it has
+			// alternatives.
+			name:     "a definition becomes a union",
+			stable:   options(obj(map[string]*Definition{"a": str()})),
+			unstable: options(&Definition{Type: "object", Properties: map[string]*Definition{"a": str()}, AnyOf: []*Definition{obj(map[string]*Definition{"b": str()}), obj(map[string]*Definition{"c": str()})}}),
+			want:     []string{`Options: becomes a union (anyOf), which changes its Go type`},
+		},
+		{
+			// A field whose alternatives are a value and null is a pointer.
+			name:     "a nullable property gains an alternative",
+			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"session": {AnyOf: []*Definition{ref("Session"), {Type: "null"}}}}), "Session": obj(nil)},
+			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"session": {AnyOf: []*Definition{ref("Session"), {Type: "null"}, str()}}}), "Session": obj(nil)},
+			want:     []string{`Options.session: becomes a union (anyOf), which changes its Go type`},
+		},
+		{
+			// Only a property that the unstable version adds may bring a
+			// member into the default.
+			name:     "a default gains a member for an existing property",
+			stable:   options(obj(map[string]*Definition{"settings": {Type: "object", Properties: map[string]*Definition{"mode": str()}, Default: map[string]any{}}})),
+			unstable: options(obj(map[string]*Definition{"settings": {Type: "object", Properties: map[string]*Definition{"mode": str()}, Default: map[string]any{"mode": "auto"}}})),
+			want:     []string{`Options.settings: changes default from {} to {"mode":"auto"}`},
+		},
+		{
 			name:     "the items are removed",
 			stable:   options(obj(map[string]*Definition{"tags": {Type: "array", Items: str()}})),
 			unstable: options(obj(map[string]*Definition{"tags": {Type: "array"}})),
@@ -811,31 +836,49 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 	}
 }
 
-// A default may gain members, as the default of
-// AgentCapabilities.mcpCapabilities gains acp when the unstable version adds
-// that property, and so does the default of the object above it.
+// A default may gain members for the properties that the unstable version
+// adds, as from schema 0.13.5 on the defaults of
+// AgentCapabilities.mcpCapabilities and of the agentCapabilities above it gain
+// acp when McpCapabilities gains that property. The properties of a member
+// come from the definition that it refers to.
 func TestMergeStableAndUnstable_AllowsDefaultsThatGainMembers(t *testing.T) {
-	caps := func(members ...string) *Definition {
+	defs := func(members ...string) map[string]*Definition {
 		props, defaults := map[string]*Definition{}, map[string]any{}
 		for _, m := range members {
 			props[m] = &Definition{Type: "boolean", Default: false}
 			defaults[m] = false
 		}
-		return &Definition{Type: "object", Properties: map[string]*Definition{
-			"mcpCapabilities": {Type: "object", Properties: props, Default: defaults},
-		}, Default: map[string]any{"mcpCapabilities": defaults}}
+		return map[string]*Definition{
+			"McpCapabilities": {Type: "object", Properties: props},
+			"AgentCapabilities": {Type: "object", Properties: map[string]*Definition{
+				"mcpCapabilities": {AllOf: []*Definition{ref("McpCapabilities")}, Default: defaults},
+			}},
+			"InitializeResponse": {Type: "object", Properties: map[string]*Definition{
+				"agentCapabilities": {AllOf: []*Definition{ref("AgentCapabilities")}, Default: map[string]any{"mcpCapabilities": defaults}},
+			}},
+		}
 	}
-	meta, stable, unstable := reachedSchemas(
-		map[string]*Definition{"AgentCapabilities": caps("http")},
-		map[string]*Definition{"AgentCapabilities": caps("http", "acp")},
-	)
+	meta, stable, unstable := reachedSchemas(defs("http"), defs("http", "acp"))
 	_, combined := mustMerge(t, meta, stable, meta, unstable)
 	mcp := combined.Defs["AgentCapabilities"].Properties["mcpCapabilities"]
 	if got, want := mcp.Default, (map[string]any{"http": false, "acp": false}); !reflect.DeepEqual(got, want) {
 		t.Errorf("mcpCapabilities default = %v, want the unstable %v", got, want)
 	}
-	if got := mcp.Properties["acp"].Description; !strings.HasPrefix(got, unstableNote) {
-		t.Errorf("mcpCapabilities.acp description = %q, want the note", got)
+	if got := combined.Defs["McpCapabilities"].Properties["acp"].Description; !strings.HasPrefix(got, unstableNote) {
+		t.Errorf("McpCapabilities.acp description = %q, want the note", got)
+	}
+}
+
+// A union definition is a union type, so it may gain an alternative even when
+// its alternatives are a value and null.
+func TestMergeStableAndUnstable_AllowsAlternativesOfAUnionDefinition(t *testing.T) {
+	value := func(alts ...*Definition) map[string]*Definition {
+		return map[string]*Definition{"Value": {AnyOf: append([]*Definition{ref("Text"), {Type: "null"}}, alts...)}, "Text": {Type: "string"}}
+	}
+	meta, stable, unstable := reachedSchemas(value(), value(&Definition{Type: "integer", Description: "A count."}))
+	_, combined := mustMerge(t, meta, stable, meta, unstable)
+	if got := combined.Defs["Value"].AnyOf[2].Description; got != unstableNote+"\n\nA count." {
+		t.Errorf("Value alternative 2 description = %q, want the note", got)
 	}
 }
 

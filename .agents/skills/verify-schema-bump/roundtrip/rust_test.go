@@ -152,6 +152,9 @@ func runRustProbe(probe string, cases []rustCase) (map[string]sideResult, error)
 // message: decode it, call its Validate method when it has one and def is a
 // request or a notification (the dispatcher validates only those; a result
 // that Connection.SendRequest reads is not validated), and encode it again.
+// It reads the def's generated type, so it does not model the two messages
+// that connection.go reads with hand-written code: an error response
+// (RequestError) and $/cancel_request (the raw requestId).
 func goSide(def string, data []byte) sideResult {
 	newValue, ok := registry[def]
 	if !ok {

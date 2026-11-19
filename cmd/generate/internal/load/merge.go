@@ -316,8 +316,9 @@ type versions struct{ stable, unstable map[string]*Definition }
 // find Patch fields), and these additions, which change what the emitter
 // makes of a node:
 //   - an allOf part, since the type of a node comes from them (jenTypeFor);
-//   - alternatives on a node without any, or below the root on a value and
-//     null, which a field holds as a pointer (jenTypeForOptional);
+//   - alternatives on a node without any, or below the root on one with two,
+//     which a field holds as a pointer to the second one when it is a $ref
+//     or a scalar (jenTypeForOptional);
 //   - an alternative that is not a string on a union of strings, which is a
 //     string type (isStringConstUnion, isOpenStringEnum);
 //   - an alternative that moves an anonymous one, whose type is named by its
@@ -360,8 +361,12 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) 
 				added = true
 			}
 		}
-		if added && (len(parts.s) == 0 || !root && isNullable(parts.s)) {
+		switch sp, up := fieldPointer(parts.s), fieldPointer(parts.u); {
+		case parts.keyword == "allOf":
+		case added && (len(parts.s) == 0 || !root && up == "" && sp != ""):
 			out = append(out, fmt.Sprintf("%s: becomes a union (%s), which changes its Go type", path, parts.keyword))
+		case !root && sp != up:
+			out = append(out, fmt.Sprintf("%s: points to %s instead of %s (%s), which changes its Go type", path, up, sp, parts.keyword))
 		}
 		// The emitter names a variant of a union definition without an
 		// identity by its index (Variant<N>), and it tries the variants
@@ -499,13 +504,69 @@ func properties(d *Definition, defs map[string]*Definition) map[string]*Definiti
 	return out
 }
 
-// isNullable reports whether alts, the alternatives of a node, are a value
-// and null, which the emitter writes as a pointer to the value.
-func isNullable(alts []*Definition) bool {
-	return len(alts) == 2 && slices.ContainsFunc(alts, isNull)
+func isNull(d *Definition) bool { return d != nil && d.Type == "null" }
+
+// fieldPointer returns what a field with the alternatives alts points to, as
+// jenTypeForOptional writes it: with two alternatives, the $ref or the scalar
+// type of the last one that is not null. It returns "" for a field that the
+// emitter writes otherwise, as raw JSON for a union.
+func fieldPointer(alts []*Definition) string {
+	if len(alts) != 2 {
+		return ""
+	}
+	var last *Definition
+	for _, alt := range alts {
+		if alt != nil && !isNull(alt) {
+			last = alt
+		}
+	}
+	switch {
+	case last == nil:
+		return ""
+	case last.Const != nil:
+		return "string"
+	case strings.HasPrefix(last.Ref, "#/$defs/"):
+		return last.Ref
+	}
+	switch t := primaryType(last); t {
+	case "string", "integer", "number", "boolean":
+		return t
+	}
+	return ""
 }
 
-func isNull(d *Definition) bool { return d != nil && d.Type == "null" }
+// primaryType returns the type of d as ir.PrimaryType does: its type, the
+// first one but null of a list, or else the type of its first allOf part
+// that has one.
+func primaryType(d *Definition) string {
+	if d == nil {
+		return ""
+	}
+	switch t := d.Type.(type) {
+	case string:
+		return t
+	case []any:
+		first := ""
+		for _, e := range t {
+			if s, ok := e.(string); ok {
+				if first == "" {
+					first = s
+				}
+				if s != "null" {
+					return s
+				}
+			}
+		}
+		return first
+	case nil:
+		for _, part := range d.AllOf {
+			if t := primaryType(part); t != "" {
+				return t
+			}
+		}
+	}
+	return ""
+}
 
 // emittedAs names the string type that the emitter writes for a definition
 // with enum values or alternatives of strings (WriteTypesJen), or returns ""
@@ -544,7 +605,7 @@ func isStringConstUnion(alts []*Definition) bool {
 func isOpenStringEnum(alts []*Definition) bool {
 	sawConst := false
 	for _, d := range alts {
-		if d == nil || d.Type != "string" || d.Ref != "" || len(d.Properties) > 0 || d.Items != nil ||
+		if d == nil || primaryType(d) != "string" || d.Ref != "" || len(d.Properties) > 0 || d.Items != nil ||
 			len(d.AnyOf) > 0 || len(d.OneOf) > 0 || len(d.AllOf) > 0 || len(d.Enum) > 0 {
 			return false
 		}

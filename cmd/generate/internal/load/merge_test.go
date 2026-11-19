@@ -465,8 +465,8 @@ func TestMergeStableAndUnstable_MarksUnstableAdditions(t *testing.T) {
 // property of an inline property, of an alternative that both versions have
 // (with or without a discriminator), or of array items, and an alternative of
 // a property's union. An added enum value gets the note in EnumNotes. (A
-// property whose alternatives are a value and null is a pointer, so it may
-// not gain one: TestMergeStableAndUnstable_FailsOnNonAdditiveChanges.)
+// property with two alternatives can be a pointer to the second one, so it
+// may not always gain one: TestMergeStableAndUnstable_FailsOnNonAdditiveChanges.)
 func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 	stableSchema := &Schema{Defs: map[string]*Definition{
 		"Caps": {Type: "object", Properties: map[string]*Definition{
@@ -476,6 +476,7 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 			"transport": {AnyOf: []*Definition{
 				{Type: "object", Properties: map[string]*Definition{"host": {Type: "string", Description: "Host."}}},
 				{Type: "boolean"},
+				{Type: "integer"},
 			}},
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}}, Description: "HTTP."}}},
@@ -489,6 +490,7 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 			"transport": {AnyOf: []*Definition{
 				{Type: "object", Properties: map[string]*Definition{"host": {Type: "string", Description: "Host."}, "port": {Type: "integer", Description: "Port."}}},
 				{Type: "boolean"},
+				{Type: "integer"},
 				{Type: "string", Description: "A URL."},
 			}},
 		}},
@@ -509,7 +511,7 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		"Caps.tags[].color":           caps["tags"].Items.Properties["color"].Description,
 		"Server http .url":            combined.Defs["Server"].AnyOf[0].Properties["url"].Description,
 		"Caps.transport object .port": caps["transport"].AnyOf[0].Properties["port"].Description,
-		"Caps.transport string":       caps["transport"].AnyOf[2].Description,
+		"Caps.transport string":       caps["transport"].AnyOf[3].Description,
 		"Caps.terminal.output":        caps["terminal"].Properties["output"].Description,
 		"Caps.transport object":       caps["transport"].AnyOf[0].Description,
 		"Caps.transport object .host": caps["transport"].AnyOf[0].Properties["host"].Description,
@@ -788,7 +790,8 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			want:     []string{`Options: becomes a union (anyOf), which changes its Go type`},
 		},
 		{
-			// A field whose alternatives are a value and null is a pointer.
+			// A field whose two alternatives are a value and null is a
+			// pointer to the value.
 			name:     "a nullable property gains an alternative",
 			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"session": {AnyOf: []*Definition{ref("Session"), {Type: "null"}}}}), "Session": obj(nil)},
 			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"session": {AnyOf: []*Definition{ref("Session"), {Type: "null"}, str()}}}), "Session": obj(nil)},
@@ -827,6 +830,19 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 				obj(map[string]*Definition{"c": str()}), obj(map[string]*Definition{"a": str()}), obj(map[string]*Definition{"b": str()}),
 			}}},
 			want: []string{`Shape.anyOf[0]: moves to 1, which renames its Go type`, `Shape.anyOf[1]: moves to 2, which renames its Go type`},
+		},
+		{
+			// A field with two alternatives is a pointer to the second one.
+			name:     "a property with two alternatives gains one",
+			stable:   options(obj(map[string]*Definition{"port": {AnyOf: []*Definition{str(), {Type: "integer"}}}})),
+			unstable: options(obj(map[string]*Definition{"port": {AnyOf: []*Definition{str(), {Type: "integer"}, {Type: "boolean"}}}})),
+			want:     []string{`Options.port: becomes a union (anyOf), which changes its Go type`},
+		},
+		{
+			name:     "a property's two alternatives swap",
+			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"id": {AnyOf: []*Definition{ref("A"), ref("B")}}}), "A": str(), "B": str()},
+			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"id": {AnyOf: []*Definition{ref("B"), ref("A")}}, "c": str()}), "A": str(), "B": str()},
+			want:     []string{`Options.id: points to #/$defs/A instead of #/$defs/B (anyOf), which changes its Go type`},
 		},
 		{
 			// A definition with enum values is a string enum.

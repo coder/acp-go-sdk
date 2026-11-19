@@ -468,8 +468,8 @@ func (c *Connection) receive() {
 		case msg.Method != "":
 			size := len(line)
 			if msg.ID != nil {
-				// A request that the connection cannot hold gets its reply here,
-				// without a goroutine, so the rejections hold nothing either.
+				// A request that the connection cannot hold gets its reply from
+				// this loop: a goroutine per rejection would be unbounded again.
 				if rejection := c.budget.holdRequest(size); rejection != nil {
 					c.loggerOrDefault().Warn("rejected request from the peer", "method", msg.Method, "err", rejection)
 					c.sendInboundRequestError(&msg, rejection)

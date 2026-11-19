@@ -31,6 +31,16 @@ func liveHeap() int64 {
 	return int64(ms.HeapAlloc)
 }
 
+// retained logs and returns how much the heap grew since before, and what c
+// holds.
+func retained(t *testing.T, c *Connection, before int64) (delta int64, heldBytes, heldRequests int) {
+	t.Helper()
+	delta = liveHeap() - before
+	heldBytes, heldRequests = c.budget.held()
+	t.Logf("heap delta %d bytes, held %d bytes and %d requests", delta, heldBytes, heldRequests)
+	return delta, heldBytes, heldRequests
+}
+
 func waitUntil(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -349,9 +359,8 @@ func TestConnectionBudget_RejectsRequestsOverLimit(t *testing.T) {
 	rejected := rejectedIDs(t, p, sent-maxRequests)
 	waitUntil(t, "the held requests run", func() bool { return g.entered.Load() == maxRequests })
 	grown := runtime.NumGoroutine() - goroutines
-	delta := liveHeap() - before
-	heldBytes, heldRequests := c.budget.held()
-	t.Logf("heap delta %d bytes, goroutines +%d, held %d bytes and %d requests", delta, grown, heldBytes, heldRequests)
+	t.Logf("goroutines +%d", grown)
+	_, heldBytes, heldRequests := retained(t, c, before)
 
 	for n := maxRequests + 1; n <= sent; n++ {
 		if !rejected[lineID(n)] {
@@ -398,9 +407,7 @@ func TestConnectionBudget_RejectsRequestsOverByteBudget(t *testing.T) {
 	}
 	rejected := rejectedIDs(t, p, sent-fit)
 	waitUntil(t, "the held requests run", func() bool { return g.entered.Load() == int64(fit) })
-	delta := liveHeap() - before
-	heldBytes, heldRequests := c.budget.held()
-	t.Logf("sent %d bytes: heap delta %d bytes, held %d bytes and %d requests", sent*line.size(), delta, heldBytes, heldRequests)
+	delta, heldBytes, heldRequests := retained(t, c, before)
 
 	for n := fit + 1; n <= sent; n++ {
 		if !rejected[lineID(n)] {
@@ -436,15 +443,13 @@ func TestConnectionBudget_ClosesOnNotificationOverByteBudget(t *testing.T) {
 	writes := p.writeAll(line, 1, sent)
 	waitDone(t, c.Done())
 	p.cutOff(writes)
-	delta := liveHeap() - before
-	heldBytes, _ := c.budget.held()
-	t.Logf("heap delta %d bytes, held %d bytes", delta, heldBytes)
+	delta, heldBytes, _ := retained(t, c, before)
 
 	if !strings.Contains(p.logs.String(), "byte budget") {
 		t.Errorf("the log does not name the byte budget:\n%s", p.logs.String())
 	}
-	if heldBytes > budget || heldBytes != budget/line.size()*line.size() {
-		t.Errorf("held %d bytes, want the %d notifications that fit %d bytes", heldBytes, budget/line.size(), budget)
+	if fit := budget / line.size(); heldBytes != fit*line.size() {
+		t.Errorf("held %d bytes, want the %d notifications that fit %d bytes", heldBytes, fit, budget)
 	}
 	if delta >= 3*budget {
 		t.Errorf("heap grew by %d bytes, want less than %d", delta, 3*budget)
@@ -466,6 +471,7 @@ func TestConnectionBudget_SharesBudgetBetweenRequestsAndNotifications(t *testing
 	g := newGate(t, "_block")
 	c := newBudgetConnection(t, p, g.handler, WithByteBudget(budget))
 
+	before := liveHeap()
 	p.write(note.number(1))
 	waitHeld(t, c, 0, 0)
 	for n := 1; n <= requests; n++ {
@@ -479,9 +485,11 @@ func TestConnectionBudget_SharesBudgetBetweenRequestsAndNotifications(t *testing
 	writes := p.writeAll(note, 2, 2)
 	waitDone(t, c.Done())
 	p.cutOff(writes)
+	retained(t, c, before)
 	if !strings.Contains(p.logs.String(), "byte budget") {
 		t.Errorf("the log does not name the byte budget:\n%s", p.logs.String())
 	}
+	// The close ends the ctx of the held requests.
 	waitHeld(t, c, 0, 0)
 }
 
@@ -494,6 +502,7 @@ func TestConnectionBudget_DefaultLimits(t *testing.T) {
 		g := newGate(t, "_block")
 		c := newBudgetConnection(t, p, g.handler)
 		line := requestLine(t, "_block", 128)
+		before := liveHeap()
 		for n := 1; n <= documentedRequests+1; n++ {
 			p.write(line.number(n))
 		}
@@ -501,6 +510,8 @@ func TestConnectionBudget_DefaultLimits(t *testing.T) {
 			t.Errorf("rejected %v, want request %d", rejected, documentedRequests+1)
 		}
 		waitHeld(t, c, documentedRequests*line.size(), documentedRequests)
+		p.noReply()
+		retained(t, c, before)
 		g.open()
 		waitHeld(t, c, 0, 0)
 	})
@@ -513,15 +524,18 @@ func TestConnectionBudget_DefaultLimits(t *testing.T) {
 		if fit := documentedBudget / line.size(); fit < 60 || fit >= 65 {
 			t.Fatalf("SETUP: %d notifications fit, want 60 to 64", fit)
 		}
+		before := liveHeap()
 		writes := p.writeAll(line, 1, 60)
 		<-writes
 		waitHeld(t, c, 60*line.size(), 0)
+		retained(t, c, before)
 		if !isOpen(c.Done()) {
 			t.Fatal("60 notifications of 1 MiB closed the connection")
 		}
 		writes = p.writeAll(line, 61, 65)
 		waitDone(t, c.Done())
 		p.cutOff(writes)
+		retained(t, c, before)
 		g.open()
 		waitHeld(t, c, 0, 0)
 	})
@@ -546,6 +560,7 @@ func TestConnectionBudget_MaxQueuedNotifications(t *testing.T) {
 			g := newGate(t, "_block")
 			c := newBudgetConnection(t, p, g.handler, tt.opts...)
 			line := notificationLine(t, "_block", 128)
+			before := liveHeap()
 			writes := p.writeAll(line, 1, burst)
 			if tt.wantOpen {
 				<-writes
@@ -560,6 +575,7 @@ func TestConnectionBudget_MaxQueuedNotifications(t *testing.T) {
 					t.Errorf("the log does not name the full queue:\n%s", p.logs.String())
 				}
 			}
+			retained(t, c, before)
 			g.open()
 			waitHeld(t, c, 0, 0)
 		})
@@ -690,11 +706,11 @@ func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
 	}
 	waitCompletedNotifications(t, conn.conn, cancels)
 	waitHeld(t, conn.conn, len(old)-1, 1)
-	delta := liveHeap() - before
+	delta, _, _ := retained(t, conn.conn, before)
 	conn.mu.Lock()
 	cancelledAt, newest := len(conn.sessionCancelledAt), len(conn.sessionNewest)
 	conn.mu.Unlock()
-	t.Logf("sent %d sessionIds of %d bytes: heap delta %d bytes, %d cancel markers, %d newest-prompt markers", cancels+prompts, idSize, delta, cancelledAt, newest)
+	t.Logf("%d cancel markers and %d newest-prompt markers", cancelledAt, newest)
 
 	if cancelledAt != maxCancelMarkers || newest != prompts {
 		t.Fatalf("SETUP: %d cancel markers and %d newest-prompt markers, want %d and %d", cancelledAt, newest, maxCancelMarkers, prompts)

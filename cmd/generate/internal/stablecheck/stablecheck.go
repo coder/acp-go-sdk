@@ -11,6 +11,7 @@ import (
 	"go/importer"
 	"go/parser"
 	"go/printer"
+	"go/scanner"
 	"go/token"
 	"go/types"
 	"os"
@@ -610,17 +611,47 @@ func hasField(st *types.Struct, name string) bool {
 }
 
 // text prints n as lines without indentation or empty lines, so that the
-// statements a projection removed leave no trace.
+// statements a projection removed leave no trace. Tokens keep their text,
+// such as the spaces in a string literal, and one space stands for the
+// spaces between two tokens.
 func (s *side) text(n ast.Node) []string {
 	var buf bytes.Buffer
 	if err := (&printer.Config{Mode: printer.RawFormat}).Fprint(&buf, s.fset, n); err != nil {
 		return []string{err.Error()}
 	}
+	src := buf.Bytes()
+	file := token.NewFileSet().AddFile("", -1, len(src))
+	var sc scanner.Scanner
+	sc.Init(file, src, nil, 0)
 	var lines []string
-	for _, line := range strings.Split(buf.String(), "\n") {
-		if line = strings.Join(strings.Fields(line), " "); line != "" {
-			lines = append(lines, line)
+	var line strings.Builder
+	lineNo, end := 0, 0
+	for {
+		pos, tok, lit := sc.Scan()
+		if tok == token.EOF {
+			break
 		}
+		if tok == token.SEMICOLON && lit == "\n" {
+			continue
+		}
+		if lit == "" {
+			lit = tok.String()
+		}
+		switch offset := file.Offset(pos); {
+		case file.Line(pos) != lineNo:
+			if line.Len() > 0 {
+				lines = append(lines, line.String())
+			}
+			line.Reset()
+			lineNo = file.Line(pos)
+		case offset > end:
+			line.WriteByte(' ')
+		}
+		line.WriteString(lit)
+		end = file.Offset(pos) + len(lit)
+	}
+	if line.Len() > 0 {
+		lines = append(lines, line.String())
 	}
 	return lines
 }

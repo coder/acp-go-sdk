@@ -170,7 +170,7 @@ These still decode as in v0.20.0:
 - A member inside a lenient property (`x-deserialize-default-on-error` or `x-deserialize-skip-invalid-items`), such as an item of `configOptions` in a `config_option_update`. v0.20.0 already dropped the item, or read the value as unset, when it lacked a required member.
 - A key in another case, such as `"Title"`, which counts as present because `encoding/json` reads it into the field. The Rust SDK rejects it.
 
-A JSON `null` where the schema wants an object with required members, such as an item of `env` or the `params` of `initialize`, has none of them, so it fails too. When you decode into a value that already holds data, a field that keeps a value from before hides a missing member: decode into a new value.
+A JSON `null` where the schema wants an object with required members, such as an item of `env` or the `params` of `initialize`, has none of them, so it fails too.
 
 Every member that the rules above let through when it was missing or `null`, and that v0.21.0 rejects. In a path, `[]` is each item of an array and `{}` each member of a map. A label in parentheses names the variant that the type is, and `of` the variants on the way to it:
 

@@ -41,30 +41,31 @@ func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fie
 // emitRequireMembers fails the decode of the struct name when the JSON object
 // b lacks a required member of plans, or holds null for one that does not
 // take null. A member that is absent or null holds its Go zero value in a
-// fresh value, so the members of b are read only when a required one is zero.
+// fresh value, so the members of b are read only when a required one may be
+// absent (maybeAbsent).
 // A struct's UnmarshalJSON sets each required field to zero first
 // (emitStruct), and a union's starts from an empty wrapper, so a field that a
 // reused value held cannot hide an absent member.
 func emitRequireMembers(g *Group, name, recv string, plans []fieldPlan) {
-	var anyZero *Statement
+	var anyAbsent *Statement
 	var checks []Code
 	for _, p := range plans {
 		if !p.required {
 			continue
 		}
 		field := Op("&").Id(recv).Dot(p.field.Name)
-		if anyZero == nil {
-			anyZero = Id("isZero").Call(field)
+		if anyAbsent == nil {
+			anyAbsent = Id("maybeAbsent").Call(field)
 		} else {
-			anyZero = anyZero.Op("||").Id("isZero").Call(field)
+			anyAbsent = anyAbsent.Op("||").Id("maybeAbsent").Call(field)
 		}
 		check := Id("requireMember").Call(Id("members"), field, Lit(p.field.Prop), Lit(p.takesNull))
 		checks = append(checks, If(Id("err").Op(":=").Add(check), Id("err").Op("!=").Nil()).Block(propertyFail(name, p.field.Prop)))
 	}
-	if anyZero == nil {
+	if anyAbsent == nil {
 		return
 	}
-	g.If(anyZero).Block(append([]Code{Id("members").Op(":=").Id("jsonMembers").Call(Id("b"))}, checks...)...)
+	g.If(anyAbsent).Block(append([]Code{Id("members").Op(":=").Id("jsonMembers").Call(Id("b"))}, checks...)...)
 }
 
 // propertyFail returns the error err of decoding the raw property prop of
@@ -263,9 +264,13 @@ func (b *typesBuilder) emitSupport() {
 	)
 	f.Line()
 
-	f.Comment("isZero reports whether *v is the zero value of T. A required member that")
-	f.Comment("the JSON object lacks, or that is null, leaves a fresh value at zero.")
-	f.Func().Id("isZero").Types(Id("T").Any()).Params(Id("v").Op("*").Id("T")).Bool().Block(
+	f.Comment("maybeAbsent reports whether *v holds what a required member that the JSON")
+	f.Comment("object lacks, or that is null, leaves in a fresh value: the zero value of T,")
+	f.Comment("or, for raw JSON, which keeps a null as the bytes null, also null.")
+	f.Func().Id("maybeAbsent").Types(Id("T").Any()).Params(Id("v").Op("*").Id("T")).Bool().Block(
+		If(List(Id("raw"), Id("ok")).Op(":=").Id("any").Call(Id("v")).Assert(Op("*").Qual("encoding/json", "RawMessage")), Id("ok")).Block(
+			Return(Id("len").Call(Op("*").Id("raw")).Op("==").Lit(0).Op("||").Id("string").Call(Op("*").Id("raw")).Op("==").Lit("null")),
+		),
 		Return(Qual("reflect", "ValueOf").Call(Id("v")).Dot("Elem").Call().Dot("IsZero").Call()),
 	)
 	f.Line()

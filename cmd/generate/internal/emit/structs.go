@@ -148,6 +148,17 @@ func (b *typesBuilder) nonNullItem(field ir.Field) Code {
 // scalar reports whether the Go type of d is a string, a number, or a boolean,
 // or a type that buildTypesJen defines as one of them.
 func (b *typesBuilder) scalar(d *load.Definition) bool {
+	if len(d.AllOf) > 0 && d.Ref == "" {
+		// The item takes the type of a part of its allOf, the one that
+		// jenTypeFor picks: the first $ref, else the first part.
+		parts := slices.DeleteFunc(slices.Clone(d.AllOf), func(e *load.Definition) bool { return e == nil })
+		if i := slices.IndexFunc(parts, func(e *load.Definition) bool { return e.Ref != "" }); i >= 0 {
+			return b.scalar(parts[i])
+		}
+		if len(parts) > 0 {
+			return b.scalar(parts[0])
+		}
+	}
 	if d.Ref != "" {
 		def := b.schema.Defs[strings.TrimPrefix(d.Ref, "#/$defs/")]
 		switch {

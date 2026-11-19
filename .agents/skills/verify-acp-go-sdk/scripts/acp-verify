@@ -311,10 +311,10 @@ signal_left() {
 		[ -n "$pid" ] || continue
 		left=$(left_of "$pid" "$start")
 		[ -n "$left" ] || continue
-		# The group, for a member that starts now, and each pid, because a
-		# leftover that client-default recorded leads no group. Never by name.
-		kill "-$1" -- "-$pid" 2>/dev/null || true
-		kill "-$1" $left 2>/dev/null || true
+		# The group, which also reaches a member that starts now. A leftover
+		# that client-default recorded leads no group, so signal its pid.
+		# Each process gets the signal once. Never by name.
+		kill "-$1" -- "-$pid" 2>/dev/null || kill "-$1" $left 2>/dev/null || true
 	done <<<"$2"
 }
 

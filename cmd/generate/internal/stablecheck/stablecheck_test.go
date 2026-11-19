@@ -97,6 +97,7 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 		"Flags": obj(map[string]*load.Definition{"read": {Type: "boolean"}, "list": {Type: "boolean"}}),
 		"Caps": obj(map[string]*load.Definition{
 			"flags": {AllOf: []*load.Definition{ref("Flags")}, Default: map[string]any{"read": false}, DefaultOnError: true},
+			"name":  {Type: "string", Default: "a  b", DefaultOnError: true},
 		}),
 	}
 	if change != nil {
@@ -134,6 +135,9 @@ func TestCompare_AllowsAdditions(t *testing.T) {
 		defs["Tone"].Enum = []any{"warm", "cool", "other"}
 		// A decoder for a hint of an added property only handles it.
 		defs["Plain"].Properties["level"] = &load.Definition{Type: "string", Default: "low", DefaultOnError: true}
+		// The field Alias shares its name with the local type of the
+		// stable MarshalJSON of Update.
+		defs["Update"].Properties["alias"] = str()
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +224,22 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 			change: func(defs map[string]*load.Definition) {
 				defs["Hinted"].Properties["label"].Not = &load.Definition{Const: "nothing"}
 			},
-			want: `shapes[shapeHintedLabel].not: loses the value "none"`,
+			want: `shapes[shapeHintedLabel].not: takes values that the stable rule does not`,
+		},
+		{
+			// A value fits a rule only if it does not fit its not rule.
+			name: "a hinted property's not rule takes more values",
+			change: func(defs map[string]*load.Definition) {
+				defs["Hinted"].Properties["label"].Not = &load.Definition{Enum: []any{"none", "blocked"}}
+			},
+			want: `shapes[shapeHintedLabel].not: takes values that the stable rule does not`,
+		},
+		{
+			name: "a hinted property with a not rule gains a const",
+			change: func(defs map[string]*load.Definition) {
+				defs["Hinted"].Properties["label"].Const = "x"
+			},
+			want: `shapes[shapeHintedLabel]: takes only the values ["x"]`,
 		},
 		{
 			name: "a hint on a stable property gives a type a decoder",
@@ -233,6 +252,13 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 			name: "a default gains a member for a stable property",
 			change: func(defs map[string]*load.Definition) {
 				defs["Caps"].Properties["flags"].Default = map[string]any{"read": false, "list": true}
+			},
+			want: "Caps.UnmarshalJSON: changes",
+		},
+		{
+			name: "a string default changes its inner spacing",
+			change: func(defs map[string]*load.Definition) {
+				defs["Caps"].Properties["name"].Default = "a b"
 			},
 			want: "Caps.UnmarshalJSON: changes",
 		},

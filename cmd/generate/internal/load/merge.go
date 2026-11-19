@@ -15,7 +15,9 @@ import (
 //   - A definition that both schemas have is the unstable version, which
 //     carries the unstable additions. Each property and each alternative that
 //     only the unstable version has is marked **UNSTABLE** in its description,
-//     unless the schema marks it already.
+//     unless the schema marks it already. The unstable version may only add
+//     to the stable one: any other change would change a stable type, so the
+//     merge fails and names it (nonAdditiveChanges).
 //   - A definition that only the unstable schema has, and that a stable method
 //     or a definition above reaches, keeps its name.
 //   - Unstable-only methods (present only in unstable meta) are added. Their
@@ -74,7 +76,10 @@ func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta
 			wires[wire] = struct{}{}
 		}
 	}
-	promotedSharedDefs := promoteChangedSharedDefs(combinedSchema, stableSchema, unstableSchema, stableWires, wires)
+	promotedSharedDefs, err := promoteChangedSharedDefs(combinedSchema, stableSchema, unstableSchema, stableWires, wires)
+	if err != nil {
+		return nil, nil, err
+	}
 	ensureRefsAvailable(combinedSchema, unstableSchema, promotedSharedDefs)
 
 	dupSet, err := buildUnstableDuplicateSet(combinedSchema, unstableSchema, unstableOnlyWires)
@@ -216,8 +221,10 @@ func buildUnstableDuplicateSet(combinedSchema *Schema, unstableSchema *Schema, u
 // the metadata does not list, such as proxy/initialize, gets no Go method, so
 // it promotes nothing. The unions of every request, response, or
 // notification of a side (AgentRequest and the like) are no method's types,
-// so they keep their stable version.
-func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires, wires map[string]struct{}) map[string]struct{} {
+// so they keep their stable version. It fails, naming each change, when the
+// unstable version of a shared definition does more than add to the stable
+// one (nonAdditiveChanges).
+func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires, wires map[string]struct{}) (map[string]struct{}, error) {
 	promoted := map[string]struct{}{}
 	var methodRoots []string
 	for name, udef := range unstableSchema.Defs {
@@ -231,15 +238,21 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 			methodRoots = append(methodRoots, name)
 		}
 	}
+	var changes []string
 	for name := range reachableDefs(unstableSchema, methodRoots) {
 		udef, sdef := unstableSchema.Defs[name], stableSchema.Defs[name]
 		if udef == nil || sdef == nil || sameShape(sdef, udef) {
 			continue
 		}
+		changes = append(changes, nonAdditiveChanges(sdef, udef, name)...)
 		copyDef := deepCopyDefinition(udef)
 		markUnstableAdditions(sdef, copyDef, unstableSchema.Defs)
 		combinedSchema.Defs[name] = copyDef
 		promoted[name] = struct{}{}
+	}
+	if len(changes) > 0 {
+		sort.Strings(changes)
+		return nil, fmt.Errorf("cannot merge unstable schema: the unstable version of a shared definition may only add to the stable one:\n\t%s", strings.Join(changes, "\n\t"))
 	}
 
 	queue := []string{}
@@ -280,7 +293,123 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 		}
 	}
 
-	return promoted
+	return promoted, nil
+}
+
+// nonAdditiveChanges returns a line for each change from s, the stable
+// version of a definition, to u, its unstable version, that is not an
+// addition, at any depth. path names the node, and each line starts with it.
+// The nodes of s and u are paired as markUnstableAdditions pairs them, and an
+// alternative is named by its stable index. u may add properties,
+// alternatives, allOf parts, and enum values, give its default more object
+// members, and change descriptions. Any other change, such as a removed or
+// newly required property or a new type, changes the stable Go type.
+func nonAdditiveChanges(s, u *Definition, path string) []string {
+	switch {
+	case s == nil && u == nil:
+		return nil
+	case u == nil:
+		return []string{path + ": removed"}
+	case s == nil:
+		return []string{path + ": added where the stable version has none"}
+	}
+	var out []string
+	for name, sprop := range s.Properties {
+		out = append(out, nonAdditiveChanges(sprop, u.Properties[name], path+"."+name)...)
+	}
+	for _, parts := range []struct {
+		keyword string
+		s, u    []*Definition
+	}{{"anyOf", s.AnyOf, u.AnyOf}, {"oneOf", s.OneOf, u.OneOf}, {"allOf", s.AllOf, u.AllOf}} {
+		match := map[*Definition]*Definition{}
+		for i, spart := range counterparts(parts.s, parts.u) {
+			if spart != nil {
+				match[spart] = parts.u[i]
+			}
+		}
+		for i, spart := range parts.s {
+			out = append(out, nonAdditiveChanges(spart, match[spart], fmt.Sprintf("%s.%s[%d]", path, parts.keyword, i))...)
+		}
+	}
+	out = append(out, nonAdditiveChanges(s.Items, u.Items, path+".items")...)
+	out = append(out, nonAdditiveChanges(s.AdditionalProperties.Schema, u.AdditionalProperties.Schema, path+".additionalProperties")...)
+
+	srequired, urequired := map[string]bool{}, map[string]bool{}
+	for _, name := range s.Required {
+		srequired[name] = true
+	}
+	for _, name := range u.Required {
+		urequired[name] = true
+		if !srequired[name] {
+			out = append(out, fmt.Sprintf("%s: requires %q", path, name))
+		}
+	}
+	for _, name := range s.Required {
+		if !urequired[name] {
+			out = append(out, fmt.Sprintf("%s: no longer requires %q", path, name))
+		}
+	}
+	values := map[string]bool{}
+	for _, v := range u.Enum {
+		values[fmt.Sprint(v)] = true
+	}
+	for _, v := range s.Enum {
+		if !values[fmt.Sprint(v)] {
+			out = append(out, fmt.Sprintf("%s: removes enum value %v", path, v))
+		}
+	}
+	if !extendsDefault(s.Default, u.Default) {
+		out = append(out, fmt.Sprintf("%s: changes default from %s to %s", path, jsonText(s.Default), jsonText(u.Default)))
+	}
+
+	// Every other keyword is compared as a whole.
+	rest := func(d *Definition) reflect.Value {
+		c := *d
+		c.Description, c.Properties, c.Required, c.Enum, c.Items, c.Default = "", nil, nil, nil, nil, nil
+		c.AnyOf, c.OneOf, c.AllOf, c.AdditionalProperties.Schema = nil, nil, nil, nil
+		return reflect.ValueOf(*withoutDescriptions(&c))
+	}
+	srest, urest := rest(s), rest(u)
+	for i := 0; i < srest.NumField(); i++ {
+		field := srest.Type().Field(i)
+		keyword, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if !field.IsExported() || keyword == "-" {
+			continue
+		}
+		if keyword == "" {
+			keyword = field.Name
+		}
+		if sv, uv := srest.Field(i).Interface(), urest.Field(i).Interface(); !reflect.DeepEqual(sv, uv) {
+			out = append(out, fmt.Sprintf("%s: changes %s from %s to %s", path, keyword, jsonText(sv), jsonText(uv)))
+		}
+	}
+	return out
+}
+
+// extendsDefault reports whether u, an unstable default, is s, the stable
+// one, or s with more object members at any depth.
+func extendsDefault(s, u any) bool {
+	smembers, sok := s.(map[string]any)
+	umembers, uok := u.(map[string]any)
+	if !sok || !uok {
+		return reflect.DeepEqual(s, u)
+	}
+	for name, sv := range smembers {
+		if uv, ok := umembers[name]; !ok || !extendsDefault(sv, uv) {
+			return false
+		}
+	}
+	return true
+}
+
+// jsonText renders a keyword value as JSON. Members renders as its Open flag,
+// since nonAdditiveChanges compares its Schema on its own.
+func jsonText(v any) string {
+	if m, ok := v.(Members); ok {
+		v = m.Open
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 // reachableDefs returns the definitions of schema that roots reach through
@@ -308,8 +437,12 @@ func reachableDefs(schema *Schema, roots []string) map[string]struct{} {
 }
 
 // unstableNote is the text that the unstable schema puts in front of the
-// description of each unstable addition.
-const unstableNote = "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point."
+// description of each unstable addition. Some descriptions put their own text
+// right after unstableMarker instead.
+const (
+	unstableMarker = "**UNSTABLE**"
+	unstableNote   = unstableMarker + "\n\nThis capability is not part of the spec yet, and may be removed or changed at any point."
+)
 
 // markUnstableAdditions marks in u, the unstable version of the stable
 // definition s, each property, alternative, allOf part, and enum value that s
@@ -390,13 +523,15 @@ func markAddedPart(part *Definition, defs map[string]*Definition, seen map[strin
 // inside it: its properties, alternatives, inline allOf parts, items, and
 // enum values, which become Go types, fields, and constants too. A $ref is
 // not followed. A const inside d, such as the discriminator of a variant,
-// says no more than d does, so it is left as it is.
+// says no more than d does, so it is left as it is. A description that starts
+// with unstableMarker is marked already; one that only mentions UNSTABLE is
+// not.
 func markUnstable(d *Definition) {
 	visitDefinition(d, func(n *Definition) {
 		if n != d && n.Const != nil {
 			return
 		}
-		if !strings.Contains(n.Description, "UNSTABLE") {
+		if !strings.HasPrefix(n.Description, unstableMarker) {
 			n.Description = strings.TrimSpace(unstableNote + "\n\n" + n.Description)
 		}
 		for _, v := range n.Enum {
@@ -414,19 +549,25 @@ func markUnstable(d *Definition) {
 // same identity. A part without one matches a part of equal shape, else the
 // part without an identity whose properties it has, all of them and the most
 // of them, so that a property added to an anonymous alternative counts as an
-// addition to that alternative.
+// addition to that alternative. Parts with the same key match in order: each
+// takes the first stable part with its key that no part took before it.
 func counterparts(ss, us []*Definition) []*Definition {
 	out := make([]*Definition, len(us))
 	used := map[*Definition]bool{}
-	byKey := map[string]*Definition{}
+	byKey := map[string][]*Definition{}
 	for _, s := range ss {
-		key, _ := alternativeKey(s)
-		byKey[key] = s
+		if s != nil {
+			key, _ := alternativeKey(s)
+			byKey[key] = append(byKey[key], s)
+		}
 	}
 	for i, u := range us {
 		key, _ := alternativeKey(u)
-		if s := byKey[key]; s != nil && !used[s] {
-			out[i], used[s] = s, true
+		for _, s := range byKey[key] {
+			if !used[s] {
+				out[i], used[s] = s, true
+				break
+			}
 		}
 	}
 	for i, u := range us {

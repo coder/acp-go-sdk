@@ -98,7 +98,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 					"params": ref("FooParams"),
 				},
 			},
-			"FooParams":  {Description: "unstable params", Type: "object", Required: []string{"id"}, Properties: map[string]*Definition{"opts": ref("FooOptions")}},
+			"FooParams":  {Description: "unstable params", Type: "object", Properties: map[string]*Definition{"opts": ref("FooOptions")}},
 			"FooOptions": {Type: "object"},
 		}}
 
@@ -107,8 +107,8 @@ func TestMergeStableAndUnstable(t *testing.T) {
 		if combinedSchema.Defs["UnstableFooParams"] != nil {
 			t.Fatalf("UnstableFooParams was added for a definition that both schemas have")
 		}
-		if got := combinedSchema.Defs["FooParams"].Required; len(got) != 1 || got[0] != "id" {
-			t.Fatalf("FooParams is not the unstable version: required %v", got)
+		if got := combinedSchema.Defs["FooParams"].Properties; got["opts"] == nil {
+			t.Fatalf("FooParams is not the unstable version: properties %v", got)
 		}
 		unstableReq := combinedSchema.Defs["UnstableFooRequest"]
 		if unstableReq == nil {
@@ -161,7 +161,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 				},
 			},
 			// Changed descendant reachable only through unchanged Wrapper.
-			"Leaf": {Description: "unstable leaf", Type: "object", Required: []string{"id"}},
+			"Leaf": {Description: "unstable leaf", Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
 		}}
 
 		_, combinedSchema := mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
@@ -176,8 +176,8 @@ func TestMergeStableAndUnstable(t *testing.T) {
 		if got := combinedSchema.Defs["Wrapper"].Properties["leaf"].Ref; got != "#/$defs/Leaf" {
 			t.Fatalf("expected leaf to refer to the shared Leaf; got %q", got)
 		}
-		if got := combinedSchema.Defs["Leaf"].Required; len(got) != 1 {
-			t.Fatalf("Leaf is not the unstable version: required %v", got)
+		if got := combinedSchema.Defs["Leaf"].Properties; got["id"] == nil {
+			t.Fatalf("Leaf is not the unstable version: properties %v", got)
 		}
 		for _, name := range []string{"UnstableWrapper", "UnstableLeaf"} {
 			if combinedSchema.Defs[name] != nil {
@@ -356,7 +356,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 					"params": ref("FooParams"),
 				},
 			},
-			"FooParams": {Description: "unstable params", Type: "object", Required: []string{"id"}},
+			"FooParams": {Description: "unstable params", Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
 		}}
 
 		_, _ = mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)

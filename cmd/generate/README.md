@@ -22,6 +22,7 @@ The target first downloads the schema files of the release in `schema/version` w
 - `findRepoRoot` runs even when both flags are set [main.go:main]
 - `meta.unstable.json` and `schema.unstable.json` must both exist or both be absent. A mismatch panics [main.go:main]
 - When the unstable inputs exist, `load.MergeStableAndUnstable` replaces the stable meta and schema with the merged result before any emit step [main.go:main]
+- The merge fails, and so the generator panics, when the unstable version of a definition that both schemas share does more than add to the stable one, so a schema bump cannot change a stable type without notice. The panic lists each change by path, such as `SetSessionConfigOptionRequest.value: removed` at schemas 0.13.5 to 1.17.0 ([internal/load](./internal/load/README.md)) [merge.go:promoteChangedSharedDefs]
 - The emit order is `WriteConstantsJen`, `WriteTypesJen`, `WriteDispatchJen`, then `WriteHelpersJen`. The code comment says helpers come after types so they can reference generated structs [main.go:main]
 - A bad command-line flag makes `flag.Parse` print the error and exit with status 2 (`flag.ExitOnError`). After parsing, every read, merge, or emit error panics [main.go:main]
 

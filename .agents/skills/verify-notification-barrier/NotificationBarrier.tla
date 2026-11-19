@@ -22,6 +22,7 @@ CONSTANTS
     InReqs,             \* requests the peer sends us, each run in its own goroutine
     PeerCanCancelReq,   \* the peer can send $/cancel_request for an inbound request
     PeerNeedsInboundAnswer, \* the peer answers the nested request only after every inbound request is answered
+    InReqCalls,         \* the handler of the request from the peer makes a request with its ctx
     \* Facts read from connection.go by check.sh:
     WaitsForBarrier,          \* SendRequest and SendRequestNoResult call waitNotificationsUpTo
     WatermarkSource,          \* "enqueued" or "completed": the counter handleResponse records
@@ -40,19 +41,25 @@ CONSTANTS
     PeerWaitCounts,           \* startPeerWait increments peerWaits[seq] for the running handler's ctx
     PeerWaitBroadcasts,       \* startPeerWait broadcasts on notifyCond after the increment
     PeerWaitEnds,             \* donePeerWait decrements peerWaits[seq] after waitForResponse
-    PostWaitChecksCtx         \* waitInboundBarrier returns the cancel error when ctx ended as the wait cleared
+    PostWaitChecksCtx,        \* waitInboundBarrier returns the cancel error when ctx ended as the wait cleared
+    RequestCtxStopsAtPeerWait \* waitNotificationsUpTo stops at a peer wait for a request handler's ctx
 
 ASSUME WatermarkSource \in {"enqueued", "completed"}
 ASSUME NoteKinds \subseteq {"plain", "slow", "nested"}
 
 Nested  == "nested"   \* the request made from inside a "nested" handler
+InCall  == "inCall"   \* the request made from inside the handler of a request from the peer
 Drainer == "drainer"  \* the drain goroutine as a cond waiter
 None    == "none"
 Empty   == -1         \* an empty pendingResponse.ch
 
-Reqs == AppCallers \cup (IF "nested" \in NoteKinds THEN {Nested} ELSE {}) \cup InReqs
+InCalls == IF InReqCalls THEN {InCall} ELSE {}
 
-ASSUME InReqs \cap (AppCallers \cup {Nested, Drainer, None}) = {}
+Reqs == AppCallers \cup (IF "nested" \in NoteKinds THEN {Nested} ELSE {}) \cup InReqs \cup InCalls
+
+ASSUME InReqs \cap (AppCallers \cup {Nested, InCall, Drainer, None}) = {}
+\* One request from the peer, so InCall has one handler to come from.
+ASSUME InReqCalls => Cardinality(InReqs) = 1
 
 VARIABLES
     \* the peer and the wire (peer to us, in order)
@@ -102,9 +109,10 @@ HandledSet == Range(handled)
 
 \* The ctx that a caller passes. A handler gets c.inboundCtx. An inbound
 \* request's reqCtx is context.WithCancelCause(c.ctx): $/cancel_request or a
-\* disconnect ends it.
+\* disconnect ends it. Its handler passes reqCtx on to InCall.
+InReqOf(r) == IF r = InCall THEN CHOOSE q \in InReqs : TRUE ELSE r
 CtxDone(r) == IF r = Nested THEN inboundDone
-              ELSE IF r \in InReqs THEN ctxCanceled[r] \/ connDone
+              ELSE IF r \in InReqs \cup InCalls THEN ctxCanceled[InReqOf(r)] \/ connDone
               ELSE ctxCanceled[r]
 
 \* notifyCond.Broadcast(): every waiter wakes and must take notifyMu again.
@@ -132,7 +140,7 @@ Init ==
     /\ result = [r \in Reqs |-> "none"] /\ finalIds = {} /\ nestedFrom = 0
     /\ inSent = {} /\ cancelSent = {} /\ inflight = {}
     /\ inPc = [q \in InReqs |-> "none"] /\ inStart = [q \in InReqs |-> "none"]
-    /\ peerWaiting = {} /\ peerSeq = 0 /\ inOkAtExit = [q \in InReqs |-> FALSE]
+    /\ peerWaiting = {} /\ peerSeq = 0 /\ inOkAtExit = [q \in InReqs \cup InCalls |-> FALSE]
     /\ inCheckSaw = [q \in InReqs |-> "none"]
 
 -----------------------------------------------------------------------------
@@ -366,14 +374,15 @@ RunningWaitsOnPeer ==
     /\ Nested \in Reqs /\ workerPc = "nestedCall"
     /\ callerPc[Nested] \in PeerWaitPcs
 
-\* The code's rule for a request from the peer to leave its wait: the
-\* handlers of the notifications read before it have returned, or the
-\* running handler waits on the peer.
+\* The code's rule for a request from the peer, or for the request that its
+\* handler makes, to leave its wait: the handlers of the notifications read
+\* before it have returned, or the running handler waits on the peer.
 ExitOk(q) == readBefore[q] \subseteq HandledSet \/ RunningWaitsOnPeer
 
-\* Record ExitOk for a request from the peer that leaves its wait now.
+\* Record ExitOk for a request from the peer, or InCall, that leaves its wait
+\* now.
 RecordExit(r) ==
-    /\ inOkAtExit' = IF r \in InReqs THEN [inOkAtExit EXCEPT ![r] = ExitOk(r)] ELSE inOkAtExit
+    /\ inOkAtExit' = IF r \in InReqs \cup InCalls THEN [inOkAtExit EXCEPT ![r] = ExitOk(r)] ELSE inOkAtExit
     /\ UNCHANGED <<inSent, cancelSent, inflight, inPc, inStart, peerWaiting, peerSeq, inCheckSaw>>
 
 SetPc(r, pc) == callerPc' = [callerPc EXCEPT ![r] = pc]
@@ -397,8 +406,8 @@ SendsRequest(r) ==
     /\ UNCHANGED <<pending, lock, waitSet, ch, resp, waker, result>>
 
 \* startPeerWait(ctx) before waitForResponse, under notifyMu. Only the nested
-\* request has the ctx of a running handler, so for app callers it is a no-op
-\* and the model skips it. peerWaits[seq]++, then Broadcast.
+\* request has the ctx of a running handler, so for app callers and InCall it
+\* is a no-op and the model skips it. peerWaits[seq]++, then Broadcast.
 StartsPeerWait ==
     /\ Nested \in Reqs /\ callerPc[Nested] = "startPeer" /\ lock = None
     /\ IF PeerWaitCounts /\ completed < cur.seq
@@ -498,8 +507,13 @@ EntersBarrier(r) ==
 \* A request from the peer also leaves its wait while the running handler,
 \* the one of notification completed + 1, has a request that waits on the
 \* peer: !(stopAtPeerWait && c.peerWaits[c.completedNotificationSeq+1] > 0).
+\* So does InCall after its response: waitNotificationsUpTo sets
+\* stopAtPeerWait for the reqCtx of a request handler that still runs, and
+\* InCall's handler waits for it.
 StopsAtPeerWait(r) ==
-    r \in InReqs /\ InboundStopsAtPeerWait /\ (completed + 1) \in peerWaiting
+    /\ \/ r \in InReqs /\ InboundStopsAtPeerWait
+       \/ r \in InCalls /\ RequestCtxStopsAtPeerWait
+    /\ (completed + 1) \in peerWaiting
 
 \* for c.completedNotificationSeq < target && !(...) { ... } (holds notifyMu)
 BarrierLoop(r) ==
@@ -764,9 +778,25 @@ InChecksDone(q) ==
     /\ UNCHANGED inCheckSaw
     /\ InVarsBut(q)
 
-\* The request handler returns promptly and handleInbound sends the reply.
+\* The request handler calls SendRequest on the same connection with its
+\* reqCtx, for example a session/prompt handler that calls
+\* session/request_permission. The call runs on the handler's goroutine.
+InHandlerCalls(q) ==
+    /\ InReqCalls /\ inPc[q] = "handler" /\ callerPc[InCall] = "idle"
+    /\ inPc' = [inPc EXCEPT ![q] = "inCall"]
+    /\ callerPc' = [callerPc EXCEPT ![InCall] = "registered"]
+    /\ pending' = pending \cup {InCall}
+    /\ UNCHANGED <<peerVars, sentReq, recvPc, recvTmp, lastEnq, completed, queue, qClosed,
+                   final, connDone, inboundDone, lock, waitSet, workerPc, cur, ch, resp,
+                   ctxCanceled, waker, connWatcher, drainWaker, drainPc, timerFired,
+                   historyVars, inSent, cancelSent, inflight, inStart, peerWaiting, peerSeq,
+                   inOkAtExit, inCheckSaw>>
+
+\* The request handler returns, after its request with InReqCalls, and
+\* handleInbound sends the reply.
 InHandlerReturns(q) ==
-    /\ inPc[q] = "handler"
+    /\ \/ inPc[q] = "handler" /\ ~InReqCalls
+       \/ inPc[q] = "inCall" /\ callerPc[InCall] = "done"
     /\ inPc' = [inPc EXCEPT ![q] = "replied"]
     /\ inflight' = inflight \ {q}
     /\ UNCHANGED <<inStart, inCheckSaw>>
@@ -796,7 +826,7 @@ SDKStep ==
     \/ InboundCancel
     \/ RecvRequest \/ RecvCancel \/ StartsPeerWait \/ EndsPeerWait
     \/ \E q \in InReqs : InAfterBarrier(q) \/ InHandlerStarts(q) \/ InChecksDone(q)
-                         \/ InHandlerReturns(q)
+                         \/ InHandlerCalls(q) \/ InHandlerReturns(q)
     \/ \E r \in Reqs :
           \/ SendsRequest(r) \/ GetsResponse(r) \/ SeesCtxDone(r)
           \/ CtxBranchChecksDone(r) \/ SeesDisconnect(r) \/ CleansUp(r)
@@ -830,7 +860,8 @@ Fairness ==
     /\ WF_vars(StartsPeerWait) /\ WF_vars(EndsPeerWait)
     /\ \A q \in InReqs :
           /\ WF_vars(InAfterBarrier(q)) /\ WF_vars(InHandlerStarts(q))
-          /\ WF_vars(InChecksDone(q)) /\ WF_vars(InHandlerReturns(q))
+          /\ WF_vars(InChecksDone(q)) /\ WF_vars(InHandlerCalls(q))
+          /\ WF_vars(InHandlerReturns(q))
     /\ \A r \in Reqs :
           /\ WF_vars(SendsRequest(r)) /\ WF_vars(GetsResponse(r))
           /\ WF_vars(SeesCtxDone(r)) /\ WF_vars(CtxBranchChecksDone(r))
@@ -847,8 +878,9 @@ TimerSpec == Spec /\ WF_vars(DrainTimerFires)
 
 \* nested-handler.cfg: the peer answers the handler's request in the end, or
 \* closes. Without this, a request that waits for that handler waits on the
-\* peer, as it waits on a slow handler.
-NestedSpec == Spec /\ WF_vars(PeerResponds(Nested))
+\* peer, as it waits on a slow handler. The peer answers InCall in the end
+\* too.
+NestedSpec == Spec /\ WF_vars(PeerResponds(Nested)) /\ \A r \in InCalls : WF_vars(PeerResponds(r))
 
 -----------------------------------------------------------------------------
 (* Properties. Each says one thing that a user of the SDK relies on. *)
@@ -862,9 +894,13 @@ Promised(r) ==
 
 \* When SendRequest returns a response, the handler of every notification
 \* that it promises has returned. (Prompt() returns after every
-\* session/update of the turn is handled.)
+\* session/update of the turn is handled.) InCall also returns while the
+\* running handler waits on the peer, as the request from the peer starts
+\* then (the SendRequest doc comment): the peer can need its answer first.
 BarrierHolds ==
-    \A r \in Reqs \ InReqs : result[r] = "ok" => Promised(r) \subseteq HandledSet
+    \A r \in Reqs \ InReqs :
+        result[r] = "ok" => \/ Promised(r) \subseteq HandledSet
+                            \/ r \in InCalls /\ inOkAtExit[r]
 
 \* After a disconnect, handlers of notifications that were already read keep
 \* a live ctx until they return, or until the 5 s drain timeout.

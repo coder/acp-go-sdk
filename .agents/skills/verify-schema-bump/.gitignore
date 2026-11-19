@@ -1,2 +1,4 @@
 # Written by scripts/g2-roundtrip from the SDK sources; see registrygen.
 roundtrip/registry_gen_test.go
+# cargo's default build folder; scripts/rust-diff builds in $VSB_ROOT instead.
+rustprobe/target/

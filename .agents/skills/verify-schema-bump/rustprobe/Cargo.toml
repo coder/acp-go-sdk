@@ -1,0 +1,17 @@
+[package]
+name = "rustprobe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# agent-client-protocol-schema is the Rust SDK's schema crate. Its version
+# moves apart from the schema's: pin the release whose git commit is the
+# schema-v<schema/version> tag (SKILL.md, "Rust probe", says how to check).
+# 1.18.0 is schema 1.32.0.
+[dependencies]
+agent-client-protocol-schema = { version = "=1.18.0", features = ["unstable"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+
+[build-dependencies]
+serde_json = "1"

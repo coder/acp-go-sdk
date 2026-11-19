@@ -147,6 +147,9 @@ func (t *shapeTable) node(d *load.Definition) *shapeNode {
 	if d == nil {
 		return nil
 	}
+	if d.IsFalse() {
+		return &shapeNode{not: &shapeNode{}} // as {"not": {}}: no value fits
+	}
 	n := &shapeNode{}
 	ref := d.Ref
 	for _, part := range d.AllOf {
@@ -190,6 +193,9 @@ func (t *shapeTable) node(d *load.Definition) *shapeNode {
 		t.alternatives(n, d, alts)
 	}
 	n.not = t.node(d.Not)
+	if d.Not.IsTrue() {
+		n.not = &shapeNode{} // d.Not fits every value, so n fits none
+	}
 	if n.empty() {
 		return nil
 	}

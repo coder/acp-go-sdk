@@ -47,6 +47,8 @@ func (c *AgentSideConnection) Done() <-chan struct{} { return c.conn.Done() }
 // SetLogger directs connection diagnostics to the provided logger.
 func (c *AgentSideConnection) SetLogger(l *slog.Logger) { c.conn.SetLogger(l) }
 
+// sessionKey keys a session by the SHA-256 of its sessionId, because the peer
+// picks sessionIds of any length and the cancel markers outlive its messages.
 type sessionKey [sha256.Size]byte
 
 func sessionKeyOf(id string) sessionKey { return sha256.Sum256([]byte(id)) }

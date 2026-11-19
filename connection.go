@@ -466,6 +466,8 @@ func (c *Connection) receive() {
 		case msg.Method != "":
 			size := len(line)
 			if msg.ID != nil {
+				// The read loop writes the rejection itself: a goroutine per
+				// rejection would be unbounded again.
 				if rejection := c.budget.holdRequest(size); rejection != nil {
 					c.loggerOrDefault().Warn("rejected request from the peer", "method", msg.Method, "err", rejection)
 					c.sendInboundRequestError(&msg, rejection)

@@ -652,8 +652,8 @@ func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
 	}}, p.peerInput, p.peerOutput)
 	conn.SetLogger(p.logger)
 
-	old := []byte(`{"jsonrpc":"2.0","id":"old","method":"session/prompt","params":{"sessionId":"old","prompt":[]}}` + "\n")
-	p.write(old)
+	pinsMarkers := []byte(`{"jsonrpc":"2.0","id":"old","method":"session/prompt","params":{"sessionId":"old","prompt":[]}}` + "\n")
+	p.write(pinsMarkers)
 	waitUntil(t, "the old prompt runs", oldRunning.Load)
 
 	cancel := newWireLine(t, `{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"{n}{pad}"}}`, idSize+64)
@@ -671,7 +671,7 @@ func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
 		}
 	}
 	waitCompletedNotifications(t, conn.conn, cancels)
-	waitHeld(t, conn.conn, len(old)-1, 1)
+	waitHeld(t, conn.conn, len(pinsMarkers)-1, 1)
 	delta, _, _ := retained(t, conn.conn, before)
 	conn.mu.Lock()
 	cancelledAt, newest := len(conn.sessionCancelledAt), len(conn.sessionNewest)

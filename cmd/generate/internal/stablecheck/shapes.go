@@ -25,7 +25,7 @@ type rule struct {
 }
 
 // shapeChanges compares each entry of old's shapes table with its version
-// in new. The new version may only add to it: values, members, and
+// in new. The new version may only add to it: values, kinds, members, and
 // alternatives, and its not rules may only take less. When a union of the
 // schema gains a variant, the not rule of its catch-all variant gains an
 // alternative for the variant's discriminator value. Any other change can
@@ -177,8 +177,8 @@ func exprs(e ast.Expr) []string {
 }
 
 // lostIn returns what r loses in n, its merged version, at path, or "" when
-// n is r with additions: values beside the values of r, members, and
-// alternatives.
+// n is r with additions: values beside the values of r, kinds beside the
+// kinds of r, members, and alternatives.
 func (r *rule) lostIn(n *rule, path string) string {
 	switch {
 	case r == nil && n == nil:
@@ -189,7 +189,7 @@ func (r *rule) lostIn(n *rule, path string) string {
 		return path + ": loses its rules"
 	case r.ref != n.ref:
 		return fmt.Sprintf("%s: refers to %q instead of %q", path, n.ref, r.ref)
-	case !slices.Equal(r.kinds, n.kinds):
+	case (r.kinds == nil) != (n.kinds == nil) || slices.ContainsFunc(r.kinds, func(k string) bool { return !slices.Contains(n.kinds, k) }):
 		return fmt.Sprintf("%s: takes the kinds %v instead of %v", path, n.kinds, r.kinds)
 	case !slices.Equal(r.required, n.required):
 		return fmt.Sprintf("%s: requires %v instead of %v", path, n.required, r.required)

@@ -28,8 +28,6 @@ The connection calls `Validate` on every request and notification it reads. In v
 
 **An empty ID is rejected.** The Rust SDK accepts `""` for a required ID, such as `"sessionId": ""`. The Go SDK rejects it, because a Go string holds `""` both for a missing member and for an empty one.
 
-**An `http` MCP server entry that also holds stdio members is rejected.** `{"type":"http","name":"n","command":"c","args":[],"env":[]}` fails with `headers is required`. The Rust SDK falls back to the stdio variant when the `http` variant fails, and reads the entry as a stdio server. No recorded peer sends such an entry.
-
 **The error names the path of the member.** For an empty ID the `data.error` of the `-32602` error reads, for example, `mcpServers[0]: serverId is required` or `toolCall: toolCallId is required`. A member that is missing fails before `Validate` runs, when the message decodes ([Missing and null required members](#missing-and-null-required-members)).
 
 ### Newly rejected inputs
@@ -165,7 +163,7 @@ json: cannot unmarshal null into Go struct field NewSessionRequest.cwd of type s
 
 A request that lacks one gets `-32602` invalid params, and your handler is not called. A notification that lacks one is dropped and logged. A response that lacks one makes your call, such as `ClientSideConnection.NewSession`, return a `-32603` error, where v0.20.0 returned the value with the member at its zero value.
 
-**A missing required member fails to decode even inside a union variant.** The union then reports `invalid variant payload`: an `http` MCP server without `url`, or a `tool_call` update without `title`, fails the whole message.
+**A missing required member fails to decode even inside a union variant.** The union then tries its next variant, as the Rust SDK does, and reports `invalid variant payload` when none fits: an `sse` MCP server without `url`, or a `tool_call` update without `title`, fails the whole message. An `http` entry that lacks `url` but holds the stdio members, such as `{"type":"http","name":"n","command":"c","args":[],"env":[]}`, reads as a stdio server, as in Rust.
 
 These still decode as in v0.20.0:
 

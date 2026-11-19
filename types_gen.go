@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"reflect"
 	"strings"
 )
@@ -3711,6 +3712,11 @@ func (v *CreateTerminalRequest) Validate() error {
 	if v.Command == "" {
 		return fmt.Errorf("command is required")
 	}
+	if v.OutputByteLimit != nil {
+		if *v.OutputByteLimit < 0 {
+			return fmt.Errorf("outputByteLimit must be at least 0")
+		}
+	}
 	if v.SessionId == "" {
 		return fmt.Errorf("sessionId is required")
 	}
@@ -4382,6 +4388,20 @@ func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *ElicitationPropertySchemaString) Validate() error {
+	if v.MaxLength != nil {
+		if *v.MaxLength < 0 || *v.MaxLength > 4294967295 {
+			return fmt.Errorf("maxLength must be between 0 and 4294967295")
+		}
+	}
+	if v.MinLength != nil {
+		if *v.MinLength < 0 || *v.MinLength > 4294967295 {
+			return fmt.Errorf("minLength must be between 0 and 4294967295")
+		}
+	}
+	return nil
+}
+
 // Number (floating-point) property.
 type ElicitationPropertySchemaNumber struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -4627,6 +4647,16 @@ func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
 func (v *ElicitationPropertySchemaArray) Validate() error {
 	if err := v.Items.Validate(); err != nil {
 		return fmt.Errorf("items: %w", err)
+	}
+	if v.MaxItems != nil {
+		if *v.MaxItems < 0 {
+			return fmt.Errorf("maxItems must be at least 0")
+		}
+	}
+	if v.MinItems != nil {
+		if *v.MinItems < 0 {
+			return fmt.Errorf("minItems must be at least 0")
+		}
 	}
 	return nil
 }
@@ -4877,6 +4907,11 @@ func (u *ElicitationPropertySchema) Validate() error {
 	}
 	if count == 0 {
 		return errors.New("ElicitationPropertySchema has no variant set")
+	}
+	if u.String != nil {
+		if err := u.String.Validate(); err != nil {
+			return err
+		}
 	}
 	if u.Array != nil {
 		if err := u.Array.Validate(); err != nil {
@@ -6845,6 +6880,9 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *InitializeRequest) Validate() error {
+	if v.ProtocolVersion < 0 || v.ProtocolVersion > 65535 {
+		return fmt.Errorf("protocolVersion must be between 0 and 65535")
+	}
 	return nil
 }
 
@@ -6922,6 +6960,9 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *InitializeResponse) Validate() error {
+	if v.ProtocolVersion < 0 || v.ProtocolVersion > 65535 {
+		return fmt.Errorf("protocolVersion must be between 0 and 65535")
+	}
 	return nil
 }
 
@@ -8485,6 +8526,16 @@ func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
 func (v *MultiSelectPropertySchema) Validate() error {
 	if err := v.Items.Validate(); err != nil {
 		return fmt.Errorf("items: %w", err)
+	}
+	if v.MaxItems != nil {
+		if *v.MaxItems < 0 {
+			return fmt.Errorf("maxItems must be at least 0")
+		}
+	}
+	if v.MinItems != nil {
+		if *v.MinItems < 0 {
+			return fmt.Errorf("minItems must be at least 0")
+		}
 	}
 	return nil
 }
@@ -10085,6 +10136,16 @@ func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *ReadTextFileRequest) Validate() error {
+	if v.Limit != nil {
+		if *v.Limit < 0 || *v.Limit > 4294967295 {
+			return fmt.Errorf("limit must be between 0 and 4294967295")
+		}
+	}
+	if v.Line != nil {
+		if *v.Line < 0 || *v.Line > 4294967295 {
+			return fmt.Errorf("line must be between 0 and 4294967295")
+		}
+	}
 	if v.Path == "" {
 		return fmt.Errorf("path is required")
 	}
@@ -13443,6 +13504,16 @@ func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionUsageUpdate) Validate() error {
+	if v.Size < 0 {
+		return fmt.Errorf("size must be at least 0")
+	}
+	if v.Used < 0 {
+		return fmt.Errorf("used must be at least 0")
+	}
+	return nil
+}
+
 // Information for the user that is not part of session history.
 //
 // Agents MUST only send this update when the Client advertised
@@ -14623,6 +14694,11 @@ func (u *SessionUpdate) Validate() error {
 	}
 	if u.ConfigOptionUpdate != nil {
 		if err := u.ConfigOptionUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.UsageUpdate != nil {
+		if err := u.UsageUpdate.Validate(); err != nil {
 			return err
 		}
 	}
@@ -16140,6 +16216,20 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *StringPropertySchema) Validate() error {
+	if v.MaxLength != nil {
+		if *v.MaxLength < 0 || *v.MaxLength > 4294967295 {
+			return fmt.Errorf("maxLength must be between 0 and 4294967295")
+		}
+	}
+	if v.MinLength != nil {
+		if *v.MinLength < 0 || *v.MinLength > 4294967295 {
+			return fmt.Errorf("minLength must be between 0 and 4294967295")
+		}
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -16534,7 +16624,7 @@ func (v *TerminalExitStatus) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.ExitCode, &v.ExitCode)
+	decodeLenient(raw.ExitCode, &v.ExitCode, shapeTerminalExitStatusExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
 	return nil
 }
@@ -17259,7 +17349,7 @@ func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Line, &v.Line)
+	decodeLenient(raw.Line, &v.Line, shapeToolCallLocationLine)
 	if maybeAbsent(&v.Path) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Path, "path", false); err != nil {
@@ -18260,6 +18350,13 @@ func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *UnstableMcpError) Validate() error {
+	if v.Code < -2147483648 || v.Code > 2147483647 {
+		return fmt.Errorf("code must be between -2147483648 and 2147483647")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -18477,6 +18574,13 @@ func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *UnstableMessageMcpError) Validate() error {
+	if err := v.Error.Validate(); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
+	return nil
+}
+
 type UnstableMessageMcpResponse struct {
 	// An opaque inner MCP result.
 	Result *UnstableMessageMcpResult `json:"-"`
@@ -18565,6 +18669,11 @@ func (u *UnstableMessageMcpResponse) Validate() error {
 	}
 	if count == 0 {
 		return errors.New("UnstableMessageMcpResponse has no variant set")
+	}
+	if u.Error != nil {
+		if err := u.Error.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -19341,9 +19450,9 @@ func (v *Usage) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens)
-	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens)
-	decodeLenient(raw.ThoughtTokens, &v.ThoughtTokens)
+	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens, shapeUsageCachedReadTokens)
+	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens, shapeUsageCachedWriteTokens)
+	decodeLenient(raw.ThoughtTokens, &v.ThoughtTokens, shapeUsageThoughtTokens)
 	if maybeAbsent(&v.InputTokens) || maybeAbsent(&v.OutputTokens) || maybeAbsent(&v.TotalTokens) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.InputTokens, "inputTokens", false); err != nil {
@@ -19355,6 +19464,19 @@ func (v *Usage) UnmarshalJSON(b []byte) error {
 		if err := requireMember(members, &v.TotalTokens, "totalTokens", false); err != nil {
 			return propertyError(err, "Usage", "totalTokens")
 		}
+	}
+	return nil
+}
+
+func (v *Usage) Validate() error {
+	if v.InputTokens < 0 {
+		return fmt.Errorf("inputTokens must be at least 0")
+	}
+	if v.OutputTokens < 0 {
+		return fmt.Errorf("outputTokens must be at least 0")
+	}
+	if v.TotalTokens < 0 {
+		return fmt.Errorf("totalTokens must be at least 0")
 	}
 	return nil
 }
@@ -19399,6 +19521,16 @@ func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
 		if err := requireMember(members, &v.Used, "used", false); err != nil {
 			return propertyError(err, "UsageUpdate", "used")
 		}
+	}
+	return nil
+}
+
+func (v *UsageUpdate) Validate() error {
+	if v.Size < 0 {
+		return fmt.Errorf("size must be at least 0")
+	}
+	if v.Used < 0 {
+		return fmt.Errorf("used must be at least 0")
 	}
 	return nil
 }
@@ -19480,7 +19612,7 @@ func (v *WaitForTerminalExitResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.ExitCode, &v.ExitCode)
+	decodeLenient(raw.ExitCode, &v.ExitCode, shapeWaitForTerminalExitResponseExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
 	return nil
 }
@@ -19941,16 +20073,22 @@ const (
 	shapeSessionReference
 	shapeStateUpdate
 	shapeTerminal
+	shapeTerminalExitStatusExitCode
 	shapeTerminalId
 	shapeTextContent
 	shapeTextResourceContents
 	shapeToolCallContent
 	shapeToolCallLocation
+	shapeToolCallLocationLine
 	shapeToolCallStatus
 	shapeUnknownStateUpdate
 	shapeUnstableAuthAccount
 	shapeUnstructuredCommandInput
 	shapeUsage
+	shapeUsageCachedReadTokens
+	shapeUsageCachedWriteTokens
+	shapeUsageThoughtTokens
+	shapeWaitForTerminalExitResponseExitCode
 )
 
 var shapes = [...]shape{
@@ -20090,7 +20228,34 @@ var shapes = [...]shape{
 		},
 		required: []string{"code", "message"},
 	},
-	shapeErrorCode:       {kinds: kindInteger},
+	shapeErrorCode: {anyOf: []*shape{{
+		kinds:  kindInteger,
+		values: []any{json.Number("-32700")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32600")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32601")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32602")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32603")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32800")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32000")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32002")},
+	}, {
+		ints:  &intRange{-2147483648, 2147483647},
+		kinds: kindInteger,
+	}}},
 	shapeErrorStopReason: {kinds: kindObject},
 	shapeIdleStateUpdate: {
 		anyOf: []*shape{{
@@ -20398,6 +20563,10 @@ var shapes = [...]shape{
 		props:    map[string]*shape{"terminalId": {ref: shapeTerminalId}},
 		required: []string{"terminalId"},
 	},
+	shapeTerminalExitStatusExitCode: {
+		ints:  &intRange{0, 4294967295},
+		kinds: kindInteger | kindNull,
+	},
 	shapeTerminalId: {kinds: kindString},
 	shapeTextContent: {
 		kinds:    kindObject,
@@ -20450,6 +20619,10 @@ var shapes = [...]shape{
 		props:    map[string]*shape{"path": {kinds: kindString}},
 		required: []string{"path"},
 	},
+	shapeToolCallLocationLine: {
+		ints:  &intRange{0, 4294967295},
+		kinds: kindInteger | kindNull,
+	},
 	shapeToolCallStatus:     {values: []any{"pending", "in_progress", "completed", "failed"}},
 	shapeUnknownStateUpdate: {kinds: kindObject},
 	shapeUnstableAuthAccount: {
@@ -20465,11 +20638,36 @@ var shapes = [...]shape{
 	shapeUsage: {
 		kinds: kindObject,
 		props: map[string]*shape{
-			"inputTokens":  {kinds: kindInteger},
-			"outputTokens": {kinds: kindInteger},
-			"totalTokens":  {kinds: kindInteger},
+			"inputTokens": {
+				ints:  &intRange{0, math.MaxInt64},
+				kinds: kindInteger,
+			},
+			"outputTokens": {
+				ints:  &intRange{0, math.MaxInt64},
+				kinds: kindInteger,
+			},
+			"totalTokens": {
+				ints:  &intRange{0, math.MaxInt64},
+				kinds: kindInteger,
+			},
 		},
 		required: []string{"totalTokens", "inputTokens", "outputTokens"},
+	},
+	shapeUsageCachedReadTokens: {
+		ints:  &intRange{0, math.MaxInt64},
+		kinds: kindInteger | kindNull,
+	},
+	shapeUsageCachedWriteTokens: {
+		ints:  &intRange{0, math.MaxInt64},
+		kinds: kindInteger | kindNull,
+	},
+	shapeUsageThoughtTokens: {
+		ints:  &intRange{0, math.MaxInt64},
+		kinds: kindInteger | kindNull,
+	},
+	shapeWaitForTerminalExitResponseExitCode: {
+		ints:  &intRange{0, 4294967295},
+		kinds: kindInteger | kindNull,
 	},
 }
 

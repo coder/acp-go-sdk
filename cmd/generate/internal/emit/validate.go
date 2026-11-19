@@ -30,7 +30,10 @@ type fieldCheck struct {
 	// that the field holds through via, the containers from the field
 	// inward. Empty via means the field holds the value itself.
 	descends bool
-	via      []container
+	// bounds is the range that each integer that the field holds through
+	// via must be in; nil means no check.
+	bounds *intRange
+	via    []container
 }
 
 // checkPlan returns the check plan of a struct with fields: one fieldCheck
@@ -47,13 +50,17 @@ type fieldCheck struct {
 // names it. A field whose value type has a Validate method (validates)
 // descends: a pointer when it is not nil, each item and member, a Patch when
 // it is set, and a struct or union itself only when it is required, because
-// an absent optional one looks like its zero value. A lenient field
-// (x-deserialize-default-on-error or x-deserialize-skip-invalid-items)
-// does not descend: Rust reads a bad value there as the default.
+// an absent optional one looks like its zero value. An integer that the field
+// holds the same way must be in the range of its format, minimum and maximum
+// (heldRange), because Rust reads it as the Rust type that its format names.
+// A lenient field (x-deserialize-default-on-error or
+// x-deserialize-skip-invalid-items) neither descends nor checks a range: Rust
+// reads a bad value there as the default, and the shape of the field holds
+// the same rules.
 func (b *typesBuilder) checkPlan(fields []ir.Field, nests bool, plain map[string]bool) []fieldCheck {
 	var plan []fieldCheck
 	for _, field := range fields {
-		if c := b.fieldCheckFor(field, nests, plain[field.Prop]); c.unset != nil || c.descends {
+		if c := b.fieldCheckFor(field, nests, plain[field.Prop]); c.unset != nil || c.descends || c.bounds != nil {
 			plan = append(plan, c)
 		}
 	}
@@ -101,6 +108,7 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 		c.descends = len(b.checkPlan(ir.Fields(def.Properties, def.Required), false, nil)) > 0
 	} else {
 		c.descends = b.validates(leaf)
+		c.bounds = b.heldRange(def, c.via)
 	}
 	return c
 }
@@ -200,11 +208,19 @@ func emitChecks(g *Group, recv string, plan []fieldCheck) {
 				Return(Qual("fmt", "Errorf").Call(Lit(c.field.Prop + " is required"))),
 			)
 		}
+		if c.bounds != nil {
+			g.Add(eachHeld(value, c.via, c.field.Prop, nil, 0, checkRange(*c.bounds)))
+		}
 		if c.descends {
 			g.Add(validateHeld(value, c.via, c.field.Prop, nil, 0))
 		}
 	}
 }
+
+// heldCheck returns the statement that checks v, one value that a field
+// holds, or the value that v points to when ptr is set. path and args name
+// the value as in validateHeld.
+type heldCheck func(v *Statement, ptr bool, path string, args []Code) Code
 
 // validateHeld returns the statement that calls Validate on each value that
 // value holds through via. It returns the first error with path, the
@@ -212,12 +228,22 @@ func emitChecks(g *Group, recv string, plan []fieldCheck) {
 // returns the error as it is. depth counts the variables that the enclosing
 // statements declare, so that a nested one gets a name of its own.
 func validateHeld(value *Statement, via []container, path string, args []Code, depth int) Code {
-	if len(via) == 0 {
+	return eachHeld(value, via, path, args, depth, func(v *Statement, _ bool, path string, args []Code) Code {
 		err := Id("err")
 		if path != "" {
 			err = Qual("fmt", "Errorf").Call(append(append([]Code{Lit(path + ": %w")}, args...), Id("err"))...)
 		}
-		return If(Id("err").Op(":=").Add(value.Clone()).Dot("Validate").Call(), Id("err").Op("!=").Nil()).Block(Return(err))
+		// Validate takes a pointer, so v can be one.
+		return If(Id("err").Op(":=").Add(v.Clone()).Dot("Validate").Call(), Id("err").Op("!=").Nil()).Block(Return(err))
+	})
+}
+
+// eachHeld returns the statement that runs check on each value that value
+// holds through via, with path and args, a fmt format and its args, that
+// name the value. depth is as in validateHeld.
+func eachHeld(value *Statement, via []container, path string, args []Code, depth int, check heldCheck) Code {
+	if len(via) == 0 {
+		return check(value, false, path, args)
 	}
 	name := func(base string) *Statement {
 		if depth == 0 {
@@ -226,31 +252,30 @@ func validateHeld(value *Statement, via []container, path string, args []Code, d
 		return Id(fmt.Sprintf("%s%d", base, depth))
 	}
 	rest := via[1:]
-	// deref is the value that a non-nil pointer points to, for the
-	// containers after it; Validate takes the pointer itself.
-	deref := func(ptr *Statement) *Statement {
+	// at checks the value that ptr, a pointer that is not nil, points to.
+	// The containers after it need the value itself, and check takes the
+	// pointer.
+	at := func(ptr *Statement, depth int) Code {
 		if len(rest) == 0 {
-			return ptr
+			return check(ptr, true, path, args)
 		}
-		return Parens(Op("*").Add(ptr))
+		return eachHeld(Parens(Op("*").Add(ptr)), rest, path, args, depth, check)
 	}
 	switch via[0] {
 	case pointer:
-		return If(value.Clone().Op("!=").Nil()).Block(validateHeld(deref(value.Clone()), rest, path, args, depth))
+		return If(value.Clone().Op("!=").Nil()).Block(at(value.Clone(), depth))
 	case patch:
 		p := name("p")
-		return If(p.Clone().Op(":=").Add(value.Clone()).Dot("Ptr").Call(), p.Clone().Op("!=").Nil()).Block(
-			validateHeld(deref(p.Clone()), rest, path, args, depth+1),
-		)
+		return If(p.Clone().Op(":=").Add(value.Clone()).Dot("Ptr").Call(), p.Clone().Op("!=").Nil()).Block(at(p.Clone(), depth+1))
 	case items:
 		i := name("i")
 		return For(i.Clone().Op(":=").Range().Add(value.Clone())).Block(
-			validateHeld(value.Clone().Index(i.Clone()), rest, path+"[%d]", append(append([]Code{}, args...), i.Clone()), depth+1),
+			eachHeld(value.Clone().Index(i.Clone()), rest, path+"[%d]", append(append([]Code{}, args...), i.Clone()), depth+1, check),
 		)
 	default: // members
 		k, member := name("k"), name("member")
 		return For(List(k.Clone(), member.Clone()).Op(":=").Range().Add(value.Clone())).Block(
-			validateHeld(member.Clone(), rest, path+"[%q]", append(append([]Code{}, args...), k.Clone()), depth+1),
+			eachHeld(member.Clone(), rest, path+"[%q]", append(append([]Code{}, args...), k.Clone()), depth+1, check),
 		)
 	}
 }

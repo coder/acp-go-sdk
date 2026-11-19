@@ -55,6 +55,10 @@ type Definition struct {
 	// Format is the format keyword, such as "int64" for an integer that must
 	// hold any 64-bit value.
 	Format string `json:"format"`
+	// Minimum and Maximum are the minimum and maximum keywords, the
+	// inclusive bounds of a number, as their JSON text; "" when absent.
+	Minimum json.Number `json:"minimum,omitempty"`
+	Maximum json.Number `json:"maximum,omitempty"`
 	// Default holds the JSON Schema default value, when present.
 	// Used by generators to synthesize defaulting behavior.
 	Default any `json:"default"`

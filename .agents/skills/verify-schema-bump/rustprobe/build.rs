@@ -5,11 +5,34 @@
 // schema shows up here.
 use std::{collections::BTreeSet, env, fs, path::PathBuf};
 
-// Defs whose crate type is not v1::<def>.
-const PATHS: &[(&str, &str)] = &[(
-    "ProtocolVersion",
-    "agent_client_protocol_schema::ProtocolVersion",
-)];
+// Defs whose crate type is not v1::<def>. The schema's Agent, Client and
+// Proxy requests, responses and notifications are JSON-RPC envelopes: the crate
+// names Request<P>, Response<R> and Notification<P> after their payload, so
+// the def AgentResponse is Response<AgentResponse>.
+const PATHS: &[(&str, &str)] = &[
+    (
+        "ProtocolVersion",
+        "agent_client_protocol_schema::ProtocolVersion",
+    ),
+    ("AgentRequest", "v1::Request<v1::AgentRequest>"),
+    ("ClientRequest", "v1::Request<v1::ClientRequest>"),
+    ("AgentResponse", "v1::Response<v1::AgentResponse>"),
+    ("ClientResponse", "v1::Response<v1::ClientResponse>"),
+    (
+        "AgentNotification",
+        "v1::Notification<v1::AgentNotification>",
+    ),
+    (
+        "ClientNotification",
+        "v1::Notification<v1::ClientNotification>",
+    ),
+    ("ProxyRequest", "v1::Request<v1::ProxyRequest>"),
+    ("ProxyResponse", "v1::Response<v1::ProxyResponse>"),
+    (
+        "ProxyNotification",
+        "v1::Notification<v1::ProxyNotification>",
+    ),
+];
 
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

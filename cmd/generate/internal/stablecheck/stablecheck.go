@@ -36,7 +36,9 @@ type Run struct {
 // of merged, the stable and unstable schemas merged, and type-checks each
 // set with the hand-written files of pkgDir. It returns an error that lists
 // each change to what the stable files declare:
-//   - an incompatible API change (apidiff);
+//   - an API change other than an addition (apidiff), such as a field that
+//     is removed or changes its type, or a named type whose integer type
+//     widens, which apidiff calls compatible;
 //   - a function or method whose body changes beyond the statements, switch
 //     cases, and local struct fields that only refer to what merged adds: its
 //     new fields of the receiver type and its new package-level names;
@@ -71,7 +73,7 @@ func Compare(pkgDir, schemaVersion string, stable, merged Run) error {
 	old, new := sides[0], sides[1]
 	var changes []string
 	for _, c := range apidiff.Changes(old.pkg, new.pkg).Changes {
-		if !c.Compatible && old.declared[subject(c.Message)] {
+		if !strings.HasSuffix(c.Message, ": added") && old.declared[subject(c.Message)] {
 			changes = append(changes, c.Message)
 		}
 	}

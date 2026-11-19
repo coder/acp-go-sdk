@@ -60,6 +60,7 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 			variant("square", map[string]*load.Definition{"side": {Type: "number"}}),
 		}},
 		"Level": {Type: "string", Enum: []any{"low", "high"}},
+		"Count": {Type: "integer", Format: "uint16"},
 		"Flags": obj(map[string]*load.Definition{"read": {Type: "boolean"}, "list": {Type: "boolean"}}),
 		"Caps": obj(map[string]*load.Definition{
 			"flags": {AllOf: []*load.Definition{ref("Flags")}, Default: map[string]any{"read": false}, DefaultOnError: true},
@@ -134,6 +135,13 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 				defs["Note"].Properties["text"].AllOf = []*load.Definition{ref("Flags")}
 			},
 			want: "Note.Text: changed from string to",
+		},
+		{
+			name: "a format widens the Go type of a named type",
+			change: func(defs map[string]*load.Definition) {
+				defs["Count"].Format = "int64"
+			},
+			want: "Count: changed from int to int64",
 		},
 		{
 			name: "a default gains a member for a stable property",

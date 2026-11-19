@@ -166,6 +166,9 @@ type AgentRequest struct {
 }
 
 func (v *AgentRequest) Validate() error {
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
 	}
@@ -181,12 +184,29 @@ type AgentResult struct {
 	Result json.RawMessage `json:"result"`
 }
 
+func (v *AgentResult) Validate() error {
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	return nil
+}
+
 // A failed JSON-RPC response.
 type AgentError struct {
 	// Method-specific error data.
 	Error Error `json:"error"`
 	// The id of the request this response answers.
 	Id RequestId `json:"id"`
+}
+
+func (v *AgentError) Validate() error {
+	if err := v.Error.Validate(); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	return nil
 }
 
 type AgentResponse struct {
@@ -271,6 +291,30 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
+}
+
+func (u *AgentResponse) Validate() error {
+	var count int
+	if u.Result != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("AgentResponse has no variant set")
+	}
+	if u.Result != nil {
+		if err := u.Result.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Error != nil {
+		if err := u.Error.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Optional annotations for the client. The client can use annotations to inform how objects are used or displayed
@@ -431,6 +475,13 @@ func (v *AuthMethodTerminalInline) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *AuthMethodTerminalInline) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
+	return nil
+}
+
 type AuthMethod struct {
 	// Client runs the configured agent program as a separate interactive
 	// process, without passing this method to 'authenticate'.
@@ -517,6 +568,30 @@ func (u AuthMethod) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *AuthMethod) Validate() error {
+	var count int
+	if u.Terminal != nil {
+		count++
+	}
+	if u.Agent != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("AuthMethod has no variant set")
+	}
+	if u.Terminal != nil {
+		if err := u.Terminal.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Agent != nil {
+		if err := u.Agent.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Agent handles authentication itself through 'authenticate'.
 //
 // This is the default authentication method type.
@@ -548,6 +623,13 @@ func (v *AuthMethodAgent) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	return nil
+}
+
+func (v *AuthMethodAgent) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -594,6 +676,13 @@ func (v *AuthMethodTerminal) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	return nil
+}
+
+func (v *AuthMethodTerminal) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -657,6 +746,9 @@ func (v *AuthenticateRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *AuthenticateRequest) Validate() error {
+	if v.MethodId == "" {
+		return fmt.Errorf("methodId is required")
+	}
 	return nil
 }
 
@@ -772,6 +864,17 @@ func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *AvailableCommandInput) Validate() error {
+	var count int
+	if u.Unstructured != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("AvailableCommandInput has no variant set")
+	}
+	return nil
+}
+
 // Available commands are ready or have changed
 type AvailableCommandsUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -808,6 +911,13 @@ func (v *AvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands, shapeAvailableCommand) && raw.AvailableCommands != nil {
 		setDefault(&v.AvailableCommands, "[]")
+	}
+	return nil
+}
+
+func (v *AvailableCommandsUpdate) Validate() error {
+	if v.AvailableCommands == nil {
+		return fmt.Errorf("availableCommands is required")
 	}
 	return nil
 }
@@ -943,6 +1053,9 @@ func (v *CancelNotification) UnmarshalJSON(b []byte) error {
 }
 
 func (v *CancelNotification) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -975,6 +1088,9 @@ func (v *CancelRequestNotification) UnmarshalJSON(b []byte) error {
 }
 
 func (v *CancelRequestNotification) Validate() error {
+	if err := v.RequestId.Validate(); err != nil {
+		return fmt.Errorf("requestId: %w", err)
+	}
 	return nil
 }
 
@@ -1106,6 +1222,9 @@ type ClientRequest struct {
 }
 
 func (v *ClientRequest) Validate() error {
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
 	}
@@ -1121,12 +1240,29 @@ type ClientResult struct {
 	Result json.RawMessage `json:"result"`
 }
 
+func (v *ClientResult) Validate() error {
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	return nil
+}
+
 // A failed JSON-RPC response.
 type ClientError struct {
 	// Method-specific error data.
 	Error Error `json:"error"`
 	// The id of the request this response answers.
 	Id RequestId `json:"id"`
+}
+
+func (v *ClientError) Validate() error {
+	if err := v.Error.Validate(); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	return nil
 }
 
 type ClientResponse struct {
@@ -1211,6 +1347,30 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
+}
+
+func (u *ClientResponse) Validate() error {
+	var count int
+	if u.Result != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ClientResponse has no variant set")
+	}
+	if u.Result != nil {
+		if err := u.Result.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Error != nil {
+		if err := u.Error.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Session-related capabilities supported by the client.
@@ -1301,6 +1461,9 @@ func (v *CloseSessionRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *CloseSessionRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -1379,6 +1542,16 @@ func (v *CompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *CompactionSummaryChunk) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
+	return nil
+}
+
 // A context compaction upsert. The first notification fixes the compaction's
 // timeline position. Later updates with the same ID patch that entity in place.
 // Agents MUST only send this update when the Client advertised
@@ -1438,6 +1611,16 @@ func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *CompactionUpdate) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if v.Status == "" {
+		return fmt.Errorf("status is required")
+	}
+	return nil
+}
+
 // Notification sent by the agent when a URL-based elicitation is complete.
 type CompleteElicitationNotification struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -1467,6 +1650,9 @@ func (v *CompleteElicitationNotification) UnmarshalJSON(b []byte) error {
 }
 
 func (v *CompleteElicitationNotification) Validate() error {
+	if v.ElicitationId == "" {
+		return fmt.Errorf("elicitationId is required")
+	}
 	return nil
 }
 
@@ -1510,6 +1696,13 @@ func (v *ConfigOptionUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *ConfigOptionUpdate) Validate() error {
+	if v.ConfigOptions == nil {
+		return fmt.Errorf("configOptions is required")
+	}
+	return nil
+}
+
 // Standard content block (text, images, resources).
 type Content struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -1533,6 +1726,13 @@ func (v *Content) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *Content) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -1741,6 +1941,13 @@ func (v *ContentBlockResource) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *ContentBlockResource) Validate() error {
+	if err := v.Resource.Validate(); err != nil {
+		return fmt.Errorf("resource: %w", err)
+	}
+	return nil
+}
+
 type ContentBlock struct {
 	// Text content. May be plain text or formatted with Markdown.
 	//
@@ -1911,6 +2118,11 @@ func (u *ContentBlock) Validate() error {
 	if count != 1 {
 		return errors.New("ContentBlock must have exactly one variant set")
 	}
+	if u.Resource != nil {
+		if err := u.Resource.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1944,6 +2156,13 @@ func (v *ContentChunk) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
+	return nil
+}
+
+func (v *ContentChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -2098,6 +2317,36 @@ func (u CreateElicitationForm) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("CreateElicitationForm has no variant set")
 }
 
+func (u *CreateElicitationForm) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationForm has no variant set")
+	}
+	if u.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+	if err := u.RequestedSchema.Validate(); err != nil {
+		return fmt.Errorf("requestedSchema: %w", err)
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // URL-based elicitation where the client directs the user to a URL.
 type CreateElicitationUrl struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -2215,6 +2464,36 @@ func (u CreateElicitationUrl) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return nil, errors.New("CreateElicitationUrl has no variant set")
+}
+
+func (u *CreateElicitationUrl) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationUrl has no variant set")
+	}
+	if u.ElicitationId == "" {
+		return fmt.Errorf("elicitationId is required")
+	}
+	if u.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Custom or future elicitation mode.
@@ -2358,6 +2637,33 @@ func (u CreateElicitationOther) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("CreateElicitationOther has no variant set")
 }
 
+func (u *CreateElicitationOther) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationOther has no variant set")
+	}
+	if u.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type CreateElicitationRequest struct {
 	// Form-based elicitation where the client renders a form from the provided schema.
 	Form *CreateElicitationForm `json:"-"`
@@ -2468,19 +2774,32 @@ func (u CreateElicitationRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (u *CreateElicitationRequest) Validate() error {
+	var count int
 	if u.Form != nil {
-		if u.Form.Message == "" {
-			return fmt.Errorf("message is required")
+		count++
+	}
+	if u.Url != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationRequest has no variant set")
+	}
+	if u.Form != nil {
+		if err := u.Form.Validate(); err != nil {
+			return err
 		}
 	}
 	if u.Url != nil {
-		if u.Url.Message == "" {
-			return fmt.Errorf("message is required")
+		if err := u.Url.Validate(); err != nil {
+			return err
 		}
 	}
 	if u.Other != nil {
-		if u.Other.Message == "" {
-			return fmt.Errorf("message is required")
+		if err := u.Other.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -2513,6 +2832,15 @@ func (v *CreateElicitationAccept) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *CreateElicitationAccept) Validate() error {
+	for k, member := range v.Content {
+		if err := member.Validate(); err != nil {
+			return fmt.Errorf("content[%q]: %w", k, err)
+		}
+	}
 	return nil
 }
 
@@ -2755,6 +3083,27 @@ func (u CreateElicitationResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (u *CreateElicitationResponse) Validate() error {
+	var count int
+	if u.Accept != nil {
+		count++
+	}
+	if u.Decline != nil {
+		count++
+	}
+	if u.Cancel != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationResponse has no variant set")
+	}
+	if u.Accept != nil {
+		if err := u.Accept.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -2805,6 +3154,9 @@ func (v *CreateTerminalRequest) Validate() error {
 	if v.Command == "" {
 		return fmt.Errorf("command is required")
 	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -2835,6 +3187,9 @@ func (v *CreateTerminalResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *CreateTerminalResponse) Validate() error {
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -2863,6 +3218,13 @@ func (v *CurrentModeUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *CurrentModeUpdate) Validate() error {
+	if v.CurrentModeId == "" {
+		return fmt.Errorf("currentModeId is required")
+	}
 	return nil
 }
 
@@ -2895,6 +3257,9 @@ func (v *DeleteSessionRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *DeleteSessionRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -2966,6 +3331,15 @@ func (v *Diff) UnmarshalJSON(b []byte) error {
 type ElicitationAcceptAction struct {
 	// The user-provided content, if any, as an object matching the requested schema.
 	Content map[string]ElicitationContentValue `json:"content,omitempty"`
+}
+
+func (v *ElicitationAcceptAction) Validate() error {
+	for k, member := range v.Content {
+		if err := member.Validate(); err != nil {
+			return fmt.Errorf("content[%q]: %w", k, err)
+		}
+	}
+	return nil
 }
 
 // Elicitation capabilities supported by the client.
@@ -3128,6 +3502,29 @@ func (u ElicitationContentValue) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *ElicitationContentValue) Validate() error {
+	var count int
+	if u.String != nil {
+		count++
+	}
+	if u.Integer != nil {
+		count++
+	}
+	if u.Number != nil {
+		count++
+	}
+	if u.Boolean != nil {
+		count++
+	}
+	if u.StringArray != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ElicitationContentValue has no variant set")
+	}
+	return nil
+}
+
 // Form-based elicitation capabilities.
 //
 // Supplying '{}' means the client supports form-based elicitation.
@@ -3258,6 +3655,33 @@ func (u ElicitationFormMode) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return nil, errors.New("ElicitationFormMode has no variant set")
+}
+
+func (u *ElicitationFormMode) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ElicitationFormMode has no variant set")
+	}
+	if err := u.RequestedSchema.Validate(); err != nil {
+		return fmt.Errorf("requestedSchema: %w", err)
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Unique identifier for an elicitation.
@@ -3543,6 +3967,13 @@ func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *ElicitationPropertySchemaArray) Validate() error {
+	if err := v.Items.Validate(); err != nil {
+		return fmt.Errorf("items: %w", err)
+	}
+	return nil
+}
+
 // Custom or future elicitation property schema.
 //
 // Values beginning with '_' are reserved for implementation-specific
@@ -3759,11 +4190,49 @@ func (u ElicitationPropertySchema) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *ElicitationPropertySchema) Validate() error {
+	var count int
+	if u.String != nil {
+		count++
+	}
+	if u.Number != nil {
+		count++
+	}
+	if u.Integer != nil {
+		count++
+	}
+	if u.Boolean != nil {
+		count++
+	}
+	if u.Array != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ElicitationPropertySchema has no variant set")
+	}
+	if u.Array != nil {
+		if err := u.Array.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Request-scoped elicitation, tied to a specific JSON-RPC request outside of a session
 // (e.g., during auth/configuration phases before any session is started).
 type ElicitationRequestScope struct {
 	// The request this elicitation is tied to.
 	RequestId RequestId `json:"requestId"`
+}
+
+func (v *ElicitationRequestScope) Validate() error {
+	if err := v.RequestId.Validate(); err != nil {
+		return fmt.Errorf("requestId: %w", err)
+	}
+	return nil
 }
 
 // Type-safe elicitation schema for requesting structured user input.
@@ -3839,6 +4308,15 @@ func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *ElicitationSchema) Validate() error {
+	for k, member := range v.Properties {
+		if err := member.Validate(); err != nil {
+			return fmt.Errorf("properties[%q]: %w", k, err)
+		}
+	}
+	return nil
+}
+
 // Type discriminator for elicitation schemas.
 type ElicitationSchemaType string
 
@@ -3873,6 +4351,13 @@ func (v *ElicitationSessionScope) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.ToolCallId, &v.ToolCallId)
+	return nil
+}
+
+func (v *ElicitationSessionScope) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -4010,6 +4495,33 @@ func (u ElicitationUrlMode) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("ElicitationUrlMode has no variant set")
 }
 
+func (u *ElicitationUrlMode) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ElicitationUrlMode has no variant set")
+	}
+	if u.ElicitationId == "" {
+		return fmt.Errorf("elicitationId is required")
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // The contents of a resource, embedded into a prompt or tool call result.
 type EmbeddedResource struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -4037,6 +4549,13 @@ func (v *EmbeddedResource) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
+	return nil
+}
+
+func (v *EmbeddedResource) Validate() error {
+	if err := v.Resource.Validate(); err != nil {
+		return fmt.Errorf("resource: %w", err)
+	}
 	return nil
 }
 
@@ -4123,6 +4642,20 @@ func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
+}
+
+func (u *EmbeddedResourceResource) Validate() error {
+	var count int
+	if u.TextResourceContents != nil {
+		count++
+	}
+	if u.BlobResourceContents != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("EmbeddedResourceResource has no variant set")
+	}
+	return nil
 }
 
 // A titled enum option with a const value, human-readable title, and optional description.
@@ -4218,6 +4751,13 @@ func (v *Error) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Data, &v.Data)
+	return nil
+}
+
+func (v *Error) Validate() error {
+	if err := v.Code.Validate(); err != nil {
+		return fmt.Errorf("code: %w", err)
+	}
 	return nil
 }
 
@@ -4423,6 +4963,41 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 		return _b, nil
 	}
 	return []byte{}, nil
+}
+
+func (u *ErrorCode) Validate() error {
+	var count int
+	if u.ParseError != nil {
+		count++
+	}
+	if u.InvalidRequest != nil {
+		count++
+	}
+	if u.MethodNotFound != nil {
+		count++
+	}
+	if u.InvalidParams != nil {
+		count++
+	}
+	if u.InternalError != nil {
+		count++
+	}
+	if u.RequestCancelled != nil {
+		count++
+	}
+	if u.AuthenticationRequired != nil {
+		count++
+	}
+	if u.ResourceNotFound != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ErrorCode has no variant set")
+	}
+	return nil
 }
 
 // **UNSTABLE**
@@ -5032,6 +5607,38 @@ func (u IdleStateUpdate) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *IdleStateUpdate) Validate() error {
+	var count int
+	if u.EndTurn != nil {
+		count++
+	}
+	if u.MaxTokens != nil {
+		count++
+	}
+	if u.MaxTurnRequests != nil {
+		count++
+	}
+	if u.Refusal != nil {
+		count++
+	}
+	if u.Cancelled != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if u.None != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("IdleStateUpdate has no variant set")
+	}
+	return nil
+}
+
 // An image provided to or from an LLM.
 type ImageContent struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -5148,6 +5755,13 @@ func (v *InitialSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *InitialSessionConfigOptionBoolean) Validate() error {
+	if v.ConfigId == "" {
+		return fmt.Errorf("configId is required")
+	}
+	return nil
+}
+
 // A 'SessionConfigValueId' string value.
 //
 // This is the default when 'type' is absent on the wire. Unknown 'type'
@@ -5177,6 +5791,16 @@ func (v *InitialSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *InitialSessionConfigOptionValueId) Validate() error {
+	if v.ConfigId == "" {
+		return fmt.Errorf("configId is required")
+	}
+	if v.Value == "" {
+		return fmt.Errorf("value is required")
+	}
 	return nil
 }
 
@@ -5262,6 +5886,30 @@ func (u InitialSessionConfigOption) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return []byte{}, nil
+}
+
+func (u *InitialSessionConfigOption) Validate() error {
+	var count int
+	if u.Boolean != nil {
+		count++
+	}
+	if u.ValueId != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("InitialSessionConfigOption has no variant set")
+	}
+	if u.Boolean != nil {
+		if err := u.Boolean.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ValueId != nil {
+		if err := u.ValueId.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Request parameters for the initialize method.
@@ -5469,6 +6117,12 @@ func (v *KillTerminalRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *KillTerminalRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -5678,11 +6332,29 @@ func (v *LoadSessionRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *LoadSessionRequest) Validate() error {
+	for i := range v.ConfigOptions {
+		if err := v.ConfigOptions[i].Validate(); err != nil {
+			return fmt.Errorf("configOptions[%d]: %w", i, err)
+		}
+	}
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
 	}
 	if v.McpServers == nil {
 		return fmt.Errorf("mcpServers is required")
+	}
+	for i := range v.McpServers {
+		if err := v.McpServers[i].Validate(); err != nil {
+			return fmt.Errorf("mcpServers[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.SystemPrompt != nil {
+		if err := v.SystemPrompt.Validate(); err != nil {
+			return fmt.Errorf("systemPrompt: %w", err)
+		}
 	}
 	return nil
 }
@@ -5923,6 +6595,13 @@ func (v *McpServerHttpInline) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *McpServerHttpInline) Validate() error {
+	if v.Headers == nil {
+		return fmt.Errorf("headers is required")
+	}
+	return nil
+}
+
 // SSE transport configuration
 //
 // Only available when the Agent capabilities indicate 'mcp_capabilities.sse' is 'true'.
@@ -5972,6 +6651,13 @@ func (v *McpServerSseInline) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *McpServerSseInline) Validate() error {
+	if v.Headers == nil {
+		return fmt.Errorf("headers is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -6008,6 +6694,13 @@ func (v *McpServerAcpInline) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *McpServerAcpInline) Validate() error {
+	if v.ServerId == "" {
+		return fmt.Errorf("serverId is required")
+	}
 	return nil
 }
 
@@ -6155,6 +6848,46 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *McpServer) Validate() error {
+	var count int
+	if u.Http != nil {
+		count++
+	}
+	if u.Sse != nil {
+		count++
+	}
+	if u.Acp != nil {
+		count++
+	}
+	if u.Stdio != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("McpServer has no variant set")
+	}
+	if u.Http != nil {
+		if err := u.Http.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Sse != nil {
+		if err := u.Sse.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Acp != nil {
+		if err := u.Acp.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Stdio != nil {
+		if err := u.Stdio.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -6190,6 +6923,13 @@ func (v *McpServerAcp) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *McpServerAcp) Validate() error {
+	if v.ServerId == "" {
+		return fmt.Errorf("serverId is required")
+	}
 	return nil
 }
 
@@ -6249,6 +6989,13 @@ func (v *McpServerHttp) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *McpServerHttp) Validate() error {
+	if v.Headers == nil {
+		return fmt.Errorf("headers is required")
+	}
+	return nil
+}
+
 // SSE transport configuration for MCP.
 type McpServerSse struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -6291,6 +7038,13 @@ func (v *McpServerSse) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "McpServerSse", "headers")
 	} else if !decoded && raw.Headers != nil {
 		setDefault(&v.Headers, "[]")
+	}
+	return nil
+}
+
+func (v *McpServerSse) Validate() error {
+	if v.Headers == nil {
+		return fmt.Errorf("headers is required")
 	}
 	return nil
 }
@@ -6352,6 +7106,16 @@ func (v *McpServerStdio) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *McpServerStdio) Validate() error {
+	if v.Args == nil {
+		return fmt.Errorf("args is required")
+	}
+	if v.Env == nil {
+		return fmt.Errorf("env is required")
+	}
+	return nil
+}
+
 // Unique identifier for a message within a session.
 type MessageId string
 
@@ -6392,6 +7156,13 @@ func (v *MultiSelectItemsString) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *MultiSelectItemsString) Validate() error {
+	if v.Enum == nil {
+		return fmt.Errorf("enum is required")
+	}
 	return nil
 }
 
@@ -6540,6 +7311,33 @@ func (u MultiSelectItems) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *MultiSelectItems) Validate() error {
+	var count int
+	if u.String != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if u.Titled != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("MultiSelectItems has no variant set")
+	}
+	if u.String != nil {
+		if err := u.String.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Titled != nil {
+		if err := u.Titled.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Schema for multi-select (array) properties in an elicitation form.
 type MultiSelectPropertySchema struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -6591,6 +7389,13 @@ func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
 	decodeLenientItems(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
 	decodeLenient(raw.Title, &v.Title)
+	return nil
+}
+
+func (v *MultiSelectPropertySchema) Validate() error {
+	if err := v.Items.Validate(); err != nil {
+		return fmt.Errorf("items: %w", err)
+	}
 	return nil
 }
 
@@ -6671,11 +7476,26 @@ func (v *NewSessionRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *NewSessionRequest) Validate() error {
+	for i := range v.ConfigOptions {
+		if err := v.ConfigOptions[i].Validate(); err != nil {
+			return fmt.Errorf("configOptions[%d]: %w", i, err)
+		}
+	}
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
 	}
 	if v.McpServers == nil {
 		return fmt.Errorf("mcpServers is required")
+	}
+	for i := range v.McpServers {
+		if err := v.McpServers[i].Validate(); err != nil {
+			return fmt.Errorf("mcpServers[%d]: %w", i, err)
+		}
+	}
+	if v.SystemPrompt != nil {
+		if err := v.SystemPrompt.Validate(); err != nil {
+			return fmt.Errorf("systemPrompt: %w", err)
+		}
 	}
 	return nil
 }
@@ -6721,6 +7541,9 @@ func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *NewSessionResponse) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -6761,6 +7584,13 @@ func (v *Notice) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	return nil
+}
+
+func (v *Notice) Validate() error {
+	if v.Severity == "" {
+		return fmt.Errorf("severity is required")
+	}
 	return nil
 }
 
@@ -6861,6 +7691,16 @@ func (v *PermissionOption) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *PermissionOption) Validate() error {
+	if v.Kind == "" {
+		return fmt.Errorf("kind is required")
+	}
+	if v.OptionId == "" {
+		return fmt.Errorf("optionId is required")
+	}
+	return nil
+}
+
 // Unique identifier for a permission option.
 type PermissionOptionId string
 
@@ -6929,6 +7769,13 @@ func (v *Plan) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *Plan) Validate() error {
+	if v.Entries == nil {
+		return fmt.Errorf("entries is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -6989,6 +7836,16 @@ func (v *PlanEntry) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *PlanEntry) Validate() error {
+	if v.Priority == "" {
+		return fmt.Errorf("priority is required")
+	}
+	if v.Status == "" {
+		return fmt.Errorf("status is required")
+	}
 	return nil
 }
 
@@ -7079,6 +7936,16 @@ func (v *PlanItems) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *PlanItems) Validate() error {
+	if v.Entries == nil {
+		return fmt.Errorf("entries is required")
+	}
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -7119,6 +7986,13 @@ func (v *PlanMarkdown) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *PlanMarkdown) Validate() error {
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -7149,6 +8023,13 @@ func (v *PlanRemoved) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *PlanRemoved) Validate() error {
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -7176,6 +8057,13 @@ func (v *PlanUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *PlanUpdate) Validate() error {
+	if err := v.Plan.Validate(); err != nil {
+		return fmt.Errorf("plan: %w", err)
+	}
 	return nil
 }
 
@@ -7230,6 +8118,16 @@ func (v *PlanUpdateContentItems) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *PlanUpdateContentItems) Validate() error {
+	if v.Entries == nil {
+		return fmt.Errorf("entries is required")
+	}
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
+	return nil
+}
+
 // Raw markdown content for the plan.
 type PlanUpdateContentMarkdown struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -7264,6 +8162,13 @@ func (v *PlanUpdateContentMarkdown) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Path, &v.Path)
+	return nil
+}
+
+func (v *PlanUpdateContentMarkdown) Validate() error {
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
 	return nil
 }
 
@@ -7351,6 +8256,16 @@ func (u *PlanUpdateContent) Validate() error {
 	}
 	if count != 1 {
 		return errors.New("PlanUpdateContent must have exactly one variant set")
+	}
+	if u.Items != nil {
+		if err := u.Items.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Markdown != nil {
+		if err := u.Markdown.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -7482,6 +8397,14 @@ func (v *PromptRequest) Validate() error {
 	if v.Prompt == nil {
 		return fmt.Errorf("prompt is required")
 	}
+	for i := range v.Prompt {
+		if err := v.Prompt[i].Validate(); err != nil {
+			return fmt.Errorf("prompt[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -7522,6 +8445,9 @@ func (v *PromptResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *PromptResponse) Validate() error {
+	if v.StopReason == "" {
+		return fmt.Errorf("stopReason is required")
+	}
 	return nil
 }
 
@@ -7572,6 +8498,18 @@ func (v *PromptSuggestion) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *PromptSuggestion) Validate() error {
+	if v.Prompt == nil {
+		return fmt.Errorf("prompt is required")
+	}
+	for i := range v.Prompt {
+		if err := v.Prompt[i].Validate(); err != nil {
+			return fmt.Errorf("prompt[%d]: %w", i, err)
+		}
+	}
 	return nil
 }
 
@@ -7780,6 +8718,13 @@ func (v *PromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *PromptSuggestionsUpdate) Validate() error {
+	if v.Suggestions == nil {
+		return fmt.Errorf("suggestions is required")
+	}
+	return nil
+}
+
 // Protocol version identifier.
 //
 // This version is only bumped for breaking changes.
@@ -7854,6 +8799,9 @@ func (v *ReadTextFileRequest) Validate() error {
 	if v.Path == "" {
 		return fmt.Errorf("path is required")
 	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -7919,6 +8867,12 @@ func (v *ReleaseTerminalRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *ReleaseTerminalRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -8030,6 +8984,23 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *RequestId) Validate() error {
+	var count int
+	if u.Null != nil {
+		count++
+	}
+	if u.Number != nil {
+		count++
+	}
+	if u.Str != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("RequestId has no variant set")
+	}
+	return nil
+}
+
 // The outcome of a permission request.
 // The prompt turn was cancelled before the user responded.
 //
@@ -8066,6 +9037,13 @@ func (v *RequestPermissionOutcomeSelected) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *RequestPermissionOutcomeSelected) Validate() error {
+	if v.OptionId == "" {
+		return fmt.Errorf("optionId is required")
+	}
 	return nil
 }
 
@@ -8160,6 +9138,11 @@ func (u *RequestPermissionOutcome) Validate() error {
 	if count != 1 {
 		return errors.New("RequestPermissionOutcome must have exactly one variant set")
 	}
+	if u.Selected != nil {
+		if err := u.Selected.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -8211,6 +9194,17 @@ func (v *RequestPermissionRequest) Validate() error {
 	if v.Options == nil {
 		return fmt.Errorf("options is required")
 	}
+	for i := range v.Options {
+		if err := v.Options[i].Validate(); err != nil {
+			return fmt.Errorf("options[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if err := v.ToolCall.Validate(); err != nil {
+		return fmt.Errorf("toolCall: %w", err)
+	}
 	return nil
 }
 
@@ -8241,6 +9235,9 @@ func (v *RequestPermissionResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *RequestPermissionResponse) Validate() error {
+	if err := v.Outcome.Validate(); err != nil {
+		return fmt.Errorf("outcome: %w", err)
+	}
 	return nil
 }
 
@@ -8381,8 +9378,26 @@ func (v *ResumeSessionRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *ResumeSessionRequest) Validate() error {
+	for i := range v.ConfigOptions {
+		if err := v.ConfigOptions[i].Validate(); err != nil {
+			return fmt.Errorf("configOptions[%d]: %w", i, err)
+		}
+	}
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
+	}
+	for i := range v.McpServers {
+		if err := v.McpServers[i].Validate(); err != nil {
+			return fmt.Errorf("mcpServers[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.SystemPrompt != nil {
+		if err := v.SystemPrompt.Validate(); err != nil {
+			return fmt.Errorf("systemPrompt: %w", err)
+		}
 	}
 	return nil
 }
@@ -8480,6 +9495,13 @@ func (v *SelectedPermissionOutcome) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SelectedPermissionOutcome) Validate() error {
+	if v.OptionId == "" {
+		return fmt.Errorf("optionId is required")
+	}
 	return nil
 }
 
@@ -8811,6 +9833,19 @@ func (v *SessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionConfigOptionSelect) Validate() error {
+	if v.CurrentValue == "" {
+		return fmt.Errorf("currentValue is required")
+	}
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
+	if err := v.Options.Validate(); err != nil {
+		return fmt.Errorf("options: %w", err)
+	}
+	return nil
+}
+
 // Boolean on/off toggle.
 type SessionConfigOptionBoolean struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -8847,6 +9882,13 @@ func (v *SessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Category, &v.Category)
 	decodeLenient(raw.Description, &v.Description)
+	return nil
+}
+
+func (v *SessionConfigOptionBoolean) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -8936,13 +9978,13 @@ func (u *SessionConfigOption) Validate() error {
 		return errors.New("SessionConfigOption must have exactly one variant set")
 	}
 	if u.Select != nil {
-		if u.Select.Name == "" {
-			return fmt.Errorf("name is required")
+		if err := u.Select.Validate(); err != nil {
+			return err
 		}
 	}
 	if u.Boolean != nil {
-		if u.Boolean.Name == "" {
-			return fmt.Errorf("name is required")
+		if err := u.Boolean.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -9017,6 +10059,16 @@ type SessionConfigSelect struct {
 	Options SessionConfigSelectOptions `json:"options"`
 }
 
+func (v *SessionConfigSelect) Validate() error {
+	if v.CurrentValue == "" {
+		return fmt.Errorf("currentValue is required")
+	}
+	if err := v.Options.Validate(); err != nil {
+		return fmt.Errorf("options: %w", err)
+	}
+	return nil
+}
+
 // A group of possible values for a session configuration option.
 type SessionConfigSelectGroup struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -9061,6 +10113,16 @@ func (v *SessionConfigSelectGroup) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionConfigSelectGroup) Validate() error {
+	if v.Group == "" {
+		return fmt.Errorf("group is required")
+	}
+	if v.Options == nil {
+		return fmt.Errorf("options is required")
+	}
+	return nil
+}
+
 // A possible value for a session configuration option.
 type SessionConfigSelectOption struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -9090,6 +10152,13 @@ func (v *SessionConfigSelectOption) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	return nil
+}
+
+func (v *SessionConfigSelectOption) Validate() error {
+	if v.Value == "" {
+		return fmt.Errorf("value is required")
+	}
 	return nil
 }
 
@@ -9181,6 +10250,34 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 		return _b, nil
 	}
 	return []byte{}, nil
+}
+
+func (u *SessionConfigSelectOptions) Validate() error {
+	var count int
+	if u.Ungrouped != nil {
+		count++
+	}
+	if u.Grouped != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("SessionConfigSelectOptions has no variant set")
+	}
+	if u.Ungrouped != nil {
+		for i := range *u.Ungrouped {
+			if err := (*u.Ungrouped)[i].Validate(); err != nil {
+				return fmt.Errorf("[%d]: %w", i, err)
+			}
+		}
+	}
+	if u.Grouped != nil {
+		for i := range *u.Grouped {
+			if err := (*u.Grouped)[i].Validate(); err != nil {
+				return fmt.Errorf("[%d]: %w", i, err)
+			}
+		}
+	}
+	return nil
 }
 
 // Unique identifier for a session configuration option value.
@@ -9302,6 +10399,13 @@ func (v *SessionInfo) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Archived, &v.Archived)
 	decodeLenient(raw.Title, &v.Title)
 	decodeLenient(raw.UpdatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (v *SessionInfo) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -9470,6 +10574,13 @@ func (v *SessionMessage) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionMessage) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -9500,6 +10611,16 @@ func (v *SessionMessageChunk) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SessionMessageChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
 	return nil
 }
 
@@ -9534,6 +10655,13 @@ func (v *SessionMode) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	return nil
+}
+
+func (v *SessionMode) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -9582,6 +10710,16 @@ func (v *SessionModeState) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionModeState) Validate() error {
+	if v.AvailableModes == nil {
+		return fmt.Errorf("availableModes is required")
+	}
+	if v.CurrentModeId == "" {
+		return fmt.Errorf("currentModeId is required")
+	}
+	return nil
+}
+
 // Notification containing a session update from the agent.
 //
 // Used to stream real-time progress and results during prompt processing.
@@ -9615,6 +10753,12 @@ func (v *SessionNotification) UnmarshalJSON(b []byte) error {
 }
 
 func (v *SessionNotification) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if err := v.Update.Validate(); err != nil {
+		return fmt.Errorf("update: %w", err)
+	}
 	return nil
 }
 
@@ -9682,6 +10826,13 @@ func (v *SessionReference) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SessionReference) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -9906,6 +11057,13 @@ func (v *SessionUpdateUserMessageChunk) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionUpdateUserMessageChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
+	return nil
+}
+
 // A chunk of the agent's response being streamed.
 type SessionUpdateAgentMessageChunk struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -9940,6 +11098,13 @@ func (v *SessionUpdateAgentMessageChunk) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionUpdateAgentMessageChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
+	return nil
+}
+
 // A chunk of the agent's internal reasoning being streamed.
 type SessionUpdateAgentThoughtChunk struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -9971,6 +11136,13 @@ func (v *SessionUpdateAgentThoughtChunk) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
+	return nil
+}
+
+func (v *SessionUpdateAgentThoughtChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -10033,6 +11205,13 @@ func (v *SessionUpdateToolCall) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.RawInput, &v.RawInput)
 	decodeLenient(raw.RawOutput, &v.RawOutput)
 	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
+	return nil
+}
+
+func (v *SessionUpdateToolCall) Validate() error {
+	if v.ToolCallId == "" {
+		return fmt.Errorf("toolCallId is required")
+	}
 	return nil
 }
 
@@ -10154,6 +11333,13 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionToolCallUpdate) Validate() error {
+	if v.ToolCallId == "" {
+		return fmt.Errorf("toolCallId is required")
+	}
+	return nil
+}
+
 // The agent's execution plan for complex tasks.
 // See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/v1/draft/agent-plan)
 type SessionUpdatePlan struct {
@@ -10199,6 +11385,13 @@ func (v *SessionUpdatePlan) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionUpdatePlan) Validate() error {
+	if v.Entries == nil {
+		return fmt.Errorf("entries is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -10230,6 +11423,13 @@ func (v *SessionPlanUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionPlanUpdate) Validate() error {
+	if err := v.Plan.Validate(); err != nil {
+		return fmt.Errorf("plan: %w", err)
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -10258,6 +11458,13 @@ func (v *SessionUpdatePlanRemoved) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SessionUpdatePlanRemoved) Validate() error {
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
 	return nil
 }
 
@@ -10302,6 +11509,13 @@ func (v *SessionAvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionAvailableCommandsUpdate) Validate() error {
+	if v.AvailableCommands == nil {
+		return fmt.Errorf("availableCommands is required")
+	}
+	return nil
+}
+
 // The current mode of the session has changed
 //
 // See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/v1/draft/session-modes)
@@ -10328,6 +11542,13 @@ func (v *SessionCurrentModeUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SessionCurrentModeUpdate) Validate() error {
+	if v.CurrentModeId == "" {
+		return fmt.Errorf("currentModeId is required")
+	}
 	return nil
 }
 
@@ -10368,6 +11589,13 @@ func (v *SessionConfigOptionUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
+	}
+	return nil
+}
+
+func (v *SessionConfigOptionUpdate) Validate() error {
+	if v.ConfigOptions == nil {
+		return fmt.Errorf("configOptions is required")
 	}
 	return nil
 }
@@ -10495,6 +11723,13 @@ func (v *SessionUpdateNotice) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionUpdateNotice) Validate() error {
+	if v.Severity == "" {
+		return fmt.Errorf("severity is required")
+	}
+	return nil
+}
+
 // A context compaction has been created or updated.
 //
 // Agents MUST only send this update when the Client advertised
@@ -10553,6 +11788,16 @@ func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionCompactionUpdate) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if v.Status == "" {
+		return fmt.Errorf("status is required")
+	}
+	return nil
+}
+
 // A content block appended to a context compaction's retained summary.
 //
 // Agents MUST only send this update when the Client advertised
@@ -10578,6 +11823,16 @@ func (v *SessionUpdateCompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SessionUpdateCompactionSummaryChunk) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -10629,6 +11884,13 @@ func (v *SessionPromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if _, err := decodeItems(raw.Suggestions, &v.Suggestions, shapePromptSuggestion); err != nil {
 		return propertyError(err, "SessionPromptSuggestionsUpdate", "suggestions")
+	}
+	return nil
+}
+
+func (v *SessionPromptSuggestionsUpdate) Validate() error {
+	if v.Suggestions == nil {
+		return fmt.Errorf("suggestions is required")
 	}
 	return nil
 }
@@ -10742,6 +12004,13 @@ func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionSubagentUpdate) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -10831,6 +12100,13 @@ func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SessionUpdateSessionMessage) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -10859,6 +12135,16 @@ func (v *SessionUpdateSessionMessageChunk) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SessionUpdateSessionMessageChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
 	return nil
 }
 
@@ -11420,6 +12706,96 @@ func (u *SessionUpdate) Validate() error {
 	if count != 1 {
 		return errors.New("SessionUpdate must have exactly one variant set")
 	}
+	if u.UserMessageChunk != nil {
+		if err := u.UserMessageChunk.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.AgentMessageChunk != nil {
+		if err := u.AgentMessageChunk.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.AgentThoughtChunk != nil {
+		if err := u.AgentThoughtChunk.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ToolCall != nil {
+		if err := u.ToolCall.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ToolCallUpdate != nil {
+		if err := u.ToolCallUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Plan != nil {
+		if err := u.Plan.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.PlanUpdate != nil {
+		if err := u.PlanUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.PlanRemoved != nil {
+		if err := u.PlanRemoved.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.AvailableCommandsUpdate != nil {
+		if err := u.AvailableCommandsUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.CurrentModeUpdate != nil {
+		if err := u.CurrentModeUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ConfigOptionUpdate != nil {
+		if err := u.ConfigOptionUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Notice != nil {
+		if err := u.Notice.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.CompactionUpdate != nil {
+		if err := u.CompactionUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.CompactionSummaryChunk != nil {
+		if err := u.CompactionSummaryChunk.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.PromptSuggestionsUpdate != nil {
+		if err := u.PromptSuggestionsUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.SubagentUpdate != nil {
+		if err := u.SubagentUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.SessionMessage != nil {
+		if err := u.SessionMessage.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.SessionMessageChunk != nil {
+		if err := u.SessionMessageChunk.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -11455,6 +12831,16 @@ func (v *SetSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SetSessionConfigOptionBoolean) Validate() error {
+	if v.ConfigId == "" {
+		return fmt.Errorf("configId is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	return nil
+}
+
 // A 'SessionConfigValueId' string value.
 //
 // This is the default when 'type' is absent on the wire. Unknown 'type'
@@ -11486,6 +12872,19 @@ func (v *SetSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SetSessionConfigOptionValueId) Validate() error {
+	if v.ConfigId == "" {
+		return fmt.Errorf("configId is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.Value == "" {
+		return fmt.Errorf("value is required")
+	}
 	return nil
 }
 
@@ -11574,6 +12973,26 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (u *SetSessionConfigOptionRequest) Validate() error {
+	var count int
+	if u.Boolean != nil {
+		count++
+	}
+	if u.ValueId != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("SetSessionConfigOptionRequest has no variant set")
+	}
+	if u.Boolean != nil {
+		if err := u.Boolean.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ValueId != nil {
+		if err := u.ValueId.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -11653,6 +13072,12 @@ func (v *SetSessionModeRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *SetSessionModeRequest) Validate() error {
+	if v.ModeId == "" {
+		return fmt.Errorf("modeId is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -12201,6 +13626,38 @@ func (u StateUpdateIdle) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *StateUpdateIdle) Validate() error {
+	var count int
+	if u.EndTurn != nil {
+		count++
+	}
+	if u.MaxTokens != nil {
+		count++
+	}
+	if u.MaxTurnRequests != nil {
+		count++
+	}
+	if u.Refusal != nil {
+		count++
+	}
+	if u.Cancelled != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if u.None != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("StateUpdateIdle has no variant set")
+	}
+	return nil
+}
+
 // Foreground work is blocked on user action.
 type StateUpdateRequiresAction struct {
 	// The _meta property is reserved by ACP for additional metadata.
@@ -12432,6 +13889,34 @@ func (u StateUpdate) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *StateUpdate) Validate() error {
+	var count int
+	if u.Running != nil {
+		count++
+	}
+	if u.Idle != nil {
+		count++
+	}
+	if u.RequiresAction != nil {
+		count++
+	}
+	if u.Unknown != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("StateUpdate has no variant set")
+	}
+	if u.Idle != nil {
+		if err := u.Idle.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Reasons why an agent stops processing a prompt turn.
 //
 // See protocol docs: [Stop Reasons](https://agentclientprotocol.com/protocol/v1/prompt-turn#stop-reasons)
@@ -12507,6 +13992,13 @@ func (v *StringMultiSelectItems) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *StringMultiSelectItems) Validate() error {
+	if v.Enum == nil {
+		return fmt.Errorf("enum is required")
+	}
 	return nil
 }
 
@@ -12772,6 +14264,13 @@ func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *SubagentUpdate) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	return nil
+}
+
 // Client-provided system-level instructions for a session.
 //
 // Clients MUST only send this when the Agent advertises
@@ -12823,6 +14322,21 @@ func (v *SystemPrompt) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *SystemPrompt) Validate() error {
+	if v.Content == nil {
+		return fmt.Errorf("content is required")
+	}
+	for i := range v.Content {
+		if err := v.Content[i].Validate(); err != nil {
+			return fmt.Errorf("content[%d]: %w", i, err)
+		}
+	}
+	if v.Mode == "" {
+		return fmt.Errorf("mode is required")
+	}
 	return nil
 }
 
@@ -12879,6 +14393,13 @@ func (v *Terminal) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *Terminal) Validate() error {
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -12946,6 +14467,12 @@ func (v *TerminalOutputRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *TerminalOutputRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -13088,6 +14615,13 @@ func (v *TitledMultiSelectItems) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *TitledMultiSelectItems) Validate() error {
+	if v.AnyOf == nil {
+		return fmt.Errorf("anyOf is required")
+	}
+	return nil
+}
+
 // Represents a tool call that the language model has requested.
 //
 // Tool calls are actions that the agent executes on behalf of the language model,
@@ -13154,6 +14688,13 @@ func (v *ToolCall) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *ToolCall) Validate() error {
+	if v.ToolCallId == "" {
+		return fmt.Errorf("toolCallId is required")
+	}
+	return nil
+}
+
 // Content produced by a tool call.
 //
 // Tool calls can produce different types of content including
@@ -13184,6 +14725,13 @@ func (v *ToolCallContentContent) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *ToolCallContentContent) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -13251,6 +14799,13 @@ func (v *ToolCallContentTerminal) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (v *ToolCallContentTerminal) Validate() error {
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -13279,6 +14834,13 @@ func (v *ToolCallContentSession) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *ToolCallContentSession) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -13422,6 +14984,21 @@ func (u *ToolCallContent) Validate() error {
 	}
 	if count != 1 {
 		return errors.New("ToolCallContent must have exactly one variant set")
+	}
+	if u.Content != nil {
+		if err := u.Content.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Terminal != nil {
+		if err := u.Terminal.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -13603,8 +15180,8 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (t *ToolCallUpdate) Validate() error {
-	if t.ToolCallId == "" {
+func (v *ToolCallUpdate) Validate() error {
+	if v.ToolCallId == "" {
 		return fmt.Errorf("toolCallId is required")
 	}
 	return nil
@@ -13734,6 +15311,9 @@ func (v *UnstableArchiveSessionRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableArchiveSessionRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -13936,6 +15516,9 @@ func (v *UnstableAuthStatusResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableAuthStatusResponse) Validate() error {
+	if v.State == "" {
+		return fmt.Errorf("state is required")
+	}
 	return nil
 }
 
@@ -13985,6 +15568,9 @@ func (v *UnstableAuthStatusUpdateNotification) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableAuthStatusUpdateNotification) Validate() error {
+	if v.State == "" {
+		return fmt.Errorf("state is required")
+	}
 	return nil
 }
 
@@ -14019,6 +15605,9 @@ func (v *UnstableDisableProviderRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableDisableProviderRequest) Validate() error {
+	if v.ProviderId == "" {
+		return fmt.Errorf("providerId is required")
+	}
 	return nil
 }
 
@@ -14127,8 +15716,26 @@ func (v *UnstableForkSessionRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableForkSessionRequest) Validate() error {
+	for i := range v.ConfigOptions {
+		if err := v.ConfigOptions[i].Validate(); err != nil {
+			return fmt.Errorf("configOptions[%d]: %w", i, err)
+		}
+	}
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
+	}
+	for i := range v.McpServers {
+		if err := v.McpServers[i].Validate(); err != nil {
+			return fmt.Errorf("mcpServers[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.SystemPrompt != nil {
+		if err := v.SystemPrompt.Validate(); err != nil {
+			return fmt.Errorf("systemPrompt: %w", err)
+		}
 	}
 	return nil
 }
@@ -14174,6 +15781,9 @@ func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableForkSessionResponse) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -14252,6 +15862,11 @@ func (v *UnstableListProvidersResponse) UnmarshalJSON(b []byte) error {
 func (v *UnstableListProvidersResponse) Validate() error {
 	if v.Providers == nil {
 		return fmt.Errorf("providers is required")
+	}
+	for i := range v.Providers {
+		if err := v.Providers[i].Validate(); err != nil {
+			return fmt.Errorf("providers[%d]: %w", i, err)
+		}
 	}
 	return nil
 }
@@ -14377,6 +15992,12 @@ func (v *UnstableMessageMcpNotification) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
 	}
+	if v.RequestId == "" {
+		return fmt.Errorf("requestId is required")
+	}
+	if v.ServerId == "" {
+		return fmt.Errorf("serverId is required")
+	}
 	return nil
 }
 
@@ -14421,6 +16042,12 @@ func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
 func (v *UnstableMessageMcpRequest) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
+	}
+	if v.RequestId == "" {
+		return fmt.Errorf("requestId is required")
+	}
+	if v.ServerId == "" {
+		return fmt.Errorf("serverId is required")
 	}
 	return nil
 }
@@ -14557,6 +16184,20 @@ func (u UnstableMessageMcpResponse) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *UnstableMessageMcpResponse) Validate() error {
+	var count int
+	if u.Result != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("UnstableMessageMcpResponse has no variant set")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -14586,6 +16227,13 @@ func (v *UnstableProviderCurrentConfig) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+func (v *UnstableProviderCurrentConfig) Validate() error {
+	if v.ApiType == "" {
+		return fmt.Errorf("apiType is required")
+	}
 	return nil
 }
 
@@ -14644,6 +16292,21 @@ func (v *UnstableProviderInfo) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Supported, &v.Supported) && raw.Supported != nil {
 		setDefault(&v.Supported, "[]")
+	}
+	return nil
+}
+
+func (v *UnstableProviderInfo) Validate() error {
+	if v.Current != nil {
+		if err := v.Current.Validate(); err != nil {
+			return fmt.Errorf("current: %w", err)
+		}
+	}
+	if v.ProviderId == "" {
+		return fmt.Errorf("providerId is required")
+	}
+	if v.Supported == nil {
+		return fmt.Errorf("supported is required")
 	}
 	return nil
 }
@@ -14815,6 +16478,9 @@ func (v *UnstableSessionStatusRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableSessionStatusRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -14854,6 +16520,9 @@ func (v *UnstableSessionStatusResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableSessionStatusResponse) Validate() error {
+	if v.Status == "" {
+		return fmt.Errorf("status is required")
+	}
 	return nil
 }
 
@@ -14897,8 +16566,14 @@ func (v *UnstableSetProviderRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableSetProviderRequest) Validate() error {
+	if v.ApiType == "" {
+		return fmt.Errorf("apiType is required")
+	}
 	if v.BaseUrl == "" {
 		return fmt.Errorf("baseUrl is required")
+	}
+	if v.ProviderId == "" {
+		return fmt.Errorf("providerId is required")
 	}
 	return nil
 }
@@ -14981,6 +16656,9 @@ func (v *UnstableSetSessionTitleRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableSetSessionTitleRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	if v.Title == "" {
 		return fmt.Errorf("title is required")
 	}
@@ -15066,6 +16744,9 @@ func (v *UnstableUnarchiveSessionRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *UnstableUnarchiveSessionRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -15234,6 +16915,12 @@ func (v *WaitForTerminalExitRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *WaitForTerminalExitRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -15311,6 +16998,9 @@ func (v *WriteTextFileRequest) Validate() error {
 	}
 	if v.Path == "" {
 		return fmt.Errorf("path is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
 	}
 	return nil
 }

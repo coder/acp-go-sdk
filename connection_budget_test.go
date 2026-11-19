@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +24,9 @@ func (b *peerBudget) held() (bytes, requests int) {
 }
 
 func liveHeap() int64 {
+	// The second GC frees what sync.Pool keeps for one cycle, such as the
+	// buffers that encoding/json reuses.
+	runtime.GC()
 	runtime.GC()
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
@@ -155,6 +159,7 @@ func newBudgetPeer(t *testing.T) *budgetPeer {
 	p.logger = slog.New(slog.NewTextHandler(&p.logs, nil))
 	go func() {
 		s := bufio.NewScanner(outR)
+		s.Buffer(nil, 16<<20)
 		for s.Scan() {
 			var m anyMessage
 			if json.Unmarshal(s.Bytes(), &m) == nil {
@@ -740,6 +745,196 @@ func TestAgentSideConnection_CancelMarkersKeepLongSessionIDsApart(t *testing.T) 
 			}
 			p.write([]byte(cancelLine(long+"a") + "\n"))
 			waitUntil(t, "the prompt is cancelled by its own cancel", func() bool { return promptCtx.Err() != nil })
+		})
+	}
+}
+
+// Prompts with images or resources can fill the byte budget, and a client must
+// still be able to cancel them.
+func TestAgentSideConnection_CancelFitsBesideHeldPrompts(t *testing.T) {
+	const prompts, promptSize = 8, 8 << 20
+	if prompts*promptSize != 64<<20 {
+		t.Fatal("SETUP: the prompts must fill the documented 64 MiB budget")
+	}
+	p := newBudgetPeer(t)
+	g := newGate(t, "")
+	var running atomic.Int64
+	conn := NewAgentSideConnection(agentFuncs{
+		PromptFunc: func(ctx context.Context, _ PromptRequest) (PromptResponse, error) {
+			running.Add(1)
+			select {
+			case <-g.release:
+				return PromptResponse{StopReason: StopReasonEndTurn}, nil
+			case <-ctx.Done():
+				return PromptResponse{StopReason: StopReasonCancelled}, nil
+			}
+		},
+		CancelFunc: func(context.Context, CancelNotification) error { return nil },
+	}, p.peerInput, p.peerOutput)
+	conn.SetLogger(p.logger)
+
+	prompt := newWireLine(t, `{"jsonrpc":"2.0","id":"{n}","method":"session/prompt","params":{"sessionId":"{n}","prompt":[{"type":"text","text":"{pad}"}]}}`, promptSize)
+	for n := 1; n <= prompts; n++ {
+		p.write(prompt.number(n))
+	}
+	waitUntil(t, "every prompt runs", func() bool { return running.Load() == prompts })
+	cancel := []byte(`{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"` + lineID(1) + `"}}` + "\n")
+	p.write(cancel)
+
+	m := p.reply()
+	if !isOpen(conn.Done()) {
+		t.Fatalf("a %d-byte session/cancel closed the connection beside %d held prompts of %d bytes, which cancels every prompt", len(cancel)-1, prompts, promptSize)
+	}
+	if replyID(t, m) != lineID(1) || m.Error != nil || !strings.Contains(string(m.Result), `"cancelled"`) {
+		t.Fatalf("reply %s: result %s, error %+v; want prompt 1 cancelled", replyID(t, m), m.Result, m.Error)
+	}
+	p.noReply()
+
+	g.open()
+	for n := 2; n <= prompts; n++ {
+		if m := p.reply(); m.Error != nil || !strings.Contains(string(m.Result), `"end_turn"`) {
+			t.Errorf("reply %s: result %s, error %+v; want end_turn", replyID(t, m), m.Result, m.Error)
+		}
+	}
+	waitHeld(t, conn.conn, 0, 0)
+}
+
+// Two SDK peers that each send the other more requests than it holds must
+// both get every answer: neither read loop may wait for the other to read a
+// rejection.
+func TestConnection_PeersThatFloodEachOtherGetEveryAnswer(t *testing.T) {
+	const calls, held = 1500, 1024
+	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
+	aIn, bOut := io.Pipe()
+	bIn, aOut := io.Pipe()
+	t.Cleanup(func() {
+		for _, c := range []io.Closer{aIn, bOut, bIn, aOut} {
+			_ = c.Close()
+		}
+	})
+
+	type side struct {
+		gate                 *gate
+		conn                 *Connection
+		ok, rejected, failed atomic.Int64
+		returned             sync.WaitGroup
+	}
+	a := &side{gate: newGate(t, "_block")}
+	b := &side{gate: newGate(t, "_block")}
+	a.conn = NewConnection(a.gate.handler, bOut, aIn)
+	b.conn = NewConnection(b.gate.handler, aOut, bIn)
+	a.conn.SetLogger(discard)
+	b.conn.SetLogger(discard)
+
+	for _, s := range []*side{a, b} {
+		for i := 0; i < calls; i++ {
+			s.returned.Add(1)
+			go func(s *side) {
+				defer s.returned.Done()
+				_, err := SendRequest[json.RawMessage](s.conn, context.Background(), "_block", nil)
+				var re *RequestError
+				switch {
+				case err == nil:
+					s.ok.Add(1)
+				case errors.As(err, &re) && re.Code == -32603 && bytes.Contains(re.Data, []byte("too many requests")):
+					s.rejected.Add(1)
+				default:
+					s.failed.Add(1)
+				}
+			}(s)
+		}
+	}
+	counts := func() string {
+		return fmt.Sprintf("a: %d held by b, %d rejected, %d failed; b: %d held by a, %d rejected, %d failed",
+			b.gate.entered.Load(), a.rejected.Load(), a.failed.Load(), a.gate.entered.Load(), b.rejected.Load(), b.failed.Load())
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for a.gate.entered.Load() != held || b.gate.entered.Load() != held || a.rejected.Load() != calls-held || b.rejected.Load() != calls-held {
+		if time.Now().After(deadline) {
+			t.Fatalf("after 10s each side should hold %d requests and reject %d: %s", held, calls-held, counts())
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	a.gate.open()
+	b.gate.open()
+	returned := make(chan struct{})
+	go func() {
+		a.returned.Wait()
+		b.returned.Wait()
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("calls still waiting 10s after the handlers returned: %s", counts())
+	}
+	for name, s := range map[string]*side{"a": a, "b": b} {
+		if s.ok.Load() != held || s.rejected.Load() != calls-held || s.failed.Load() != 0 {
+			t.Errorf("%s: %d answered, %d rejected, %d failed; want %d, %d and 0", name, s.ok.Load(), s.rejected.Load(), s.failed.Load(), held, calls-held)
+		}
+	}
+}
+
+// The byte budget bounds what requests retain even when their ids are huge:
+// the connection keeps each request's id twice, in the message for the reply
+// and as the key that $/cancel_request looks up.
+func TestConnectionBudget_CountsWhatHugeIDsRetain(t *testing.T) {
+	const requests, idSize, budget, slack = 6, 9 << 20, 64 << 20, 4 << 20
+	tests := []struct {
+		name string
+		id   func(n int) string
+	}{
+		{name: "string", id: func(n int) string { return `"` + lineID(n) + strings.Repeat("x", idSize) + `"` }},
+		{name: "number", id: func(n int) string { return "1" + lineID(n) + strings.Repeat("0", idSize) }},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			p := newBudgetPeer(t)
+			g := newGate(t, "_block")
+			c := newBudgetConnection(t, p, g.handler)
+			c.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+			line := func(method string, n int) []byte {
+				return []byte(`{"jsonrpc":"2.0","id":` + tt.id(n) + `,"method":"` + method + `","params":{}}` + "\n")
+			}
+			// The first reply grows the read buffers on both ends to the size of
+			// these lines before the baseline.
+			p.write(line("_ok", 0))
+			if m := p.reply(); m.Error != nil {
+				t.Fatalf("warm-up reply: %+v", m.Error)
+			}
+
+			before := liveHeap()
+			for n := 1; n <= requests; n++ {
+				p.write(line("_block", n))
+			}
+			rejected := 0
+			waitUntil(t, "every request runs or gets a -32603", func() bool {
+				for {
+					select {
+					case m := <-p.replies:
+						if m.Error == nil || m.Error.Code != -32603 {
+							t.Fatalf("reply before the release: error %+v, want -32603", m.Error)
+						}
+						rejected++
+					default:
+						return int(g.entered.Load())+rejected == requests
+					}
+				}
+			})
+			delta, heldBytes, heldRequests := retained(t, c, before)
+			if delta > budget+slack {
+				t.Errorf("%d requests held with %d-byte ids retain %d bytes, over the %d-byte budget; the budget counts %d bytes", heldRequests, idSize, delta, budget, heldBytes)
+			}
+
+			g.open()
+			for i := 0; i < heldRequests; i++ {
+				if m := p.reply(); m.Error != nil {
+					t.Errorf("held request: %+v", m.Error)
+				}
+			}
+			waitHeld(t, c, 0, 0)
 		})
 	}
 }

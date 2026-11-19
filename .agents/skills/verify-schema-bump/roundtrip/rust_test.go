@@ -149,8 +149,9 @@ func runRustProbe(probe string, cases []rustCase) (map[string]sideResult, error)
 }
 
 // goSide reads data as the SDK type of def, as the connection reads a
-// message: decode it, call its Validate method when it has one, and encode
-// it again.
+// message: decode it, call its Validate method when it has one and def is a
+// request or a notification (the dispatcher validates only those; a result
+// that Connection.SendRequest reads is not validated), and encode it again.
 func goSide(def string, data []byte) sideResult {
 	newValue, ok := registry[def]
 	if !ok {
@@ -160,7 +161,8 @@ func goSide(def string, data []byte) sideResult {
 	if err := json.Unmarshal(data, v); err != nil {
 		return sideResult{Err: "decode: " + err.Error()}
 	}
-	if val, ok := v.(interface{ Validate() error }); ok {
+	inbound := strings.HasSuffix(def, "Request") || strings.HasSuffix(def, "Notification")
+	if val, ok := v.(interface{ Validate() error }); ok && inbound {
 		if err := val.Validate(); err != nil {
 			return sideResult{Err: "validate: " + err.Error()}
 		}
@@ -174,9 +176,10 @@ func goSide(def string, data []byte) sideResult {
 
 // compareSides compares the Go and the Rust read of one case, and describes
 // the difference when they do not agree. Before it compares the two outputs
-// it normalizes them against schemas as G2 does: a member that is null or
-// equals its schema default counts as absent, because each SDK may write a
-// default that the other leaves out.
+// it normalizes them against schemas as G2 does: a member that equals its
+// schema default counts as absent, because each SDK may write a default that
+// the other leaves out. Unlike G2, a null member stays: a patch field reads
+// null as "clear" and an absent member as "unchanged".
 func compareSides(g, r sideResult, schemas []schemaRef) (verdict, string) {
 	switch {
 	case strings.HasPrefix(g.Err, "NO-TYPE") || strings.HasPrefix(r.Err, "NO-TYPE"):
@@ -194,11 +197,39 @@ func compareSides(g, r sideResult, schemas []schemaRef) (verdict, string) {
 		return verdictDiffers, fmt.Sprintf("unreadable output: go: %v; rust: %v", errA, errB)
 	}
 	var unknown, diffs []string
-	diffSides("", normalize(a, schemas, "", &unknown), normalize(b, schemas, "", &unknown), &diffs)
+	diffSides("", normalize(keepNulls(a), schemas, "", &unknown), normalize(keepNulls(b), schemas, "", &unknown), &diffs)
 	if len(diffs) == 0 {
 		return verdictSame, ""
 	}
 	return verdictDiffers, fmt.Sprintf("%d difference(s): %s", len(diffs), strings.Join(diffs, "; "))
+}
+
+// jsonNull stands for a null object member, which normalize would drop.
+type jsonNull struct{}
+
+func (jsonNull) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
+
+// keepNulls returns v with each null object member replaced by jsonNull.
+func keepNulls(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for k, x := range v {
+			if x == nil {
+				out[k] = jsonNull{}
+			} else {
+				out[k] = keepNulls(x)
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, x := range v {
+			out[i] = keepNulls(x)
+		}
+		return out
+	}
+	return v
 }
 
 func orOK(err string) string {
@@ -281,7 +312,8 @@ func TestCompareSides(t *testing.T) {
 		want verdict
 	}{
 		{"same JSON in another key order", ok(`{"a":1,"b":"x"}`), ok(`{"b":"x","a":1}`), verdictSame},
-		{"null reads as absent", ok(`{"a":1,"b":null}`), ok(`{"a":1}`), verdictSame},
+		{"null against null", ok(`{"a":1,"b":null}`), ok(`{"b":null,"a":1}`), verdictSame},
+		{"null against absent", ok(`{"a":1,"b":null}`), ok(`{"a":1}`), verdictDiffers},
 		{"same float in another notation", ok(`{"n":1e21}`), ok(`{"n":1e+21}`), verdictSame},
 		{"integer literal against number literal", ok(`{"n":2}`), ok(`{"n":2.0}`), verdictDiffers},
 		{"empty object against absent", ok(`{}`), ok(`{"content":{}}`), verdictDiffers},

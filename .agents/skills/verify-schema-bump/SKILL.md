@@ -117,7 +117,7 @@ The Rust SDK reads ACP messages with the types of the crate `agent-client-protoc
 
 The crate versions apart from the schema: 1.18.0 is schema 1.32.0. The script first checks the pin. The crate's `.cargo_vcs_info.json` in the cargo registry names the upstream commit that it was published from, and that commit must be the one that the `schema-v<schema/version>` tag points to (`git ls-remote https://github.com/agentclientprotocol/agent-client-protocol refs/tags/schema-v1.32.0`). On a mismatch it prints both commits and stops. A bump moves the pin by hand: find the crate release whose tag `v<crate>` points at the same commit as `schema-v<new>`, set it in `.agents/skills/verify-schema-bump/rustprobe/Cargo.toml`, and run `cargo update -p agent-client-protocol-schema --manifest-path .agents/skills/verify-schema-bump/rustprobe/Cargo.toml` to refresh the committed `Cargo.lock`.
 
-Then it builds the probe with `cargo build --release --locked` in `$VSB_ROOT/cache/rustprobe` and runs `TestRust`, which reads each case with the SDK as the connection reads a message (decode, then `Validate` when the type has it, then encode) and with the probe. It sorts each case into one verdict:
+Then it builds the probe with `cargo build --release --locked` in `$VSB_ROOT/cache/rustprobe` and runs `TestRust`, which reads each case with the SDK as the connection reads a message (decode; then `Validate` when the type has it and the def is a request or a notification, because the dispatcher validates those and `Connection.SendRequest` does not validate a result; then encode) and with the probe. It sorts each case into one verdict:
 
 | Verdict | Meaning |
 | --- | --- |
@@ -128,7 +128,7 @@ Then it builds the probe with `cargo build --release --locked` in `$VSB_ROOT/cac
 | `rust-only` | Rust accepts it and the SDK rejects it. |
 | `no-type` | One side has no type for the def. |
 
-Before it compares the two outputs, it normalizes both as G2's `LOSSY` check does: a member that is `null`, or that equals its property's schema default, counts as absent, because Rust writes `"loadSession": false` where the SDK leaves the member out. Unlike G2, an integer literal differs from a number literal of the same value (`2` against `2.0`): a reader that picks a union variant by the JSON type, such as `ElicitationContentValue`, reads them differently.
+Before it compares the two outputs, it normalizes both as G2's `LOSSY` check does: a member that equals its property's schema default counts as absent, because Rust writes `"loadSession": false` where the SDK leaves the member out. Unlike G2, `null` and absent differ, because a patch field reads `null` as "clear" and an absent member as "unchanged", and an integer literal differs from a number literal of the same value (`2` against `2.0`): a reader that picks a union variant by the JSON type, such as `ElicitationContentValue`, reads them differently.
 
 Each case that does not agree is one line, `RUST VERDICT DEF ID: DETAIL`, such as `RUST differs CreateElicitationResponse 125/elicitation-number-2.0: 1 difference(s): /content/n: go=2 rust=2.0`. Pass: exit 0 and `RUST PASS`, every case `same` or `both-reject`. While the committed cases hold known differences, `rust-diff` exits 1 on `main` by design: compare the run's `details.txt` with the base's run, and a new line is a regression.
 

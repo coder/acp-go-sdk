@@ -3,11 +3,13 @@
 package acp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"strings"
 )
 
@@ -464,14 +466,28 @@ func (v *AuthMethodTerminalInline) UnmarshalJSON(b []byte) error {
 	type AuthMethodTerminalInline struct {
 		*plain
 		Meta        json.RawMessage `json:"_meta"`
+		Args        json.RawMessage `json:"args"`
 		Description json.RawMessage `json:"description"`
+		Env         json.RawMessage `json:"env"`
 	}
 	raw := AuthMethodTerminalInline{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Args); err != nil {
+		return propertyError(err, "AuthMethodTerminalInline", "args")
+	}
+	if _, err := decodeField(raw.Args, &v.Args); err != nil {
+		return propertyError(err, "AuthMethodTerminalInline", "args")
+	}
 	decodeLenient(raw.Description, &v.Description)
+	if err := rejectNullItems[string](raw.Env); err != nil {
+		return propertyError(err, "AuthMethodTerminalInline", "env")
+	}
+	if _, err := decodeField(raw.Env, &v.Env); err != nil {
+		return propertyError(err, "AuthMethodTerminalInline", "env")
+	}
 	return nil
 }
 
@@ -668,14 +684,28 @@ func (v *AuthMethodTerminal) UnmarshalJSON(b []byte) error {
 	type AuthMethodTerminal struct {
 		*plain
 		Meta        json.RawMessage `json:"_meta"`
+		Args        json.RawMessage `json:"args"`
 		Description json.RawMessage `json:"description"`
+		Env         json.RawMessage `json:"env"`
 	}
 	raw := AuthMethodTerminal{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Args); err != nil {
+		return propertyError(err, "AuthMethodTerminal", "args")
+	}
+	if _, err := decodeField(raw.Args, &v.Args); err != nil {
+		return propertyError(err, "AuthMethodTerminal", "args")
+	}
 	decodeLenient(raw.Description, &v.Description)
+	if err := rejectNullItems[string](raw.Env); err != nil {
+		return propertyError(err, "AuthMethodTerminal", "env")
+	}
+	if _, err := decodeField(raw.Env, &v.Env); err != nil {
+		return propertyError(err, "AuthMethodTerminal", "env")
+	}
 	return nil
 }
 
@@ -3141,12 +3171,19 @@ func (v *CreateTerminalRequest) UnmarshalJSON(b []byte) error {
 	type CreateTerminalRequest struct {
 		*plain
 		Meta json.RawMessage `json:"_meta"`
+		Args json.RawMessage `json:"args"`
 	}
 	raw := CreateTerminalRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Args); err != nil {
+		return propertyError(err, "CreateTerminalRequest", "args")
+	}
+	if _, err := decodeField(raw.Args, &v.Args); err != nil {
+		return propertyError(err, "CreateTerminalRequest", "args")
+	}
 	return nil
 }
 
@@ -3748,6 +3785,7 @@ func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
 		Meta        json.RawMessage `json:"_meta"`
 		Default     json.RawMessage `json:"default"`
 		Description json.RawMessage `json:"description"`
+		Enum        json.RawMessage `json:"enum"`
 		Title       json.RawMessage `json:"title"`
 	}
 	raw := ElicitationPropertySchemaString{plain: (*plain)(v)}
@@ -3757,6 +3795,12 @@ func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
+	if err := rejectNullItems[string](raw.Enum); err != nil {
+		return propertyError(err, "ElicitationPropertySchemaString", "enum")
+	}
+	if _, err := decodeField(raw.Enum, &v.Enum); err != nil {
+		return propertyError(err, "ElicitationPropertySchemaString", "enum")
+	}
 	decodeLenient(raw.Title, &v.Title)
 	return nil
 }
@@ -4287,6 +4331,7 @@ func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
 		Meta        json.RawMessage `json:"_meta"`
 		Description json.RawMessage `json:"description"`
 		Properties  json.RawMessage `json:"properties"`
+		Required    json.RawMessage `json:"required"`
 		Title       json.RawMessage `json:"title"`
 		Type        json.RawMessage `json:"type"`
 	}
@@ -4300,6 +4345,12 @@ func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "ElicitationSchema", "properties")
 	} else if !decoded {
 		setDefault(&v.Properties, "{}")
+	}
+	if err := rejectNullItems[string](raw.Required); err != nil {
+		return propertyError(err, "ElicitationSchema", "required")
+	}
+	if _, err := decodeField(raw.Required, &v.Required); err != nil {
+		return propertyError(err, "ElicitationSchema", "required")
 	}
 	decodeLenient(raw.Title, &v.Title)
 	if !decodeLenient(raw.Type, &v.Type, shapeElicitationSchemaType) {
@@ -6315,14 +6366,21 @@ func (v *LoadSessionRequest) UnmarshalJSON(b []byte) error {
 	type plain LoadSessionRequest
 	type LoadSessionRequest struct {
 		*plain
-		Meta       json.RawMessage `json:"_meta"`
-		McpServers json.RawMessage `json:"mcpServers"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		McpServers            json.RawMessage `json:"mcpServers"`
 	}
 	raw := LoadSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "LoadSessionRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "LoadSessionRequest", "additionalDirectories")
+	}
 	if decoded, err := decodeField(raw.McpServers, &v.McpServers); err != nil {
 		return propertyError(err, "LoadSessionRequest", "mcpServers")
 	} else if !decoded && raw.McpServers != nil {
@@ -7093,6 +7151,9 @@ func (v *McpServerStdio) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Args); err != nil {
+		return propertyError(err, "McpServerStdio", "args")
+	}
 	if decoded, err := decodeField(raw.Args, &v.Args); err != nil {
 		return propertyError(err, "McpServerStdio", "args")
 	} else if !decoded && raw.Args != nil {
@@ -7150,12 +7211,19 @@ func (v *MultiSelectItemsString) UnmarshalJSON(b []byte) error {
 	type MultiSelectItemsString struct {
 		*plain
 		Meta json.RawMessage `json:"_meta"`
+		Enum json.RawMessage `json:"enum"`
 	}
 	raw := MultiSelectItemsString{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Enum); err != nil {
+		return propertyError(err, "MultiSelectItemsString", "enum")
+	}
+	if _, err := decodeField(raw.Enum, &v.Enum); err != nil {
+		return propertyError(err, "MultiSelectItemsString", "enum")
+	}
 	return nil
 }
 
@@ -7459,14 +7527,21 @@ func (v *NewSessionRequest) UnmarshalJSON(b []byte) error {
 	type plain NewSessionRequest
 	type NewSessionRequest struct {
 		*plain
-		Meta       json.RawMessage `json:"_meta"`
-		McpServers json.RawMessage `json:"mcpServers"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		McpServers            json.RawMessage `json:"mcpServers"`
 	}
 	raw := NewSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "NewSessionRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "NewSessionRequest", "additionalDirectories")
+	}
 	if decoded, err := decodeField(raw.McpServers, &v.McpServers); err != nil {
 		return propertyError(err, "NewSessionRequest", "mcpServers")
 	} else if !decoded && raw.McpServers != nil {
@@ -9367,13 +9442,20 @@ func (v *ResumeSessionRequest) UnmarshalJSON(b []byte) error {
 	type plain ResumeSessionRequest
 	type ResumeSessionRequest struct {
 		*plain
-		Meta json.RawMessage `json:"_meta"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
 	}
 	raw := ResumeSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "ResumeSessionRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "ResumeSessionRequest", "additionalDirectories")
+	}
 	return nil
 }
 
@@ -11986,17 +12068,26 @@ func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
 	type plain SessionSubagentUpdate
 	type SessionSubagentUpdate struct {
 		*plain
-		Meta         json.RawMessage `json:"_meta"`
-		Capabilities json.RawMessage `json:"capabilities"`
-		Description  json.RawMessage `json:"description"`
-		State        json.RawMessage `json:"state"`
-		Title        json.RawMessage `json:"title"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		Capabilities          json.RawMessage `json:"capabilities"`
+		Description           json.RawMessage `json:"description"`
+		State                 json.RawMessage `json:"state"`
+		Title                 json.RawMessage `json:"title"`
 	}
 	raw := SessionSubagentUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodePatch(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "SessionSubagentUpdate", "additionalDirectories")
+	}
+	if raw.AdditionalDirectories != nil {
+		if err := json.Unmarshal(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+			return propertyError(err, "SessionSubagentUpdate", "additionalDirectories")
+		}
+	}
 	decodePatch(raw.Capabilities, &v.Capabilities)
 	decodePatch(raw.Description, &v.Description)
 	decodePatch(raw.State, &v.State, shapeStateUpdate)
@@ -13986,12 +14077,19 @@ func (v *StringMultiSelectItems) UnmarshalJSON(b []byte) error {
 	type StringMultiSelectItems struct {
 		*plain
 		Meta json.RawMessage `json:"_meta"`
+		Enum json.RawMessage `json:"enum"`
 	}
 	raw := StringMultiSelectItems{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Enum); err != nil {
+		return propertyError(err, "StringMultiSelectItems", "enum")
+	}
+	if _, err := decodeField(raw.Enum, &v.Enum); err != nil {
+		return propertyError(err, "StringMultiSelectItems", "enum")
+	}
 	return nil
 }
 
@@ -14060,6 +14158,7 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 		Meta        json.RawMessage `json:"_meta"`
 		Default     json.RawMessage `json:"default"`
 		Description json.RawMessage `json:"description"`
+		Enum        json.RawMessage `json:"enum"`
 		Title       json.RawMessage `json:"title"`
 	}
 	raw := StringPropertySchema{plain: (*plain)(v)}
@@ -14069,6 +14168,12 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
+	if err := rejectNullItems[string](raw.Enum); err != nil {
+		return propertyError(err, "StringPropertySchema", "enum")
+	}
+	if _, err := decodeField(raw.Enum, &v.Enum); err != nil {
+		return propertyError(err, "StringPropertySchema", "enum")
+	}
 	decodeLenient(raw.Title, &v.Title)
 	return nil
 }
@@ -14246,17 +14351,26 @@ func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
 	type plain SubagentUpdate
 	type SubagentUpdate struct {
 		*plain
-		Meta         json.RawMessage `json:"_meta"`
-		Capabilities json.RawMessage `json:"capabilities"`
-		Description  json.RawMessage `json:"description"`
-		State        json.RawMessage `json:"state"`
-		Title        json.RawMessage `json:"title"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		Capabilities          json.RawMessage `json:"capabilities"`
+		Description           json.RawMessage `json:"description"`
+		State                 json.RawMessage `json:"state"`
+		Title                 json.RawMessage `json:"title"`
 	}
 	raw := SubagentUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodePatch(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "SubagentUpdate", "additionalDirectories")
+	}
+	if raw.AdditionalDirectories != nil {
+		if err := json.Unmarshal(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+			return propertyError(err, "SubagentUpdate", "additionalDirectories")
+		}
+	}
 	decodePatch(raw.Capabilities, &v.Capabilities)
 	decodePatch(raw.Description, &v.Description)
 	decodePatch(raw.State, &v.State, shapeStateUpdate)
@@ -15705,13 +15819,20 @@ func (v *UnstableForkSessionRequest) UnmarshalJSON(b []byte) error {
 	type plain UnstableForkSessionRequest
 	type UnstableForkSessionRequest struct {
 		*plain
-		Meta json.RawMessage `json:"_meta"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
 	}
 	raw := UnstableForkSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "UnstableForkSessionRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "UnstableForkSessionRequest", "additionalDirectories")
+	}
 	return nil
 }
 
@@ -16352,13 +16473,20 @@ func (v *UnstableSessionOptionsRequest) UnmarshalJSON(b []byte) error {
 	type plain UnstableSessionOptionsRequest
 	type UnstableSessionOptionsRequest struct {
 		*plain
-		Meta json.RawMessage `json:"_meta"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
 	}
 	raw := UnstableSessionOptionsRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "UnstableSessionOptionsRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "UnstableSessionOptionsRequest", "additionalDirectories")
+	}
 	return nil
 }
 
@@ -16555,13 +16683,20 @@ func (v *UnstableSetProviderRequest) UnmarshalJSON(b []byte) error {
 	type plain UnstableSetProviderRequest
 	type UnstableSetProviderRequest struct {
 		*plain
-		Meta json.RawMessage `json:"_meta"`
+		Meta    json.RawMessage `json:"_meta"`
+		Headers json.RawMessage `json:"headers"`
 	}
 	raw := UnstableSetProviderRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Headers); err != nil {
+		return propertyError(err, "UnstableSetProviderRequest", "headers")
+	}
+	if _, err := decodeField(raw.Headers, &v.Headers); err != nil {
+		return propertyError(err, "UnstableSetProviderRequest", "headers")
+	}
 	return nil
 }
 
@@ -18020,6 +18155,27 @@ func propertyError(err error, structName, prop string) error {
 		}
 	}
 	return err
+}
+
+// rejectNullItems returns an error when raw is an array with a null item or
+// an object with a null member value. encoding/json reads one as the zero value
+// of T, the type of the items or values, and the schema does not allow it there.
+func rejectNullItems[T any](raw json.RawMessage) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	open, _ := dec.Token()
+	for dec.More() {
+		if open == json.Delim('{') {
+			dec.Token()
+		}
+		var item json.RawMessage
+		if dec.Decode(&item) == nil && string(item) == "null" {
+			return &json.UnmarshalTypeError{
+				Type:  reflect.TypeOf((*T)(nil)).Elem(),
+				Value: "null",
+			}
+		}
+	}
+	return nil
 }
 
 // decodePatch decodes a patch field that has x-deserialize-default-on-error.

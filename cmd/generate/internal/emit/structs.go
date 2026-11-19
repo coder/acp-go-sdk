@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/ir"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
@@ -23,6 +24,9 @@ type fieldPlan struct {
 	// shape is the shapeID constant that a lenient decoder checks the
 	// decoded value, or each decoded item, against; nil for none.
 	shape Code
+	// nonNullItem is the Go type of the items or member values that the
+	// decoder rejects null for (typesBuilder.nonNullItem); nil for none.
+	nonNullItem Code
 }
 
 func (p fieldPlan) hasFallback() bool {
@@ -31,7 +35,7 @@ func (p fieldPlan) hasFallback() bool {
 
 func (p fieldPlan) customDecode() bool {
 	lenient := p.field.Lenient
-	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems
+	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems || p.nonNullItem != nil
 }
 
 // patches returns the patch fields of plans.
@@ -55,7 +59,7 @@ func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 }
 
 func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
-	p := fieldPlan{field: field, patch: b.patch[field.Def], nullAsAbsent: b.nullAsAbsent[field.Def]}
+	p := fieldPlan{field: field, patch: b.patch[field.Def], nullAsAbsent: b.nullAsAbsent[field.Def], nonNullItem: b.nonNullItem(field)}
 	def, lenient := field.Def, field.Lenient
 	if p.patch {
 		// A patch field reads absent, null, and a value apart, so it has no
@@ -89,6 +93,58 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 		p.shape = b.shapes.site(owner, field, fieldType(field))
 	}
 	return p
+}
+
+// nonNullItem returns the Go type of the items of field, an array, or of its
+// member values, a map, when the decoder must reject a null one: the type is a
+// scalar, which encoding/json reads null into as its zero value, the item or
+// value schema does not accept null, and the field has no hint that tolerates
+// a bad value. It returns nil otherwise.
+func (b *typesBuilder) nonNullItem(field ir.Field) Code {
+	if field.Lenient.DefaultOnError || field.Lenient.SkipInvalidItems {
+		return nil
+	}
+	def := field.Def
+	if nonNull := nonNullAlternative(def); b.patch[def] && nonNull != nil {
+		// A patch field holds a value of its schema without null
+		// (patchValueType).
+		def = nonNull
+	}
+	var item *load.Definition
+	switch ir.PrimaryType(def) {
+	case "array":
+		item = def.Items
+	case "object":
+		if len(def.Properties) == 0 && def.Ref == "" && !freeMembers(def) {
+			item = def.AdditionalProperties.Schema
+		}
+	}
+	if item == nil || !b.scalar(item) || acceptsNull(b.schema, item) {
+		return nil
+	}
+	return jenTypeFor(item)
+}
+
+// scalar reports whether the Go type of d is a string, a number, or a boolean,
+// or a type that buildTypesJen defines as one of them.
+func (b *typesBuilder) scalar(d *load.Definition) bool {
+	if d.Ref != "" {
+		def := b.schema.Defs[strings.TrimPrefix(d.Ref, "#/$defs/")]
+		switch {
+		case def == nil:
+			return false
+		case len(def.Enum) > 0, isStringConstUnion(def), isOpenStringEnum(def):
+			return true
+		case len(def.AnyOf) > 0, len(def.OneOf) > 0:
+			return false
+		}
+		d = def
+	}
+	switch ir.PrimaryType(d) {
+	case "string", "integer", "number", "boolean":
+		return true
+	}
+	return len(d.Enum) > 0
 }
 
 func mapsToSliceOrMap(d *load.Definition) bool {

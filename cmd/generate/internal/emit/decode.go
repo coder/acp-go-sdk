@@ -24,8 +24,18 @@ func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fie
 		Return(Id("plainFieldError").Call(Id("err"))),
 	)
 	for _, p := range plans {
+		if p.nonNullItem != nil {
+			check := Id("rejectNullItems").Types(p.nonNullItem).Call(Id("raw").Dot(p.field.Name))
+			g.If(Id("err").Op(":=").Add(check), Id("err").Op("!=").Nil()).Block(propertyFail(name, p.field.Prop))
+		}
 		g.Add(decodeStmt(p, name, recv))
 	}
+}
+
+// propertyFail returns the error err of decoding the raw property prop of
+// structName.
+func propertyFail(structName, prop string) Code {
+	return Return(Id("propertyError").Call(Id("err"), Lit(structName), Lit(prop)))
 }
 
 func decodeStmt(p fieldPlan, structName, recv string) Code {
@@ -46,10 +56,16 @@ func decodeStmt(p fieldPlan, structName, recv string) Code {
 		return notDecoded
 	}
 	fallback := Id("setDefault").Call(Op("&").Id(recv).Dot(p.field.Name), Lit(p.fallbackJSON))
+	fail := propertyFail(structName, p.field.Prop)
 
+	if p.patch && !p.field.Lenient.DefaultOnError {
+		// A patch field without hints is raw only for its null item check
+		// (nonNullItem). Patch.UnmarshalJSON reads it as it would in place.
+		decode := Qual("encoding/json", "Unmarshal").Call(raw(), Op("&").Id(recv).Dot(p.field.Name))
+		return If(raw().Op("!=").Nil()).Block(If(Id("err").Op(":=").Add(decode), Id("err").Op("!=").Nil()).Block(fail))
+	}
 	if p.patch {
-		// planFor allows only default-on-error on a patch field that
-		// decodes here.
+		// planFor allows only default-on-error on a lenient patch field.
 		helper := "decodePatch"
 		if p.field.Lenient.SkipInvalidItems {
 			helper = "decodePatchItems"
@@ -73,7 +89,6 @@ func decodeStmt(p fieldPlan, structName, recv string) Code {
 	if p.field.Lenient.SkipInvalidItems {
 		helper = "decodeItems"
 	}
-	fail := Return(Id("propertyError").Call(Id("err"), Lit(structName), Lit(p.field.Prop)))
 	if !p.fallbackOnAbsent && !p.fallbackOnNull {
 		return If(List(Id("_"), Id("err")).Op(":=").Id(helper).Call(args...), Id("err").Op("!=").Nil()).Block(fail)
 	}
@@ -188,6 +203,28 @@ func (b *typesBuilder) emitSupport() {
 			),
 		),
 		Return(Id("err")),
+	)
+	f.Line()
+
+	f.Comment("rejectNullItems returns an error when raw is an array with a null item or")
+	f.Comment("an object with a null member value. encoding/json reads one as the zero value")
+	f.Comment("of T, the type of the items or values, and the schema does not allow it there.")
+	f.Func().Id("rejectNullItems").Types(Id("T").Any()).Params(rawParam()).Error().Block(
+		Id("dec").Op(":=").Qual("encoding/json", "NewDecoder").Call(Qual("bytes", "NewReader").Call(Id("raw"))),
+		List(Id("open"), Id("_")).Op(":=").Id("dec").Dot("Token").Call(),
+		For(Id("dec").Dot("More").Call()).Block(
+			If(Id("open").Op("==").Qual("encoding/json", "Delim").Call(LitRune('{'))).Block(
+				Id("dec").Dot("Token").Call(),
+			),
+			Var().Id("item").Qual("encoding/json", "RawMessage"),
+			If(Id("dec").Dot("Decode").Call(Op("&").Id("item")).Op("==").Nil().Op("&&").Id("string").Call(Id("item")).Op("==").Lit("null")).Block(
+				Return(Op("&").Qual("encoding/json", "UnmarshalTypeError").Values(Dict{
+					Id("Value"): Lit("null"),
+					Id("Type"):  Qual("reflect", "TypeOf").Call(Parens(Op("*").Id("T")).Call(Nil())).Dot("Elem").Call(),
+				})),
+			),
+		),
+		Return(Nil()),
 	)
 	f.Line()
 

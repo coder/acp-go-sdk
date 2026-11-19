@@ -5,14 +5,13 @@
 #   check.sh --update-fingerprint   record the covered code as synced
 #
 # Exit codes:
-#   0  every config gave its expected result and the covered code matches
+#   0  every config passed and the covered code matches
 #      fingerprint.txt
-#   1  a property failed that should hold, or a config that should fail
-#      passed: read the TLC output named in the summary
+#   1  a property failed: read the TLC output named in the summary
 #   2  setup or drift error: a tool is missing, or check.sh cannot find a
 #      line of connection.go that the model depends on
-#   3  every result was as expected, but covered functions changed since
-#      the sync commit: review the mapping in SKILL.md
+#   3  every config passed, but covered code changed since the sync
+#      commit: review the mapping in SKILL.md
 set -euo pipefail
 # shellcheck disable=SC2329 # called by the ERR trap
 on_err() {
@@ -32,11 +31,11 @@ TLA_VERSION=1.7.4
 TLA_SHA256=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 TLA_URL=https://github.com/tlaplus/tlaplus/releases/download/v$TLA_VERSION/tla2tools.jar
 
-# config:expected TLC exit code. 0 = pass, 13 = liveness violation.
-CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0
-	inbound-request.cfg:0 inbound-slow-handler.cfg:0 inbound-nested.cfg:0 inbound-nested-peer.cfg:0
-	inbound-call.cfg:0 inbound-call-peer.cfg:0)
-DEEP_CONFIGS=(deep-two-callers.cfg:0)
+# Every config must pass.
+CONFIGS=(barrier.cfg slow-handler.cfg drain-timeout.cfg nested-handler.cfg
+	inbound-request.cfg inbound-slow-handler.cfg inbound-nested.cfg inbound-nested-peer.cfg
+	inbound-call.cfg inbound-call-peer.cfg)
+DEEP_CONFIGS=(deep-two-callers.cfg)
 
 COVERED=(
 	"func NewConnection("
@@ -432,10 +431,8 @@ failed=0
 broken=0
 stale=0
 echo
-printf '%-24s %-10s %-9s %s\n' CONFIG EXPECTED RESULT "TLC OUTPUT"
-for entry in "${run_list[@]}"; do
-	cfg=${entry%%:*}
-	want=${entry##*:}
+printf '%-24s %-9s %s\n' CONFIG RESULT "TLC OUTPUT"
+for cfg in "${run_list[@]}"; do
 	work=$(mktemp -d "${TMPDIR:-/tmp}/acp-barrier-run.XXXXXX")
 	cp "$SKILL_DIR/$SPEC.tla" "$work/"
 	cat "$SKILL_DIR/$cfg" "$OUT/facts.cfg" >"$work/$cfg"
@@ -453,29 +450,20 @@ for entry in "${run_list[@]}"; do
 	13) res=liveness ;;
 	*) res="error($got)" ;;
 	esac
-	case $want in
-	0) exp=pass ;;
-	13) exp=liveness ;;
-	esac
-	printf '%-24s %-10s %-9s %s\n' "$cfg" "$exp" "$res" "$OUT/${cfg%.cfg}.out"
+	printf '%-24s %-9s %s\n' "$cfg" "$res" "$OUT/${cfg%.cfg}.out"
 	case $got in
 	11) echo "  rule: NoDeadlock" ;;
 	12) sed -n 's/^Error: Invariant \(.*\) is violated.*/  rule: \1/p' "$OUT/${cfg%.cfg}.out" | head -n 1 ;;
 	13) echo "  rule: one of the PROPERTIES in $cfg (TLC does not say which; /statechart names it)" ;;
 	esac
-	if [ "$got" != "$want" ]; then
-		case $got in
-		0)
-			echo "  $cfg passed, but it should fail. Update SKILL.md and its expected result." >&2
-			failed=1
-			;;
-		11 | 12 | 13) failed=1 ;;
-		*)
-			echo "  TLC did not finish. Read the output: this is a model or setup error." >&2
-			broken=1
-			;;
-		esac
-	fi
+	case $got in
+	0) ;;
+	11 | 12 | 13) failed=1 ;;
+	*)
+		echo "  TLC did not finish. Read the output: this is a model or setup error." >&2
+		broken=1
+		;;
+	esac
 done
 
 # ---- Is the covered code still the code that was synced? -------------------

@@ -942,13 +942,7 @@ ShutdownCompletes == [](connDone => <>inboundDone)
 InboundHandlerAfterNotes ==
     \A q \in InReqs : result[q] = "ok" => inOkAtExit[q]
 
-\* The same for every handler start, also after a disconnect. It fails by
-\* design: after a disconnect the handler starts with a canceled ctx, while
-\* an earlier handler can still run.
-InboundHandlerAfterNotesEvenOnDisconnect ==
-    \A q \in InReqs : inStart[q] # "none" => inOkAtExit[q]
-
-\* waitNotificationsUpTo panics when its target exceeds
+\* waitNotifications panics when its target exceeds
 \* lastEnqueuedNotificationSeq, or when completed exceeds it.
 NoWatermarkPanic ==
     /\ completed <= lastEnq

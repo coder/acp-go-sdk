@@ -185,7 +185,8 @@ func TestUnion_UnmarshalJSON_SelectsAVariantByExactKeys(t *testing.T) {
 // on. Idle is IdleStateUpdate: its discriminator is a property of its own with
 // x-deserialize-default-on-error, and it has a catch-all "other" variant and a
 // "none" variant. Items is MultiSelectItems, whose catch-all comes before a
-// variant without a const. Problem is McpError, a struct that keeps the
+// variant without a const and must refuse the tag of the string variant when
+// that variant does not decode. Problem is McpError, a struct that keeps the
 // members the schema does not name. Strict has a "none" variant and a
 // discriminator without the hint. State is StateUpdate, whose idle variant
 // holds Idle. No released schema has the last two: Marked has a required
@@ -208,7 +209,8 @@ const catchAllUnionSchema = `{"$defs": {
   "Titled": {"type": "object", "required": ["anyOf"], "properties": {
     "anyOf": {"type": "array", "items": {"type": "string"}}}},
   "Items": {"anyOf": [
-    {"type": "object", "required": ["type"], "properties": {"type": {"type": "string", "const": "string"}}},
+    {"type": "object", "required": ["type"], "properties": {"type": {"type": "string", "const": "string"},
+      "enum": {"type": "array", "items": {"type": "string"}}}},
     {"title": "other", "type": "object", "required": ["type"], "properties": {"type": {"type": "string"}},
       "additionalProperties": true},
     {"title": "titled", "allOf": [{"$ref": "#/$defs/Titled"}]}
@@ -274,6 +276,7 @@ func TestCatchAllUnions_RoundTrip(t *testing.T) {
 		{func() any { return new(Items) }, ` + "`" + `{"type":"string"}` + "`" + `, ""},
 		{func() any { return new(Items) }, ` + "`" + `{"type":"future","limit":2}` + "`" + `, ""},
 		{func() any { return new(Items) }, ` + "`" + `{"anyOf":["a","b"]}` + "`" + `, ""},
+		{func() any { return new(Items) }, ` + "`" + `{"type":"string","enum":5,"anyOf":["a"]}` + "`" + `, ` + "`" + `{"anyOf":["a"]}` + "`" + `},
 		{func() any { return new(Problem) }, ` + "`" + `{"code":1,"data":{"k":"v"},"retry":true}` + "`" + `, ""},
 		{func() any { return new(Bag) }, ` + "`" + `{"a":1,"b":[true]}` + "`" + `, ""},
 		{func() any { return new(Bag) }, ` + "`" + `{}` + "`" + `, ""},
@@ -318,7 +321,7 @@ func TestCatchAllUnions_SelectTheVariant(t *testing.T) {
 		t.Errorf("none variant of an absent, a null and a malformed stop reason = %v, %v, %v, want all set", absent.None, null.None, malformed.None)
 	}
 	var items Items
-	for _, in := range []string{` + "`" + `{"type":null}` + "`" + `, ` + "`" + `{"type":5}` + "`" + `, ` + "`" + `{}` + "`" + `} {
+	for _, in := range []string{` + "`" + `{"type":null}` + "`" + `, ` + "`" + `{"type":5}` + "`" + `, ` + "`" + `{}` + "`" + `, ` + "`" + `{"type":"string","enum":5}` + "`" + `} {
 		if err := json.Unmarshal([]byte(in), &items); err == nil {
 			t.Errorf("unmarshal %s gives %+v, want an error", in, items)
 		}

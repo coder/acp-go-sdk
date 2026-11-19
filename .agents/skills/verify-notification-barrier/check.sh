@@ -60,6 +60,9 @@ COVERED=(
 	"func (c *Connection) Done("
 	"func (c *Connection) waitForNotificationDrain("
 )
+# Constants that no covered function holds: the queue capacity, which the
+# model bounds at QueueCap, and the drain timeout.
+COVERED_CONSTS=(defaultMaxQueuedNotifications notificationQueueDrainTimeout)
 
 die() {
 	echo "check.sh: $*" >&2
@@ -85,6 +88,14 @@ need_body() {
 	printf '%s\n' "$b"
 }
 
+# need_const NAME: print the line that declares the constant NAME.
+need_const() {
+	local l
+	l=$(NAME="$1" awk '$1 == ENVIRON["NAME"] && $2 == "="' "$SRC")
+	[ "$(grep -c . <<<"$l")" = 1 ] || drift "constant not found once: $1"
+	printf '%s\n' "$l"
+}
+
 has() { grep -Fq -- "$2" <<<"$1"; }
 line_of() { { grep -Fn -- "$2" <<<"$1" || true; } | head -n 1 | cut -d: -f1; }
 count() { grep -Fc -- "$2" <<<"$1" || true; }
@@ -93,6 +104,9 @@ fingerprint() {
 	local sig
 	for sig in "${COVERED[@]}"; do
 		printf '%s  %s\n' "$(need_body "$sig" | sha256sum | cut -d' ' -f1)" "$sig"
+	done
+	for sig in "${COVERED_CONSTS[@]}"; do
+		printf '%s  %s\n' "$(need_const "$sig" | sha256sum | cut -d' ' -f1)" "$sig"
 	done
 }
 
@@ -472,7 +486,7 @@ if [ ! -f "$SKILL_DIR/fingerprint.txt" ]; then
 	echo "No fingerprint.txt. Run check.sh --update-fingerprint after you review the mapping."
 	stale=1
 elif ! diff <(fingerprint) "$SKILL_DIR/fingerprint.txt" >"$OUT/fingerprint.diff"; then
-	echo "STALE: these covered functions changed since the sync commit:"
+	echo "STALE: this covered code changed since the sync commit:"
 	grep '^<' "$OUT/fingerprint.diff" | sed 's/^< [0-9a-f]*  /  /'
 	echo "Review the mapping in SKILL.md before you trust a pass."
 	stale=1

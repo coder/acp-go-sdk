@@ -26,10 +26,11 @@
 //
 // "{{name.path}}" inside a JSON string of params, expect or the "where" of a
 // "waitFor" is replaced with the string at that path of the message saved as
-// name. An agent request gets the answer of the newest rule for its method
-// whose "where" it matches (a rule without "where" matches every request), or
-// a -32601 error when no rule matches. "waitFor" matches the agent's
-// notifications and its requests.
+// name. Numbers in expect and where compare by exact value, so 1 equals 1.0
+// and no digit of an integer above 2^53 is lost. An agent request gets the
+// answer of the newest rule for its method whose "where" it matches (a rule
+// without "where" matches every request), or a -32601 error when no rule
+// matches. "waitFor" matches the agent's notifications and its requests.
 package main
 
 import (

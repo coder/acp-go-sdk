@@ -34,7 +34,8 @@ TLA_URL=https://github.com/tlaplus/tlaplus/releases/download/v$TLA_VERSION/tla2t
 
 # config:expected TLC exit code. 0 = pass, 13 = liveness violation.
 CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0
-	inbound-request.cfg:0 inbound-slow-handler.cfg:0 inbound-nested.cfg:0 inbound-nested-peer.cfg:0)
+	inbound-request.cfg:0 inbound-slow-handler.cfg:0 inbound-nested.cfg:0 inbound-nested-peer.cfg:0
+	inbound-call.cfg:0 inbound-call-peer.cfg:0)
 DEEP_CONFIGS=(deep-two-callers.cfg:0)
 
 COVERED=(
@@ -154,9 +155,6 @@ has "$B_recv" "c.handleResponse(&msg)" || drift "receive() no longer calls handl
 has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m}:" ||
 	drift "receive() no longer queues notifications with a non-blocking send"
 has "$B_recv" "c.lastEnqueuedNotificationSeq++" || drift "receive() no longer numbers notifications"
-
-has "$B_upto" "return c.waitNotifications(ctx, target, false)" ||
-	drift "waitNotificationsUpTo is no longer waitNotifications(ctx, target, false)"
 
 # The wait loop, with or without the release while the running handler waits
 # on the peer.
@@ -283,6 +281,27 @@ else
 	InboundStopsAtPeerWait=FALSE
 fi
 
+# After its response, a request that a request handler makes with its reqCtx
+# also stops at a peer wait. That needs the handlingRequest value on reqCtx,
+# the handler call with reqCtx, and waitNotificationsUpTo setting
+# stopAtPeerWait for that value.
+UPTO_CTX="h, ok := ctx.Value(handlingRequestKey{}).(handlingRequest)"
+UPTO_STOP="return c.waitNotifications(ctx, target, ok && h.conn == c)"
+REQ_CTX="reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})"
+if has "$B_upto" "$UPTO_CTX" && has "$B_upto" "$UPTO_STOP"; then
+	upto_stop=TRUE
+elif has "$B_upto" "return c.waitNotifications(ctx, target, false)"; then
+	upto_stop=FALSE
+else
+	drift "waitNotificationsUpTo calls waitNotifications in a new form"
+fi
+if [ "$upto_stop" = TRUE ] && [ "$LoopStopsAtPeerWait" = TRUE ] &&
+	has "$B_recv" "$REQ_CTX" && has "$B_recv" "c.handleInbound(reqCtx, m)"; then
+	RequestCtxStopsAtPeerWait=TRUE
+else
+	RequestCtxStopsAtPeerWait=FALSE
+fi
+
 # startPeerWait around waitForResponse, in both request functions.
 has "$B_peer" "seq, ok := c.notificationSeq(ctx)" ||
 	drift "startPeerWait no longer finds the running handler with notificationSeq(ctx)"
@@ -358,7 +377,8 @@ FACTS="CONSTANTS
     PeerWaitCounts = $PeerWaitCounts
     PeerWaitBroadcasts = $PeerWaitBroadcasts
     PeerWaitEnds = $PeerWaitEnds
-    PostWaitChecksCtx = $PostWaitChecksCtx"
+    PostWaitChecksCtx = $PostWaitChecksCtx
+    RequestCtxStopsAtPeerWait = $RequestCtxStopsAtPeerWait"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from connection.go:"
 sed -n '2,$p' "$OUT/facts.cfg"

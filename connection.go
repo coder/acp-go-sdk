@@ -93,6 +93,27 @@ type cancelRequestParams struct {
 	RequestID json.RawMessage `json:"requestId"`
 }
 
+// MethodHandler handles a request or a notification from the peer. The
+// connection calls it by these rules:
+//
+//   - Notification handlers run one at a time, in arrival order, on one
+//     goroutine.
+//   - Each request handler runs on its own goroutine. It starts after the
+//     handlers of all notifications that arrived before the request have
+//     returned, so a slow notification handler delays every later
+//     notification and, except as the next two rules say, every later
+//     request. Notifications that arrive after the request do not delay it.
+//   - A request handler also starts while the running notification handler
+//     waits for the response to a request that it made with its ctx, because
+//     the peer can need this request's answer first.
+//   - If the peer disconnects while a request waits to start, its handler
+//     starts at once with a cancelled ctx.
+//   - If a $/cancel_request for the request arrives while the request waits to
+//     start, the peer gets a -32800 error response and the handler never runs.
+//     A $/cancel_request that arrives while the handler runs cancels its ctx.
+//
+// A request that a handler makes waits for notification handlers too, as
+// SendRequest describes.
 type MethodHandler func(ctx context.Context, method string, params json.RawMessage) (any, *RequestError)
 
 // Connection is a simple JSON-RPC 2.0 connection over line-delimited JSON.
@@ -145,6 +166,12 @@ type Connection struct {
 	notificationQueue chan queuedNotification
 }
 
+// NewConnection returns a Connection that writes messages to peerInput and
+// reads them from peerOutput. It starts reading at once and calls handler for
+// each request and notification from the peer. Notification handlers run one
+// at a time, in arrival order. A request handler waits for the handlers of the
+// notifications that arrived before the request. MethodHandler lists these
+// rules and their exceptions.
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())

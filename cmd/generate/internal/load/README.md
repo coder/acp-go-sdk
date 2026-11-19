@@ -15,12 +15,14 @@ Package `load` reads the generator inputs from the schema directory into minimal
 - `type Members struct { Open bool; Schema *Definition }`: the `additionalProperties` keyword. `Open` is set only by the literal `true`, and `Schema` only by an object, the schema of each member that `properties` does not name. `false` and any other value leave both unset [load.go:Members] [load_test.go:TestDefinition_UnmarshalJSON_ReadsAdditionalProperties]
 - `func (m *Members) UnmarshalJSON(b []byte) error` [load.go:Members.UnmarshalJSON]
 - `func (d *Definition) UnmarshalJSON(b []byte) error` decodes the object and boolean JSON Schema forms [load.go:Definition.UnmarshalJSON]
+- `func (d *Definition) IsTrue() bool` reports whether `d` is the boolean schema `true` or the empty schema `{}`, which every value fits. The empty schema is a JSON object with no keys: one whose only keywords `Definition` does not model, such as `{"pattern": "x"}`, is not empty. `func (d *Definition) IsFalse() bool` reports whether `d` is the boolean schema `false`, which no value fits [load.go:Definition.IsTrue, Definition.IsFalse, Definition.UnmarshalJSON]
 - `func ReadSchemaVersion(schemaDir string) (string, error)` reads `version`, the ACP schema release, without surrounding whitespace. An empty file is an error [load.go:ReadSchemaVersion] [load_test.go:TestReadSchemaVersion]
 - `func ReadMeta(schemaDir string) (*Meta, error)` reads `meta.json` [load.go:ReadMeta]
 - `func ReadSchema(schemaDir string) (*Schema, error)` reads `schema.json` [load.go:ReadSchema]
 - `func ReadMetaUnstable(schemaDir string) (*Meta, bool, error)` reads `meta.unstable.json`. The `bool` reports whether the file exists [load.go:ReadMetaUnstable]
 - `func ReadSchemaUnstable(schemaDir string) (*Schema, bool, error)` reads `schema.unstable.json`. The `bool` reports whether the file exists [load.go:ReadSchemaUnstable]
 - `func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta *Meta, unstableSchema *Schema) (*Meta, *Schema, error)` returns the combined meta and schema [merge.go:MergeStableAndUnstable]
+- `func (s *Schema) RefLoop() error` returns an error that names a chain of `$defs` entries that refers back to its first entry in place, through `$ref`, `allOf`, `anyOf`, `oneOf` or `not`, such as `$ref loop: A -> B -> A`, and nil when there is none. A `$ref` under `properties`, `items` or `additionalProperties` is no part of a loop. JSON Schema 2020-12 leaves such a loop undefined (section 9.4.1) [refs.go:Schema.RefLoop, inPlaceRefs]
 
 ## Invariants
 

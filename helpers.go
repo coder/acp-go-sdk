@@ -1,6 +1,9 @@
 package acp
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 // TextBlock constructs a text content block.
 func TextBlock(text string) ContentBlock {
@@ -348,6 +351,17 @@ func NewElicitationContentValueInteger(n int64) ElicitationContentValue {
 func NewElicitationContentValueNumber(f float64) ElicitationContentValue {
 	v := ElicitationContentValueNumber(f)
 	return ElicitationContentValue{Number: &v}
+}
+
+// MarshalJSON encodes n as a JSON number with a fraction or exponent, so 2
+// encodes as 2.0. The Rust SDK reads an integral number such as 2 as an
+// integer, and 2.0 as a number.
+func (n ElicitationContentValueNumber) MarshalJSON() ([]byte, error) {
+	b, err := json.Marshal(float64(n))
+	if err != nil || bytes.ContainsAny(b, ".eE") {
+		return b, err
+	}
+	return append(b, ".0"...), nil
 }
 
 // NewElicitationContentValueBoolean returns the elicitation content value b.

@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Rust probe: read the same JSON values with the SDK and with the Rust crate
+# agent-client-protocol-schema (rustprobe/), and list each value that the two
+# read differently.
+#
+# usage: rust-diff
+# env: RUST_CASES  cases file, one {"id","def","json"} per line (default:
+#                  roundtrip/testdata/rust/cases.jsonl); a G2_PROBES file works
+#      VSB_ROOT    run folder root (default: ${TMPDIR:-/tmp}/verify-schema-bump)
+#      CARGO       cargo binary (default: cargo)
+#
+# It checks that the crate pinned in rustprobe/Cargo.lock was released from
+# the upstream commit of the schema-v<schema/version> tag, builds the probe,
+# and runs `go test ./roundtrip -run '^TestRust$'`. Exit 0 when the two SDKs
+# read every case alike. Needs the network for crates.io (first build) and
+# for the tag lookup.
+set -euo pipefail
+
+skill=$(cd "$(dirname "$0")/.." && pwd)
+root=$(git -C "$skill" rev-parse --show-toplevel)
+vsb=${VSB_ROOT:-${TMPDIR:-/tmp}/verify-schema-bump}
+cargo=${CARGO:-cargo}
+version=$(cat "$root/schema/version")
+run=$vsb/runs/rust-$version-$(date +%Y%m%d-%H%M%S)
+cases=$(realpath "${RUST_CASES:-$skill/roundtrip/testdata/rust/cases.jsonl}")
+manifest=$skill/rustprobe/Cargo.toml
+mkdir -p "$run"
+
+# The crate versions apart from the schema. Its .cargo_vcs_info.json names
+# the upstream commit it was published from; the schema release of that
+# commit is the one the crate's types follow.
+crate=agent-client-protocol-schema
+"$cargo" fetch --locked --manifest-path "$manifest"
+src=$("$cargo" metadata --locked --format-version 1 --manifest-path "$manifest" |
+	grep -oE "\"manifest_path\":\"[^\"]*/$crate-[0-9][^\"/]*/Cargo.toml\"" | head -1 |
+	sed -E 's/^"manifest_path":"(.*)\/Cargo.toml"$/\1/')
+crate_version=${src##*/"$crate"-}
+crate_commit=$(sed -nE 's/.*"sha1": *"([0-9a-f]+)".*/\1/p' "$src/.cargo_vcs_info.json")
+# Upstream tags 0.x schemas v<version>, 1.0 and later schema-v<version>.
+case $version in
+0.*) tag=v$version ;;
+*) tag=schema-v$version ;;
+esac
+tag_commit=$(git ls-remote https://github.com/agentclientprotocol/agent-client-protocol "refs/tags/$tag" "refs/tags/$tag^{}" |
+	tail -1 | cut -f1)
+echo "pin: $crate $crate_version is commit ${crate_commit:-?}; $tag is ${tag_commit:-?}" | tee "$run/summary.txt"
+if [ -z "$crate_commit" ] || [ "$crate_commit" != "$tag_commit" ]; then
+	echo "RUST FAIL: pin $crate in rustprobe/Cargo.toml to the release of $tag" | tee -a "$run/summary.txt"
+	exit 1
+fi
+
+"$cargo" build --release --locked --quiet --manifest-path "$manifest" --target-dir "$vsb/cache/rustprobe"
+cd "$skill"
+go run ./registrygen -sdk "$root" -out roundtrip/registry_gen_test.go >/dev/null
+status=0
+RUST_PROBE=$vsb/cache/rustprobe/release/rustprobe RUST_CASES=$cases \
+	go test ./roundtrip -run '^TestRust$' -count=1 -v >"$run/test.log" 2>&1 || status=$?
+sed -nE 's/^ +rust_test\.go:[0-9]+: (RUST .*)/\1/p' "$run/test.log" >"$run/details.txt"
+cat "$run/details.txt"
+grep -E '^(FAIL|ok|panic|#)' "$run/test.log" | grep -v '^FAIL$' | tee -a "$run/summary.txt" || true
+echo "evidence: $run"
+# go test passes when TestRust skips itself, and a failed TestRust that stopped
+# early (no cases, no probe output) compared nothing.
+if ! grep -oE 'SUMMARY rust: .*' "$run/test.log" | tee -a "$run/summary.txt"; then
+	echo "RUST FAIL: TestRust compared no cases; see $run/test.log"
+	exit 1
+fi
+if [ $status = 0 ]; then echo "RUST PASS"; else echo "RUST FAIL"; exit 1; fi

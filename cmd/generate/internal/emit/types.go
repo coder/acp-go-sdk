@@ -143,7 +143,12 @@ func appendDocComments(codeSlice []Code, desc string) []Code {
 }
 
 // WriteTypesJen emits go/types_gen.go with all types and the Agent/Client interfaces.
+// It returns the error of schema.RefLoop, since the walkers of buildTypesJen
+// would not return.
 func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
+	if err := schema.RefLoop(); err != nil {
+		return err
+	}
 	f, _ := buildTypesJen(schema, meta)
 	var buf bytes.Buffer
 	if err := f.Render(&buf); err != nil {
@@ -164,6 +169,7 @@ type typesBuilder struct {
 	// nullAsAbsent those of them that have no clear (ir.NullAsAbsent).
 	patch, nullAsAbsent map[*load.Definition]bool
 	usesPatch           bool
+	usesNilIf           bool
 	// validated memoizes validates per $defs entry.
 	validated map[string]bool
 }
@@ -274,6 +280,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	b.emitInterfaces("agent", meta.AgentMethods, groups)
 	b.emitInterfaces("client", meta.ClientMethods, groups)
 	b.emitSupport()
+	b.emitEncodeSupport()
 	return f, emitted
 }
 
@@ -952,6 +959,14 @@ func namedProperties(schema *load.Schema, d *load.Definition, seen map[*load.Def
 	return keys
 }
 
+// untaggedRefusesKnownTag lists the unions whose variants without a tag take
+// no value whose discriminator names a variant with one, even when that variant
+// does not decode it. The schema does not say so. The Rust SDK does it in code:
+// for AuthMethod, deserialize_agent_auth_method_fallback in
+// agent-client-protocol-schema 1.18.0, src/v1/agent.rs:1007-1028, keeps a
+// terminal method that fails its own schema from falling through to agent.
+var untaggedRefusesKnownTag = map[string]bool{"AuthMethod": true}
+
 // emitUnion emits the union wrapper type name and its variants. Its Validate
 // requires exactly one variant with exactlyOne (a oneOf), and one at least
 // otherwise. It then checks the wrapper's own fields and calls the Validate
@@ -991,6 +1006,11 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	// never by the order of the variants.
 	matchesByKeys := func(vi variantInfo) bool {
 		return vi.isObject && (len(vi.required) > 0 || len(vi.constPairs) > 0 || len(vi.nullKeys) > 0)
+	}
+	// matchesByItemKeys says that an array selects the variant by the keys of
+	// its items.
+	matchesByItemKeys := func(vi variantInfo) bool {
+		return vi.isArray && len(vi.arrayItemRequired) > 0
 	}
 	// requireKey returns the statement that clears match unless the JSON object
 	// obj has the required key. A null value counts only when def, the schema
@@ -1298,6 +1318,42 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	}
 	f.Type().Id(name).Struct(st...)
 	f.Line()
+	// switchSettled says that only the discriminator switch tries the variant:
+	// its only const is the required discriminator.
+	switchSettled := func(vi variantInfo) bool {
+		return vi.discValue != "" && len(vi.constPairs) == 1 && slices.Contains(vi.required, discKey)
+	}
+	// knownTags are the discriminator values of the variants that have one.
+	var knownTags []Code
+	for _, vi := range variants {
+		if vi.discValue != "" {
+			knownTags = append(knownTags, Lit(vi.discValue))
+		}
+	}
+	// refusesKnownTag says that the variant takes no value whose discriminator
+	// names a variant with a tag, even one that did not decode it. A catch-all
+	// does so, as its schema's "not" lists the known tags, and so do the
+	// variants without a tag in the unions of untaggedRefusesKnownTag.
+	refusesKnownTag := func(vi variantInfo) bool {
+		return len(knownTags) > 0 && (vi.openDiscriminator || (untaggedRefusesKnownTag[name] && vi.discValue == ""))
+	}
+	// fallsBack says that a variant can match the input by its tag or keys and
+	// fail to decode it. The decoder then tries the next variant, as serde
+	// does for an untagged enum.
+	fallsBack := len(knownTags) > 0 || slices.ContainsFunc(variants, func(vi variantInfo) bool {
+		return (matchesByKeys(vi) && !switchSettled(vi)) || matchesByItemKeys(vi)
+	})
+	// decodeVariant decodes the input into v, a value of the variant, or
+	// records that the variant matched and did not decode.
+	decodeVariant := func(vi variantInfo) []Code {
+		return []Code{
+			If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("==").Nil()).Block(
+				Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
+				Return(Nil()),
+			),
+			Id("failed").Op("=").Lit(true),
+		}
+	}
 	// Unmarshal
 	f.Func().Params(Id("u").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
 		g.Op("*").Id("u").Op("=").Id(name).Values()
@@ -1312,6 +1368,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			}
 			null.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
 		})
+		if fallsBack {
+			g.Comment("failed says that a variant matched and did not decode.")
+			g.Var().Id("failed").Bool()
+		}
 		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
 		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
 			if len(wrapperFields) > 0 {
@@ -1330,23 +1390,16 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			}
 			// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
 			if discKey != "" {
-				obj.BlockFunc(func(h *Group) {
-					h.Var().Id("disc").String()
-					h.If(List(Id("v"), Id("ok")).Op(":=").Id("m").Index(Lit(discKey)), Id("ok")).Block(
-						Qual("encoding/json", "Unmarshal").Call(Id("v"), Op("&").Id("disc")),
-					)
-					h.Switch(Id("disc")).BlockFunc(func(sw *Group) {
-						for _, vi := range variants {
-							if vi.discValue != "" {
-								sw.Case(Lit(vi.discValue)).Block(
-									Var().Id("v").Id(vi.typeName),
-									If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
-									Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
-									Return(Nil()),
-								)
-							}
+				obj.Var().Id("disc").String()
+				obj.If(List(Id("v"), Id("ok")).Op(":=").Id("m").Index(Lit(discKey)), Id("ok")).Block(
+					Qual("encoding/json", "Unmarshal").Call(Id("v"), Op("&").Id("disc")),
+				)
+				obj.Switch(Id("disc")).BlockFunc(func(sw *Group) {
+					for _, vi := range variants {
+						if vi.discValue != "" {
+							sw.Case(Lit(vi.discValue)).Block(append([]Code{Var().Id("v").Id(vi.typeName)}, decodeVariant(vi)...)...)
 						}
-					})
+					}
 				})
 			}
 			// A variant matches when the object has its required keys, each
@@ -1356,8 +1409,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			// reads null as the default. The switch above settled a variant
 			// whose only const is the required discriminator.
 			for _, vi := range variants {
-				switchSettled := vi.discValue != "" && len(vi.constPairs) == 1 && slices.Contains(vi.required, discKey)
-				if matchesByKeys(vi) && !switchSettled {
+				if matchesByKeys(vi) && !switchSettled(vi) {
 					obj.BlockFunc(func(h *Group) {
 						h.Var().Id("v").Id(vi.typeName)
 						h.Var().Id("match").Bool().Op("=").Lit(true)
@@ -1372,6 +1424,9 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 							}
 							h.Add(requireKey("m", rk, def))
 						}
+						if refusesKnownTag(vi) {
+							h.Switch(Id("disc")).Block(Case(knownTags...).Block(Id("match").Op("=").Lit(false)))
+						}
 						for _, pair := range vi.constPairs {
 							h.If(List(Id("raw"), Id("ok")).Op(":=").Id("m").Index(Lit(pair[0])), Id("ok")).Block(
 								Var().Id("value").String(),
@@ -1381,11 +1436,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 						for _, nk := range vi.nullKeys {
 							h.If(Id("raw").Op(":=").Id("string").Call(Id("m").Index(Lit(nk))), Id("raw").Op("!=").Lit("").Op("&&").Id("raw").Op("!=").Lit("null")).Block(Id("match").Op("=").Lit(false))
 						}
-						h.If(Id("match")).Block(
-							If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
-							Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
-							Return(Nil()),
-						)
+						h.If(Id("match")).Block(decodeVariant(vi)...)
 					})
 				}
 			}
@@ -1397,7 +1448,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		g.Var().Id("arr").Index().Map(String()).Qual("encoding/json", "RawMessage")
 		g.If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("arr")).Op("==").Nil()).BlockFunc(func(arr *Group) {
 			for _, vi := range variants {
-				if !vi.isArray || len(vi.arrayItemRequired) == 0 {
+				if !matchesByItemKeys(vi) {
 					continue
 				}
 				arr.BlockFunc(func(h *Group) {
@@ -1408,18 +1459,14 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 							loop.Add(requireKey("elem", rk, vi.arrayItemProps[rk]))
 						}
 					})
-					h.If(Id("match")).Block(
-						If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("!=").Nil()).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload")))),
-						Id("u").Dot(vi.fieldName).Op("=").Op("&").Id("v"),
-						Return(Nil()),
-					)
+					h.If(Id("match")).Block(decodeVariant(vi)...)
 				})
 			}
 		})
 		// A variant that matches by its keys had its turn above. The others
 		// are tried in order.
 		for _, vi := range variants {
-			if vi.isNull || matchesByKeys(vi) || (vi.isArray && len(vi.arrayItemRequired) > 0) {
+			if vi.isNull || matchesByKeys(vi) || matchesByItemKeys(vi) {
 				continue
 			}
 			decodes := Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("==").Nil()
@@ -1434,11 +1481,17 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				),
 			)
 		}
+		if fallsBack {
+			g.If(Id("failed")).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload"))))
+		}
 		g.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
 	})
 	// Marshal
 	f.Func().Params(Id("u").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
 		if len(wrapperFields) > 0 {
+			if slices.ContainsFunc(wrapperPlans, fieldPlan.encodesPointer) {
+				panic(fmt.Sprintf("union %q has an own patch field or a field that keeps an empty value, which its MarshalJSON does not encode", name))
+			}
 			g.Type().Id("plain").Id(name)
 			g.Id("own").Op(":=").Id("plain").Call(Id("u"))
 			emitFillNil(g, wrapperPlans, "own")

@@ -707,3 +707,107 @@ func TestAgentSideConnection_SessionNewestDropsWithNoOlderRequest(t *testing.T) 
 		t.Fatalf("sessionNewest keeps %d entries while no older request is in flight", left)
 	}
 }
+
+// A session/cancel queued behind a notification handler that waits on the
+// client reaches a running prompt late (#72 item 2):
+//  1. The client sends an extension notification. Its handler on the agent
+//     calls the client with its ctx and waits for the answer.
+//  2. The client sends a prompt. The peer-wait release starts it, and Prompt
+//     calls RequestPermission.
+//  3. The client sends session/cancel, then answers RequestPermission.
+//  4. RequestPermission returns while the cancel still waits behind the
+//     extension handler, so the prompt's ctx is still live.
+//  5. The client answers the extension call. The extension handler returns,
+//     the cancel runs, and the prompt's ctx ends.
+//
+// Promise: the cancel arrives late, but it arrives.
+func TestAgentSideConnection_SessionCancelReachesPromptLateAfterPeerWait(t *testing.T) {
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+	t.Cleanup(func() { _ = c2aW.Close(); _ = a2cW.Close() })
+
+	answerAsk := make(chan struct{})
+	var answerAskOnce sync.Once
+	t.Cleanup(func() { answerAskOnce.Do(func() { close(answerAsk) }) })
+	var client *ClientSideConnection
+	client = NewClientSideConnection(&clientFuncs{
+		HandleExtensionMethodFunc: func(_ context.Context, method string, _ json.RawMessage) (any, error) {
+			if method != "_ask" {
+				return nil, NewMethodNotFound(method)
+			}
+			<-answerAsk
+			return map[string]any{}, nil
+		},
+		RequestPermissionFunc: func(_ context.Context, p RequestPermissionRequest) (RequestPermissionResponse, error) {
+			// Cancel returns once the line is written, so the agent reads the
+			// cancel before this answer.
+			if err := client.Cancel(context.Background(), CancelNotification{SessionId: p.SessionId}); err != nil {
+				return RequestPermissionResponse{}, err
+			}
+			return RequestPermissionResponse{Outcome: RequestPermissionOutcome{Selected: &RequestPermissionOutcomeSelected{OptionId: "allow"}}}, nil
+		},
+	}, c2aW, a2cR)
+	client.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	liveAfterPermission := make(chan bool, 1)
+	endedLater := make(chan bool, 1)
+	var agent *AgentSideConnection
+	agent = NewAgentSideConnection(agentFuncs{
+		HandleExtensionMethodFunc: func(ctx context.Context, method string, _ json.RawMessage) (any, error) {
+			if method != "_note" {
+				return nil, NewMethodNotFound(method)
+			}
+			_, err := agent.CallExtension(ctx, "_ask", map[string]any{})
+			return nil, err
+		},
+		PromptFunc: func(ctx context.Context, p PromptRequest) (PromptResponse, error) {
+			_, err := agent.RequestPermission(ctx, RequestPermissionRequest{
+				SessionId: p.SessionId,
+				ToolCall:  ToolCallUpdate{ToolCallId: "call_1", Title: PatchSet("Run")},
+				Options:   []PermissionOption{{Kind: PermissionOptionKindAllowOnce, Name: "Allow", OptionId: "allow"}},
+			})
+			if err != nil {
+				return PromptResponse{}, err
+			}
+			liveAfterPermission <- ctx.Err() == nil
+			select {
+			case <-ctx.Done():
+				endedLater <- true
+			case <-time.After(5 * time.Second):
+				endedLater <- false
+			}
+			return PromptResponse{StopReason: StopReasonCancelled}, nil
+		},
+	}, a2cW, c2aR)
+	agent.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if err := client.NotifyExtension(context.Background(), "_note", map[string]any{}); err != nil {
+		t.Fatalf("SETUP: %v", err)
+	}
+	promptErr := make(chan error, 1)
+	go func() {
+		_, err := client.Prompt(context.Background(), PromptRequest{SessionId: "s", Prompt: []ContentBlock{TextBlock("hi")}})
+		promptErr <- err
+	}()
+
+	select {
+	case live := <-liveAfterPermission:
+		if !live {
+			t.Fatal("the prompt's ctx ended before the extension handler returned")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RequestPermission did not return while the extension handler waited on the client")
+	}
+	answerAskOnce.Do(func() { close(answerAsk) })
+	if !<-endedLater {
+		t.Fatal("session/cancel did not cancel the prompt after the extension handler returned")
+	}
+	select {
+	case err := <-promptErr:
+		if err != nil {
+			t.Fatalf("Prompt: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Prompt did not return")
+	}
+}

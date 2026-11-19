@@ -290,6 +290,56 @@ func TestConnection_InboundRequestsCrossBarrierConcurrently(t *testing.T) {
 	}
 }
 
+// A slow notification handler delays the notifications and the requests that
+// arrive after it, and they run in arrival order once it returns.
+func TestConnection_SlowNotificationDelaysLaterMessages(t *testing.T) {
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var releaseFirstOnce sync.Once
+	started := make(chan string, 2)
+	peer := newInboundBarrierTestPeer(t, func(_ context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		switch method {
+		case "first":
+			close(firstStarted)
+			<-releaseFirst
+			return nil, nil
+		case "second", "request":
+			started <- method
+			return nil, nil
+		default:
+			return nil, NewMethodNotFound(method)
+		}
+	})
+	t.Cleanup(func() { releaseFirstOnce.Do(func() { close(releaseFirst) }) })
+
+	peer.notification(t, "first", nil)
+	<-firstStarted
+	peer.notification(t, "second", nil)
+	peer.request(t, "request", "request")
+	// The connection reads messages in order, so once the request is in
+	// flight, the second notification is queued too.
+	peer.waitInflight(t, "request")
+	select {
+	case method := <-started:
+		t.Fatalf("%s started while the first notification handler ran", method)
+	case <-time.After(20 * time.Millisecond):
+	}
+	releaseFirstOnce.Do(func() { close(releaseFirst) })
+	for _, want := range []string{"second", "request"} {
+		select {
+		case got := <-started:
+			if got != want {
+				t.Fatalf("started %s, want %s", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s did not start", want)
+		}
+	}
+	if response := peer.response(t, "request"); response["error"] != nil {
+		t.Fatalf("response error = %#v", response["error"])
+	}
+}
+
 // A notification handler makes a request, and the peer answers it only after
 // we answer the peer's own request. That request must not wait for the
 // handler, or both sides wait forever.

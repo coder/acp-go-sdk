@@ -31,6 +31,7 @@ type queuedNotification struct {
 	seq     uint64
 	arrival uint64
 	msg     *anyMessage
+	size    int // the notification's charge on Connection.budget
 }
 
 // handlingNotification is the ctx value that processNotifications gives each
@@ -140,9 +141,24 @@ type Connection struct {
 	// notificationQueue serializes notification processing to maintain order.
 	// It is bounded to keep memory usage predictable.
 	notificationQueue chan queuedNotification
+
+	// budget meters the requests and notifications from the peer that the
+	// connection holds.
+	budget peerBudget
 }
 
-func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
+// NewConnection starts a connection that reads the peer's messages from
+// peerOutput and writes to peerInput. opts set the limits on what it holds
+// from the peer (see ConnectionOption).
+func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
+	limits := connectionLimits{
+		byteBudget:             defaultByteBudget,
+		maxInboundRequests:     defaultMaxInboundRequests,
+		maxQueuedNotifications: defaultMaxQueuedNotifications,
+	}
+	for _, opt := range opts {
+		opt(&limits)
+	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
@@ -158,7 +174,8 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		cancel:              cancel,
 		inboundCtx:          inboundCtx,
 		inboundCancel:       inboundCancel,
-		notificationQueue:   make(chan queuedNotification, defaultMaxQueuedNotifications),
+		notificationQueue:   make(chan queuedNotification, limits.maxQueuedNotifications),
+		budget:              peerBudget{maxBytes: limits.byteBudget, maxRequests: limits.maxInboundRequests},
 	}
 	c.notifyCond = sync.NewCond(&c.notifyMu)
 	go func() {
@@ -449,7 +466,15 @@ func (c *Connection) receive() {
 		case msg.ID != nil && msg.Method == "":
 			c.handleResponse(&msg)
 		case msg.Method != "":
+			size := len(line)
 			if msg.ID != nil {
+				// A request that the connection cannot hold gets its reply here,
+				// without a goroutine, so the rejections hold nothing either.
+				if rejection := c.budget.holdRequest(size); rejection != nil {
+					c.loggerOrDefault().Warn("rejected request from the peer", "method", msg.Method, "err", rejection)
+					c.sendInboundRequestError(&msg, rejection)
+					continue
+				}
 				// Requests observe the notification queue as it stood when they arrived.
 				// Notifications already accepted onto the queue must finish before the
 				// handler starts, while later notifications must not delay the request.
@@ -483,6 +508,7 @@ func (c *Connection) receive() {
 						c.mu.Unlock()
 
 						cancel(nil)
+						c.budget.releaseRequest(size)
 					}()
 					if err := c.waitInboundBarrier(reqCtx, watermark); err != nil {
 						select {
@@ -503,6 +529,12 @@ func (c *Connection) receive() {
 				continue
 			}
 
+			if !c.budget.holdNotification(size) {
+				c.loggerOrDefault().Error("notification does not fit the byte budget; closing connection", "err", errByteBudgetExceeded, "size", size, "budget", c.budget.maxBytes)
+				c.shutdownReceive(errByteBudgetExceeded)
+				return
+			}
+
 			// Queue the notification for sequential processing. The sequence number marks
 			// the response-scoped barrier boundary for requests that observe later responses.
 			m := msg
@@ -511,7 +543,7 @@ func (c *Connection) receive() {
 			c.lastEnqueuedNotificationSeq++
 			seq := c.lastEnqueuedNotificationSeq
 			select {
-			case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m}:
+			case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m, size: size}:
 				c.notifyMu.Unlock()
 			default:
 				if c.lastEnqueuedNotificationSeq != seq {
@@ -525,6 +557,7 @@ func (c *Connection) receive() {
 					panic("completed notification sequence exceeded enqueued notification sequence")
 				}
 				c.notifyMu.Unlock()
+				c.budget.releaseNotification(size)
 				c.loggerOrDefault().Error("failed to queue notification; closing connection", "err", errNotificationQueueOverflow, "capacity", cap(c.notificationQueue), "queued", len(c.notificationQueue))
 				c.shutdownReceive(errNotificationQueueOverflow)
 				return
@@ -578,6 +611,7 @@ func (c *Connection) processNotifications() {
 	for queued := range c.notificationQueue {
 		handlerCtx := context.WithValue(c.inboundCtx, handlingNotificationKey{}, handlingNotification{conn: c, seq: queued.seq, arrival: queued.arrival})
 		c.handleInbound(handlerCtx, queued.msg)
+		c.budget.releaseNotification(queued.size)
 
 		c.notifyMu.Lock()
 		expectedSeq := c.completedNotificationSeq + 1

@@ -28,14 +28,15 @@ type AgentSideConnection struct {
 }
 
 // NewAgentSideConnection creates a new agent-side connection bound to the
-// provided Agent implementation.
-func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Reader) *AgentSideConnection {
+// provided Agent implementation. opts set the limits on what it holds from the
+// peer (see ConnectionOption).
+func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *AgentSideConnection {
 	asc := &AgentSideConnection{}
 	asc.agent = agent
 	asc.sessionCancels = make(map[string]*promptCancel)
 	asc.sessionCancelledAt = make(map[string]uint64)
 	asc.sessionNewest = make(map[string]uint64)
-	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput)
+	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput, opts...)
 	return asc
 }
 

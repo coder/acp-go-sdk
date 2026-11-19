@@ -1,8 +1,294 @@
 package acp
 
 import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// held returns the bytes and the requests that b holds.
+func (b *peerBudget) held() (bytes, requests int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.bytes, b.requests
+}
+
+// liveHeap returns the bytes of live heap objects after a garbage collection.
+func liveHeap() int64 {
+	runtime.GC()
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	return int64(ms.HeapAlloc)
+}
+
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting until %s", what)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func waitDone(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the connection did not close")
+	}
+}
+
+func isOpen(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return false
+	default:
+		return true
+	}
+}
+
+const lineNumberDigits = 8
+
+// wireLine is the buffer of one message that a test writes again and again,
+// so that the test keeps no copy of its own. The message is exactly size
+// bytes long without its newline. It holds a number of 8 digits that number
+// rewrites in place: the id of a request.
+type wireLine struct {
+	buf []byte
+	num int
+}
+
+func newWireLine(t *testing.T, head, mid, tail string, size int) *wireLine {
+	t.Helper()
+	pad := size - len(head) - lineNumberDigits - len(mid) - len(tail)
+	if pad < 0 {
+		t.Fatalf("SETUP: a line of %d bytes is too short", size)
+	}
+	buf := make([]byte, 0, size+1)
+	buf = append(buf, head...)
+	num := len(buf)
+	buf = append(buf, strings.Repeat("0", lineNumberDigits)...)
+	buf = append(buf, mid...)
+	buf = append(buf, bytes.Repeat([]byte{'x'}, pad)...)
+	buf = append(buf, tail...)
+	buf = append(buf, '\n')
+	return &wireLine{buf: buf, num: num}
+}
+
+// requestLine returns a request of method whose id is its number.
+func requestLine(t *testing.T, method string, size int) *wireLine {
+	return newWireLine(t, `{"jsonrpc":"2.0","id":"`, `","method":"`+method+`","params":{"pad":"`, `"}}`, size)
+}
+
+func notificationLine(t *testing.T, method string, size int) *wireLine {
+	return newWireLine(t, `{"jsonrpc":"2.0","method":"`+method+`","params":{"n":"`, `","pad":"`, `"}}`, size)
+}
+
+func (l *wireLine) number(n int) []byte {
+	copy(l.buf[l.num:l.num+lineNumberDigits], fmt.Sprintf("%0*d", lineNumberDigits, n))
+	return l.buf
+}
+
+func (l *wireLine) size() int { return len(l.buf) - 1 }
+
+func lineID(n int) string { return fmt.Sprintf("%0*d", lineNumberDigits, n) }
+
+// budgetPeer is a hostile peer. It writes raw lines to the connection and
+// collects the messages and the log lines of the connection.
+type budgetPeer struct {
+	t          *testing.T
+	inR        *io.PipeReader
+	inW        *io.PipeWriter
+	peerInput  io.Writer // what the connection writes to
+	peerOutput io.Reader // what the connection reads
+	replies    chan anyMessage
+	logs       lockedBuffer
+	logger     *slog.Logger
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func newBudgetPeer(t *testing.T) *budgetPeer {
+	t.Helper()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	p := &budgetPeer{t: t, inR: inR, inW: inW, peerInput: outW, peerOutput: inR, replies: make(chan anyMessage, 4096)}
+	p.logger = slog.New(slog.NewTextHandler(&p.logs, nil))
+	go func() {
+		s := bufio.NewScanner(outR)
+		for s.Scan() {
+			var m anyMessage
+			if json.Unmarshal(s.Bytes(), &m) == nil {
+				p.replies <- m
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		_ = inW.Close()
+		_ = outW.Close()
+	})
+	return p
+}
+
+func (p *budgetPeer) write(b []byte) {
+	p.t.Helper()
+	if _, err := p.inW.Write(b); err != nil {
+		p.t.Fatalf("write: %v", err)
+	}
+}
+
+// writeAll writes line with the numbers from first to last, as a peer that
+// does not stop when the connection closes. It returns once the connection
+// has read them all or the peer is cut off.
+func (p *budgetPeer) writeAll(line *wireLine, first, last int) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for n := first; n <= last; n++ {
+			if _, err := p.inW.Write(line.number(n)); err != nil {
+				return
+			}
+		}
+	}()
+	return done
+}
+
+// cutOff ends the writes that a closed connection no longer reads.
+func (p *budgetPeer) cutOff(writes <-chan struct{}) {
+	p.t.Helper()
+	_ = p.inR.CloseWithError(io.ErrClosedPipe)
+	select {
+	case <-writes:
+	case <-time.After(10 * time.Second):
+		p.t.Fatal("the writes did not end")
+	}
+}
+
+func (p *budgetPeer) reply() anyMessage {
+	p.t.Helper()
+	select {
+	case m := <-p.replies:
+		return m
+	case <-time.After(10 * time.Second):
+		p.t.Fatal("no reply from the connection")
+		return anyMessage{}
+	}
+}
+
+func (p *budgetPeer) noReply() {
+	p.t.Helper()
+	select {
+	case m := <-p.replies:
+		p.t.Fatalf("unexpected reply %s", replyID(p.t, m))
+	default:
+	}
+}
+
+func replyID(t *testing.T, m anyMessage) string {
+	t.Helper()
+	if m.ID == nil {
+		t.Fatal("reply without id")
+	}
+	var id string
+	if err := json.Unmarshal(*m.ID, &id); err != nil {
+		t.Fatalf("reply id %s: %v", *m.ID, err)
+	}
+	return id
+}
+
+// gate blocks the handlers of one method until it opens or their ctx ends.
+type gate struct {
+	method  string
+	entered atomic.Int64
+	release chan struct{}
+	once    sync.Once
+}
+
+func newGate(t *testing.T, method string) *gate {
+	g := &gate{method: method, release: make(chan struct{})}
+	t.Cleanup(g.open)
+	return g
+}
+
+func (g *gate) open() { g.once.Do(func() { close(g.release) }) }
+
+func (g *gate) handler(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+	if method == g.method {
+		g.entered.Add(1)
+		select {
+		case <-g.release:
+		case <-ctx.Done():
+		}
+	}
+	return map[string]any{}, nil
+}
+
+func newBudgetConnection(t *testing.T, p *budgetPeer, handler MethodHandler, opts ...ConnectionOption) *Connection {
+	t.Helper()
+	c := NewConnection(handler, p.peerInput, p.peerOutput, opts...)
+	c.SetLogger(p.logger)
+	return c
+}
+
+// warmUp makes one round trip, so that the read loops have their buffers
+// before a test measures the heap.
+func warmUp(t *testing.T, p *budgetPeer) {
+	t.Helper()
+	p.write([]byte(`{"jsonrpc":"2.0","id":"warm-up","method":"_ok"}` + "\n"))
+	if m := p.reply(); replyID(t, m) != "warm-up" || m.Error != nil {
+		t.Fatalf("warm-up reply: %+v", m)
+	}
+}
+
+func waitHeld(t *testing.T, c *Connection, wantBytes, wantRequests int) {
+	t.Helper()
+	waitUntil(t, fmt.Sprintf("the connection holds %d bytes and %d requests", wantBytes, wantRequests), func() bool {
+		b, r := c.budget.held()
+		return b == wantBytes && r == wantRequests
+	})
+}
+
+// rejectedIDs reads n replies and returns their ids. Each must be a -32603.
+func rejectedIDs(t *testing.T, p *budgetPeer, n int) map[string]bool {
+	t.Helper()
+	ids := make(map[string]bool)
+	for i := 0; i < n; i++ {
+		m := p.reply()
+		if m.Error == nil || m.Error.Code != -32603 {
+			t.Fatalf("reply %s: error %+v, want code -32603", replyID(t, m), m.Error)
+		}
+		ids[replyID(t, m)] = true
+	}
+	return ids
+}
 
 func TestConnectionOption_PanicsBelowOne(t *testing.T) {
 	options := map[string]func(int) ConnectionOption{
@@ -30,4 +316,322 @@ func TestConnectionOption_PanicsBelowOne(t *testing.T) {
 			option(1)
 		}()
 	}
+}
+
+// Requests over the count cap get -32603 at once and start no handler.
+func TestConnectionBudget_RejectsRequestsOverLimit(t *testing.T) {
+	const maxRequests, sent = 4, 6
+	p := newBudgetPeer(t)
+	g := newGate(t, "_block")
+	c := newBudgetConnection(t, p, g.handler, WithMaxInboundRequests(maxRequests))
+	warmUp(t, p)
+	waitHeld(t, c, 0, 0)
+
+	line := requestLine(t, "_block", 128)
+	goroutines := runtime.NumGoroutine()
+	before := liveHeap()
+	for n := 1; n <= sent; n++ {
+		p.write(line.number(n))
+	}
+	rejected := rejectedIDs(t, p, sent-maxRequests)
+	waitUntil(t, "the held requests run", func() bool { return g.entered.Load() == maxRequests })
+	grown := runtime.NumGoroutine() - goroutines
+	delta := liveHeap() - before
+	heldBytes, heldRequests := c.budget.held()
+	t.Logf("heap delta %d bytes, goroutines +%d, held %d bytes and %d requests", delta, grown, heldBytes, heldRequests)
+
+	for n := maxRequests + 1; n <= sent; n++ {
+		if !rejected[lineID(n)] {
+			t.Errorf("request %d over the cap got no -32603; rejected %v", n, rejected)
+		}
+	}
+	p.noReply()
+	if heldRequests != maxRequests || heldBytes != maxRequests*line.size() {
+		t.Errorf("held %d bytes and %d requests, want %d and %d", heldBytes, heldRequests, maxRequests*line.size(), maxRequests)
+	}
+	if grown > maxRequests {
+		t.Errorf("goroutines grew by %d for %d held requests", grown, maxRequests)
+	}
+
+	g.open()
+	for i := 0; i < maxRequests; i++ {
+		if m := p.reply(); m.Error != nil {
+			t.Errorf("held request %s: %+v", replyID(t, m), m.Error)
+		}
+	}
+	waitHeld(t, c, 0, 0)
+	if got := g.entered.Load(); got != maxRequests {
+		t.Errorf("the handler ran %d times, want %d", got, maxRequests)
+	}
+	p.write(line.number(sent + 1))
+	if m := p.reply(); replyID(t, m) != lineID(sent+1) || m.Error != nil {
+		t.Errorf("request after the burst: %+v", m)
+	}
+}
+
+// Requests that do not fit the byte budget get -32603 and keep no bytes.
+func TestConnectionBudget_RejectsRequestsOverByteBudget(t *testing.T) {
+	const budget, sent = 8 << 20, 32
+	p := newBudgetPeer(t)
+	g := newGate(t, "_block")
+	c := newBudgetConnection(t, p, g.handler, WithByteBudget(budget))
+	warmUp(t, p)
+
+	line := requestLine(t, "_block", 1<<20)
+	fit := budget / line.size()
+	before := liveHeap()
+	for n := 1; n <= sent; n++ {
+		p.write(line.number(n))
+	}
+	rejected := rejectedIDs(t, p, sent-fit)
+	waitUntil(t, "the held requests run", func() bool { return g.entered.Load() == int64(fit) })
+	delta := liveHeap() - before
+	heldBytes, heldRequests := c.budget.held()
+	t.Logf("sent %d bytes: heap delta %d bytes, held %d bytes and %d requests", sent*line.size(), delta, heldBytes, heldRequests)
+
+	for n := fit + 1; n <= sent; n++ {
+		if !rejected[lineID(n)] {
+			t.Errorf("request %d over the budget got no -32603", n)
+		}
+	}
+	if heldBytes > budget || heldRequests != fit {
+		t.Errorf("held %d bytes and %d requests, want at most %d bytes and %d requests", heldBytes, heldRequests, budget, fit)
+	}
+	if delta >= 3*budget {
+		t.Errorf("heap grew by %d bytes, want less than %d", delta, 3*budget)
+	}
+
+	g.open()
+	for i := 0; i < fit; i++ {
+		if m := p.reply(); m.Error != nil {
+			t.Errorf("held request %s: %+v", replyID(t, m), m.Error)
+		}
+	}
+	waitHeld(t, c, 0, 0)
+}
+
+// A notification that does not fit the byte budget closes the connection.
+func TestConnectionBudget_ClosesOnNotificationOverByteBudget(t *testing.T) {
+	const budget, sent = 8 << 20, 32
+	p := newBudgetPeer(t)
+	g := newGate(t, "_block")
+	c := newBudgetConnection(t, p, g.handler, WithByteBudget(budget))
+	warmUp(t, p)
+
+	line := notificationLine(t, "_block", 1<<20)
+	before := liveHeap()
+	writes := p.writeAll(line, 1, sent)
+	waitDone(t, c.Done())
+	p.cutOff(writes)
+	delta := liveHeap() - before
+	heldBytes, _ := c.budget.held()
+	t.Logf("heap delta %d bytes, held %d bytes", delta, heldBytes)
+
+	if !strings.Contains(p.logs.String(), "byte budget") {
+		t.Errorf("the log does not name the byte budget:\n%s", p.logs.String())
+	}
+	if heldBytes > budget || heldBytes != budget/line.size()*line.size() {
+		t.Errorf("held %d bytes, want the %d notifications that fit %d bytes", heldBytes, budget/line.size(), budget)
+	}
+	if delta >= 3*budget {
+		t.Errorf("heap grew by %d bytes, want less than %d", delta, 3*budget)
+	}
+
+	g.open()
+	waitHeld(t, c, 0, 0)
+}
+
+// Requests and notifications share one budget.
+func TestConnectionBudget_SharesBudgetBetweenRequestsAndNotifications(t *testing.T) {
+	const budget, requests = 1 << 20, 3
+	request := requestLine(t, "_block", 300<<10)
+	note := notificationLine(t, "_note", 200<<10)
+	if requests*request.size() > budget || requests*request.size()+note.size() <= budget {
+		t.Fatal("SETUP: the requests must fit the budget, and the notification must not fit beside them")
+	}
+	p := newBudgetPeer(t)
+	g := newGate(t, "_block")
+	c := newBudgetConnection(t, p, g.handler, WithByteBudget(budget))
+
+	p.write(note.number(1))
+	waitHeld(t, c, 0, 0)
+	for n := 1; n <= requests; n++ {
+		p.write(request.number(n))
+	}
+	waitHeld(t, c, requests*request.size(), requests)
+	if !isOpen(c.Done()) {
+		t.Fatal("the connection closed before the notification that does not fit")
+	}
+
+	writes := p.writeAll(note, 2, 2)
+	waitDone(t, c.Done())
+	p.cutOff(writes)
+	if !strings.Contains(p.logs.String(), "byte budget") {
+		t.Errorf("the log does not name the byte budget:\n%s", p.logs.String())
+	}
+	waitHeld(t, c, 0, 0)
+}
+
+// Without options, a connection holds 1024 requests and 64 MiB.
+func TestConnectionBudget_DefaultLimits(t *testing.T) {
+	const documentedRequests, documentedBudget = 1024, 64 << 20
+
+	t.Run("requests", func(t *testing.T) {
+		p := newBudgetPeer(t)
+		g := newGate(t, "_block")
+		c := newBudgetConnection(t, p, g.handler)
+		line := requestLine(t, "_block", 128)
+		for n := 1; n <= documentedRequests+1; n++ {
+			p.write(line.number(n))
+		}
+		if rejected := rejectedIDs(t, p, 1); !rejected[lineID(documentedRequests+1)] {
+			t.Errorf("rejected %v, want request %d", rejected, documentedRequests+1)
+		}
+		waitHeld(t, c, documentedRequests*line.size(), documentedRequests)
+		g.open()
+		waitHeld(t, c, 0, 0)
+	})
+
+	t.Run("notifications", func(t *testing.T) {
+		p := newBudgetPeer(t)
+		g := newGate(t, "_block")
+		c := newBudgetConnection(t, p, g.handler)
+		line := notificationLine(t, "_block", 1<<20)
+		if fit := documentedBudget / line.size(); fit < 60 || fit >= 65 {
+			t.Fatalf("SETUP: %d notifications fit, want 60 to 64", fit)
+		}
+		writes := p.writeAll(line, 1, 60)
+		<-writes
+		waitHeld(t, c, 60*line.size(), 0)
+		if !isOpen(c.Done()) {
+			t.Fatal("60 notifications of 1 MiB closed the connection")
+		}
+		writes = p.writeAll(line, 61, 65)
+		waitDone(t, c.Done())
+		p.cutOff(writes)
+		g.open()
+		waitHeld(t, c, 0, 0)
+	})
+}
+
+// WithMaxQueuedNotifications lets a connection queue a burst that the default
+// queue does not take.
+func TestConnectionBudget_MaxQueuedNotifications(t *testing.T) {
+	const burst = 2000
+	tests := []struct {
+		name     string
+		opts     []ConnectionOption
+		wantOpen bool
+	}{
+		{name: "default", wantOpen: false},
+		{name: "4096", opts: []ConnectionOption{WithMaxQueuedNotifications(4096)}, wantOpen: true},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			p := newBudgetPeer(t)
+			g := newGate(t, "_block")
+			c := newBudgetConnection(t, p, g.handler, tt.opts...)
+			line := notificationLine(t, "_block", 128)
+			writes := p.writeAll(line, 1, burst)
+			if tt.wantOpen {
+				<-writes
+				waitHeld(t, c, burst*line.size(), 0)
+				if !isOpen(c.Done()) {
+					t.Fatal("the burst closed the connection")
+				}
+			} else {
+				waitDone(t, c.Done())
+				p.cutOff(writes)
+				if !strings.Contains(p.logs.String(), "failed to queue notification") {
+					t.Errorf("the log does not name the full queue:\n%s", p.logs.String())
+				}
+			}
+			g.open()
+			waitHeld(t, c, 0, 0)
+		})
+	}
+}
+
+// The options reach the connection under an AgentSideConnection and a
+// ClientSideConnection.
+func TestConnectionBudget_OptionsReachSideConnections(t *testing.T) {
+	t.Run("agent", func(t *testing.T) {
+		p := newBudgetPeer(t)
+		var called atomic.Bool
+		conn := NewAgentSideConnection(agentFuncs{InitializeFunc: func(context.Context, InitializeRequest) (InitializeResponse, error) {
+			called.Store(true)
+			return InitializeResponse{}, nil
+		}}, p.peerInput, p.peerOutput, WithByteBudget(16))
+		conn.SetLogger(p.logger)
+		p.write([]byte(`{"jsonrpc":"2.0","id":"a","method":"initialize","params":{"protocolVersion":1}}` + "\n"))
+		if rejected := rejectedIDs(t, p, 1); !rejected["a"] || called.Load() {
+			t.Errorf("rejected %v, Initialize called = %v; want a rejected, not called", rejected, called.Load())
+		}
+	})
+	t.Run("client", func(t *testing.T) {
+		p := newBudgetPeer(t)
+		var called atomic.Bool
+		conn := NewClientSideConnection(&clientFuncs{RequestPermissionFunc: func(context.Context, RequestPermissionRequest) (RequestPermissionResponse, error) {
+			called.Store(true)
+			return RequestPermissionResponse{}, nil
+		}}, p.peerInput, p.peerOutput, WithByteBudget(16))
+		conn.SetLogger(p.logger)
+		p.write([]byte(`{"jsonrpc":"2.0","id":"c","method":"session/request_permission","params":{}}` + "\n"))
+		if rejected := rejectedIDs(t, p, 1); !rejected["c"] || called.Load() {
+			t.Errorf("rejected %v, RequestPermission called = %v; want c rejected, not called", rejected, called.Load())
+		}
+	})
+}
+
+// Every path out of the connection releases what it held.
+func TestConnectionBudget_ReleasesOnEveryPath(t *testing.T) {
+	t.Run("request cancelled at the inbound barrier", func(t *testing.T) {
+		p := newBudgetPeer(t)
+		g := newGate(t, "_block")
+		c := newBudgetConnection(t, p, g.handler)
+		note := notificationLine(t, "_block", 256)
+		request := requestLine(t, "_after", 256)
+		p.write(note.number(1))
+		p.write(request.number(1))
+		waitHeld(t, c, note.size()+request.size(), 1)
+		p.write([]byte(`{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":"` + lineID(1) + `"}}` + "\n"))
+		if m := p.reply(); replyID(t, m) != lineID(1) || m.Error == nil || m.Error.Code != -32800 {
+			t.Fatalf("cancelled request: %+v", m)
+		}
+		waitHeld(t, c, note.size(), 0)
+		g.open()
+		waitHeld(t, c, 0, 0)
+	})
+
+	t.Run("request when the peer disconnects", func(t *testing.T) {
+		p := newBudgetPeer(t)
+		g := newGate(t, "_block")
+		c := newBudgetConnection(t, p, g.handler)
+		request := requestLine(t, "_block", 256)
+		p.write(request.number(1))
+		waitUntil(t, "the request runs", func() bool { return g.entered.Load() == 1 })
+		_ = p.inW.Close()
+		waitDone(t, c.Done())
+		waitHeld(t, c, 0, 0)
+	})
+
+	t.Run("queued notifications after a close", func(t *testing.T) {
+		const queued = 5
+		p := newBudgetPeer(t)
+		g := newGate(t, "_block")
+		c := newBudgetConnection(t, p, g.handler)
+		note := notificationLine(t, "_block", 256)
+		for n := 1; n <= queued; n++ {
+			p.write(note.number(n))
+		}
+		waitHeld(t, c, queued*note.size(), 0)
+		_ = p.inW.Close()
+		waitDone(t, c.Done())
+		if heldBytes, _ := c.budget.held(); heldBytes != queued*note.size() {
+			t.Errorf("held %d bytes after the close, want the %d queued notifications", heldBytes, queued)
+		}
+		g.open()
+		waitHeld(t, c, 0, 0)
+	})
 }

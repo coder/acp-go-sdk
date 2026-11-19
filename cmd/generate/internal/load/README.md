@@ -22,6 +22,7 @@ Package `load` reads the generator inputs from the schema directory into minimal
 - `func ReadMetaUnstable(schemaDir string) (*Meta, bool, error)` reads `meta.unstable.json`. The `bool` reports whether the file exists [load.go:ReadMetaUnstable]
 - `func ReadSchemaUnstable(schemaDir string) (*Schema, bool, error)` reads `schema.unstable.json`. The `bool` reports whether the file exists [load.go:ReadSchemaUnstable]
 - `func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta *Meta, unstableSchema *Schema) (*Meta, *Schema, error)` returns the combined meta and schema [merge.go:MergeStableAndUnstable]
+- `func (s *Schema) RefLoop() error` returns an error that names a chain of `$defs` entries that refers back to its first entry in place, through `$ref`, `allOf`, `anyOf`, `oneOf` or `not`, such as `$ref loop: A -> B -> A`, and nil when there is none. A `$ref` under `properties`, `items` or `additionalProperties` is no part of a loop. JSON Schema 2020-12 leaves such a loop undefined (section 9.4.1) [refs.go:Schema.RefLoop, inPlaceRefs]
 
 ## Invariants
 

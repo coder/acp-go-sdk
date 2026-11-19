@@ -35,6 +35,8 @@ func TestWriteTypesJen_RejectsARefLoop(t *testing.T) {
     "parent": {"anyOf": [{"$ref": "#/$defs/Alpha"}, {"type": "null"}]},
     "children": {"type": "array", "items": {"$ref": "#/$defs/Alpha"}},
     "named": {"type": "object", "additionalProperties": {"$ref": "#/$defs/Alpha"}}}},
+  "Forest": {"type": "array", "items": {"$ref": "#/$defs/Forest"}},
+  "Nested": {"type": "object", "additionalProperties": {"$ref": "#/$defs/Nested"}},
   "Holder": {"type": "object", "properties": {"a": {"$ref": "#/$defs/Alpha", "x-deserialize-default-on-error": true}}},
   "Union": {"oneOf": [{"type": "object", "required": ["k"], "properties": {"k": {"$ref": "#/$defs/Alpha"}}}, {"type": "string"}]}`, ""},
 	}

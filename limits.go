@@ -11,9 +11,9 @@ import (
 // peer. A request over a limit gets a -32603 reply, and its handler does not
 // run. The read loop queues that reply for one writer goroutine, so it never
 // blocks on writing a rejection, even to a peer that is itself blocked writing
-// to this side. When 1024 rejections wait to be written, or they do not fit
-// the byte budget, the next one closes the connection: the peer does not read
-// its replies.
+// to this side. A rejection that finds 1024 others waiting to be written, or
+// that does not fit the byte budget beside them, closes the connection
+// instead: the peer does not read its replies.
 type ConnectionOption func(*connectionLimits)
 
 type connectionLimits struct {

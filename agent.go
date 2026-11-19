@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"crypto/sha256"
 	"io"
 	"log/slog"
 	"sync"
@@ -13,18 +14,18 @@ type AgentSideConnection struct {
 	agent Agent
 
 	mu             sync.Mutex
-	sessionCancels map[string]*promptCancel
+	sessionCancels map[sessionKey]*promptCancel
 	// sessionCancelledAt holds, per session, the arrival number of the last
 	// session/cancel. A prompt that arrived before that cancel and registers
 	// after it is cancelled at once. pruneCancelMarkers drops an entry once no
 	// request from the peer that arrived before its cancel is in flight.
-	sessionCancelledAt map[string]uint64
+	sessionCancelledAt map[sessionKey]uint64
 	// sessionNewest holds, per session, the arrival number of the newest
 	// prompt that has registered. A prompt that arrived before it and
 	// registers later is cancelled at once, even after the newer prompt
 	// returned. pruneCancelMarkers drops an entry once no request from the
 	// peer that arrived before it is in flight.
-	sessionNewest map[string]uint64
+	sessionNewest map[sessionKey]uint64
 }
 
 // NewAgentSideConnection creates a new agent-side connection bound to the
@@ -33,9 +34,9 @@ type AgentSideConnection struct {
 func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *AgentSideConnection {
 	asc := &AgentSideConnection{}
 	asc.agent = agent
-	asc.sessionCancels = make(map[string]*promptCancel)
-	asc.sessionCancelledAt = make(map[string]uint64)
-	asc.sessionNewest = make(map[string]uint64)
+	asc.sessionCancels = make(map[sessionKey]*promptCancel)
+	asc.sessionCancelledAt = make(map[sessionKey]uint64)
+	asc.sessionNewest = make(map[sessionKey]uint64)
 	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput, opts...)
 	return asc
 }
@@ -46,6 +47,13 @@ func (c *AgentSideConnection) Done() <-chan struct{} { return c.conn.Done() }
 // SetLogger directs connection diagnostics to the provided logger.
 func (c *AgentSideConnection) SetLogger(l *slog.Logger) { c.conn.SetLogger(l) }
 
+// sessionKey is the SHA-256 digest of a sessionId: the key of a session in
+// the maps of AgentSideConnection. The peer picks sessionIds of any length,
+// and a key of fixed size keeps none of their bytes.
+type sessionKey [sha256.Size]byte
+
+func sessionKeyOf(id string) sessionKey { return sha256.Sum256([]byte(id)) }
+
 // promptCancel is the entry of a running prompt in sessionCancels.
 type promptCancel struct {
 	cancel context.CancelFunc
@@ -55,11 +63,12 @@ type promptCancel struct {
 	hasArrival bool
 }
 
-// cancelPrompt handles a session/cancel for sessionID that runs with ctx. It
+// cancelPrompt handles a session/cancel for session id that runs with ctx. It
 // cancels the prompt that has registered for the session, unless that prompt
 // arrived after the cancel, and records where the cancel arrived, for a prompt
 // that arrived before it but has not registered yet.
-func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string) {
+func (a *AgentSideConnection) cancelPrompt(ctx context.Context, id string) {
+	sessionID := sessionKeyOf(id)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	arrival, hasArrival := a.conn.messageArrival(ctx)
@@ -74,12 +83,13 @@ func (a *AgentSideConnection) cancelPrompt(ctx context.Context, sessionID string
 }
 
 // maxCancelMarkers bounds sessionCancelledAt and sessionNewest while a long
-// request is in flight. Only the peer that sends the cancels and prompts can
-// push an entry out, and a lost entry only loses that peer's own cancel or
-// prompt order.
+// request is in flight. Their entries have a fixed size, whatever the length
+// of the peer's sessionIds (see sessionKey). Only the peer that sends the
+// cancels and prompts can push an entry out, and a lost entry only loses that
+// peer's own cancel or prompt order.
 const maxCancelMarkers = 1024
 
-// registerPrompt makes cancel the cancel func of the prompt for sessionID
+// registerPrompt makes cancel the cancel func of the prompt for session id
 // whose handler runs with ctx, and cancels the prompt of the session that it
 // replaces. When a prompt of the session that arrived later has already
 // registered, even one that has returned, registerPrompt calls cancel at once
@@ -88,7 +98,8 @@ const maxCancelMarkers = 1024
 // The prompt handler calls the returned func when the prompt returns. It
 // removes the entry only while the entry is still this prompt's, so a newer
 // prompt of the session stays cancellable.
-func (a *AgentSideConnection) registerPrompt(ctx context.Context, sessionID string, cancel context.CancelFunc) (done func()) {
+func (a *AgentSideConnection) registerPrompt(ctx context.Context, id string, cancel context.CancelFunc) (done func()) {
+	sessionID := sessionKeyOf(id)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	arrival, hasArrival := a.conn.messageArrival(ctx)
@@ -141,9 +152,9 @@ func (a *AgentSideConnection) pruneCancelMarkers() {
 
 // dropOldestAbove deletes the entries with the smallest values from m until it
 // holds at most limit entries.
-func dropOldestAbove(m map[string]uint64, limit int) {
+func dropOldestAbove(m map[sessionKey]uint64, limit int) {
 	for len(m) > limit {
-		var oldestID string
+		var oldestID sessionKey
 		var oldestValue uint64
 		found := false
 		for id, v := range m {

@@ -64,41 +64,54 @@ const lineNumberDigits = 8
 
 // wireLine is the buffer of one message that a test writes again and again,
 // so that the test keeps no copy of its own. The message is exactly size
-// bytes long without its newline. It holds a number of 8 digits that number
-// rewrites in place: the id of a request.
+// bytes long without its newline. Each {n} of its template is a number of 8
+// digits that number rewrites in place, and {pad} is the filler that makes up
+// the size.
 type wireLine struct {
-	buf []byte
-	num int
+	buf  []byte
+	nums []int // offsets of the numbers in buf
 }
 
-func newWireLine(t *testing.T, head, mid, tail string, size int) *wireLine {
+func newWireLine(t *testing.T, template string, size int) *wireLine {
 	t.Helper()
-	pad := size - len(head) - lineNumberDigits - len(mid) - len(tail)
-	if pad < 0 {
-		t.Fatalf("SETUP: a line of %d bytes is too short", size)
+	fixed := len(template) - len("{pad}") + strings.Count(template, "{n}")*(lineNumberDigits-len("{n}"))
+	pad := size - fixed
+	if pad < 0 || strings.Count(template, "{pad}") != 1 {
+		t.Fatalf("SETUP: %q makes no line of %d bytes", template, size)
 	}
-	buf := make([]byte, 0, size+1)
-	buf = append(buf, head...)
-	num := len(buf)
-	buf = append(buf, strings.Repeat("0", lineNumberDigits)...)
-	buf = append(buf, mid...)
-	buf = append(buf, bytes.Repeat([]byte{'x'}, pad)...)
-	buf = append(buf, tail...)
-	buf = append(buf, '\n')
-	return &wireLine{buf: buf, num: num}
+	l := &wireLine{buf: make([]byte, 0, size+1)}
+	for rest := template; rest != ""; {
+		switch {
+		case strings.HasPrefix(rest, "{n}"):
+			l.nums = append(l.nums, len(l.buf))
+			l.buf = append(l.buf, strings.Repeat("0", lineNumberDigits)...)
+			rest = rest[len("{n}"):]
+		case strings.HasPrefix(rest, "{pad}"):
+			l.buf = append(l.buf, bytes.Repeat([]byte{'x'}, pad)...)
+			rest = rest[len("{pad}"):]
+		default:
+			l.buf = append(l.buf, rest[0])
+			rest = rest[1:]
+		}
+	}
+	l.buf = append(l.buf, '\n')
+	return l
 }
 
 // requestLine returns a request of method whose id is its number.
 func requestLine(t *testing.T, method string, size int) *wireLine {
-	return newWireLine(t, `{"jsonrpc":"2.0","id":"`, `","method":"`+method+`","params":{"pad":"`, `"}}`, size)
+	return newWireLine(t, `{"jsonrpc":"2.0","id":"{n}","method":"`+method+`","params":{"pad":"{pad}"}}`, size)
 }
 
 func notificationLine(t *testing.T, method string, size int) *wireLine {
-	return newWireLine(t, `{"jsonrpc":"2.0","method":"`+method+`","params":{"n":"`, `","pad":"`, `"}}`, size)
+	return newWireLine(t, `{"jsonrpc":"2.0","method":"`+method+`","params":{"n":"{n}","pad":"{pad}"}}`, size)
 }
 
 func (l *wireLine) number(n int) []byte {
-	copy(l.buf[l.num:l.num+lineNumberDigits], fmt.Sprintf("%0*d", lineNumberDigits, n))
+	digits := fmt.Sprintf("%0*d", lineNumberDigits, n)
+	for _, at := range l.nums {
+		copy(l.buf[at:at+lineNumberDigits], digits)
+	}
 	return l.buf
 }
 
@@ -634,4 +647,122 @@ func TestConnectionBudget_ReleasesOnEveryPath(t *testing.T) {
 		g.open()
 		waitHeld(t, c, 0, 0)
 	})
+}
+
+// The cancel markers of an AgentSideConnection hold no part of the peer's
+// sessionIds, so long sessionIds do not grow the heap past a few MiB.
+func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
+	const cancels, prompts, idSize = 1100, 200, 32 << 10
+	p := newBudgetPeer(t)
+	var oldRunning atomic.Bool
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	conn := NewAgentSideConnection(agentFuncs{PromptFunc: func(ctx context.Context, req PromptRequest) (PromptResponse, error) {
+		if req.SessionId == "old" {
+			oldRunning.Store(true)
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+		}
+		return PromptResponse{StopReason: StopReasonEndTurn}, nil
+	}}, p.peerInput, p.peerOutput)
+	conn.SetLogger(p.logger)
+
+	// The old prompt keeps every later marker alive.
+	old := []byte(`{"jsonrpc":"2.0","id":"old","method":"session/prompt","params":{"sessionId":"old","prompt":[]}}` + "\n")
+	p.write(old)
+	waitUntil(t, "the old prompt runs", oldRunning.Load)
+
+	cancel := newWireLine(t, `{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"{n}{pad}"}}`, idSize+64)
+	prompt := newWireLine(t, `{"jsonrpc":"2.0","id":"{n}","method":"session/prompt","params":{"sessionId":"{n}{pad}","prompt":[]}}`, idSize+128)
+	before := liveHeap()
+	for n := 1; n <= cancels; n++ {
+		p.write(cancel.number(n))
+	}
+	for n := 1; n <= prompts; n++ {
+		p.write(prompt.number(n))
+	}
+	for n := 1; n <= prompts; n++ {
+		if m := p.reply(); m.Error != nil {
+			t.Fatalf("prompt %s: %+v", replyID(t, m), m.Error)
+		}
+	}
+	waitCompletedNotifications(t, conn.conn, cancels)
+	waitHeld(t, conn.conn, len(old)-1, 1)
+	delta := liveHeap() - before
+	conn.mu.Lock()
+	cancelledAt, newest := len(conn.sessionCancelledAt), len(conn.sessionNewest)
+	conn.mu.Unlock()
+	t.Logf("sent %d sessionIds of %d bytes: heap delta %d bytes, %d cancel markers, %d newest-prompt markers", cancels+prompts, idSize, delta, cancelledAt, newest)
+
+	if cancelledAt != maxCancelMarkers || newest != prompts {
+		t.Fatalf("SETUP: %d cancel markers and %d newest-prompt markers, want %d and %d", cancelledAt, newest, maxCancelMarkers, prompts)
+	}
+	if delta >= 4<<20 {
+		t.Errorf("heap grew by %d bytes, want less than 4 MiB", delta)
+	}
+}
+
+// Two sessionIds of 32 KiB that differ only in their last byte name two
+// sessions: a cancel of one leaves the prompt of the other running.
+func TestAgentSideConnection_CancelMarkersKeepLongSessionIDsApart(t *testing.T) {
+	long := strings.Repeat("x", 32<<10)
+	cancelLine := func(sessionID string) string {
+		return `{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"` + sessionID + `"}}`
+	}
+	promptLine := func(id, sessionID string) string {
+		return `{"jsonrpc":"2.0","id":"` + id + `","method":"session/prompt","params":{"sessionId":"` + sessionID + `","prompt":[]}}`
+	}
+	tests := []struct {
+		name string
+		// After a session/cancel of "held", which runs until both later
+		// notifications are queued, the prompt of sessionA arrives, then
+		// the cancel of cancelled.
+		cancelled     string
+		wantCancelled bool
+	}{
+		{name: "cancel of the other session", cancelled: long + "b", wantCancelled: false},
+		{name: "own cancel", cancelled: long + "a", wantCancelled: true},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			p := newBudgetPeer(t)
+			started := make(chan context.Context, 1)
+			var conn *AgentSideConnection
+			conn = NewAgentSideConnection(agentFuncs{
+				CancelFunc: func(_ context.Context, n CancelNotification) error {
+					if n.SessionId == "held" {
+						waitEnqueuedNotifications(t, conn.conn, 2)
+					}
+					return nil
+				},
+				PromptFunc: func(ctx context.Context, _ PromptRequest) (PromptResponse, error) {
+					started <- ctx
+					<-ctx.Done()
+					return PromptResponse{StopReason: StopReasonCancelled}, nil
+				},
+			}, p.peerInput, p.peerOutput)
+			conn.SetLogger(p.logger)
+
+			p.write([]byte(cancelLine("held") + "\n" + promptLine("a", long+"a") + "\n" + cancelLine(tt.cancelled) + "\n"))
+			var promptCtx context.Context
+			select {
+			case promptCtx = <-started:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the prompt did not run")
+			}
+			waitCompletedNotifications(t, conn.conn, 2)
+			if tt.wantCancelled {
+				waitUntil(t, "the prompt is cancelled", func() bool { return promptCtx.Err() != nil })
+				return
+			}
+			if promptCtx.Err() != nil {
+				t.Fatal("the cancel of the other session cancelled the prompt")
+			}
+			p.write([]byte(cancelLine(long+"a") + "\n"))
+			waitUntil(t, "the prompt is cancelled by its own cancel", func() bool { return promptCtx.Err() != nil })
+		})
+	}
 }

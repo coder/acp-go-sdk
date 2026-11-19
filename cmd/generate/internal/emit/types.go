@@ -170,6 +170,8 @@ type typesBuilder struct {
 	patch, nullAsAbsent map[*load.Definition]bool
 	usesPatch           bool
 	usesNilIf           bool
+	// validated memoizes validates per $defs entry.
+	validated map[string]bool
 }
 
 // buildTypesJen builds the types_gen.go file. It also returns, per oneOf union,
@@ -188,6 +190,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	b := &typesBuilder{
 		f: f, schema: schema, usedTypeNames: usedTypeNames, variants: emitted,
 		shapes: newShapeTable(schema), patch: ir.PatchFields(schema), nullAsAbsent: ir.NullAsAbsent(schema),
+		validated: map[string]bool{},
 	}
 
 	// Deterministic order
@@ -217,16 +220,10 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 			emitDocComment(f, def.Description)
 		}
 
-		// Requests, responses, notifications, and ToolCallUpdate get Validate.
-		// The generated dispatch calls it on every request and notification.
-		validated := strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") || strings.HasSuffix(name, "Notification") || name == "ToolCallUpdate"
-		// A union wrapper holds variant pointers, not the schema's properties,
-		// so emitUnion writes its Validate.
-		unionWrapper := false
-		switch {
-		case len(def.Enum) > 0, isStringConstUnion(def):
+		switch classify(def) {
+		case enumKind:
 			b.emitEnum(name, def)
-		case len(def.AnyOf) > 0 && isOpenStringEnum(def):
+		case openEnumKind:
 			// "Open" string enum: `anyOf` of string consts plus (typically) a
 			// free-form string catch-all. Emit as a named string type with
 			// constants for the known values. Unknown values are still
@@ -248,35 +245,33 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 				f.Const().Defs(defs...)
 			}
 			f.Line()
-		case len(def.AnyOf) > 0:
-			unionWrapper = true
-			b.emitUnion(name, def, def.AnyOf, false, validated && ir.PrimaryType(def) == "object")
-		case len(def.OneOf) > 0 && !isStringConstUnion(def):
-			// Generic union generation for non-enum oneOf
-			// Use the same implementation, but require exactly one variant
-			unionWrapper = true
-			b.emitUnion(name, def, def.OneOf, true, true)
-		case ir.PrimaryType(def) == "object" && (len(def.Properties) > 0 || opensMembers(def)):
+		case unionKind:
+			// A oneOf requires exactly one variant, an anyOf at least one.
+			if len(def.AnyOf) > 0 {
+				b.emitUnion(name, def, def.AnyOf, false, messageProps(name, def))
+			} else {
+				b.emitUnion(name, def, def.OneOf, true, messageProps(name, def))
+			}
+		case structKind:
 			fields := ir.Fields(def.Properties, def.Required)
-			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), opensMembers(def))
-		case ir.PrimaryType(def) == "string" || ir.PrimaryType(def) == "integer" || ir.PrimaryType(def) == "number" || ir.PrimaryType(def) == "boolean":
+			b.emitStruct(name, fields, b.emitNestedStructs(name, fields), opensMembers(def), messageProps(name, def))
+		case primitiveKind:
 			f.Type().Id(name).Add(primitiveJenType(def))
 			f.Line()
-		case ir.PrimaryType(def) == "object" && len(def.Properties) == 0:
+		case emptyKind:
 			// Empty object shape: emit a concrete empty struct so methods can be defined
 			// and the wire encoding is consistently {} rather than null.
 			f.Type().Id(name).Struct()
 			f.Line()
+			if isMessage(name) {
+				emitValidate(f, "v", name, func(*Group) {})
+			}
 		default:
 			// An alias keeps the methods of json.RawMessage, which a defined
 			// type would drop.
 			f.Comment(fmt.Sprintf("%s is a union or complex schema; it holds the JSON as it was read.", name))
 			f.Type().Id(name).Op("=").Add(rawJSON())
 			f.Line()
-		}
-
-		if validated && !unionWrapper {
-			emitValidateJen(f, name, def)
 		}
 	}
 
@@ -444,56 +439,47 @@ func isOpenStringEnum(def *load.Definition) bool {
 	return sawConst
 }
 
-// emitValidateJen generates validators for selected types that are not union
-// wrappers. It checks the required properties of def, which are struct fields.
-func emitValidateJen(f *File, name string, def *load.Definition) {
-	switch name {
-	case "ToolCallUpdate":
-		f.Func().Params(Id("t").Op("*").Id("ToolCallUpdate")).Id("Validate").Params().Params(Error()).Block(
-			If(Id("t").Dot("ToolCallId").Op("==").Lit("")).Block(Return(Qual("fmt", "Errorf").Call(Lit("toolCallId is required")))),
-			Return(Nil()),
-		)
-		return
-	}
-	if def != nil && ir.PrimaryType(def) == "object" {
-		if !strings.HasSuffix(name, "Request") && !strings.HasSuffix(name, "Response") && !strings.HasSuffix(name, "Notification") {
-			return
-		}
-		f.Func().Params(Id("v").Op("*").Id(name)).Id("Validate").Params().Params(Error()).BlockFunc(func(g *Group) {
-			for _, propName := range sortedPropertyKeys(def.Properties) {
-				if !slices.Contains(def.Required, propName) {
-					continue
-				}
-				if check := requiredCheck(propName, def.Properties[propName], "v"); check != nil {
-					g.Add(check)
-				}
-			}
-			g.Return(Nil())
-		})
+// defKind is the kind of Go type that a $defs entry becomes.
+type defKind uint8
+
+const (
+	enumKind      defKind = iota // a closed string enum: a named string type and its constants
+	openEnumKind                 // an open string enum: a named string type and its constants
+	unionKind                    // a union wrapper of variant pointers
+	structKind                   // a struct of the properties
+	primitiveKind                // a named string, integer, number, or boolean type
+	emptyKind                    // an empty struct
+	rawKind                      // an alias of json.RawMessage
+)
+
+// classify returns the kind of Go type that the $defs entry def becomes.
+func classify(def *load.Definition) defKind {
+	switch t := ir.PrimaryType(def); {
+	case len(def.Enum) > 0, isStringConstUnion(def):
+		return enumKind
+	case len(def.AnyOf) > 0 && isOpenStringEnum(def):
+		return openEnumKind
+	case len(def.AnyOf) > 0, len(def.OneOf) > 0:
+		return unionKind
+	case t == "object" && (len(def.Properties) > 0 || opensMembers(def)):
+		return structKind
+	case t == "string", t == "integer", t == "number", t == "boolean":
+		return primitiveKind
+	case t == "object":
+		return emptyKind
+	default:
+		return rawKind
 	}
 }
 
-// requiredCheck returns the Validate statement that rejects an unset required
-// property propName of the value at path, for example "v" or "u", "Form". Unset
-// means an empty string or a nil array. Other property types get no check, so
-// it returns nil.
-func requiredCheck(propName string, pDef *load.Definition, path ...string) Code {
-	var unset Code
-	switch ir.PrimaryType(pDef) {
-	case "string":
-		unset = Lit("")
-	case "array":
-		unset = Nil()
-	default:
-		return nil
-	}
-	value := Id(path[0])
-	for _, p := range path[1:] {
-		value = value.Dot(p)
-	}
-	return If(value.Dot(util.ToExportedField(propName)).Op("==").Add(unset)).Block(
-		Return(Qual("fmt", "Errorf").Call(Lit(propName + " is required"))),
-	)
+// emitValidate declares the Validate method of the type name, whose receiver
+// is recv, with the statements that body adds before it returns nil.
+func emitValidate(f *File, recv, name string, body func(*Group)) {
+	f.Func().Params(Id(recv).Op("*").Id(name)).Id("Validate").Params().Params(Error()).BlockFunc(func(g *Group) {
+		body(g)
+		g.Return(Nil())
+	})
+	f.Line()
 }
 
 func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
@@ -981,12 +967,14 @@ func namedProperties(schema *load.Schema, d *load.Definition, seen map[*load.Def
 // terminal method that fails its own schema from falling through to agent.
 var untaggedRefusesKnownTag = map[string]bool{"AuthMethod": true}
 
-// emitUnion emits the union wrapper type name and its variants. With exactlyOne
-// (a oneOf), the wrapper's Validate requires exactly one variant. Validate is
-// emitted when exactlyOne or validate is set. It also checks the union's own
-// required properties on the set variant. It returns the variants, and records
-// those of a oneOf for WriteHelpersJen.
-func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs []*load.Definition, exactlyOne, validate bool) []unionVariant {
+// emitUnion emits the union wrapper type name and its variants. Its Validate
+// requires exactly one variant with exactlyOne (a oneOf), and one at least
+// otherwise. It then checks the wrapper's own fields and calls the Validate
+// of the set variant, which checks the union's own properties that an
+// inline object variant copies into its struct. plain names the properties
+// whose required plain strings must not be empty (checkPlan). It returns the
+// variants, and records those of a oneOf for WriteHelpersJen.
+func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs []*load.Definition, exactlyOne bool, plain map[string]bool) []unionVariant {
 	f, schema, usedTypeNames := b.f, b.schema, b.usedTypeNames
 	var recorded []unionVariant
 	type variantInfo struct {
@@ -1009,9 +997,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		scalarConst Code
 		isNull      bool
 		description string
-		// sharedChecks hold Validate statements for the union's own required
-		// properties, which an inline object variant copies into its struct.
-		sharedChecks []Code
+		// validated says how Validate reaches the Validate of the variant
+		// through the wrapper's pointer: via holds the containers after it.
+		// Its descends is false when the variant type has none.
+		validated fieldCheck
 	}
 	// matchesByKeys says that an object selects the variant by its keys, and
 	// never by the order of the variants.
@@ -1174,7 +1163,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				nullKeys = append(nullKeys, pk)
 			}
 		}
-		var sharedChecks []Code
+		var validated fieldCheck
+		if ref != "" {
+			validated.descends = b.validates(strings.TrimPrefix(ref, "#/$defs/"))
+		}
 		var nestedVariants []unionVariant
 		// Emit struct for inline variants (non-$ref)
 		if (isObj || isNull || v.Title != "") && ref == "" {
@@ -1200,13 +1192,6 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					required = append(required, r)
 				}
 				fields := ir.Fields(mergedProps, required)
-				for _, field := range fields {
-					if _, shared := sharedRequired[field.Prop]; shared && field.Def.Const == nil {
-						if check := requiredCheck(field.Prop, field.Def, "u", fieldName); check != nil {
-							sharedChecks = append(sharedChecks, check)
-						}
-					}
-				}
 				if v.Description != "" {
 					emitDocComment(f, v.Description)
 				}
@@ -1218,9 +1203,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					nestedVariants = b.emitUnion(tname, &load.Definition{
 						Properties: mergedProps, Required: required, Discriminator: v.Discriminator,
 						AdditionalProperties: v.AdditionalProperties, UnevaluatedProperties: v.UnevaluatedProperties,
-					}, nested, len(v.OneOf) > 0, false)
+					}, nested, len(v.OneOf) > 0, plain)
+					validated.descends = true
 				} else {
-					b.emitStruct(tname, fields, nil, opensMembers(v))
+					validated.descends = b.emitStruct(tname, fields, nil, opensMembers(v), plain)
 				}
 			default:
 				// Title-only variants: check if they're extension types
@@ -1239,7 +1225,13 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				} else if ir.PrimaryType(v) != "" {
 					// Non-object title-only variants can still carry payloads (e.g. arrays).
 					// Emit a concrete type so sequential decode can succeed for valid payloads.
-					f.Type().Id(tname).Add(jenTypeFor(v))
+					goType := jenTypeFor(v)
+					f.Type().Id(tname).Add(goType)
+					// Validate reaches the items of an array through the
+					// named slice type, which has no Validate of its own.
+					var leaf string
+					validated.via, leaf = peelContainers(goType)
+					validated.descends = len(validated.via) > 0 && b.validates(leaf)
 				} else {
 					// Emit as empty struct only for truly empty variants.
 					f.Type().Id(tname).Struct()
@@ -1263,7 +1255,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			scalarConst:       scalarConstOf(v),
 			isNull:            isNull,
 			description:       v.Description,
-			sharedChecks:      sharedChecks,
+			validated:         validated,
 		})
 		recorded = append(recorded, unionVariant{
 			fieldName: fieldName,
@@ -1547,32 +1539,27 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	})
 	f.Line()
 
-	if exactlyOne || validate {
-		f.Func().Params(Id("u").Op("*").Id(name)).Id("Validate").Params().Params(Error()).BlockFunc(func(g *Group) {
-			if exactlyOne {
-				g.Var().Id("count").Int()
-				for _, vi := range variants {
-					g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).Block(Id("count").Op("++"))
-				}
-				g.If(Id("count").Op("!=").Lit(1)).Block(
-					Return(Qual("errors", "New").Call(Lit(name + " must have exactly one variant set"))),
-				)
+	wrapperChecks := b.checkPlan(wrapperFields, false, plain)
+	emitValidate(f, "u", name, func(g *Group) {
+		g.Var().Id("count").Int()
+		for _, vi := range variants {
+			g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).Block(Id("count").Op("++"))
+		}
+		if exactlyOne {
+			g.If(Id("count").Op("!=").Lit(1)).Block(
+				Return(Qual("errors", "New").Call(Lit(name + " must have exactly one variant set"))),
+			)
+		} else {
+			g.If(Id("count").Op("==").Lit(0)).Block(
+				Return(Qual("errors", "New").Call(Lit(name + " has no variant set"))),
+			)
+		}
+		emitChecks(g, "u", wrapperChecks)
+		for _, vi := range variants {
+			if vi.validated.descends {
+				g.Add(validateHeld(Id("u").Dot(vi.fieldName), append([]container{pointer}, vi.validated.via...), "", nil, 0))
 			}
-			for _, field := range wrapperFields {
-				if field.Required && field.Def.Const == nil {
-					if check := requiredCheck(field.Prop, field.Def, "u"); check != nil {
-						g.Add(check)
-					}
-				}
-			}
-			for _, vi := range variants {
-				if len(vi.sharedChecks) > 0 {
-					g.If(Id("u").Dot(vi.fieldName).Op("!=").Nil()).Block(vi.sharedChecks...)
-				}
-			}
-			g.Return(Nil())
-		})
-		f.Line()
-	}
+		}
+	})
 	return recorded
 }

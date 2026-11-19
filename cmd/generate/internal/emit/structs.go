@@ -203,8 +203,12 @@ func patchValueType(field ir.Field) Code {
 const additionalPropertiesField = "AdditionalProperties"
 
 // emitStruct declares the struct name with one field per entry of fields. open
-// says that the schema has "additionalProperties": true.
-func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeNames map[string]string, open bool) {
+// says that the schema has "additionalProperties": true. plain names the
+// properties whose required plain strings must not be empty (checkPlan). The
+// struct gets a Validate when its check plan is not empty, and always when it
+// is a message type, whose Validate the dispatch calls. emitStruct reports
+// whether that Validate checks something.
+func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeNames map[string]string, open bool, plain map[string]bool) bool {
 	f := b.f
 	plans := b.plansFor(name, fields)
 	decls := fieldDecls(plans, nestedTypeNames)
@@ -277,6 +281,12 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 		})
 		f.Line()
 	}
+
+	checks := b.checkPlan(fields, nestedTypeNames != nil, plain)
+	if len(checks) > 0 || isMessage(name) {
+		emitValidate(f, "v", name, func(g *Group) { emitChecks(g, "v", checks) })
+	}
+	return len(checks) > 0
 }
 
 // emitEncodeSupport declares the helpers that the MarshalJSON methods call.
@@ -318,7 +328,7 @@ func (b *typesBuilder) emitNestedStructs(parent string, fields []ir.Field) map[s
 	nestedTypeNames := map[string]string{}
 	for _, field := range fields {
 		prop := field.Def
-		if prop.Ref != "" || ir.PrimaryType(prop) != "object" || len(prop.Properties) == 0 {
+		if !inlineStruct(prop) {
 			continue
 		}
 		nestedTypeName := generateNestedTypeName(parent, field.Prop, usedTypeNames)
@@ -332,7 +342,13 @@ func (b *typesBuilder) emitNestedStructs(parent string, fields []ir.Field) map[s
 		if prop.Description != "" {
 			emitDocComment(f, prop.Description)
 		}
-		b.emitStruct(nestedTypeName, ir.Fields(prop.Properties, prop.Required), nil, opensMembers(prop))
+		b.emitStruct(nestedTypeName, ir.Fields(prop.Properties, prop.Required), nil, opensMembers(prop), nil)
 	}
 	return nestedTypeNames
+}
+
+// inlineStruct reports whether prop, a property of a $defs entry, is an
+// inline object with properties, which gets a struct of its own.
+func inlineStruct(prop *load.Definition) bool {
+	return prop.Ref == "" && ir.PrimaryType(prop) == "object" && len(prop.Properties) > 0
 }

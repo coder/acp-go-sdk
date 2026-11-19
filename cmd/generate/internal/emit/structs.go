@@ -20,6 +20,10 @@ type fieldPlan struct {
 	// nullAsAbsent says that the field is a patch field for which the schema
 	// defines no clear (ir.NullAsAbsent), so its doc says how to read null.
 	nullAsAbsent bool
+	// keepEmpty says that the field is an optional slice or map whose schema
+	// allows null: the Rust SDK reads it as an Option, so it writes an empty
+	// value as [] or {} and leaves out only None, which is nil here.
+	keepEmpty bool
 	// shape is the shapeID constant that a lenient decoder checks the
 	// decoded value, or each decoded item, against; nil for none.
 	shape Code
@@ -34,15 +38,10 @@ func (p fieldPlan) customDecode() bool {
 	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems
 }
 
-// patches returns the patch fields of plans.
-func patches(plans []fieldPlan) []fieldPlan {
-	var out []fieldPlan
-	for _, p := range plans {
-		if p.patch {
-			out = append(out, p)
-		}
-	}
-	return out
+// encodesPointer says that MarshalJSON encodes the field through a pointer
+// that is nil, and so left out, when the field is unset or nil.
+func (p fieldPlan) encodesPointer() bool {
+	return p.patch || p.keepEmpty
 }
 
 // plansFor plans the fields of the struct owner.
@@ -85,6 +84,7 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 		p.fallbackOnNull = lenient.DefaultOnNull || lenient.DefaultOnError
 		p.fillNilOnEncode = true
 	}
+	p.keepEmpty = !field.Required && includesNull(def) && mapsToSliceOrMap(def) && def.Default == nil && field.Prop != metaProperty
 	if lenient.DefaultOnError || lenient.SkipInvalidItems {
 		p.shape = b.shapes.site(owner, field, fieldType(field))
 	}
@@ -130,13 +130,13 @@ func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 	return decls
 }
 
-// fieldDecl declares the struct field of p. With patchPointers, a patch field
-// is a pointer to its Patch with omitempty, as the struct that MarshalJSON
+// fieldDecl declares the struct field of p. With pointers, a field that
+// encodesPointer is a pointer with omitempty, as the struct that MarshalJSON
 // encodes has it.
-func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, patchPointers bool) Code {
+func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, pointers bool) Code {
 	field := p.field
 	tag := field.Prop
-	if !field.Required && !p.fillNilOnEncode && (!p.patch || patchPointers) {
+	if !field.Required && !p.fillNilOnEncode && (!p.patch || pointers) {
 		tag += ",omitempty"
 	}
 	var typ Code
@@ -147,12 +147,14 @@ func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, patchPointers boo
 		value = Id(nestedTypeName)
 	}
 	switch {
-	case p.patch && patchPointers:
+	case p.patch && pointers:
 		typ = Op("*").Id("Patch").Types(value)
 	case p.patch:
 		typ = Id("Patch").Types(value)
 	case ok:
 		typ = Id(nestedTypeName)
+	case p.keepEmpty && pointers:
+		typ = Op("*").Add(fieldType(field))
 	default:
 		typ = fieldType(field)
 	}
@@ -221,29 +223,34 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 	f.Type().Id(name).Struct(decls...)
 	f.Line()
 
-	patched := patches(plans)
-	if open || len(patched) > 0 || slices.ContainsFunc(plans, fieldPlan.hasFallback) {
+	pointers := slices.ContainsFunc(plans, fieldPlan.encodesPointer)
+	if open || pointers || slices.ContainsFunc(plans, fieldPlan.hasFallback) {
 		f.Func().Params(Id("v").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
 			g.Type().Id("Alias").Id(name)
 			g.Var().Id("a").Id("Alias")
 			g.Id("a").Op("=").Id("Alias").Call(Id("v"))
 			emitFillNil(g, plans, "a")
 			encoded := Id("a")
-			if len(patched) > 0 {
-				// The same fields in the same order, but a patch field is a
-				// pointer that is nil, and so left out, when it is unset.
+			if pointers {
+				// The same fields in the same order, but a field that
+				// encodesPointer is a pointer that is nil, and so left out,
+				// when the field is unset or nil.
 				var shadow []Code
 				values := Dict{}
 				for _, p := range plans {
 					shadow = append(shadow, fieldDecl(p, nestedTypeNames, true))
 					value := Id("a").Dot(p.field.Name)
-					if p.patch {
+					switch {
+					case p.patch:
 						value = value.Dot("orNil").Call()
+					case p.keepEmpty:
+						b.usesNilIf = true
+						value = Id("nilIf").Call(Id("a").Dot(p.field.Name).Op("==").Nil(), Op("&").Add(value))
 					}
 					values[Id(p.field.Name)] = value
 				}
-				g.Type().Id("patched").Struct(shadow...)
-				encoded = Id("patched").Values(values)
+				g.Type().Id("wire").Struct(shadow...)
+				encoded = Id("wire").Values(values)
 			}
 			if !open {
 				g.Return(Qual("encoding/json", "Marshal").Call(encoded))
@@ -270,6 +277,22 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 		})
 		f.Line()
 	}
+}
+
+// emitEncodeSupport declares the helpers that the MarshalJSON methods call.
+func (b *typesBuilder) emitEncodeSupport() {
+	if !b.usesNilIf {
+		return
+	}
+	f := b.f
+	f.Comment("nilIf returns nil when isNil holds, and p otherwise. MarshalJSON passes it")
+	f.Comment("a list or map that keeps an empty value, so that omitempty leaves out only a")
+	f.Comment("nil one.")
+	f.Func().Id("nilIf").Types(Id("T").Any()).Params(Id("isNil").Bool(), Id("p").Op("*").Id("T")).Op("*").Id("T").Block(
+		If(Id("isNil")).Block(Return(Nil())),
+		Return(Id("p")),
+	)
+	f.Line()
 }
 
 func customDecoded(plans []fieldPlan) []fieldPlan {

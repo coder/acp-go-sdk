@@ -25,6 +25,13 @@ func fakeAgent(mode string) {
 	if mode == "garbage" {
 		fmt.Println("debug: hello")
 	}
+	if mode == "deaf" {
+		// Stop reading, then ask the client, so its answer cannot be written.
+		os.Stdin.Close()
+		fmt.Println(`{"jsonrpc":"2.0","id":100,"method":"ask","params":{}}`)
+		time.Sleep(300 * time.Millisecond)
+		return
+	}
 	sc := bufio.NewScanner(os.Stdin)
 	for sc.Scan() {
 		var req map[string]any
@@ -41,6 +48,10 @@ func fakeAgent(mode string) {
 		}
 		if mode == "no-result" {
 			delete(resp, "result")
+		}
+		if mode == "numbers" {
+			// Literal numbers that a float64 cannot hold or that differ in form.
+			resp["result"] = json.RawMessage(`{"big":9007199254740993,"one":1.0,"nested":{"ids":[9007199254740993]}}`)
 		}
 		b, _ := json.Marshal(resp)
 		fmt.Println(string(b))
@@ -85,6 +96,8 @@ func TestReadJourney_RejectsBadSteps(t *testing.T) {
 		{"unknown field", `{"sned":"x"}`, "no action"},
 		{"expect on an async send", `{"send":"m","async":true,"expect":{"result.ok":true}}`, "async send cannot expect"},
 		{"negative count", `{"waitFor":"m","count":-1}`, "must not be negative"},
+		{"negative sleep", `{"sleep":"-1s"}`, "must not be negative"},
+		{"negative timeout", `{"waitFor":"m","timeout":"-1ms"}`, "must not be negative"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -140,8 +153,11 @@ func TestValidEnvelope(t *testing.T) {
 		{`{"jsonrpc":"2.0","id":1,"method":"m","params":[1]}`, true},
 	}
 	for _, tt := range tests {
+		// acpwire decodes agent output with UseNumber, so do the same here.
+		dec := json.NewDecoder(strings.NewReader(tt.msg))
+		dec.UseNumber()
 		var msg map[string]any
-		if err := json.Unmarshal([]byte(tt.msg), &msg); err != nil {
+		if err := dec.Decode(&msg); err != nil {
 			t.Fatal(err)
 		}
 		if got := validEnvelope(msg); got != tt.want {
@@ -266,4 +282,66 @@ func TestRun_ExpectExpandsTemplates(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRun_ExpectComparesNumbersExactly checks that an expectation compares a
+// number by its exact value: no digit above 2^53 is rounded away, and 1
+// equals 1.0.
+func TestRun_ExpectComparesNumbersExactly(t *testing.T) {
+	tests := []struct {
+		name, expect string
+		wantPass     bool
+	}{
+		{"same big integer", `{"result.big":9007199254740993}`, true},
+		{"big integer one below", `{"result.big":9007199254740992}`, false},
+		{"big integer in a nested array", `{"result.nested":{"ids":[9007199254740993]}}`, true},
+		{"other big integer in a nested array", `{"result.nested":{"ids":[9007199254740992]}}`, false},
+		{"1 equals 1.0", `{"result.one":1}`, true},
+		{"1.0 equals 1.0", `{"result.one":1.0}`, true},
+		{"1e0 equals 1.0", `{"result.one":1e0}`, true},
+		{"a string is not a number", `{"result.one":"1"}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ACPWIRE_FAKE_AGENT", "numbers")
+			steps, lines, err := readJourney(writeJourney(t,
+				`{"send":"ping","expect":`+tt.expect+`,"timeout":"2s"}`,
+				`{"close":true,"expectExit":0}`,
+			))
+			if err != nil {
+				t.Fatal(err)
+			}
+			results, err := run(os.Args[0], nil, steps, lines, t.TempDir(), 10*time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := results[0].Pass; got != tt.wantPass {
+				t.Fatalf("ping step = %+v, want pass=%v", results[0], tt.wantPass)
+			}
+		})
+	}
+}
+
+// TestRun_FailsWhenAnAnswerCannotBeWritten checks that the run fails when the
+// automatic answer to an agent request cannot reach the agent.
+func TestRun_FailsWhenAnAnswerCannotBeWritten(t *testing.T) {
+	t.Setenv("ACPWIRE_FAKE_AGENT", "deaf")
+	steps, lines, err := readJourney(writeJourney(t,
+		`{"respond":"ask","result":{}}`,
+		`{"waitFor":"ask","timeout":"2s"}`,
+		`{"close":true,"expectExit":0}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := run(os.Args[0], nil, steps, lines, t.TempDir(), 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if !r.Pass && strings.Contains(r.Step, "answer") {
+			return
+		}
+	}
+	t.Fatalf("results %+v: want a failed step for the answer that could not be written", results)
 }

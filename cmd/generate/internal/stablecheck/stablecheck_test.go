@@ -61,6 +61,15 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 		}},
 		"Level": {Type: "string", Enum: []any{"low", "high"}},
 		"Count": {Type: "integer", Format: "uint16"},
+		// Auth has one variant, which it picks by its required id.
+		"Auth": {AnyOf: []*load.Definition{
+			{Title: "agent", Type: "object", Properties: map[string]*load.Definition{"id": str()}, Required: []string{"id"}},
+		}},
+		// The optional properties of a patch are patch fields.
+		"Update": {
+			Type: "object", Description: "Only changed fields are sent.",
+			Properties: map[string]*load.Definition{"id": str(), "title": str()}, Required: []string{"id"},
+		},
 		"Flags": obj(map[string]*load.Definition{"read": {Type: "boolean"}, "list": {Type: "boolean"}}),
 		"Caps": obj(map[string]*load.Definition{
 			"flags": {AllOf: []*load.Definition{ref("Flags")}, Default: map[string]any{"read": false}, DefaultOnError: true},
@@ -84,6 +93,13 @@ func TestCompare_AllowsAdditions(t *testing.T) {
 		defs["Flags"].Properties["write"] = &load.Definition{Type: "boolean"}
 		defs["Caps"].Properties["flags"].Default = map[string]any{"read": false, "write": false}
 		defs["Extra"] = obj(map[string]*load.Definition{"x": str()})
+		// Variants with a kind of their own make kind the discriminator of
+		// Auth, and the new switch on it takes only their kinds.
+		defs["Auth"].AnyOf = append([]*load.Definition{
+			variant("env_var", map[string]*load.Definition{"name": str()}),
+			variant("terminal", map[string]*load.Definition{"command": str()}),
+		}, defs["Auth"].AnyOf...)
+		defs["Update"].Properties["name"] = str()
 	}))
 	if err != nil {
 		t.Fatal(err)

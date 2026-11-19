@@ -40,12 +40,14 @@ type Run struct {
 //     is removed or changes its type, or a named type whose integer type
 //     widens, which apidiff calls compatible;
 //   - a function or method whose body changes beyond the statements, switch
-//     cases, and local struct fields that only refer to what merged adds: its
-//     new fields of the receiver type and its new package-level names;
+//     cases, local struct fields, and composite literal elements that only
+//     refer to what merged adds: new fields of the receiver type and new
+//     package-level names;
 //   - in an UnmarshalJSON method, such an added statement that can return
 //     with a nil error before code for a stable field, which can then decode
-//     a stable value as the new one. A case of a switch whose stable cases
-//     stay is exempt: the cases compare distinct constants.
+//     a stable value as the new one. A return in a literal case of a switch
+//     with a tag, such as a switch on a discriminator, is exempt: the case
+//     takes only its own values.
 //
 // A JSON literal passed with a pointer, such as a default, may gain members
 // for the fields that merged adds to the pointed-to type.
@@ -240,9 +242,9 @@ func bodyChanges(old, new *side) []string {
 	return out
 }
 
-// projection removes from a body of the merged files the statements, switch
-// cases, and local struct fields that refer to names in added and to none in
-// stable. It records those that can return with a nil error.
+// projection removes from a body of the merged files what refers to names in
+// added and to none in stable. It records the removed statements that can
+// return with a nil error.
 type projection struct {
 	stable, added map[string]bool
 	// addedFields holds the fields of the receiver type in added.
@@ -263,76 +265,73 @@ func (p *projection) refers(n ast.Node) (added, stable bool) {
 	return added, stable
 }
 
+// block removes from b, at any depth, what refers only to added names: a
+// statement, a switch case, a field of a local struct type, or an element of
+// a composite literal.
 func (p *projection) block(b *ast.BlockStmt) *ast.BlockStmt {
-	p.walk(b)
+	ast.Inspect(b, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.SwitchStmt:
+			n.Body.List = filter(p, n.Body.List, n.Tag != nil)
+		case *ast.BlockStmt:
+			n.List = filter(p, n.List, false)
+		case *ast.CaseClause:
+			n.Body = filter(p, n.Body, false)
+		case *ast.StructType:
+			n.Fields.List = filter(p, n.Fields.List, false)
+		case *ast.CompositeLit:
+			n.Elts = filter(p, n.Elts, false)
+		}
+		return true
+	})
 	return b
 }
 
-func (p *projection) walk(n ast.Node) {
-	switch n := n.(type) {
-	case *ast.BlockStmt:
-		n.List = filter(p, n.List, false)
-	case *ast.IfStmt:
-		p.walk(n.Body)
-		if n.Else != nil {
-			p.walk(n.Else)
-		}
-	case *ast.ForStmt:
-		p.walk(n.Body)
-	case *ast.RangeStmt:
-		p.walk(n.Body)
-	case *ast.LabeledStmt:
-		p.walk(n.Stmt)
-	case *ast.SwitchStmt:
-		n.Body.List = filter(p, n.Body.List, true)
-	case *ast.TypeSwitchStmt:
-		n.Body.List = filter(p, n.Body.List, true)
-	case *ast.CaseClause:
-		n.Body = filter(p, n.Body, false)
-	case *ast.DeclStmt:
-		for _, spec := range n.Decl.(*ast.GenDecl).Specs {
-			switch spec := spec.(type) {
-			case *ast.TypeSpec:
-				p.walk(spec.Type)
-			case *ast.ValueSpec:
-				p.walk(spec.Type)
-			}
-		}
-	case *ast.StructType:
-		n.Fields.List = filter(p, n.Fields.List, false)
-	}
-}
-
-// filter keeps the elements of list that do not refer only to added names,
-// and walks into those that refer to both. cases says that list holds the
-// cases of a switch.
-func filter[T ast.Node](p *projection, list []T, cases bool) []T {
+// filter keeps the elements of list that do not refer only to added names.
+// tagged says that list holds the cases of a switch with a tag.
+func filter[T ast.Node](p *projection, list []T, tagged bool) []T {
 	var out []T
 	for _, n := range list {
-		added, stable := p.refers(n)
-		switch {
-		case !added:
+		if added, stable := p.refers(n); !added || stable {
 			out = append(out, n)
-		case stable:
-			p.walk(n)
-			out = append(out, n)
-		default:
-			if clause, ok := ast.Node(n).(*ast.CaseClause); (!cases || !ok || clause.List == nil) && returnsNil(n) {
-				p.early = append(p.early, n)
-			}
+			continue
+		}
+		if clause, ok := ast.Node(n).(*ast.CaseClause); (!tagged || !ok || !literalCase(clause)) && returnsNil(n) {
+			p.early = append(p.early, n)
 		}
 	}
 	return out
 }
 
+// literalCase reports whether c is a case of literal values, which a switch
+// with a tag takes only for values equal to them.
+func literalCase(c *ast.CaseClause) bool {
+	for _, e := range c.List {
+		if _, ok := e.(*ast.BasicLit); !ok {
+			return false
+		}
+	}
+	return len(c.List) > 0
+}
+
 // returnsNil reports whether n has a return statement whose last result is
-// nil, outside function literals.
+// nil, outside function literals and the literal cases of switches with a
+// tag, such as a switch on a discriminator.
 func returnsNil(n ast.Node) bool {
 	found := false
 	ast.Inspect(n, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.FuncLit:
 			return false
+		case *ast.SwitchStmt:
+			if n.Tag != nil {
+				for _, c := range n.Body.List {
+					if clause := c.(*ast.CaseClause); !literalCase(clause) && returnsNil(clause) {
+						found = true
+					}
+				}
+				return false
+			}
 		case *ast.ReturnStmt:
 			if len(n.Results) > 0 {
 				if id, ok := n.Results[len(n.Results)-1].(*ast.Ident); ok && id.Name == "nil" {

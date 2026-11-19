@@ -164,6 +164,7 @@ type typesBuilder struct {
 	// nullAsAbsent those of them that have no clear (ir.NullAsAbsent).
 	patch, nullAsAbsent map[*load.Definition]bool
 	usesPatch           bool
+	usesNilIf           bool
 }
 
 // buildTypesJen builds the types_gen.go file. It also returns, per oneOf union,
@@ -279,6 +280,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	b.emitInterfaces("agent", meta.AgentMethods, groups)
 	b.emitInterfaces("client", meta.ClientMethods, groups)
 	b.emitSupport()
+	b.emitEncodeSupport()
 	return f, emitted
 }
 
@@ -1480,6 +1482,9 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	// Marshal
 	f.Func().Params(Id("u").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {
 		if len(wrapperFields) > 0 {
+			if slices.ContainsFunc(wrapperPlans, fieldPlan.encodesPointer) {
+				panic(fmt.Sprintf("union %q has an own patch field or a field that keeps an empty value, which its MarshalJSON does not encode", name))
+			}
 			g.Type().Id("plain").Id(name)
 			g.Id("own").Op(":=").Id("plain").Call(Id("u"))
 			emitFillNil(g, wrapperPlans, "own")

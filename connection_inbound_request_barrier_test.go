@@ -205,6 +205,49 @@ func TestConnection_InboundRequestBarrierHonorsCancellation(t *testing.T) {
 	}
 }
 
+// When the peer disconnects right after a $/cancel_request for a request that
+// waits for an earlier notification handler, the waiting request can see the
+// cancel or the disconnect first. On the cancel, the peer gets -32800 and the
+// handler never runs. On the disconnect, the handler runs with a cancelled ctx.
+// Either way, the handler never runs with a live ctx.
+func TestConnection_InboundRequestBarrierCancelThenDisconnect(t *testing.T) {
+	outcomes := map[string]int{}
+	for i := 0; i < 50; i++ {
+		releaseNotification := make(chan struct{})
+		peer := newInboundBarrierTestPeer(t, func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+			switch method {
+			case "notification":
+				<-releaseNotification
+				return nil, nil
+			case "request":
+				return map[string]bool{"cancelled": ctx.Err() != nil}, nil
+			default:
+				return nil, NewMethodNotFound(method)
+			}
+		})
+		peer.notification(t, "notification", nil)
+		peer.request(t, "request", "request")
+		peer.waitInflight(t, "request")
+		peer.notification(t, "$/cancel_request", map[string]any{"requestId": "request"})
+		_ = peer.input.Close()
+
+		response := peer.response(t, "request")
+		close(releaseNotification)
+		if errorResponse, ok := response["error"].(map[string]any); ok {
+			if errorResponse["code"] != float64(-32800) {
+				t.Fatalf("run %d: error response = %#v, want code -32800", i, response)
+			}
+			outcomes["-32800"]++
+			continue
+		}
+		if result, _ := response["result"].(map[string]any); result["cancelled"] != true {
+			t.Fatalf("run %d: the handler ran with a live ctx: %#v", i, response)
+		}
+		outcomes["handler with cancelled ctx"]++
+	}
+	t.Logf("outcomes over 50 runs: %v", outcomes)
+}
+
 func TestConnection_InboundRequestDoesNotWaitForLaterNotification(t *testing.T) {
 	handlerStarted := make(chan struct{})
 	returnRequest := make(chan struct{})

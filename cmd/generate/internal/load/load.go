@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 )
 
@@ -81,8 +82,20 @@ type Definition struct {
 
 	// boolSchema records whether this definition was a boolean schema (true/false).
 	// JSON Schema allows boolean schemas, where true matches anything and false matches nothing.
-	// We ignore the semantic difference in codegen and treat both as permissive/unknown shapes.
+	// The Go types treat both as permissive/unknown shapes. The shapes read them
+	// (IsTrue, IsFalse).
 	boolSchema *bool `json:"-"`
+}
+
+// IsTrue reports whether d is the boolean schema true or the empty schema
+// {}, which every value fits (JSON Schema 2020-12, section 4.3.2).
+func (d *Definition) IsTrue() bool {
+	return d != nil && (d.boolSchema != nil && *d.boolSchema || reflect.DeepEqual(*d, Definition{}))
+}
+
+// IsFalse reports whether d is the boolean schema false, which no value fits.
+func (d *Definition) IsFalse() bool {
+	return d != nil && d.boolSchema != nil && !*d.boolSchema
 }
 
 // Members is a keyword, such as additionalProperties, that applies to the

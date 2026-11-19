@@ -143,7 +143,12 @@ func appendDocComments(codeSlice []Code, desc string) []Code {
 }
 
 // WriteTypesJen emits go/types_gen.go with all types and the Agent/Client interfaces.
+// It returns the error of schema.RefLoop, since the walkers of buildTypesJen
+// would not return.
 func WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error {
+	if err := schema.RefLoop(); err != nil {
+		return err
+	}
 	f, _ := buildTypesJen(schema, meta)
 	var buf bytes.Buffer
 	if err := f.Render(&buf); err != nil {

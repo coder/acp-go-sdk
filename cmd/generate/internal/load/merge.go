@@ -455,10 +455,23 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) 
 }
 
 // extendsDefault reports whether uv, the default of u, is sv, the default
-// of s, or sv with members for the properties that only u has, at any depth.
+// of s, or sv with members for the properties that only u has, at any depth,
+// array items included.
 // s and u are the stable and unstable versions of the node whose default it
 // is, and their properties name its members.
 func (vs versions) extendsDefault(s, u *Definition, sv, uv any) bool {
+	if sitems, ok := sv.([]any); ok {
+		uitems, ok := uv.([]any)
+		if !ok || len(sitems) != len(uitems) {
+			return false
+		}
+		for i := range sitems {
+			if !vs.extendsDefault(itemsOf(s), itemsOf(u), sitems[i], uitems[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	smembers, sok := sv.(map[string]any)
 	umembers, uok := uv.(map[string]any)
 	if !sok || !uok {
@@ -477,6 +490,13 @@ func (vs versions) extendsDefault(s, u *Definition, sv, uv any) bool {
 		}
 	}
 	return true
+}
+
+func itemsOf(d *Definition) *Definition {
+	if d == nil {
+		return nil
+	}
+	return d.Items
 }
 
 // properties returns the properties of d and of the definitions in defs that

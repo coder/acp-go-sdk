@@ -947,6 +947,8 @@ func TestMergeStableAndUnstable_AllowsDefaultsThatGainMembers(t *testing.T) {
 				// The members of this default come from its own properties
 				// and from McpCapabilities.
 				"settings": {Type: "object", Properties: map[string]*Definition{"mode": str()}, AllOf: []*Definition{ref("McpCapabilities")}, Default: withMode(defaults)},
+				// The items of an array default too.
+				"servers": {Type: "array", Items: ref("McpCapabilities"), Default: []any{defaults}},
 			}},
 		}
 	}

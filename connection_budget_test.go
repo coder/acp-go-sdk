@@ -121,6 +121,10 @@ func (l *wireLine) number(n int) []byte {
 
 func (l *wireLine) size() int { return len(l.buf) - 1 }
 
+// charge is what a line from requestLine holds of the byte budget: the line,
+// and the key of its id, which the connection keeps a second time.
+func (l *wireLine) charge() int { return l.size() + len(`"`+lineID(0)+`"`) }
+
 func lineID(n int) string { return fmt.Sprintf("%0*d", lineNumberDigits, n) }
 
 type budgetPeer struct {
@@ -352,8 +356,8 @@ func TestConnectionBudget_RejectsRequestsOverLimit(t *testing.T) {
 		}
 	}
 	p.noReply()
-	if heldRequests != maxRequests || heldBytes != maxRequests*line.size() {
-		t.Errorf("held %d bytes and %d requests, want %d and %d", heldBytes, heldRequests, maxRequests*line.size(), maxRequests)
+	if heldRequests != maxRequests || heldBytes != maxRequests*line.charge() {
+		t.Errorf("held %d bytes and %d requests, want %d and %d", heldBytes, heldRequests, maxRequests*line.charge(), maxRequests)
 	}
 	if grown > maxRequests {
 		t.Errorf("goroutines grew by %d for %d held requests", grown, maxRequests)
@@ -383,7 +387,7 @@ func TestConnectionBudget_RejectsRequestsOverByteBudget(t *testing.T) {
 	warmUp(t, p)
 
 	line := requestLine(t, "_block", 1<<20)
-	fit := budget / line.size()
+	fit := budget / line.charge()
 	before := liveHeap()
 	for n := 1; n <= sent; n++ {
 		p.write(line.number(n))
@@ -445,7 +449,7 @@ func TestConnectionBudget_KeepsRequestsAndNotificationsApart(t *testing.T) {
 	const budget, requests, notes = 1 << 20, 3, 5
 	request := requestLine(t, "_block", 300<<10)
 	note := notificationLine(t, "_block", 200<<10)
-	if requests*request.size() > budget || (requests+1)*request.size() <= budget ||
+	if requests*request.charge() > budget || (requests+1)*request.charge() <= budget ||
 		notes*note.size() > budget || (notes+1)*note.size() <= budget {
 		t.Fatal("SETUP: the requests and the notifications must each fill the budget")
 	}
@@ -461,7 +465,7 @@ func TestConnectionBudget_KeepsRequestsAndNotificationsApart(t *testing.T) {
 		t.Errorf("rejected %v, want request %d", rejected, requests+1)
 	}
 	writes := p.writeAll(note, 1, notes)
-	want := requests*request.size() + notes*note.size()
+	want := requests*request.charge() + notes*note.size()
 	waitUntil(t, "the notifications are held or close the connection", func() bool {
 		b, _ := c.budget.held()
 		return b == want || !isOpen(c.Done())
@@ -497,7 +501,7 @@ func TestConnectionBudget_DefaultLimits(t *testing.T) {
 		if rejected := rejectedIDs(t, p, 1); !rejected[lineID(documentedRequests+1)] {
 			t.Errorf("rejected %v, want request %d", rejected, documentedRequests+1)
 		}
-		waitHeld(t, c, documentedRequests*line.size(), documentedRequests)
+		waitHeld(t, c, documentedRequests*line.charge(), documentedRequests)
 		p.noReply()
 		retained(t, c, before)
 		g.open()
@@ -606,7 +610,7 @@ func TestConnectionBudget_ReleasesOnEveryPath(t *testing.T) {
 		request := requestLine(t, "_after", 256)
 		p.write(note.number(1))
 		p.write(request.number(1))
-		waitHeld(t, c, note.size()+request.size(), 1)
+		waitHeld(t, c, note.size()+request.charge(), 1)
 		p.write([]byte(`{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":"` + lineID(1) + `"}}` + "\n"))
 		if m := p.reply(); replyID(t, m) != lineID(1) || m.Error == nil || m.Error.Code != -32800 {
 			t.Fatalf("cancelled request: %+v", m)
@@ -685,7 +689,7 @@ func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
 		}
 	}
 	waitCompletedNotifications(t, conn.conn, cancels)
-	waitHeld(t, conn.conn, len(pinsMarkers)-1, 1)
+	waitHeld(t, conn.conn, len(pinsMarkers)-1+len(`"old"`), 1)
 	delta, _, _ := retained(t, conn.conn, before)
 	conn.mu.Lock()
 	cancelledAt, newest := len(conn.sessionCancelledAt), len(conn.sessionNewest)
@@ -761,10 +765,10 @@ func TestAgentSideConnection_CancelMarkersKeepLongSessionIDsApart(t *testing.T) 
 // Prompts with images or resources can fill the byte budget, and a client must
 // still be able to cancel them.
 func TestAgentSideConnection_CancelFitsBesideHeldPrompts(t *testing.T) {
-	const prompts, promptSize = 8, 8 << 20
-	if prompts*promptSize != 64<<20 {
-		t.Fatal("SETUP: the prompts must fill the documented 64 MiB budget")
-	}
+	const prompts, budget = 8, 64 << 20
+	// Each prompt line is 8 MiB less the key of its id, so the eight fill the
+	// documented budget exactly.
+	promptSize := budget/prompts - len(`"`+lineID(0)+`"`)
 	p := newBudgetPeer(t)
 	g := newGate(t, "")
 	var running atomic.Int64
@@ -787,6 +791,9 @@ func TestAgentSideConnection_CancelFitsBesideHeldPrompts(t *testing.T) {
 		p.write(prompt.number(n))
 	}
 	waitUntil(t, "every prompt runs", func() bool { return running.Load() == prompts })
+	if heldBytes, _ := conn.conn.budget.held(); heldBytes != budget {
+		t.Fatalf("SETUP: the prompts hold %d bytes, want the whole budget of %d", heldBytes, budget)
+	}
 	cancel := []byte(`{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"` + lineID(1) + `"}}` + "\n")
 	p.write(cancel)
 

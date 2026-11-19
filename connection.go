@@ -466,6 +466,14 @@ func (c *Connection) receive() {
 		case msg.Method != "":
 			size := len(line)
 			if msg.ID != nil {
+				idKey, err := canonicalJSONRPCIDKey(*msg.ID)
+				if err != nil {
+					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", string(*msg.ID))
+					idKey = string(*msg.ID)
+				}
+				// The request keeps its id twice: in msg for the reply, and
+				// as the key in c.inflight.
+				size += len(idKey)
 				// The read loop writes the rejection itself: a goroutine per
 				// rejection would be unbounded again.
 				if rejection := c.budget.holdRequest(size); rejection != nil {
@@ -482,11 +490,6 @@ func (c *Connection) receive() {
 				watermark := c.lastEnqueuedNotificationSeq
 				c.notifyMu.Unlock()
 
-				idKey, err := canonicalJSONRPCIDKey(*msg.ID)
-				if err != nil {
-					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", string(*msg.ID))
-					idKey = string(*msg.ID)
-				}
 				reqCtx, cancel := context.WithCancelCause(c.ctx)
 				c.inboundMessages++
 				arrival := c.inboundMessages

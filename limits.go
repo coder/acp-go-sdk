@@ -27,7 +27,8 @@ const (
 // holds at once, and how many bytes of its notifications. Requests and
 // notifications each have the whole budget, so requests that fill it never
 // stop a notification such as session/cancel. A message counts the length of
-// its line. A request is held until its reply is written, and a notification
+// its line, and a request also the length of its id, which the connection
+// keeps a second time to find the request by id. A request is held until its reply is written, and a notification
 // until its handler returns. A request that does not fit gets a -32603 reply,
 // and its handler does not run. A notification that does not fit closes the
 // connection. Responses to this side's own requests do not count, nor does the

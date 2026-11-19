@@ -2,9 +2,9 @@ package emit
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"slices"
 	"strconv"
 	"strings"
@@ -56,10 +56,10 @@ func ownRange(schema *load.Schema, d *load.Definition) *intRange {
 	}
 	r := formatRange(d.Format)
 	if d.Minimum != "" {
-		r.min = max(r.min, bound(d.Minimum))
+		r.min = max(r.min, bound(d.Minimum, true))
 	}
 	if d.Maximum != "" {
-		r.max = min(r.max, bound(d.Maximum))
+		r.max = min(r.max, bound(d.Maximum, false))
 	}
 	if r == int64Range {
 		return nil
@@ -67,13 +67,31 @@ func ownRange(schema *load.Schema, d *load.Definition) *intRange {
 	return &r
 }
 
-// bound returns the int64 nearest to n, the JSON text of an integer.
-func bound(n json.Number) int64 {
-	v, err := strconv.ParseInt(string(n), 10, 64)
-	if err != nil && !errors.Is(err, strconv.ErrRange) {
-		panic(fmt.Sprintf("integer bound %s is not an integer", n))
+// bound returns the integer bound that n, the JSON number of a minimum (up)
+// or a maximum, sets on an integer: the least integer at or above n, or the
+// greatest at or below it, so that 0.5 and 1e1 work. It clamps to int64.
+func bound(n json.Number, up bool) int64 {
+	var r big.Rat
+	if _, ok := r.SetString(string(n)); !ok {
+		panic(fmt.Sprintf("integer bound %s is not a number", n))
 	}
-	return v
+	// QuoRem truncates toward zero, which rounds the wrong way for a
+	// positive minimum and a negative maximum that are not integers.
+	q, rem := new(big.Int).QuoRem(r.Num(), r.Denom(), new(big.Int))
+	switch {
+	case rem.Sign() > 0 && up:
+		q.Add(q, big.NewInt(1))
+	case rem.Sign() < 0 && !up:
+		q.Sub(q, big.NewInt(1))
+	}
+	switch {
+	case q.IsInt64():
+		return q.Int64()
+	case q.Sign() > 0:
+		return math.MaxInt64
+	default:
+		return math.MinInt64
+	}
 }
 
 // intersect returns the values in both r and o, where nil stands for every
@@ -156,11 +174,14 @@ func (b *typesBuilder) heldRange(def *load.Definition, via []container) *intRang
 
 // checkRange returns the statement that returns an error when the integer v,
 // or the integer that v points to when ptr is set, is out of r. path and args
-// name it as in validateHeld.
-func checkRange(r intRange) heldCheck {
+// name it as in validateHeld. With asInt64 it compares v as an int64.
+func checkRange(r intRange, asInt64 bool) heldCheck {
 	return func(v *Statement, ptr bool, path string, args []Code) Code {
 		if ptr {
 			v = Op("*").Add(v)
+		}
+		if asInt64 {
+			v = Int64().Call(v)
 		}
 		var cond *Statement
 		if r.min > math.MinInt64 {

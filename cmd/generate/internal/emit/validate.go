@@ -2,6 +2,7 @@ package emit
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/ir"
@@ -33,7 +34,11 @@ type fieldCheck struct {
 	// bounds is the range that each integer that the field holds through
 	// via must be in; nil means no check.
 	bounds *intRange
-	via    []container
+	// boundsInInt64 says that a bound does not fit an int32 and the Go type
+	// of the integer is not int64, so the check compares it as an int64: an
+	// int is 32 bits wide on some targets.
+	boundsInInt64 bool
+	via           []container
 }
 
 // checkPlan returns the check plan of a struct with fields: one fieldCheck
@@ -109,6 +114,7 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 	} else {
 		c.descends = b.validates(leaf)
 		c.bounds = b.heldRange(def, c.via)
+		c.boundsInInt64 = c.bounds != nil && leaf != "int64" && (c.bounds.min < math.MinInt32 || c.bounds.max > math.MaxInt32)
 	}
 	return c
 }
@@ -209,7 +215,7 @@ func emitChecks(g *Group, recv string, plan []fieldCheck) {
 			)
 		}
 		if c.bounds != nil {
-			g.Add(eachHeld(value, c.via, c.field.Prop, nil, 0, checkRange(*c.bounds)))
+			g.Add(eachHeld(value, c.via, c.field.Prop, nil, 0, checkRange(*c.bounds, c.boundsInInt64)))
 		}
 		if c.descends {
 			g.Add(validateHeld(value, c.via, c.field.Prop, nil, 0))

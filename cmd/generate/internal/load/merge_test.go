@@ -2,7 +2,6 @@ package load
 
 import (
 	"encoding/json"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -464,9 +463,7 @@ func TestMergeStableAndUnstable_MarksUnstableAdditions(t *testing.T) {
 // An addition below the top level of a shared definition is marked too: a
 // property of an inline property, of an alternative that both versions have
 // (with or without a discriminator), or of array items, and an alternative of
-// a property's union. An added enum value gets the note in EnumNotes. (A
-// property with two alternatives can be a pointer to the second one, so it
-// may not always gain one: TestMergeStableAndUnstable_FailsOnNonAdditiveChanges.)
+// a property's union. An added enum value gets the note in EnumNotes.
 func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 	stableSchema := &Schema{Defs: map[string]*Definition{
 		"Caps": {Type: "object", Properties: map[string]*Definition{
@@ -475,12 +472,14 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 			"tags":     {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}}}},
 			"transport": {AnyOf: []*Definition{
 				{Type: "object", Properties: map[string]*Definition{"host": {Type: "string", Description: "Host."}}},
-				{Type: "boolean"},
-				{Type: "integer"},
+				{Type: "null"},
 			}},
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}}, Description: "HTTP."}}},
 		"Mode":   {Type: "string", Enum: []any{"ask"}},
+		"Item":   {Type: "object", AllOf: []*Definition{ref("Base")}},
+		"Base":   {Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
+		"Extra":  {Type: "object", Properties: map[string]*Definition{"extra": {Type: "string", Description: "Extra."}}},
 	}}
 	unstableSchema := &Schema{Defs: map[string]*Definition{
 		"Caps": {Type: "object", Properties: map[string]*Definition{
@@ -489,17 +488,21 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 			"tags":     {Type: "array", Items: &Definition{Type: "object", Properties: map[string]*Definition{"name": {Type: "string"}, "color": {Type: "string"}}}},
 			"transport": {AnyOf: []*Definition{
 				{Type: "object", Properties: map[string]*Definition{"host": {Type: "string", Description: "Host."}, "port": {Type: "integer", Description: "Port."}}},
-				{Type: "boolean"},
-				{Type: "integer"},
+				{Type: "null"},
 				{Type: "string", Description: "A URL."},
 			}},
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}, "url": {Type: "string", Description: "The URL."}}, Description: "HTTP."}}},
 		"Mode":   {Type: "string", Enum: []any{"ask", "auto"}},
+		"Item": {Type: "object", AllOf: []*Definition{
+			ref("Base"), ref("Extra"), {Type: "object", Properties: map[string]*Definition{"inline": {Type: "string"}}},
+		}},
+		"Base":  {Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
+		"Extra": {Type: "object", Properties: map[string]*Definition{"extra": {Type: "string", Description: "Extra."}}},
 	}}
 	for _, schema := range []*Schema{stableSchema, unstableSchema} {
 		schema.Defs["InitRequest"] = &Definition{Type: "object", XMethod: "init", XSide: "agent", Properties: map[string]*Definition{
-			"caps": ref("Caps"), "server": ref("Server"), "mode": ref("Mode"),
+			"caps": ref("Caps"), "server": ref("Server"), "mode": ref("Mode"), "item": ref("Item"),
 		}}
 	}
 	meta := &Meta{Version: 1, AgentMethods: map[string]string{"init": "init"}}
@@ -511,7 +514,7 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		"Caps.tags[].color":           caps["tags"].Items.Properties["color"].Description,
 		"Server http .url":            combined.Defs["Server"].AnyOf[0].Properties["url"].Description,
 		"Caps.transport object .port": caps["transport"].AnyOf[0].Properties["port"].Description,
-		"Caps.transport string":       caps["transport"].AnyOf[3].Description,
+		"Caps.transport string":       caps["transport"].AnyOf[2].Description,
 		"Caps.terminal.output":        caps["terminal"].Properties["output"].Description,
 		"Caps.transport object":       caps["transport"].AnyOf[0].Description,
 		"Caps.transport object .host": caps["transport"].AnyOf[0].Properties["host"].Description,
@@ -524,6 +527,24 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		if !want {
 			t.Errorf("%s description = %q", where, got)
 		}
+	}
+	// An added allOf part marks the properties that it brings into Item. A
+	// part that refers to Extra becomes an inline copy, so that Extra itself
+	// stays as it is.
+	item := combined.Defs["Item"].AllOf
+	if len(item) != 3 || item[0].Ref != "#/$defs/Base" || item[1].Ref != "" {
+		t.Fatalf("Item.allOf = %+v, want Base, an inline copy of Extra, and the inline part", item)
+	}
+	for where, got := range map[string]string{
+		"Item allOf Extra.extra": item[1].Properties["extra"].Description,
+		"Item allOf inline":      item[2].Properties["inline"].Description,
+	} {
+		if !strings.HasPrefix(got, unstableNote) {
+			t.Errorf("%s description = %q", where, got)
+		}
+	}
+	if got := combined.Defs["Extra"].Properties["extra"].Description; got != "Extra." {
+		t.Errorf("Extra.extra description = %q, want it unmarked", got)
 	}
 	if got := combined.Defs["Mode"].EnumNotes; len(got) != 1 || got["auto"] != unstableNote {
 		t.Errorf("Mode.EnumNotes = %v, want the note on auto only", got)
@@ -671,10 +692,10 @@ func dropEmpty(v any) any {
 	return v
 }
 
-// The unstable version of a shared definition replaces the stable one, so it
-// may only add to it: properties, alternatives, enum values, and descriptions.
-// Any other change would change a stable Go type, so the merge fails and names
-// each change.
+// The unstable version of a shared definition replaces the stable one. The
+// merge fails, naming each change, when it removes a property, requires a
+// member, or changes a type, at any depth (#123). The generator checks every
+// other change to a stable Go type in the code it writes (stablecheck).
 func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 	str := func() *Definition { return &Definition{Type: "string"} }
 	obj := func(props map[string]*Definition, required ...string) *Definition {
@@ -691,7 +712,7 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 	cases := []struct {
 		name             string
 		stable, unstable map[string]*Definition
-		want             []string
+		want             string
 	}{
 		{
 			// Schemas 0.13.5 to 1.17.0: the stable value is a value ID, the
@@ -715,185 +736,37 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 				},
 				"SessionConfigValueId": str(),
 			},
-			want: []string{
-				`SetSessionConfigOptionRequest.value: removed`,
-				`SetSessionConfigOptionRequest: no longer requires "value"`,
-			},
+			want: `SetSessionConfigOptionRequest.value: removed`,
 		},
 		{
 			name:     "an existing property becomes required",
 			stable:   options(obj(map[string]*Definition{"a": str(), "b": str()}, "a")),
 			unstable: options(obj(map[string]*Definition{"a": str(), "b": str()}, "a", "b")),
-			want:     []string{`Options: requires "b"`},
+			want:     `Options: requires "b"`,
 		},
 		{
 			name:     "an added property is required",
 			stable:   options(obj(map[string]*Definition{"a": str()}, "a")),
 			unstable: options(obj(map[string]*Definition{"a": str(), "c": str()}, "a", "c")),
-			want:     []string{`Options: requires "c"`},
-		},
-		{
-			name:     "a property is no longer required",
-			stable:   options(obj(map[string]*Definition{"a": str()}, "a")),
-			unstable: options(obj(map[string]*Definition{"a": str()})),
-			want:     []string{`Options: no longer requires "a"`},
+			want:     `Options: requires "c"`,
 		},
 		{
 			name:     "a property changes type",
 			stable:   options(obj(map[string]*Definition{"size": {Type: "integer"}})),
 			unstable: options(obj(map[string]*Definition{"size": {Type: "string"}})),
-			want:     []string{`Options.size: changes type from "integer" to "string"`},
+			want:     `Options.size: changes type from "integer" to "string"`,
 		},
 		{
-			name:     "a property refers to another definition",
-			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"id": ref("SessionId")}), "SessionId": str(), "ThreadId": str()},
-			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"id": ref("ThreadId")}), "SessionId": str(), "ThreadId": str()},
-			want:     []string{`Options.id: changes $ref from "#/$defs/SessionId" to "#/$defs/ThreadId"`},
-		},
-		{
-			name:     "an alternative is removed",
-			stable:   options(&Definition{AnyOf: []*Definition{stdio(), {Title: "http", Type: "object"}}}),
-			unstable: options(&Definition{AnyOf: []*Definition{stdio()}}),
-			want:     []string{`Options.anyOf[1]: removed`},
+			name:     "the items of a property change type",
+			stable:   options(obj(map[string]*Definition{"tags": {Type: "array", Items: str()}})),
+			unstable: options(obj(map[string]*Definition{"tags": {Type: "array", Items: &Definition{Type: "integer"}}})),
+			want:     `Options.tags.items: changes type from "string" to "integer"`,
 		},
 		{
 			name:     "a property of a matched alternative is removed",
 			stable:   options(&Definition{AnyOf: []*Definition{stdio("command", "args")}}),
 			unstable: options(&Definition{AnyOf: []*Definition{stdio("command")}}),
-			want:     []string{`Options.anyOf[0].args: removed`},
-		},
-		{
-			name:     "an enum value is removed",
-			stable:   map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask", "auto"}}},
-			unstable: map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask"}}},
-			want:     []string{`Mode: removes enum value auto`},
-		},
-		{
-			// The emitter takes the Go type of a node from its allOf parts.
-			name:     "a property gains an allOf reference",
-			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"cwd": str()}), "Cost": obj(map[string]*Definition{"amount": str()})},
-			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"cwd": {Type: "string", AllOf: []*Definition{ref("Cost")}}}), "Cost": obj(map[string]*Definition{"amount": str()})},
-			want:     []string{`Options.cwd: adds allOf part 0, which can change its Go type`},
-		},
-		{
-			name:     "a definition gains an allOf part",
-			stable:   map[string]*Definition{"Item": {Type: "object", AllOf: []*Definition{ref("Base")}}, "Base": obj(nil), "Extra": obj(nil)},
-			unstable: map[string]*Definition{"Item": {Type: "object", AllOf: []*Definition{ref("Base"), ref("Extra")}}, "Base": obj(nil), "Extra": obj(nil)},
-			want:     []string{`Item: adds allOf part 1, which can change its Go type`},
-		},
-		{
-			// The emitter writes a struct as a union wrapper once it has
-			// alternatives.
-			name:     "a definition becomes a union",
-			stable:   options(obj(map[string]*Definition{"a": str()})),
-			unstable: options(&Definition{Type: "object", Properties: map[string]*Definition{"a": str()}, AnyOf: []*Definition{obj(map[string]*Definition{"b": str()}), obj(map[string]*Definition{"c": str()})}}),
-			want:     []string{`Options: becomes a union (anyOf), which changes its Go type`},
-		},
-		{
-			// A field whose two alternatives are a value and null is a
-			// pointer to the value.
-			name:     "a nullable property gains an alternative",
-			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"session": {AnyOf: []*Definition{ref("Session"), {Type: "null"}}}}), "Session": obj(nil)},
-			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"session": {AnyOf: []*Definition{ref("Session"), {Type: "null"}, str()}}}), "Session": obj(nil)},
-			want:     []string{`Options.session: becomes a union (anyOf), which changes its Go type`},
-		},
-		{
-			// A field without properties is a map or Meta, one with
-			// properties a struct of its own.
-			name:     "a property without properties gains some",
-			stable:   options(obj(map[string]*Definition{"_meta": {Type: "object", AdditionalProperties: Members{Open: true}}})),
-			unstable: options(obj(map[string]*Definition{"_meta": {Type: "object", AdditionalProperties: Members{Open: true}, Properties: map[string]*Definition{"traceId": str()}}})),
-			want:     []string{`Options._meta: gains properties, which makes its Go type a struct`},
-		},
-		{
-			// Only a property that the unstable version adds may bring a
-			// member into the default.
-			name:     "a default gains a member for an existing property",
-			stable:   options(obj(map[string]*Definition{"settings": {Type: "object", Properties: map[string]*Definition{"mode": str()}, Default: map[string]any{}}})),
-			unstable: options(obj(map[string]*Definition{"settings": {Type: "object", Properties: map[string]*Definition{"mode": str()}, Default: map[string]any{"mode": "auto"}}})),
-			want:     []string{`Options.settings: changes default from {} to {"mode":"auto"}`},
-		},
-		{
-			// A union of strings is a string type with constants.
-			name:     "a union of strings gains another alternative",
-			stable:   map[string]*Definition{"Category": {AnyOf: []*Definition{{Type: "string", Const: "mode"}, str()}}},
-			unstable: map[string]*Definition{"Category": {AnyOf: []*Definition{{Type: "string", Const: "mode"}, str(), {Type: "integer"}}}},
-			want:     []string{`Category: turns from a string type into a struct, union, or plain type, which changes its Go type`},
-		},
-		{
-			// An anonymous variant is named by its index.
-			name: "an alternative goes before anonymous ones",
-			stable: map[string]*Definition{"Shape": {AnyOf: []*Definition{
-				obj(map[string]*Definition{"a": str()}), obj(map[string]*Definition{"b": str()}),
-			}}},
-			unstable: map[string]*Definition{"Shape": {AnyOf: []*Definition{
-				obj(map[string]*Definition{"c": str()}), obj(map[string]*Definition{"a": str()}), obj(map[string]*Definition{"b": str()}),
-			}}},
-			want: []string{`Shape.anyOf[0]: moves to 1, which renames its Go type`, `Shape.anyOf[1]: moves to 2, which renames its Go type`},
-		},
-		{
-			// A field with two alternatives is a pointer to the second one.
-			name:     "a property with two alternatives gains one",
-			stable:   options(obj(map[string]*Definition{"port": {AnyOf: []*Definition{str(), {Type: "integer"}}}})),
-			unstable: options(obj(map[string]*Definition{"port": {AnyOf: []*Definition{str(), {Type: "integer"}, {Type: "boolean"}}}})),
-			want:     []string{`Options.port: becomes a union (anyOf), which changes its Go type`},
-		},
-		{
-			name:     "a property's two alternatives swap",
-			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"id": {AnyOf: []*Definition{ref("A"), ref("B")}}}), "A": str(), "B": str()},
-			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"id": {AnyOf: []*Definition{ref("B"), ref("A")}}, "c": str()}), "A": str(), "B": str()},
-			want:     []string{`Options.id: points to #/$defs/A instead of #/$defs/B (anyOf), which changes its Go type`},
-		},
-		{
-			// A definition with enum values is a string enum.
-			name:     "a definition gains enum values",
-			stable:   map[string]*Definition{"Level": {Type: "integer"}},
-			unstable: map[string]*Definition{"Level": {Type: "integer", Enum: []any{1, 2}}},
-			want:     []string{`Level: turns from a struct, union, or plain type into an enum, which changes its Go type`},
-		},
-		{
-			// A field with enum values is a string.
-			name:     "a property gains enum values",
-			stable:   options(obj(map[string]*Definition{"level": {Type: "integer"}})),
-			unstable: options(obj(map[string]*Definition{"level": {Type: "integer", Enum: []any{1, 2}}})),
-			want:     []string{`Options.level: gains enum values, which makes its Go type a string`},
-		},
-		{
-			// A union without keys to pick a variant by tries them in order.
-			name: "two titled alternatives swap",
-			stable: map[string]*Definition{"Value": {AnyOf: []*Definition{
-				{Title: "number", Type: "number"}, {Title: "integer", Type: "integer"},
-			}}},
-			unstable: map[string]*Definition{"Value": {AnyOf: []*Definition{
-				{Title: "integer", Type: "integer"}, {Title: "number", Type: "number"},
-			}}},
-			want: []string{`Value.anyOf[1]: moves before another stable alternative, which can change what a value decodes as`},
-		},
-		{
-			// Unknown values of an enum with "other" decode as "other".
-			name:     "an enum gains other",
-			stable:   map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask"}}},
-			unstable: map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask", "other"}}},
-			want:     []string{`Mode: adds the enum value "other", which unknown values then decode as`},
-		},
-		{
-			// ir reads descriptions to find Patch fields.
-			name:     "a description changes",
-			stable:   options(obj(map[string]*Definition{"cwd": {Type: "string", Description: "The directory."}})),
-			unstable: options(obj(map[string]*Definition{"cwd": {Type: "string", Description: "The directory. Omitted means unchanged."}, "b": str()})),
-			want:     []string{`Options.cwd: changes its description, which can change its Go type`},
-		},
-		{
-			name:     "the items are removed",
-			stable:   options(obj(map[string]*Definition{"tags": {Type: "array", Items: str()}})),
-			unstable: options(obj(map[string]*Definition{"tags": {Type: "array"}})),
-			want:     []string{`Options.tags.items: removed`},
-		},
-		{
-			name:     "a default changes",
-			stable:   options(obj(map[string]*Definition{"mode": {Type: "string", Default: "ask"}})),
-			unstable: options(obj(map[string]*Definition{"mode": {Type: "string", Default: "auto"}})),
-			want:     []string{`Options.mode: changes default from "ask" to "auto"`},
+			want:     `Options.anyOf[0].args: removed`,
 		},
 	}
 	for _, tc := range cases {
@@ -908,95 +781,10 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 				}
 				t.FailNow()
 			}
-			for _, want := range tc.want {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("error %q does not say %q", err, want)
-				}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q does not say %q", err, tc.want)
 			}
 		})
-	}
-}
-
-// A default may gain members for the properties that the unstable version
-// adds, as from schema 0.13.5 on the defaults of
-// AgentCapabilities.mcpCapabilities and of the agentCapabilities above it gain
-// acp when McpCapabilities gains that property. The properties of a member
-// come from the definition that it refers to.
-func TestMergeStableAndUnstable_AllowsDefaultsThatGainMembers(t *testing.T) {
-	str := func() *Definition { return &Definition{Type: "string"} }
-	withMode := func(defaults map[string]any) map[string]any {
-		out := map[string]any{"mode": "ask"}
-		for k, v := range defaults {
-			out[k] = v
-		}
-		return out
-	}
-	defs := func(members ...string) map[string]*Definition {
-		props, defaults := map[string]*Definition{}, map[string]any{}
-		for _, m := range members {
-			props[m] = &Definition{Type: "boolean", Default: false}
-			defaults[m] = false
-		}
-		return map[string]*Definition{
-			"McpCapabilities": {Type: "object", Properties: props},
-			"AgentCapabilities": {Type: "object", Properties: map[string]*Definition{
-				"mcpCapabilities": {AllOf: []*Definition{ref("McpCapabilities")}, Default: defaults},
-			}},
-			"InitializeResponse": {Type: "object", Properties: map[string]*Definition{
-				"agentCapabilities": {AllOf: []*Definition{ref("AgentCapabilities")}, Default: map[string]any{"mcpCapabilities": defaults}},
-				// The members of this default come from its own properties
-				// and from McpCapabilities.
-				"settings": {Type: "object", Properties: map[string]*Definition{"mode": str()}, AllOf: []*Definition{ref("McpCapabilities")}, Default: withMode(defaults)},
-				// The items of an array default too.
-				"servers": {Type: "array", Items: ref("McpCapabilities"), Default: []any{defaults}},
-			}},
-		}
-	}
-	meta, stable, unstable := reachedSchemas(defs("http"), defs("http", "acp"))
-	_, combined := mustMerge(t, meta, stable, meta, unstable)
-	mcp := combined.Defs["AgentCapabilities"].Properties["mcpCapabilities"]
-	if got, want := mcp.Default, (map[string]any{"http": false, "acp": false}); !reflect.DeepEqual(got, want) {
-		t.Errorf("mcpCapabilities default = %v, want the unstable %v", got, want)
-	}
-	if got := combined.Defs["McpCapabilities"].Properties["acp"].Description; !strings.HasPrefix(got, unstableNote) {
-		t.Errorf("McpCapabilities.acp description = %q, want the note", got)
-	}
-}
-
-// The unstable schema points the links of its descriptions at the draft docs
-// from schema 1.27.0 on, so a description may change its link targets.
-func TestMergeStableAndUnstable_AllowsDescriptionsThatOnlyChangeLinks(t *testing.T) {
-	caps := func(url string, props ...string) map[string]*Definition {
-		d := &Definition{Type: "object", Description: "See [the docs](" + url + ").", Properties: map[string]*Definition{}}
-		for _, p := range props {
-			d.Properties[p] = &Definition{Type: "boolean"}
-		}
-		return map[string]*Definition{"Caps": d}
-	}
-	meta, stable, unstable := reachedSchemas(caps("https://example.com/v1/caps", "fs"), caps("https://example.com/v1/draft/caps", "fs", "plan"))
-	_, combined := mustMerge(t, meta, stable, meta, unstable)
-	if got, want := combined.Defs["Caps"].Description, "See [the docs](https://example.com/v1/draft/caps)."; got != want {
-		t.Errorf("Caps description = %q, want the unstable %q", got, want)
-	}
-}
-
-// A union definition is a union type, so it may gain an alternative even when
-// its alternatives are a value and null, and the constant "other" is just a
-// variant of a union that is not an enum.
-func TestMergeStableAndUnstable_AllowsAlternativesOfAUnionDefinition(t *testing.T) {
-	value := func(alts ...*Definition) map[string]*Definition {
-		return map[string]*Definition{"Value": {AnyOf: append([]*Definition{ref("Text"), {Type: "null"}}, alts...)}, "Text": {Type: "string"}}
-	}
-	// A union that is not an enum may gain the constant "other" as a variant.
-	kind := func(alts ...*Definition) *Definition {
-		return &Definition{OneOf: append([]*Definition{ref("Text"), {Type: "integer"}}, alts...)}
-	}
-	stableDefs, unstableDefs := value(), value(&Definition{Type: "integer", Description: "A count."})
-	stableDefs["Kind"], unstableDefs["Kind"] = kind(), kind(&Definition{Type: "string", Const: "other"})
-	meta, stable, unstable := reachedSchemas(stableDefs, unstableDefs)
-	_, combined := mustMerge(t, meta, stable, meta, unstable)
-	if got := combined.Defs["Value"].AnyOf[2].Description; got != unstableNote+"\n\nA count." {
-		t.Errorf("Value alternative 2 description = %q, want the note", got)
 	}
 }
 

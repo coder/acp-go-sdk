@@ -1212,6 +1212,16 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					var leaf string
 					validated.via, leaf = peelContainers(goType)
 					validated.descends = len(validated.via) > 0 && b.validates(leaf)
+					if item := b.nonNullItem(ir.Field{Def: v}); item != nil {
+						// encoding/json reads a null item as the zero value, and
+						// the schema allows no null there (nonNullItem).
+						b.usesDecodeHelpers = true
+						f.Line()
+						f.Func().Params(Id("v").Op("*").Id(tname)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().Block(
+							If(Id("err").Op(":=").Id("rejectNullItems").Types(item).Call(Id("b")), Id("err").Op("!=").Nil()).Block(Return(Id("err"))),
+							Return(Qual("encoding/json", "Unmarshal").Call(Id("b"), Parens(Op("*").Add(goType)).Call(Id("v")))),
+						)
+					}
 				} else {
 					// Emit as empty struct only for truly empty variants.
 					f.Type().Id(tname).Struct()

@@ -3991,6 +3991,13 @@ type ElicitationContentValueBoolean bool
 // String array value accepted in elicitation response content.
 type ElicitationContentValueStringArray []string
 
+func (v *ElicitationContentValueStringArray) UnmarshalJSON(b []byte) error {
+	if err := rejectNullItems[string](b); err != nil {
+		return err
+	}
+	return json.Unmarshal(b, (*[]string)(v))
+}
+
 type ElicitationContentValue struct {
 	// String value accepted in elicitation response content.
 	String *ElicitationContentValueString `json:"-"`

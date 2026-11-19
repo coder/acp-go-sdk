@@ -135,6 +135,7 @@ Every property that now rejects a `null` item or value:
 | `AuthMethodTerminal` | `args`, `env` | no message carries it; it fails when you decode it yourself |
 | `AuthMethodTerminalInline` | `args`, `env` | `initialize` response to the client, in `authMethods`: the `authMethods` item that holds it is dropped |
 | `CreateTerminalRequest` | `args` | `terminal/create` request to the client: -32602, no handler call |
+| `ElicitationContentValueStringArray` | the array itself, a variant of `ElicitationContentValue` | `elicitation/create` response to the agent, in `content` of an accepted answer: no variant matches, so the response fails to decode and the call returns an error |
 | `ElicitationPropertySchemaString` | `enum` | `elicitation/create` request to the client, in `requestedSchema.properties`: -32602, no handler call |
 | `ElicitationSchema` | `required` | `elicitation/create` request to the client, in `requestedSchema`: -32602, no handler call |
 | `LoadSessionRequest` | `additionalDirectories` | `session/load` request to the agent: -32602, no handler call |

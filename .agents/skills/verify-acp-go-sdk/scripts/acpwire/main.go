@@ -26,10 +26,11 @@
 //
 // "{{name.path}}" inside a JSON string of params, expect or the "where" of a
 // "waitFor" is replaced with the string at that path of the message saved as
-// name. An agent request gets the answer of the newest rule for its method
-// whose "where" it matches (a rule without "where" matches every request), or
-// a -32601 error when no rule matches. "waitFor" matches the agent's
-// notifications and its requests.
+// name. Numbers in expect and where compare by exact value, so 1 equals 1.0
+// and no digit of an integer above 2^53 is lost. An agent request gets the
+// answer of the newest rule for its method whose "where" it matches (a rule
+// without "where" matches every request), or a -32601 error when no rule
+// matches. "waitFor" matches the agent's notifications and its requests.
 package main
 
 import (
@@ -40,6 +41,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,7 +139,7 @@ func validEnvelope(msg map[string]any) bool {
 	}
 	id, hasID := msg["id"]
 	switch id.(type) {
-	case string, float64, nil:
+	case string, json.Number, nil:
 	default:
 		return false
 	}
@@ -162,7 +164,7 @@ func validEnvelope(msg map[string]any) bool {
 		if !ok {
 			return false
 		}
-		_, codeOK := e["code"].(float64)
+		_, codeOK := e["code"].(json.Number)
 		_, msgOK := e["message"].(string)
 		return codeOK && msgOK
 	}
@@ -201,6 +203,7 @@ type driver struct {
 	stderrSB strings.Builder
 	exited   chan struct{}
 	badOut   []string // agent stdout that is not a JSON-RPC message, or a read error
+	badReply []string // automatic answers to agent requests that could not be written
 	errRead  string   // why the agent stderr reader stopped early
 	exitCode int
 	changed  chan struct{} // closed and replaced whenever state changes
@@ -290,8 +293,15 @@ func readJourney(path string) ([]step, []int, error) {
 			return nil, nil, fmt.Errorf("%s:%d: count must not be negative", path, n)
 		}
 		for _, dur := range []string{s.Sleep, s.Timeout} {
-			if _, err := time.ParseDuration(dur); dur != "" && err != nil {
+			if dur == "" {
+				continue
+			}
+			v, err := time.ParseDuration(dur)
+			if err != nil {
 				return nil, nil, fmt.Errorf("%s:%d: %w", path, n, err)
+			}
+			if v < 0 {
+				return nil, nil, fmt.Errorf("%s:%d: duration %q must not be negative", path, n, dur)
 			}
 		}
 		steps = append(steps, s)
@@ -380,6 +390,10 @@ func run(agent string, args []string, steps []step, lines []int, out string, lim
 		results = append(results, stepResult{Step: "agent stdout is JSON-RPC", Pass: false,
 			Detail: fmt.Sprintf("%d bad line(s), first: %q", len(d.badOut), d.badOut[0])})
 	}
+	if len(d.badReply) > 0 {
+		results = append(results, stepResult{Step: "answer agent requests", Pass: false,
+			Detail: fmt.Sprintf("%d answer(s) not written, first: %s", len(d.badReply), d.badReply[0])})
+	}
 	if d.errRead != "" {
 		results = append(results, stepResult{Step: "agent stderr read", Pass: false, Detail: d.errRead})
 	}
@@ -465,7 +479,7 @@ func (d *driver) readStdout(r io.Reader) {
 		}
 		d.record("agent->client", line)
 		var msg map[string]any
-		if err := json.Unmarshal([]byte(line), &msg); err != nil || !validEnvelope(msg) {
+		if err := decodeExact([]byte(line), &msg); err != nil || !validEnvelope(msg) {
 			d.mu.Lock()
 			d.badOut = append(d.badOut, line)
 			d.mu.Unlock()
@@ -485,7 +499,7 @@ func (d *driver) readStdout(r io.Reader) {
 			d.notes = append(d.notes, msg)
 			d.mu.Unlock()
 		case hasID:
-			key := string(mustJSON(id))
+			key := idKey(id)
 			d.mu.Lock()
 			if c := d.calls[key]; c != nil && c.msg == nil {
 				c.msg = msg
@@ -544,7 +558,73 @@ func (d *driver) answer(id any, msg map[string]any) {
 	default:
 		resp["result"] = rule.Result
 	}
-	_ = d.write(string(mustJSON(resp)))
+	if err := d.write(string(mustJSON(resp))); err != nil {
+		d.mu.Lock()
+		d.badReply = append(d.badReply, fmt.Sprintf("%s request %s: %v", method, mustJSON(id), err))
+		d.mu.Unlock()
+	}
+}
+
+// decodeExact decodes one JSON value and keeps each number as json.Number,
+// so that no digit is rounded away. Content after the value is an error.
+func decodeExact(b []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("content after the JSON value")
+	}
+	return nil
+}
+
+// sameJSON reports whether two values from decodeExact are equal. Numbers
+// compare by exact value: 1 equals 1.0, and 9007199254740993 does not equal
+// 9007199254740992. verify-schema-bump compares numbers the same way.
+func sameJSON(a, b any) bool {
+	switch a := a.(type) {
+	case map[string]any:
+		b, ok := b.(map[string]any)
+		if !ok || len(a) != len(b) {
+			return false
+		}
+		for k, v := range a {
+			if w, ok := b[k]; !ok || !sameJSON(v, w) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		b, ok := b.([]any)
+		if !ok || len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if !sameJSON(a[i], b[i]) {
+				return false
+			}
+		}
+		return true
+	case json.Number:
+		b, ok := b.(json.Number)
+		x, okA := new(big.Rat).SetString(string(a))
+		y, okB := new(big.Rat).SetString(string(b))
+		return ok && okA && okB && x.Cmp(y) == 0
+	default:
+		return a == b
+	}
+}
+
+// idKey is the key of a JSON-RPC id: a string as is, a number by its exact
+// value, so a response with id 1.0 answers the request with id 1.
+func idKey(id any) string {
+	if n, ok := id.(json.Number); ok {
+		if r, ok := new(big.Rat).SetString(string(n)); ok {
+			return r.RatString()
+		}
+	}
+	return string(mustJSON(id))
 }
 
 func mustJSON(v any) []byte {
@@ -619,14 +699,14 @@ func lookup(v any, path string) (any, bool) {
 func matches(msg map[string]any, want map[string]json.RawMessage) error {
 	for path, raw := range want {
 		var w any
-		if err := json.Unmarshal(raw, &w); err != nil {
+		if err := decodeExact(raw, &w); err != nil {
 			return fmt.Errorf("bad expectation for %s: %w", path, err)
 		}
 		got, ok := lookup(msg, path)
 		if !ok {
 			return fmt.Errorf("%s missing", path)
 		}
-		if !bytes.Equal(mustJSON(got), mustJSON(w)) {
+		if !sameJSON(got, w) {
 			return fmt.Errorf("%s = %s, want %s", path, mustJSON(got), mustJSON(w))
 		}
 	}

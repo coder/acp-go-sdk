@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 )
@@ -203,5 +204,80 @@ func TestNewElicitationContentValue_EncodesEachKind(t *testing.T) {
 	const want = `{"a":["x","y"],"b":true,"e":[],"f":1.5,"n":9007199254740993,"s":"x"}`
 	if out, err := json.Marshal(content); err != nil || string(out) != want {
 		t.Errorf("content encodes to %s (error %v), want %s", out, err, want)
+	}
+}
+
+func TestElicitationContentValueNumber_EncodesAFraction(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in   float64
+		want string
+	}{
+		{in: 2, want: `2.0`},
+		{in: 0, want: `0.0`},
+		{in: -3, want: `-3.0`},
+		{in: math.Copysign(0, -1), want: `-0.0`},
+		{in: 1.5, want: `1.5`},
+		{in: 1e20, want: `100000000000000000000.0`},
+		{in: 1e21, want: `1e+21`},
+		{in: 1e-7, want: `1e-7`},
+	}
+	for _, tt := range tests {
+		if out, err := json.Marshal(NewElicitationContentValueNumber(tt.in)); err != nil || string(out) != tt.want {
+			t.Errorf("number %v encodes to %s (error %v), want %s", tt.in, out, err, tt.want)
+		}
+	}
+	for _, in := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if out, err := json.Marshal(NewElicitationContentValueNumber(in)); err == nil {
+			t.Errorf("number %v encodes to %s, want an error", in, out)
+		}
+	}
+}
+
+// The Rust SDK decodes an integral JSON number such as 2 as an integer, so a
+// Go number must keep its fraction to reach Rust as a number. The rust texts
+// below were recorded from agent-client-protocol-schema 1.18.0 on 2026-11-19.
+func TestElicitationContentValue_RoundTripsRustOutput(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		rust      string
+		isInteger bool
+		want      string // Go's encoding, when it differs from rust
+	}{
+		{rust: `2.0`},
+		{rust: `2`, isInteger: true},
+		{rust: `1.5`},
+		{rust: `-0.0`},
+		{rust: `1e+21`},
+		{rust: `1e+20`, want: `100000000000000000000.0`},
+		{rust: `1e+22`},
+	}
+	for _, tt := range tests {
+		var v ElicitationContentValue
+		if err := json.Unmarshal([]byte(tt.rust), &v); err != nil {
+			t.Fatalf("unmarshal %s: %v", tt.rust, err)
+		}
+		if tt.isInteger && v.Integer == nil {
+			t.Errorf("%s decodes to %+v, want the integer variant", tt.rust, v)
+		}
+		if !tt.isInteger && v.Number == nil {
+			t.Errorf("%s decodes to %+v, want the number variant", tt.rust, v)
+		}
+		want := tt.want
+		if want == "" {
+			want = tt.rust
+		}
+		if out, err := json.Marshal(v); err != nil || string(out) != want {
+			t.Errorf("%s decodes and encodes to %s (error %v), want %s", tt.rust, out, err, want)
+		}
+	}
+
+	const accept = `{"action":"accept","content":{"i":2,"n":2.0}}`
+	var resp CreateElicitationResponse
+	if err := json.Unmarshal([]byte(accept), &resp); err != nil {
+		t.Fatalf("unmarshal %s: %v", accept, err)
+	}
+	if out, err := json.Marshal(resp); err != nil || string(out) != accept {
+		t.Errorf("%s decodes and encodes to %s (error %v), want it unchanged", accept, out, err)
 	}
 }

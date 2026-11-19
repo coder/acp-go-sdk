@@ -51,10 +51,15 @@ const connectionLabel = (v) => {
   return "closed, handler ctx canceled";
 };
 
+const CALLER_NAMES = {
+  nested: "Request from a handler",
+  inCall: "Request from the peer's request handler",
+};
+
 export const state = (v) => {
   const regions = { Connection: connectionLabel(v), Handlers: handlerLabel(v) };
   for (const r of Object.keys(v.callerPc).sort()) {
-    const name = r === "nested" ? "Request from a handler" : `Request ${r}`;
+    const name = CALLER_NAMES[r] ?? `Request ${r}`;
     regions[name] = callerLabel(v.callerPc[r], v.result[r]);
   }
   return regions;
@@ -108,6 +113,7 @@ const STEPS = {
   InAfterBarrier: "the peer's request leaves the wait",
   InChecksDone: "the peer's request checks for a disconnect",
   InHandlerStarts: "the peer's request handler starts",
+  InHandlerCalls: "the peer's request handler calls a request on the same connection",
   InHandlerReturns: "the peer's request is answered",
   StartsPeerWait: "the handler's request counts as waiting on the peer",
   EndsPeerWait: "the handler's request stops waiting on the peer",

@@ -294,6 +294,24 @@ type Annotations struct {
 	Priority *float64 `json:"priority,omitempty"`
 }
 
+func (v Annotations) MarshalJSON() ([]byte, error) {
+	type Alias Annotations
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta         Meta     `json:"_meta,omitempty"`
+		Audience     *[]Role  `json:"audience,omitempty"`
+		LastModified *string  `json:"lastModified,omitempty"`
+		Priority     *float64 `json:"priority,omitempty"`
+	}
+	return json.Marshal(wire{
+		Audience:     nilIf(a.Audience == nil, &a.Audience),
+		LastModified: a.LastModified,
+		Meta:         a.Meta,
+		Priority:     a.Priority,
+	})
+}
+
 func (v *Annotations) UnmarshalJSON(b []byte) error {
 	type plain Annotations
 	type Annotations struct {
@@ -1426,14 +1444,14 @@ func (v CompactionUpdate) MarshalJSON() ([]byte, error) {
 	type Alias CompactionUpdate
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta         *Patch[Meta]           `json:"_meta,omitempty"`
 		CompactionId CompactionId           `json:"compactionId"`
 		Error        *Patch[string]         `json:"error,omitempty"`
 		Status       CompactionStatus       `json:"status"`
 		Summary      *Patch[[]ContentBlock] `json:"summary,omitempty"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		CompactionId: a.CompactionId,
 		Error:        a.Error.orNil(),
 		Meta:         a.Meta.orNil(),
@@ -2549,6 +2567,22 @@ type CreateElicitationAccept struct {
 	Content map[string]ElicitationContentValue `json:"content,omitempty"`
 }
 
+func (v CreateElicitationAccept) MarshalJSON() ([]byte, error) {
+	type Alias CreateElicitationAccept
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta    Meta                                `json:"_meta,omitempty"`
+		Action  string                              `json:"action"`
+		Content *map[string]ElicitationContentValue `json:"content,omitempty"`
+	}
+	return json.Marshal(wire{
+		Action:  a.Action,
+		Content: nilIf(a.Content == nil, &a.Content),
+		Meta:    a.Meta,
+	})
+}
+
 func (v *CreateElicitationAccept) UnmarshalJSON(b []byte) error {
 	type plain CreateElicitationAccept
 	type CreateElicitationAccept struct {
@@ -3022,6 +3056,16 @@ type ElicitationAcceptAction struct {
 	Content map[string]ElicitationContentValue `json:"content,omitempty"`
 }
 
+func (v ElicitationAcceptAction) MarshalJSON() ([]byte, error) {
+	type Alias ElicitationAcceptAction
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Content *map[string]ElicitationContentValue `json:"content,omitempty"`
+	}
+	return json.Marshal(wire{Content: nilIf(a.Content == nil, &a.Content)})
+}
+
 // Elicitation capabilities supported by the client.
 type ElicitationCapabilities struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -3376,6 +3420,38 @@ type ElicitationPropertySchemaString struct {
 	Type  string  `json:"type"`
 }
 
+func (v ElicitationPropertySchemaString) MarshalJSON() ([]byte, error) {
+	type Alias ElicitationPropertySchemaString
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta        Meta          `json:"_meta,omitempty"`
+		Default     *string       `json:"default,omitempty"`
+		Description *string       `json:"description,omitempty"`
+		Enum        *[]string     `json:"enum,omitempty"`
+		Format      *StringFormat `json:"format,omitempty"`
+		MaxLength   *int64        `json:"maxLength,omitempty"`
+		MinLength   *int64        `json:"minLength,omitempty"`
+		OneOf       *[]EnumOption `json:"oneOf,omitempty"`
+		Pattern     *string       `json:"pattern,omitempty"`
+		Title       *string       `json:"title,omitempty"`
+		Type        string        `json:"type"`
+	}
+	return json.Marshal(wire{
+		Default:     a.Default,
+		Description: a.Description,
+		Enum:        nilIf(a.Enum == nil, &a.Enum),
+		Format:      a.Format,
+		MaxLength:   a.MaxLength,
+		Meta:        a.Meta,
+		MinLength:   a.MinLength,
+		OneOf:       nilIf(a.OneOf == nil, &a.OneOf),
+		Pattern:     a.Pattern,
+		Title:       a.Title,
+		Type:        a.Type,
+	})
+}
+
 func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
 	type plain ElicitationPropertySchemaString
 	type ElicitationPropertySchemaString struct {
@@ -3580,6 +3656,32 @@ type ElicitationPropertySchemaArray struct {
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
 	Title *string `json:"title,omitempty"`
 	Type  string  `json:"type"`
+}
+
+func (v ElicitationPropertySchemaArray) MarshalJSON() ([]byte, error) {
+	type Alias ElicitationPropertySchemaArray
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta        Meta             `json:"_meta,omitempty"`
+		Default     *[]string        `json:"default,omitempty"`
+		Description *string          `json:"description,omitempty"`
+		Items       MultiSelectItems `json:"items"`
+		MaxItems    *int64           `json:"maxItems,omitempty"`
+		MinItems    *int64           `json:"minItems,omitempty"`
+		Title       *string          `json:"title,omitempty"`
+		Type        string           `json:"type"`
+	}
+	return json.Marshal(wire{
+		Default:     nilIf(a.Default == nil, &a.Default),
+		Description: a.Description,
+		Items:       a.Items,
+		MaxItems:    a.MaxItems,
+		Meta:        a.Meta,
+		MinItems:    a.MinItems,
+		Title:       a.Title,
+		Type:        a.Type,
+	})
 }
 
 func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
@@ -3874,7 +3976,22 @@ func (v ElicitationSchema) MarshalJSON() ([]byte, error) {
 	if a.Properties == nil {
 		json.Unmarshal([]byte("{}"), &a.Properties)
 	}
-	return json.Marshal(a)
+	type wire struct {
+		Meta        Meta                                 `json:"_meta,omitempty"`
+		Description *string                              `json:"description,omitempty"`
+		Properties  map[string]ElicitationPropertySchema `json:"properties"`
+		Required    *[]string                            `json:"required,omitempty"`
+		Title       *string                              `json:"title,omitempty"`
+		Type        ElicitationSchemaType                `json:"type,omitempty"`
+	}
+	return json.Marshal(wire{
+		Description: a.Description,
+		Meta:        a.Meta,
+		Properties:  a.Properties,
+		Required:    nilIf(a.Required == nil, &a.Required),
+		Title:       a.Title,
+		Type:        a.Type,
+	})
 }
 
 func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
@@ -5789,6 +5906,22 @@ type LoadSessionResponse struct {
 	Modes *SessionModeState `json:"modes,omitempty"`
 }
 
+func (v LoadSessionResponse) MarshalJSON() ([]byte, error) {
+	type Alias LoadSessionResponse
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta          Meta                   `json:"_meta,omitempty"`
+		ConfigOptions *[]SessionConfigOption `json:"configOptions,omitempty"`
+		Modes         *SessionModeState      `json:"modes,omitempty"`
+	}
+	return json.Marshal(wire{
+		ConfigOptions: nilIf(a.ConfigOptions == nil, &a.ConfigOptions),
+		Meta:          a.Meta,
+		Modes:         a.Modes,
+	})
+}
+
 func (v *LoadSessionResponse) UnmarshalJSON(b []byte) error {
 	type plain LoadSessionResponse
 	type LoadSessionResponse struct {
@@ -6670,6 +6803,30 @@ type MultiSelectPropertySchema struct {
 	Title *string `json:"title,omitempty"`
 }
 
+func (v MultiSelectPropertySchema) MarshalJSON() ([]byte, error) {
+	type Alias MultiSelectPropertySchema
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta        Meta             `json:"_meta,omitempty"`
+		Default     *[]string        `json:"default,omitempty"`
+		Description *string          `json:"description,omitempty"`
+		Items       MultiSelectItems `json:"items"`
+		MaxItems    *int64           `json:"maxItems,omitempty"`
+		MinItems    *int64           `json:"minItems,omitempty"`
+		Title       *string          `json:"title,omitempty"`
+	}
+	return json.Marshal(wire{
+		Default:     nilIf(a.Default == nil, &a.Default),
+		Description: a.Description,
+		Items:       a.Items,
+		MaxItems:    a.MaxItems,
+		Meta:        a.Meta,
+		MinItems:    a.MinItems,
+		Title:       a.Title,
+	})
+}
+
 func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
 	type plain MultiSelectPropertySchema
 	type MultiSelectPropertySchema struct {
@@ -6796,6 +6953,24 @@ type NewSessionResponse struct {
 	//
 	// Used in all subsequent requests for this conversation.
 	SessionId SessionId `json:"sessionId"`
+}
+
+func (v NewSessionResponse) MarshalJSON() ([]byte, error) {
+	type Alias NewSessionResponse
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta          Meta                   `json:"_meta,omitempty"`
+		ConfigOptions *[]SessionConfigOption `json:"configOptions,omitempty"`
+		Modes         *SessionModeState      `json:"modes,omitempty"`
+		SessionId     SessionId              `json:"sessionId"`
+	}
+	return json.Marshal(wire{
+		ConfigOptions: nilIf(a.ConfigOptions == nil, &a.ConfigOptions),
+		Meta:          a.Meta,
+		Modes:         a.Modes,
+		SessionId:     a.SessionId,
+	})
 }
 
 func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
@@ -8505,6 +8680,22 @@ type ResumeSessionResponse struct {
 	Modes *SessionModeState `json:"modes,omitempty"`
 }
 
+func (v ResumeSessionResponse) MarshalJSON() ([]byte, error) {
+	type Alias ResumeSessionResponse
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta          Meta                   `json:"_meta,omitempty"`
+		ConfigOptions *[]SessionConfigOption `json:"configOptions,omitempty"`
+		Modes         *SessionModeState      `json:"modes,omitempty"`
+	}
+	return json.Marshal(wire{
+		ConfigOptions: nilIf(a.ConfigOptions == nil, &a.ConfigOptions),
+		Meta:          a.Meta,
+		Modes:         a.Modes,
+	})
+}
+
 func (v *ResumeSessionResponse) UnmarshalJSON(b []byte) error {
 	type plain ResumeSessionResponse
 	type ResumeSessionResponse struct {
@@ -9439,12 +9630,12 @@ func (v SessionInfoUpdate) MarshalJSON() ([]byte, error) {
 	type Alias SessionInfoUpdate
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta      *Patch[Meta]   `json:"_meta,omitempty"`
 		Title     *Patch[string] `json:"title,omitempty"`
 		UpdatedAt *Patch[string] `json:"updatedAt,omitempty"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		Meta:      a.Meta.orNil(),
 		Title:     a.Title.orNil(),
 		UpdatedAt: a.UpdatedAt.orNil(),
@@ -9536,7 +9727,7 @@ func (v SessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias SessionMessage
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta               *Patch[Meta]           `json:"_meta,omitempty"`
 		Content            *Patch[[]ContentBlock] `json:"content,omitempty"`
 		MessageId          MessageId              `json:"messageId"`
@@ -9545,7 +9736,7 @@ func (v SessionMessage) MarshalJSON() ([]byte, error) {
 		SenderMessageId    *Patch[MessageId]      `json:"senderMessageId,omitempty"`
 		SenderSessionId    *Patch[SessionId]      `json:"senderSessionId,omitempty"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		Content:            a.Content.orNil(),
 		MessageId:          a.MessageId,
 		Meta:               a.Meta.orNil(),
@@ -10206,7 +10397,7 @@ func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
 	type Alias SessionToolCallUpdate
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta          *Patch[Meta]               `json:"_meta,omitempty"`
 		Content       *Patch[[]ToolCallContent]  `json:"content,omitempty"`
 		Kind          *Patch[ToolKind]           `json:"kind,omitempty"`
@@ -10219,7 +10410,7 @@ func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
 		Title         *Patch[string]             `json:"title,omitempty"`
 		ToolCallId    ToolCallId                 `json:"toolCallId"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		Content:       a.Content.orNil(),
 		Kind:          a.Kind.orNil(),
 		Locations:     a.Locations.orNil(),
@@ -10504,13 +10695,13 @@ func (v SessionSessionInfoUpdate) MarshalJSON() ([]byte, error) {
 	type Alias SessionSessionInfoUpdate
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta          *Patch[Meta]   `json:"_meta,omitempty"`
 		SessionUpdate string         `json:"sessionUpdate"`
 		Title         *Patch[string] `json:"title,omitempty"`
 		UpdatedAt     *Patch[string] `json:"updatedAt,omitempty"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		Meta:          a.Meta.orNil(),
 		SessionUpdate: a.SessionUpdate,
 		Title:         a.Title.orNil(),
@@ -10627,7 +10818,7 @@ func (v SessionCompactionUpdate) MarshalJSON() ([]byte, error) {
 	type Alias SessionCompactionUpdate
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta          *Patch[Meta]           `json:"_meta,omitempty"`
 		CompactionId  CompactionId           `json:"compactionId"`
 		Error         *Patch[string]         `json:"error,omitempty"`
@@ -10635,7 +10826,7 @@ func (v SessionCompactionUpdate) MarshalJSON() ([]byte, error) {
 		Status        CompactionStatus       `json:"status"`
 		Summary       *Patch[[]ContentBlock] `json:"summary,omitempty"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		CompactionId:  a.CompactionId,
 		Error:         a.Error.orNil(),
 		Meta:          a.Meta.orNil(),
@@ -10806,7 +10997,7 @@ func (v SessionSubagentUpdate) MarshalJSON() ([]byte, error) {
 	type Alias SessionSubagentUpdate
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta                  *Patch[Meta]                        `json:"_meta,omitempty"`
 		AdditionalDirectories *Patch[[]string]                    `json:"additionalDirectories,omitempty"`
 		Capabilities          *Patch[SubagentSessionCapabilities] `json:"capabilities,omitempty"`
@@ -10817,7 +11008,7 @@ func (v SessionSubagentUpdate) MarshalJSON() ([]byte, error) {
 		State                 *Patch[StateUpdate]                 `json:"state,omitempty"`
 		Title                 *Patch[string]                      `json:"title,omitempty"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		AdditionalDirectories: a.AdditionalDirectories.orNil(),
 		Capabilities:          a.Capabilities.orNil(),
 		Cwd:                   a.Cwd.orNil(),
@@ -10895,7 +11086,7 @@ func (v SessionUpdateSessionMessage) MarshalJSON() ([]byte, error) {
 	type Alias SessionUpdateSessionMessage
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta               *Patch[Meta]           `json:"_meta,omitempty"`
 		Content            *Patch[[]ContentBlock] `json:"content,omitempty"`
 		MessageId          MessageId              `json:"messageId"`
@@ -10905,7 +11096,7 @@ func (v SessionUpdateSessionMessage) MarshalJSON() ([]byte, error) {
 		SenderSessionId    *Patch[SessionId]      `json:"senderSessionId,omitempty"`
 		SessionUpdate      string                 `json:"sessionUpdate"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		Content:            a.Content.orNil(),
 		MessageId:          a.MessageId,
 		Meta:               a.Meta.orNil(),
@@ -12691,6 +12882,36 @@ type StringPropertySchema struct {
 	Title *string `json:"title,omitempty"`
 }
 
+func (v StringPropertySchema) MarshalJSON() ([]byte, error) {
+	type Alias StringPropertySchema
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta        Meta          `json:"_meta,omitempty"`
+		Default     *string       `json:"default,omitempty"`
+		Description *string       `json:"description,omitempty"`
+		Enum        *[]string     `json:"enum,omitempty"`
+		Format      *StringFormat `json:"format,omitempty"`
+		MaxLength   *int64        `json:"maxLength,omitempty"`
+		MinLength   *int64        `json:"minLength,omitempty"`
+		OneOf       *[]EnumOption `json:"oneOf,omitempty"`
+		Pattern     *string       `json:"pattern,omitempty"`
+		Title       *string       `json:"title,omitempty"`
+	}
+	return json.Marshal(wire{
+		Default:     a.Default,
+		Description: a.Description,
+		Enum:        nilIf(a.Enum == nil, &a.Enum),
+		Format:      a.Format,
+		MaxLength:   a.MaxLength,
+		Meta:        a.Meta,
+		MinLength:   a.MinLength,
+		OneOf:       nilIf(a.OneOf == nil, &a.OneOf),
+		Pattern:     a.Pattern,
+		Title:       a.Title,
+	})
+}
+
 func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 	type plain StringPropertySchema
 	type StringPropertySchema struct {
@@ -12858,7 +13079,7 @@ func (v SubagentUpdate) MarshalJSON() ([]byte, error) {
 	type Alias SubagentUpdate
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta                  *Patch[Meta]                        `json:"_meta,omitempty"`
 		AdditionalDirectories *Patch[[]string]                    `json:"additionalDirectories,omitempty"`
 		Capabilities          *Patch[SubagentSessionCapabilities] `json:"capabilities,omitempty"`
@@ -12868,7 +13089,7 @@ func (v SubagentUpdate) MarshalJSON() ([]byte, error) {
 		State                 *Patch[StateUpdate]                 `json:"state,omitempty"`
 		Title                 *Patch[string]                      `json:"title,omitempty"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		AdditionalDirectories: a.AdditionalDirectories.orNil(),
 		Capabilities:          a.Capabilities.orNil(),
 		Cwd:                   a.Cwd.orNil(),
@@ -13680,7 +13901,7 @@ func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
 	type Alias ToolCallUpdate
 	var a Alias
 	a = Alias(v)
-	type patched struct {
+	type wire struct {
 		Meta       *Patch[Meta]               `json:"_meta,omitempty"`
 		Content    *Patch[[]ToolCallContent]  `json:"content,omitempty"`
 		Kind       *Patch[ToolKind]           `json:"kind,omitempty"`
@@ -13692,7 +13913,7 @@ func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
 		Title      *Patch[string]             `json:"title,omitempty"`
 		ToolCallId ToolCallId                 `json:"toolCallId"`
 	}
-	return json.Marshal(patched{
+	return json.Marshal(wire{
 		Content:    a.Content.orNil(),
 		Kind:       a.Kind.orNil(),
 		Locations:  a.Locations.orNil(),
@@ -14288,6 +14509,24 @@ type UnstableForkSessionResponse struct {
 	SessionId SessionId `json:"sessionId"`
 }
 
+func (v UnstableForkSessionResponse) MarshalJSON() ([]byte, error) {
+	type Alias UnstableForkSessionResponse
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta          Meta                   `json:"_meta,omitempty"`
+		ConfigOptions *[]SessionConfigOption `json:"configOptions,omitempty"`
+		Modes         *SessionModeState      `json:"modes,omitempty"`
+		SessionId     SessionId              `json:"sessionId"`
+	}
+	return json.Marshal(wire{
+		ConfigOptions: nilIf(a.ConfigOptions == nil, &a.ConfigOptions),
+		Meta:          a.Meta,
+		Modes:         a.Modes,
+		SessionId:     a.SessionId,
+	})
+}
+
 func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
 	type plain UnstableForkSessionResponse
 	type UnstableForkSessionResponse struct {
@@ -14492,6 +14731,26 @@ type UnstableMessageMcpNotification struct {
 	ServerId McpServerAcpId `json:"serverId"`
 }
 
+func (v UnstableMessageMcpNotification) MarshalJSON() ([]byte, error) {
+	type Alias UnstableMessageMcpNotification
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta      Meta                        `json:"_meta,omitempty"`
+		Method    string                      `json:"method"`
+		Params    *map[string]json.RawMessage `json:"params,omitempty"`
+		RequestId UnstableMcpRequestId        `json:"requestId"`
+		ServerId  McpServerAcpId              `json:"serverId"`
+	}
+	return json.Marshal(wire{
+		Meta:      a.Meta,
+		Method:    a.Method,
+		Params:    nilIf(a.Params == nil, &a.Params),
+		RequestId: a.RequestId,
+		ServerId:  a.ServerId,
+	})
+}
+
 func (v *UnstableMessageMcpNotification) UnmarshalJSON(b []byte) error {
 	type plain UnstableMessageMcpNotification
 	type UnstableMessageMcpNotification struct {
@@ -14535,6 +14794,26 @@ type UnstableMessageMcpRequest struct {
 	RequestId UnstableMcpRequestId `json:"requestId"`
 	// The declared ACP MCP server receiving this request.
 	ServerId McpServerAcpId `json:"serverId"`
+}
+
+func (v UnstableMessageMcpRequest) MarshalJSON() ([]byte, error) {
+	type Alias UnstableMessageMcpRequest
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta      Meta                        `json:"_meta,omitempty"`
+		Method    string                      `json:"method"`
+		Params    *map[string]json.RawMessage `json:"params,omitempty"`
+		RequestId UnstableMcpRequestId        `json:"requestId"`
+		ServerId  McpServerAcpId              `json:"serverId"`
+	}
+	return json.Marshal(wire{
+		Meta:      a.Meta,
+		Method:    a.Method,
+		Params:    nilIf(a.Params == nil, &a.Params),
+		RequestId: a.RequestId,
+		ServerId:  a.ServerId,
+	})
 }
 
 func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
@@ -14871,6 +15150,22 @@ type UnstableSessionOptionsResponse struct {
 	//
 	// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/v1/draft/session-modes)
 	Modes *SessionModeState `json:"modes,omitempty"`
+}
+
+func (v UnstableSessionOptionsResponse) MarshalJSON() ([]byte, error) {
+	type Alias UnstableSessionOptionsResponse
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta          Meta                   `json:"_meta,omitempty"`
+		ConfigOptions *[]SessionConfigOption `json:"configOptions,omitempty"`
+		Modes         *SessionModeState      `json:"modes,omitempty"`
+	}
+	return json.Marshal(wire{
+		ConfigOptions: nilIf(a.ConfigOptions == nil, &a.ConfigOptions),
+		Meta:          a.Meta,
+		Modes:         a.Modes,
+	})
 }
 
 func (v *UnstableSessionOptionsResponse) UnmarshalJSON(b []byte) error {
@@ -16534,4 +16829,14 @@ func withAdditionalProperties(named []byte, additional map[string]json.RawMessag
 		return nil, err
 	}
 	return json.Marshal(members)
+}
+
+// nilIf returns nil when isNil holds, and p otherwise. MarshalJSON passes it
+// a list or map that keeps an empty value, so that omitempty leaves out only a
+// nil one.
+func nilIf[T any](isNil bool, p *T) *T {
+	if isNil {
+		return nil
+	}
+	return p
 }

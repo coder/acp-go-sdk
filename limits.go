@@ -18,7 +18,7 @@ type connectionLimits struct {
 }
 
 const (
-	defaultByteBudget             = 64 << 20 // 64 MiB: six messages at the 10 MiB line limit
+	defaultByteBudget             = 64 << 20
 	defaultMaxInboundRequests     = 1024
 	defaultMaxQueuedNotifications = 1024
 )
@@ -59,27 +59,20 @@ func mustBePositive(option string, n int) {
 	}
 }
 
-// errByteBudgetExceeded closes the connection when a notification from the
-// peer does not fit the byte budget.
 var errByteBudgetExceeded = errors.New("notification exceeds the byte budget")
 
-// The replies to a request from the peer that the connection does not hold.
 var (
 	errTooManyInboundRequests   = NewInternalError(map[string]any{"error": "too many requests from the peer in flight"})
 	errInboundRequestOverBudget = NewInternalError(map[string]any{"error": "request from the peer exceeds the byte budget"})
 )
 
-// peerBudget meters what a Connection holds of the peer's messages. Only
-// receive holds; the goroutine that is done with a message releases it.
 type peerBudget struct {
 	maxBytes, maxRequests int
 	mu                    sync.Mutex
-	bytes                 int // bytes of held requests and notifications, as read (len(line))
-	requests              int // held requests
+	bytes                 int
+	requests              int
 }
 
-// holdRequest holds a request of size bytes. It returns nil when it holds the
-// request, and otherwise the reply to send to the peer.
 func (b *peerBudget) holdRequest(size int) *RequestError {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -101,8 +94,6 @@ func (b *peerBudget) releaseRequest(size int) {
 	b.bytes -= size
 }
 
-// holdNotification holds a notification of size bytes. It returns false when
-// the notification does not fit.
 func (b *peerBudget) holdNotification(size int) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()

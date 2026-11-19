@@ -47,9 +47,6 @@ func (c *AgentSideConnection) Done() <-chan struct{} { return c.conn.Done() }
 // SetLogger directs connection diagnostics to the provided logger.
 func (c *AgentSideConnection) SetLogger(l *slog.Logger) { c.conn.SetLogger(l) }
 
-// sessionKey is the SHA-256 digest of a sessionId: the key of a session in
-// the maps of AgentSideConnection. The peer picks sessionIds of any length,
-// and a key of fixed size keeps none of their bytes.
 type sessionKey [sha256.Size]byte
 
 func sessionKeyOf(id string) sessionKey { return sha256.Sum256([]byte(id)) }
@@ -83,10 +80,9 @@ func (a *AgentSideConnection) cancelPrompt(ctx context.Context, id string) {
 }
 
 // maxCancelMarkers bounds sessionCancelledAt and sessionNewest while a long
-// request is in flight. Their entries have a fixed size, whatever the length
-// of the peer's sessionIds (see sessionKey). Only the peer that sends the
-// cancels and prompts can push an entry out, and a lost entry only loses that
-// peer's own cancel or prompt order.
+// request is in flight. Only the peer that sends the cancels and prompts can
+// push an entry out, and a lost entry only loses that peer's own cancel or
+// prompt order.
 const maxCancelMarkers = 1024
 
 // registerPrompt makes cancel the cancel func of the prompt for session id

@@ -31,7 +31,7 @@ type queuedNotification struct {
 	seq     uint64
 	arrival uint64
 	msg     *anyMessage
-	size    int // the notification's charge on Connection.budget
+	size    int
 }
 
 // handlingNotification is the ctx value that processNotifications gives each
@@ -142,8 +142,6 @@ type Connection struct {
 	// It is bounded to keep memory usage predictable.
 	notificationQueue chan queuedNotification
 
-	// budget meters the requests and notifications from the peer that the
-	// connection holds.
 	budget peerBudget
 }
 
@@ -468,8 +466,6 @@ func (c *Connection) receive() {
 		case msg.Method != "":
 			size := len(line)
 			if msg.ID != nil {
-				// A request that the connection cannot hold gets its reply from
-				// this loop: a goroutine per rejection would be unbounded again.
 				if rejection := c.budget.holdRequest(size); rejection != nil {
 					c.loggerOrDefault().Warn("rejected request from the peer", "method", msg.Method, "err", rejection)
 					c.sendInboundRequestError(&msg, rejection)

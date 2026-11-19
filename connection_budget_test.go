@@ -16,14 +16,12 @@ import (
 	"time"
 )
 
-// held returns the bytes and the requests that b holds.
 func (b *peerBudget) held() (bytes, requests int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.bytes, b.requests
 }
 
-// liveHeap returns the bytes of live heap objects after a garbage collection.
 func liveHeap() int64 {
 	runtime.GC()
 	var ms runtime.MemStats
@@ -31,8 +29,6 @@ func liveHeap() int64 {
 	return int64(ms.HeapAlloc)
 }
 
-// retained logs and returns how much the heap grew since before, and what c
-// holds.
 func retained(t *testing.T, c *Connection, before int64) (delta int64, heldBytes, heldRequests int) {
 	t.Helper()
 	delta = liveHeap() - before
@@ -72,14 +68,9 @@ func isOpen(done <-chan struct{}) bool {
 
 const lineNumberDigits = 8
 
-// wireLine is the buffer of one message that a test writes again and again,
-// so that the test keeps no copy of its own. The message is exactly size
-// bytes long without its newline. Each {n} of its template is a number of 8
-// digits that number rewrites in place, and {pad} is the filler that makes up
-// the size.
 type wireLine struct {
 	buf  []byte
-	nums []int // offsets of the numbers in buf
+	nums []int
 }
 
 func newWireLine(t *testing.T, template string, size int) *wireLine {
@@ -108,7 +99,6 @@ func newWireLine(t *testing.T, template string, size int) *wireLine {
 	return l
 }
 
-// requestLine returns a request of method whose id is its number.
 func requestLine(t *testing.T, method string, size int) *wireLine {
 	return newWireLine(t, `{"jsonrpc":"2.0","id":"{n}","method":"`+method+`","params":{"pad":"{pad}"}}`, size)
 }
@@ -129,14 +119,12 @@ func (l *wireLine) size() int { return len(l.buf) - 1 }
 
 func lineID(n int) string { return fmt.Sprintf("%0*d", lineNumberDigits, n) }
 
-// budgetPeer is a hostile peer. It writes raw lines to the connection and
-// collects the messages and the log lines of the connection.
 type budgetPeer struct {
 	t          *testing.T
 	inR        *io.PipeReader
 	inW        *io.PipeWriter
-	peerInput  io.Writer // what the connection writes to
-	peerOutput io.Reader // what the connection reads
+	peerInput  io.Writer
+	peerOutput io.Reader
 	replies    chan anyMessage
 	logs       lockedBuffer
 	logger     *slog.Logger
@@ -188,9 +176,6 @@ func (p *budgetPeer) write(b []byte) {
 	}
 }
 
-// writeAll writes line with the numbers from first to last, as a peer that
-// does not stop when the connection closes. It returns once the connection
-// has read them all or the peer is cut off.
 func (p *budgetPeer) writeAll(line *wireLine, first, last int) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
@@ -204,7 +189,6 @@ func (p *budgetPeer) writeAll(line *wireLine, first, last int) <-chan struct{} {
 	return done
 }
 
-// cutOff ends the writes that a closed connection no longer reads.
 func (p *budgetPeer) cutOff(writes <-chan struct{}) {
 	p.t.Helper()
 	_ = p.inR.CloseWithError(io.ErrClosedPipe)
@@ -247,7 +231,6 @@ func replyID(t *testing.T, m anyMessage) string {
 	return id
 }
 
-// gate blocks the handlers of one method until it opens or their ctx ends.
 type gate struct {
 	method  string
 	entered atomic.Int64
@@ -281,8 +264,6 @@ func newBudgetConnection(t *testing.T, p *budgetPeer, handler MethodHandler, opt
 	return c
 }
 
-// warmUp makes one round trip, so that the read loops have their buffers
-// before a test measures the heap.
 func warmUp(t *testing.T, p *budgetPeer) {
 	t.Helper()
 	p.write([]byte(`{"jsonrpc":"2.0","id":"warm-up","method":"_ok"}` + "\n"))
@@ -299,7 +280,6 @@ func waitHeld(t *testing.T, c *Connection, wantBytes, wantRequests int) {
 	})
 }
 
-// rejectedIDs reads n replies and returns their ids. Each must be a -32603.
 func rejectedIDs(t *testing.T, p *budgetPeer, n int) map[string]bool {
 	t.Helper()
 	ids := make(map[string]bool)
@@ -341,7 +321,6 @@ func TestConnectionOption_PanicsBelowOne(t *testing.T) {
 	}
 }
 
-// Requests over the count cap get -32603 at once and start no handler.
 func TestConnectionBudget_RejectsRequestsOverLimit(t *testing.T) {
 	const maxRequests, sent = 4, 6
 	p := newBudgetPeer(t)
@@ -391,7 +370,6 @@ func TestConnectionBudget_RejectsRequestsOverLimit(t *testing.T) {
 	}
 }
 
-// Requests that do not fit the byte budget get -32603 and keep no bytes.
 func TestConnectionBudget_RejectsRequestsOverByteBudget(t *testing.T) {
 	const budget, sent = 8 << 20, 32
 	p := newBudgetPeer(t)
@@ -430,7 +408,6 @@ func TestConnectionBudget_RejectsRequestsOverByteBudget(t *testing.T) {
 	waitHeld(t, c, 0, 0)
 }
 
-// A notification that does not fit the byte budget closes the connection.
 func TestConnectionBudget_ClosesOnNotificationOverByteBudget(t *testing.T) {
 	const budget, sent = 8 << 20, 32
 	p := newBudgetPeer(t)
@@ -459,7 +436,6 @@ func TestConnectionBudget_ClosesOnNotificationOverByteBudget(t *testing.T) {
 	waitHeld(t, c, 0, 0)
 }
 
-// Requests and notifications share one budget.
 func TestConnectionBudget_SharesBudgetBetweenRequestsAndNotifications(t *testing.T) {
 	const budget, requests = 1 << 20, 3
 	request := requestLine(t, "_block", 300<<10)
@@ -489,11 +465,9 @@ func TestConnectionBudget_SharesBudgetBetweenRequestsAndNotifications(t *testing
 	if !strings.Contains(p.logs.String(), "byte budget") {
 		t.Errorf("the log does not name the byte budget:\n%s", p.logs.String())
 	}
-	// The close ends the ctx of the held requests.
 	waitHeld(t, c, 0, 0)
 }
 
-// Without options, a connection holds 1024 requests and 64 MiB.
 func TestConnectionBudget_DefaultLimits(t *testing.T) {
 	const documentedRequests, documentedBudget = 1024, 64 << 20
 
@@ -541,8 +515,6 @@ func TestConnectionBudget_DefaultLimits(t *testing.T) {
 	})
 }
 
-// WithMaxQueuedNotifications lets a connection queue a burst that the default
-// queue does not take.
 func TestConnectionBudget_MaxQueuedNotifications(t *testing.T) {
 	const burst = 2000
 	tests := []struct {
@@ -582,8 +554,6 @@ func TestConnectionBudget_MaxQueuedNotifications(t *testing.T) {
 	}
 }
 
-// The options reach the connection under an AgentSideConnection and a
-// ClientSideConnection.
 func TestConnectionBudget_OptionsReachSideConnections(t *testing.T) {
 	t.Run("agent", func(t *testing.T) {
 		p := newBudgetPeer(t)
@@ -613,7 +583,6 @@ func TestConnectionBudget_OptionsReachSideConnections(t *testing.T) {
 	})
 }
 
-// Every path out of the connection releases what it held.
 func TestConnectionBudget_ReleasesOnEveryPath(t *testing.T) {
 	t.Run("request cancelled at the inbound barrier", func(t *testing.T) {
 		p := newBudgetPeer(t)
@@ -665,8 +634,6 @@ func TestConnectionBudget_ReleasesOnEveryPath(t *testing.T) {
 	})
 }
 
-// The cancel markers of an AgentSideConnection hold no part of the peer's
-// sessionIds, so long sessionIds do not grow the heap past a few MiB.
 func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
 	const cancels, prompts, idSize = 1100, 200, 32 << 10
 	p := newBudgetPeer(t)
@@ -685,7 +652,6 @@ func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
 	}}, p.peerInput, p.peerOutput)
 	conn.SetLogger(p.logger)
 
-	// The old prompt keeps every later marker alive.
 	old := []byte(`{"jsonrpc":"2.0","id":"old","method":"session/prompt","params":{"sessionId":"old","prompt":[]}}` + "\n")
 	p.write(old)
 	waitUntil(t, "the old prompt runs", oldRunning.Load)
@@ -720,8 +686,6 @@ func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
 	}
 }
 
-// Two sessionIds of 32 KiB that differ only in their last byte name two
-// sessions: a cancel of one leaves the prompt of the other running.
 func TestAgentSideConnection_CancelMarkersKeepLongSessionIDsApart(t *testing.T) {
 	long := strings.Repeat("x", 32<<10)
 	cancelLine := func(sessionID string) string {
@@ -731,10 +695,7 @@ func TestAgentSideConnection_CancelMarkersKeepLongSessionIDsApart(t *testing.T) 
 		return `{"jsonrpc":"2.0","id":"` + id + `","method":"session/prompt","params":{"sessionId":"` + sessionID + `","prompt":[]}}`
 	}
 	tests := []struct {
-		name string
-		// After a session/cancel of "held", which runs until both later
-		// notifications are queued, the prompt of sessionA arrives, then
-		// the cancel of cancelled.
+		name          string
 		cancelled     string
 		wantCancelled bool
 	}{

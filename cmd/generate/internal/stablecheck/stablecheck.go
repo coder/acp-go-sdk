@@ -40,9 +40,11 @@ type Run struct {
 //     is removed or changes its type, or a named type whose integer type
 //     widens, which apidiff calls compatible;
 //   - a function or method whose body changes beyond the statements, switch
-//     cases, local struct fields, and composite literal elements that only
-//     refer to what merged adds: new fields of the receiver type and new
-//     package-level names;
+//     cases and their values, local struct fields, and composite literal
+//     elements that only refer to what merged adds: new fields of the
+//     receiver type and new package-level names (newProjection);
+//   - a method that merged adds to a stable type and that refers to a stable
+//     name, such as an UnmarshalJSON for a hint on a stable property;
 //   - in an UnmarshalJSON method, such an added statement that can return
 //     with a nil error before code for a stable field, which can then decode
 //     a stable value as the new one. A return in a literal case of a switch
@@ -181,30 +183,30 @@ func subject(msg string) string {
 }
 
 // fields returns the field names of the struct type that side declares
-// under name.
-func (s *side) fields(name string) map[string]bool {
-	out := map[string]bool{}
-	if obj, ok := s.pkg.Scope().Lookup(name).(*types.TypeName); ok {
-		if st, ok := obj.Type().Underlying().(*types.Struct); ok {
-			for i := 0; i < st.NumFields(); i++ {
-				out[st.Field(i).Name()] = true
-			}
-		}
+// under name, and whether there is one.
+func (s *side) fields(name string) (map[string]bool, bool) {
+	obj, ok := s.pkg.Scope().Lookup(name).(*types.TypeName)
+	if !ok {
+		return nil, false
 	}
-	return out
+	st, ok := obj.Type().Underlying().(*types.Struct)
+	if !ok {
+		return nil, false
+	}
+	out := map[string]bool{}
+	for i := 0; i < st.NumFields(); i++ {
+		out[st.Field(i).Name()] = true
+	}
+	return out, true
 }
 
 // bodyChanges compares the body of each function and method of old's
 // generated files that is not a method of a hand-written type with its
-// version in new (see Compare).
+// version in new, and checks each method that new adds to a type that old
+// declares (see Compare).
 func bodyChanges(old, new *side) []string {
-	names := make([]string, 0, len(old.funcs))
-	for name := range old.funcs {
-		names = append(names, name)
-	}
-	sort.Strings(names)
 	var out []string
-	for _, name := range names {
+	for _, name := range sortedKeys(old.funcs) {
 		recv, _, isMethod := strings.Cut(name, ".")
 		if isMethod && !old.declared[recv] {
 			continue
@@ -216,19 +218,7 @@ func bodyChanges(old, new *side) []string {
 			}
 			continue
 		}
-		p := projection{stable: map[string]bool{}, added: map[string]bool{}, addedFields: map[string]bool{}}
-		if isMethod {
-			p.stable = old.fields(recv)
-			for field := range new.fields(recv) {
-				p.added[field] = !p.stable[field]
-				p.addedFields[field] = !p.stable[field]
-			}
-		}
-		for _, n := range new.pkg.Scope().Names() {
-			if old.pkg.Scope().Lookup(n) == nil {
-				p.added[n] = true
-			}
-		}
+		p := newProjection(old, new, recv, isMethod)
 		body := p.block(nf.Body)
 		if strings.HasSuffix(name, ".UnmarshalJSON") {
 			out = append(out, p.earlyReturns(name, body)...)
@@ -239,7 +229,52 @@ func bodyChanges(old, new *side) []string {
 			out = append(out, fmt.Sprintf("%s: changes; stable has %q where merged has %q", name, s, m))
 		}
 	}
+	// A method that new adds to a stable type, such as an UnmarshalJSON for
+	// a hint, may only handle what new adds.
+	for _, name := range sortedKeys(new.funcs) {
+		recv, _, isMethod := strings.Cut(name, ".")
+		if !isMethod || !old.declared[recv] || old.funcs[name] != nil {
+			continue
+		}
+		p := newProjection(old, new, recv, true)
+		if stable := p.firstStable(p.block(new.funcs[name].Body)); stable != "" {
+			out = append(out, fmt.Sprintf("%s: is new and refers to the stable %s", name, stable))
+		}
+	}
 	return out
+}
+
+// newProjection returns the projection for a function, or for a method of
+// recv. The stable names are the fields of a struct receiver, else the
+// package-level names of old's generated files, such as the constants of an
+// enum. The added names are the fields that new adds to the receiver and the
+// package-level names that only new declares.
+func newProjection(old, new *side, recv string, isMethod bool) *projection {
+	p := &projection{stable: old.declared, added: map[string]bool{}, addedFields: map[string]bool{}}
+	if stable, ok := old.fields(recv); isMethod && ok {
+		p.stable = stable
+		fields, _ := new.fields(recv)
+		for field := range fields {
+			if !stable[field] {
+				p.added[field], p.addedFields[field] = true, true
+			}
+		}
+	}
+	for _, n := range new.pkg.Scope().Names() {
+		if old.pkg.Scope().Lookup(n) == nil {
+			p.added[n] = true
+		}
+	}
+	return p
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // projection removes from a body of the merged files what refers to names in
@@ -276,6 +311,10 @@ func (p *projection) block(b *ast.BlockStmt) *ast.BlockStmt {
 		case *ast.BlockStmt:
 			n.List = filter(p, n.List, false)
 		case *ast.CaseClause:
+			// A case may list stable and added values together.
+			if list := filter(p, n.List, false); len(list) > 0 {
+				n.List = list
+			}
 			n.Body = filter(p, n.Body, false)
 		case *ast.StructType:
 			n.Fields.List = filter(p, n.Fields.List, false)
@@ -362,6 +401,18 @@ func (p *projection) earlyReturns(name string, body *ast.BlockStmt) []string {
 		}
 	}
 	return out
+}
+
+// firstStable names the first stable name that n refers to, or "".
+func (p *projection) firstStable(n ast.Node) string {
+	name := ""
+	ast.Inspect(n, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok && name == "" && p.stable[id.Name] {
+			name = id.Name
+		}
+		return name == ""
+	})
+	return name
 }
 
 // firstAdded names the first new field of the receiver type that n refers

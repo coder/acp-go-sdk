@@ -65,6 +65,10 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 		"Auth": {AnyOf: []*load.Definition{
 			{Title: "agent", Type: "object", Properties: map[string]*load.Definition{"id": str()}, Required: []string{"id"}},
 		}},
+		// Unknown values of Tone decode as other.
+		"Tone": {Type: "string", Enum: []any{"warm", "other"}},
+		// Plain has no decoder of its own.
+		"Plain": obj(map[string]*load.Definition{"mode": str()}),
 		// The optional properties of a patch are patch fields.
 		"Update": {
 			Type: "object", Description: "Only changed fields are sent.",
@@ -100,6 +104,10 @@ func TestCompare_AllowsAdditions(t *testing.T) {
 			variant("terminal", map[string]*load.Definition{"command": str()}),
 		}, defs["Auth"].AnyOf...)
 		defs["Update"].Properties["name"] = str()
+		// An enum with other decodes its values in one switch case.
+		defs["Tone"].Enum = []any{"warm", "cool", "other"}
+		// A decoder for a hint of an added property only handles it.
+		defs["Plain"].Properties["level"] = &load.Definition{Type: "string", Default: "low", DefaultOnError: true}
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -158,6 +166,13 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 				defs["Count"].Format = "int64"
 			},
 			want: "Count: changed from int to int64",
+		},
+		{
+			name: "a hint on a stable property gives a type a decoder",
+			change: func(defs map[string]*load.Definition) {
+				defs["Plain"].Properties["mode"] = &load.Definition{Type: "string", Default: "ask", DefaultOnError: true}
+			},
+			want: "Plain.UnmarshalJSON: is new and refers to the stable Mode",
 		},
 		{
 			name: "a default gains a member for a stable property",

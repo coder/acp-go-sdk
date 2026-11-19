@@ -12,6 +12,7 @@ go build ./...
 | Change | Section |
 | --- | --- |
 | Required members are checked at every depth | [Required members](#required-members) |
+| A `null` item of a string array, or a `null` value of a string map, fails to decode | [Null items and map values](#null-items-and-map-values) |
 
 ## Required members
 
@@ -108,3 +109,42 @@ The rows come from the generated `Validate` methods of v0.20.0 and v0.21.0, foll
 - Every union, and each struct that has one of the checks above, now has a `Validate` method: 112 types more than in v0.20.0, such as `ContentChunk`, `McpServerAcpInline` and `PermissionOption`. A `oneOf` union's `Validate` requires exactly one variant set, and an `anyOf` union's one at least (`McpServer has no variant set`), so `Validate` on a zero union fails.
 - `SessionConfigOption.Validate` no longer rejects an empty `name`. The SDK never calls it on its own: the requests and notifications that it reads hold a `SessionConfigOption` only in a lenient member.
 - The `Validate` of a response type checks the same rules. The SDK does not call it on a response that it receives.
+
+## Null items and map values
+
+`encoding/json` reads a `null` item of a `[]string`, or a `null` value of a `map[string]string`, as `""`, so v0.20.0 read `"args": ["-v", null]` as `["-v", ""]`. The schema allows no `null` there, and the Rust SDK fails the message, so v0.21.0 fails the decode with a `*json.UnmarshalTypeError` that names the struct and the property:
+
+```text
+json: cannot unmarshal null into Go struct field NewSessionRequest.additionalDirectories of type string
+```
+
+A request that holds one gets `-32602` invalid params, and your handler is not called. A notification that holds one is dropped and logged. Inside a union, such as the stdio variant of `McpServer`, the error is the union's `invalid variant payload`.
+
+These still decode as in v0.20.0:
+
+- A whole `null`. `"args": null` reads as the default, which is `[]` for `args` of a stdio MCP server, and `"additionalDirectories": null` reads as absent.
+- A property with `x-deserialize-skip-invalid-items` or `x-deserialize-default-on-error`, such as `additionalDirectories` of `SessionInfo`. A `null` item there is dropped, or the whole value reads as unset.
+
+When such a lenient property holds a type from the table below, the item that holds the `null` is dropped, as the Rust SDK drops it. A terminal auth method with `"env": {"A": null}` is left out of `authMethods` of an `initialize` response, where v0.20.0 kept it with `env` `{"A": ""}`.
+
+Every property that now rejects a `null` item or value:
+
+| Type | Property | Where it arrives, and what a `null` item or value does there |
+| --- | --- | --- |
+| `AuthMethodTerminal` | `args`, `env` | no message carries it; it fails when you decode it yourself |
+| `AuthMethodTerminalInline` | `args`, `env` | `initialize` response to the client, in `authMethods`: the `authMethods` item that holds it is dropped |
+| `CreateTerminalRequest` | `args` | `terminal/create` request to the client: -32602, no handler call |
+| `ElicitationPropertySchemaString` | `enum` | `elicitation/create` request to the client, in `requestedSchema.properties`: -32602, no handler call |
+| `ElicitationSchema` | `required` | `elicitation/create` request to the client, in `requestedSchema`: -32602, no handler call |
+| `LoadSessionRequest` | `additionalDirectories` | `session/load` request to the agent: -32602, no handler call |
+| `McpServerStdio` | `args` | `session/fork`, `session/load`, `session/new`, `session/resume` requests to the agent, in `mcpServers`: -32602, no handler call |
+| `MultiSelectItemsString` | `enum` | `elicitation/create` request to the client, in `requestedSchema.properties.items`: -32602, no handler call |
+| `NewSessionRequest` | `additionalDirectories` | `session/new` request to the agent: -32602, no handler call |
+| `ResumeSessionRequest` | `additionalDirectories` | `session/resume` request to the agent: -32602, no handler call |
+| `SessionSubagentUpdate` | `additionalDirectories` | `session/update` notification to the client, in `update`: dropped, no handler call |
+| `StringMultiSelectItems` | `enum` | no message carries it; it fails when you decode it yourself |
+| `StringPropertySchema` | `enum` | no message carries it; it fails when you decode it yourself |
+| `SubagentUpdate` | `additionalDirectories` | no message carries it; it fails when you decode it yourself |
+| `UnstableForkSessionRequest` | `additionalDirectories` | `session/fork` request to the agent: -32602, no handler call |
+| `UnstableSessionOptionsRequest` | `additionalDirectories` | `session/options` request to the agent: -32602, no handler call |
+| `UnstableSetProviderRequest` | `headers` | `providers/set` request to the agent: -32602, no handler call |

@@ -91,6 +91,38 @@ type cancelRequestParams struct {
 	RequestID json.RawMessage `json:"requestId"`
 }
 
+// MethodHandler handles a request or a notification from the peer. It never
+// gets a $/cancel_request notification: the connection handles those itself.
+// The connection calls it by these rules:
+//
+//   - Notification handlers run one at a time, in arrival order, on one
+//     goroutine.
+//   - Each request handler runs on its own goroutine. It starts after the
+//     handlers of all notifications that arrived before the request have
+//     returned, so a slow notification handler delays every later
+//     notification and, except as the next two rules say, every later
+//     request. Notifications that arrive after the request do not delay it.
+//   - A request handler also starts while the running notification handler
+//     waits for the response to a request that it made with its ctx, because
+//     the peer can need this request's answer first.
+//   - If the peer disconnects while a request waits to start, its handler
+//     starts at once with a cancelled ctx.
+//   - If a $/cancel_request for the request arrives while the request waits to
+//     start, the peer gets a -32800 error response and the handler never runs.
+//     When the peer disconnects right after the cancel, the waiting request
+//     can see the disconnect first. The handler then starts with a cancelled
+//     ctx, as on any disconnect during the wait.
+//     A later $/cancel_request, even one just before the handler starts, only cancels its ctx.
+//
+// A request that a handler makes waits for notification handlers too, as
+// SendRequest describes. A request that a request handler makes with its ctx
+// can return while the running notification handler waits for the peer, so
+// the request handler can go on before earlier notifications have run. On an
+// AgentSideConnection, a session/cancel queued behind that notification
+// handler then reaches a running prompt late: RequestPermission in Prompt can
+// return the client's answer, which the client sent after the cancel, while
+// the prompt's ctx is still live. The ctx ends once the earlier handler
+// returns and the cancel runs.
 type MethodHandler func(ctx context.Context, method string, params json.RawMessage) (any, *RequestError)
 
 // Connection is a simple JSON-RPC 2.0 connection over line-delimited JSON.
@@ -149,9 +181,17 @@ type Connection struct {
 	budget peerBudget
 }
 
-// NewConnection starts a connection that reads the peer's messages from
-// peerOutput and writes to peerInput. opts set the limits on what it holds
-// from the peer (see ConnectionOption).
+// NewConnection returns a Connection that writes messages to peerInput and
+// reads them from peerOutput. It starts reading at once and calls handler for
+// each request and notification from the peer that fits its limits, except a
+// $/cancel_request notification. The connection handles that one itself, at
+// once: it cancels the ctx of the in-flight request from the peer with that
+// id, or ignores an unknown id. Notification handlers run one at a time, in
+// arrival order. A request handler waits for the handlers of the notifications
+// that arrived before the request. MethodHandler lists these rules and their
+// exceptions. opts set the limits on what it holds from the peer: a request
+// over a limit gets a -32603 reply instead of a handler call, and a
+// notification over a limit closes the connection (see ConnectionOption).
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
 	limits := connectionLimits{
 		byteBudget:             defaultByteBudget,

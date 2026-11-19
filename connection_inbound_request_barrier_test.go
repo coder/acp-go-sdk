@@ -205,6 +205,49 @@ func TestConnection_InboundRequestBarrierHonorsCancellation(t *testing.T) {
 	}
 }
 
+// When the peer disconnects right after a $/cancel_request for a request that
+// waits for an earlier notification handler, the waiting request can see the
+// cancel or the disconnect first. On the cancel, the peer gets -32800 and the
+// handler never runs. On the disconnect, the handler runs with a cancelled ctx.
+// Either way, the handler never runs with a live ctx.
+func TestConnection_InboundRequestBarrierCancelThenDisconnect(t *testing.T) {
+	outcomes := map[string]int{}
+	for i := 0; i < 50; i++ {
+		releaseNotification := make(chan struct{})
+		peer := newInboundBarrierTestPeer(t, func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+			switch method {
+			case "notification":
+				<-releaseNotification
+				return nil, nil
+			case "request":
+				return map[string]bool{"cancelled": ctx.Err() != nil}, nil
+			default:
+				return nil, NewMethodNotFound(method)
+			}
+		})
+		peer.notification(t, "notification", nil)
+		peer.request(t, "request", "request")
+		peer.waitInflight(t, "request")
+		peer.notification(t, "$/cancel_request", map[string]any{"requestId": "request"})
+		_ = peer.input.Close()
+
+		response := peer.response(t, "request")
+		close(releaseNotification)
+		if errorResponse, ok := response["error"].(map[string]any); ok {
+			if errorResponse["code"] != float64(-32800) {
+				t.Fatalf("run %d: error response = %#v, want code -32800", i, response)
+			}
+			outcomes["-32800"]++
+			continue
+		}
+		if result, _ := response["result"].(map[string]any); result["cancelled"] != true {
+			t.Fatalf("run %d: the handler ran with a live ctx: %#v", i, response)
+		}
+		outcomes["handler with cancelled ctx"]++
+	}
+	t.Logf("outcomes over 50 runs: %v", outcomes)
+}
+
 func TestConnection_InboundRequestDoesNotWaitForLaterNotification(t *testing.T) {
 	handlerStarted := make(chan struct{})
 	returnRequest := make(chan struct{})
@@ -287,6 +330,56 @@ func TestConnection_InboundRequestsCrossBarrierConcurrently(t *testing.T) {
 		if response := peer.response(t, id); response["error"] != nil {
 			t.Fatalf("%s response error = %#v", id, response["error"])
 		}
+	}
+}
+
+// A slow notification handler delays the notifications and the requests that
+// arrive after it, and they run in arrival order once it returns.
+func TestConnection_SlowNotificationDelaysLaterMessages(t *testing.T) {
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var releaseFirstOnce sync.Once
+	started := make(chan string, 2)
+	peer := newInboundBarrierTestPeer(t, func(_ context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		switch method {
+		case "first":
+			close(firstStarted)
+			<-releaseFirst
+			return nil, nil
+		case "second", "request":
+			started <- method
+			return nil, nil
+		default:
+			return nil, NewMethodNotFound(method)
+		}
+	})
+	t.Cleanup(func() { releaseFirstOnce.Do(func() { close(releaseFirst) }) })
+
+	peer.notification(t, "first", nil)
+	<-firstStarted
+	peer.notification(t, "second", nil)
+	peer.request(t, "request", "request")
+	// The connection reads messages in order, so once the request is in
+	// flight, the second notification is queued too.
+	peer.waitInflight(t, "request")
+	select {
+	case method := <-started:
+		t.Fatalf("%s started while the first notification handler ran", method)
+	case <-time.After(20 * time.Millisecond):
+	}
+	releaseFirstOnce.Do(func() { close(releaseFirst) })
+	for _, want := range []string{"second", "request"} {
+		select {
+		case got := <-started:
+			if got != want {
+				t.Fatalf("started %s, want %s", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s did not start", want)
+		}
+	}
+	if response := peer.response(t, "request"); response["error"] != nil {
+		t.Fatalf("response error = %#v", response["error"])
 	}
 }
 

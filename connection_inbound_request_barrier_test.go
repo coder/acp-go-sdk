@@ -525,6 +525,136 @@ func TestConnection_RequestHandlerCtxGetsFullWaitAfterHandlerReturns(t *testing.
 	}
 }
 
+// A request made with a ctx that outlives the handler of a request from the
+// peer can start its wait while the handler runs. When the handler returns
+// before the running notification handler starts to wait on the peer, the
+// request gets the full wait.
+func TestConnection_RequestHandlerCtxGetsFullWaitWhenHandlerReturnsDuringWait(t *testing.T) {
+	aReader, bWriter := io.Pipe()
+	bReader, aWriter := io.Pipe()
+	t.Cleanup(func() {
+		_ = aWriter.Close()
+		_ = bWriter.Close()
+	})
+	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	callbackStarted := make(chan struct{})
+	startLookup := make(chan struct{})
+	returnCallback := make(chan struct{})
+	lookupDone := make(chan error, 1)
+	notificationStarted := make(chan struct{})
+	notificationAsks := make(chan struct{})
+	notificationDone := make(chan error, 1)
+	var a *Connection
+	a = NewConnection(func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		switch method {
+		case "notification":
+			close(notificationStarted)
+			<-notificationAsks
+			_, err := SendRequest[json.RawMessage](a, ctx, "ask", nil)
+			notificationDone <- err
+			return nil, nil
+		case "callback":
+			close(callbackStarted)
+			<-startLookup
+			outlivingCtx := context.WithoutCancel(ctx)
+			go func() {
+				_, err := SendRequest[json.RawMessage](a, outlivingCtx, "lookup", nil)
+				lookupDone <- err
+			}()
+			<-returnCallback
+			return map[string]bool{"ok": true}, nil
+		default:
+			return nil, NewMethodNotFound(method)
+		}
+	}, aWriter, aReader)
+	a.SetLogger(discard)
+	askArrived := make(chan struct{})
+	answerAsk := make(chan struct{})
+	b := NewConnection(func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		switch method {
+		case "ask":
+			close(askArrived)
+			select {
+			case <-answerAsk:
+				return map[string]bool{"ok": true}, nil
+			case <-ctx.Done():
+				return nil, toReqErr(ctx.Err())
+			}
+		case "lookup":
+			return map[string]bool{"ok": true}, nil
+		default:
+			return nil, NewMethodNotFound(method)
+		}
+	}, bWriter, bReader)
+	b.SetLogger(discard)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wait := func(ch <-chan struct{}, what string) {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			t.Fatal(what)
+		}
+	}
+	callbackDone := make(chan error, 1)
+	go func() {
+		_, err := SendRequest[json.RawMessage](b, ctx, "callback", nil)
+		callbackDone <- err
+	}()
+	wait(callbackStarted, "callback handler did not start")
+	if err := b.SendNotification(ctx, "notification", nil); err != nil {
+		t.Fatal(err)
+	}
+	wait(notificationStarted, "notification handler did not start")
+	// The lookup response arrives after the notification, so the lookup
+	// waits for its handler, which does not wait on the peer yet.
+	close(startLookup)
+	waitForPendingRequests(t, a, 0, 5*time.Second)
+	time.Sleep(20 * time.Millisecond)
+	close(returnCallback)
+	if err := <-callbackDone; err != nil {
+		t.Fatalf("callback error = %v", err)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		a.mu.Lock()
+		running := len(a.inflightArrivals)
+		a.mu.Unlock()
+		if running == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("callback handler did not leave c.inflightArrivals")
+		}
+	}
+	close(notificationAsks)
+	wait(askArrived, "notification handler's request did not arrive")
+	select {
+	case err := <-lookupDone:
+		t.Fatalf("request returned (err = %v) while the notification handler still ran", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(answerAsk)
+	select {
+	case err := <-lookupDone:
+		if err != nil {
+			t.Fatalf("lookup error = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("lookup did not return")
+	}
+	select {
+	case err := <-notificationDone:
+		if err != nil {
+			t.Fatalf("notification handler's request error = %v", err)
+		}
+	default:
+		t.Fatal("request returned before the notification handler")
+	}
+}
+
 // outboundRequestID waits for our request with method and returns its id.
 func (p *inboundBarrierTestPeer) outboundRequestID(t *testing.T, method string) any {
 	t.Helper()

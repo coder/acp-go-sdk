@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// A decode replaces the value it decodes into, so the required members of a
-// reused value must be in the JSON again.
+// The required members of a reused value must be in the JSON again: a
+// value that the field holds from before does not count.
 func TestUsageUpdate_UnmarshalJSON_RequiresMembersOfAReusedValue(t *testing.T) {
 	for _, in := range []string{`{}`, `{"size":null,"used":2}`, `{"used":2}`} {
 		u := UsageUpdate{Size: 10, Used: 5}

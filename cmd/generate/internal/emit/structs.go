@@ -338,6 +338,21 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 
 	if open || slices.ContainsFunc(plans, fieldPlan.decoded) {
 		f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
+			// emitRequireMembers reads a zero required field as a member that
+			// the JSON may lack, so each one starts at zero. The JSON must set
+			// it anyway; the other fields keep what a reused value holds.
+			var reset []Code
+			for _, p := range plans {
+				if p.required {
+					reset = append(reset, Id("v").Dot(p.field.Name).Op("=").Id("fresh").Dot(p.field.Name))
+				}
+			}
+			if len(reset) > 0 {
+				g.Var().Id("fresh").Id(name)
+				for _, c := range reset {
+					g.Add(c)
+				}
+			}
 			b.emitDecodeFields(g, name, "v", plans)
 			if open {
 				named := []Code{Id("b")}

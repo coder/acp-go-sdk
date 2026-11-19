@@ -42,8 +42,9 @@ func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fie
 // b lacks a required member of plans, or holds null for one that does not
 // take null. A member that is absent or null holds its Go zero value in a
 // fresh value, so the members of b are read only when a required one is zero.
-// A reused value whose field holds a value from before hides an absent
-// member; the connection always decodes into a fresh value.
+// A struct's UnmarshalJSON sets each required field to zero first
+// (emitStruct), and a union's starts from an empty wrapper, so a field that a
+// reused value held cannot hide an absent member.
 func emitRequireMembers(g *Group, name, recv string, plans []fieldPlan) {
 	var anyZero *Statement
 	var checks []Code

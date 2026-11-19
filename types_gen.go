@@ -151,6 +151,8 @@ type AgentNotification struct {
 }
 
 func (v *AgentNotification) UnmarshalJSON(b []byte) error {
+	var fresh AgentNotification
+	v.Method = fresh.Method
 	type plain AgentNotification
 	type AgentNotification struct {
 		*plain
@@ -186,6 +188,9 @@ type AgentRequest struct {
 }
 
 func (v *AgentRequest) UnmarshalJSON(b []byte) error {
+	var fresh AgentRequest
+	v.Id = fresh.Id
+	v.Method = fresh.Method
 	type plain AgentRequest
 	type AgentRequest struct {
 		*plain
@@ -226,6 +231,9 @@ type AgentResult struct {
 }
 
 func (v *AgentResult) UnmarshalJSON(b []byte) error {
+	var fresh AgentResult
+	v.Id = fresh.Id
+	v.Result = fresh.Result
 	type plain AgentResult
 	type AgentResult struct {
 		*plain
@@ -262,6 +270,9 @@ type AgentError struct {
 }
 
 func (v *AgentError) UnmarshalJSON(b []byte) error {
+	var fresh AgentError
+	v.Error = fresh.Error
+	v.Id = fresh.Id
 	type plain AgentError
 	type AgentError struct {
 		*plain
@@ -453,6 +464,9 @@ type AudioContent struct {
 }
 
 func (v *AudioContent) UnmarshalJSON(b []byte) error {
+	var fresh AudioContent
+	v.Data = fresh.Data
+	v.MimeType = fresh.MimeType
 	type plain AudioContent
 	type AudioContent struct {
 		*plain
@@ -552,6 +566,10 @@ type AuthMethodTerminalInline struct {
 }
 
 func (v *AuthMethodTerminalInline) UnmarshalJSON(b []byte) error {
+	var fresh AuthMethodTerminalInline
+	v.Id = fresh.Id
+	v.Name = fresh.Name
+	v.Type = fresh.Type
 	type plain AuthMethodTerminalInline
 	type AuthMethodTerminalInline struct {
 		*plain
@@ -729,6 +747,9 @@ type AuthMethodAgent struct {
 }
 
 func (v *AuthMethodAgent) UnmarshalJSON(b []byte) error {
+	var fresh AuthMethodAgent
+	v.Id = fresh.Id
+	v.Name = fresh.Name
 	type plain AuthMethodAgent
 	type AuthMethodAgent struct {
 		*plain
@@ -791,6 +812,9 @@ type AuthMethodTerminal struct {
 }
 
 func (v *AuthMethodTerminal) UnmarshalJSON(b []byte) error {
+	var fresh AuthMethodTerminal
+	v.Id = fresh.Id
+	v.Name = fresh.Name
 	type plain AuthMethodTerminal
 	type AuthMethodTerminal struct {
 		*plain
@@ -882,6 +906,8 @@ type AuthenticateRequest struct {
 }
 
 func (v *AuthenticateRequest) UnmarshalJSON(b []byte) error {
+	var fresh AuthenticateRequest
+	v.MethodId = fresh.MethodId
 	type plain AuthenticateRequest
 	type AuthenticateRequest struct {
 		*plain
@@ -953,6 +979,9 @@ type AvailableCommand struct {
 }
 
 func (v *AvailableCommand) UnmarshalJSON(b []byte) error {
+	var fresh AvailableCommand
+	v.Description = fresh.Description
+	v.Name = fresh.Name
 	type plain AvailableCommand
 	type AvailableCommand struct {
 		*plain
@@ -1063,6 +1092,8 @@ func (v AvailableCommandsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *AvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
+	var fresh AvailableCommandsUpdate
+	v.AvailableCommands = fresh.AvailableCommands
 	type plain AvailableCommandsUpdate
 	type AvailableCommandsUpdate struct {
 		*plain
@@ -1110,6 +1141,9 @@ type BlobResourceContents struct {
 }
 
 func (v *BlobResourceContents) UnmarshalJSON(b []byte) error {
+	var fresh BlobResourceContents
+	v.Blob = fresh.Blob
+	v.Uri = fresh.Uri
 	type plain BlobResourceContents
 	type BlobResourceContents struct {
 		*plain
@@ -1219,6 +1253,8 @@ type CancelNotification struct {
 }
 
 func (v *CancelNotification) UnmarshalJSON(b []byte) error {
+	var fresh CancelNotification
+	v.SessionId = fresh.SessionId
 	type plain CancelNotification
 	type CancelNotification struct {
 		*plain
@@ -1260,6 +1296,8 @@ type CancelRequestNotification struct {
 }
 
 func (v *CancelRequestNotification) UnmarshalJSON(b []byte) error {
+	var fresh CancelRequestNotification
+	v.RequestId = fresh.RequestId
 	type plain CancelRequestNotification
 	type CancelRequestNotification struct {
 		*plain
@@ -1397,6 +1435,8 @@ type ClientNotification struct {
 }
 
 func (v *ClientNotification) UnmarshalJSON(b []byte) error {
+	var fresh ClientNotification
+	v.Method = fresh.Method
 	type plain ClientNotification
 	type ClientNotification struct {
 		*plain
@@ -1432,6 +1472,9 @@ type ClientRequest struct {
 }
 
 func (v *ClientRequest) UnmarshalJSON(b []byte) error {
+	var fresh ClientRequest
+	v.Id = fresh.Id
+	v.Method = fresh.Method
 	type plain ClientRequest
 	type ClientRequest struct {
 		*plain
@@ -1472,6 +1515,9 @@ type ClientResult struct {
 }
 
 func (v *ClientResult) UnmarshalJSON(b []byte) error {
+	var fresh ClientResult
+	v.Id = fresh.Id
+	v.Result = fresh.Result
 	type plain ClientResult
 	type ClientResult struct {
 		*plain
@@ -1508,6 +1554,9 @@ type ClientError struct {
 }
 
 func (v *ClientError) UnmarshalJSON(b []byte) error {
+	var fresh ClientError
+	v.Error = fresh.Error
+	v.Id = fresh.Id
 	type plain ClientError
 	type ClientError struct {
 		*plain
@@ -1720,6 +1769,8 @@ type CloseSessionRequest struct {
 }
 
 func (v *CloseSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh CloseSessionRequest
+	v.SessionId = fresh.SessionId
 	type plain CloseSessionRequest
 	type CloseSessionRequest struct {
 		*plain
@@ -1808,6 +1859,9 @@ type CompactionSummaryChunk struct {
 }
 
 func (v *CompactionSummaryChunk) UnmarshalJSON(b []byte) error {
+	var fresh CompactionSummaryChunk
+	v.CompactionId = fresh.CompactionId
+	v.Content = fresh.Content
 	type plain CompactionSummaryChunk
 	type CompactionSummaryChunk struct {
 		*plain
@@ -1882,6 +1936,9 @@ func (v CompactionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
+	var fresh CompactionUpdate
+	v.CompactionId = fresh.CompactionId
+	v.Status = fresh.Status
 	type plain CompactionUpdate
 	type CompactionUpdate struct {
 		*plain
@@ -1933,6 +1990,8 @@ type CompleteElicitationNotification struct {
 }
 
 func (v *CompleteElicitationNotification) UnmarshalJSON(b []byte) error {
+	var fresh CompleteElicitationNotification
+	v.ElicitationId = fresh.ElicitationId
 	type plain CompleteElicitationNotification
 	type CompleteElicitationNotification struct {
 		*plain
@@ -1982,6 +2041,8 @@ func (v ConfigOptionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ConfigOptionUpdate) UnmarshalJSON(b []byte) error {
+	var fresh ConfigOptionUpdate
+	v.ConfigOptions = fresh.ConfigOptions
 	type plain ConfigOptionUpdate
 	type ConfigOptionUpdate struct {
 		*plain
@@ -2025,6 +2086,8 @@ type Content struct {
 }
 
 func (v *Content) UnmarshalJSON(b []byte) error {
+	var fresh Content
+	v.Content = fresh.Content
 	type plain Content
 	type Content struct {
 		*plain
@@ -2081,6 +2144,9 @@ type ContentBlockText struct {
 }
 
 func (v *ContentBlockText) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockText
+	v.Text = fresh.Text
+	v.Type = fresh.Type
 	type plain ContentBlockText
 	type ContentBlockText struct {
 		*plain
@@ -2127,6 +2193,10 @@ type ContentBlockImage struct {
 }
 
 func (v *ContentBlockImage) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockImage
+	v.Data = fresh.Data
+	v.MimeType = fresh.MimeType
+	v.Type = fresh.Type
 	type plain ContentBlockImage
 	type ContentBlockImage struct {
 		*plain
@@ -2176,6 +2246,10 @@ type ContentBlockAudio struct {
 }
 
 func (v *ContentBlockAudio) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockAudio
+	v.Data = fresh.Data
+	v.MimeType = fresh.MimeType
+	v.Type = fresh.Type
 	type plain ContentBlockAudio
 	type ContentBlockAudio struct {
 		*plain
@@ -2231,6 +2305,10 @@ type ContentBlockResourceLink struct {
 }
 
 func (v *ContentBlockResourceLink) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockResourceLink
+	v.Name = fresh.Name
+	v.Type = fresh.Type
+	v.Uri = fresh.Uri
 	type plain ContentBlockResourceLink
 	type ContentBlockResourceLink struct {
 		*plain
@@ -2286,6 +2364,9 @@ type ContentBlockResource struct {
 }
 
 func (v *ContentBlockResource) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockResource
+	v.Resource = fresh.Resource
+	v.Type = fresh.Type
 	type plain ContentBlockResource
 	type ContentBlockResource struct {
 		*plain
@@ -2513,6 +2594,8 @@ type ContentChunk struct {
 }
 
 func (v *ContentChunk) UnmarshalJSON(b []byte) error {
+	var fresh ContentChunk
+	v.Content = fresh.Content
 	type plain ContentChunk
 	type ContentChunk struct {
 		*plain
@@ -2557,6 +2640,9 @@ type Cost struct {
 }
 
 func (v *Cost) UnmarshalJSON(b []byte) error {
+	var fresh Cost
+	v.Amount = fresh.Amount
+	v.Currency = fresh.Currency
 	type plain Cost
 	type Cost struct {
 		*plain
@@ -3242,6 +3328,8 @@ type CreateElicitationAccept struct {
 }
 
 func (v *CreateElicitationAccept) UnmarshalJSON(b []byte) error {
+	var fresh CreateElicitationAccept
+	v.Action = fresh.Action
 	type plain CreateElicitationAccept
 	type CreateElicitationAccept struct {
 		*plain
@@ -3284,6 +3372,8 @@ type CreateElicitationDecline struct {
 }
 
 func (v *CreateElicitationDecline) UnmarshalJSON(b []byte) error {
+	var fresh CreateElicitationDecline
+	v.Action = fresh.Action
 	type plain CreateElicitationDecline
 	type CreateElicitationDecline struct {
 		*plain
@@ -3317,6 +3407,8 @@ type CreateElicitationCancel struct {
 }
 
 func (v *CreateElicitationCancel) UnmarshalJSON(b []byte) error {
+	var fresh CreateElicitationCancel
+	v.Action = fresh.Action
 	type plain CreateElicitationCancel
 	type CreateElicitationCancel struct {
 		*plain
@@ -3376,6 +3468,8 @@ func (v CreateElicitationResponseOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *CreateElicitationResponseOther) UnmarshalJSON(b []byte) error {
+	var fresh CreateElicitationResponseOther
+	v.Action = fresh.Action
 	type plain CreateElicitationResponseOther
 	type CreateElicitationResponseOther struct {
 		*plain
@@ -3581,6 +3675,9 @@ type CreateTerminalRequest struct {
 }
 
 func (v *CreateTerminalRequest) UnmarshalJSON(b []byte) error {
+	var fresh CreateTerminalRequest
+	v.Command = fresh.Command
+	v.SessionId = fresh.SessionId
 	type plain CreateTerminalRequest
 	type CreateTerminalRequest struct {
 		*plain
@@ -3633,6 +3730,8 @@ type CreateTerminalResponse struct {
 }
 
 func (v *CreateTerminalResponse) UnmarshalJSON(b []byte) error {
+	var fresh CreateTerminalResponse
+	v.TerminalId = fresh.TerminalId
 	type plain CreateTerminalResponse
 	type CreateTerminalResponse struct {
 		*plain
@@ -3674,6 +3773,8 @@ type CurrentModeUpdate struct {
 }
 
 func (v *CurrentModeUpdate) UnmarshalJSON(b []byte) error {
+	var fresh CurrentModeUpdate
+	v.CurrentModeId = fresh.CurrentModeId
 	type plain CurrentModeUpdate
 	type CurrentModeUpdate struct {
 		*plain
@@ -3715,6 +3816,8 @@ type DeleteSessionRequest struct {
 }
 
 func (v *DeleteSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh DeleteSessionRequest
+	v.SessionId = fresh.SessionId
 	type plain DeleteSessionRequest
 	type DeleteSessionRequest struct {
 		*plain
@@ -3790,6 +3893,9 @@ type Diff struct {
 }
 
 func (v *Diff) UnmarshalJSON(b []byte) error {
+	var fresh Diff
+	v.NewText = fresh.NewText
+	v.Path = fresh.Path
 	type plain Diff
 	type Diff struct {
 		*plain
@@ -4235,6 +4341,8 @@ type ElicitationPropertySchemaString struct {
 }
 
 func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaString
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaString
 	type ElicitationPropertySchemaString struct {
 		*plain
@@ -4301,6 +4409,8 @@ type ElicitationPropertySchemaNumber struct {
 }
 
 func (v *ElicitationPropertySchemaNumber) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaNumber
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaNumber
 	type ElicitationPropertySchemaNumber struct {
 		*plain
@@ -4360,6 +4470,8 @@ type ElicitationPropertySchemaInteger struct {
 }
 
 func (v *ElicitationPropertySchemaInteger) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaInteger
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaInteger
 	type ElicitationPropertySchemaInteger struct {
 		*plain
@@ -4411,6 +4523,8 @@ type ElicitationPropertySchemaBoolean struct {
 }
 
 func (v *ElicitationPropertySchemaBoolean) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaBoolean
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaBoolean
 	type ElicitationPropertySchemaBoolean struct {
 		*plain
@@ -4472,6 +4586,9 @@ type ElicitationPropertySchemaArray struct {
 }
 
 func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaArray
+	v.Items = fresh.Items
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaArray
 	type ElicitationPropertySchemaArray struct {
 		*plain
@@ -4539,6 +4656,8 @@ func (v ElicitationPropertySchemaOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ElicitationPropertySchemaOther) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaOther
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaOther
 	type ElicitationPropertySchemaOther struct {
 		*plain
@@ -4768,6 +4887,8 @@ type ElicitationRequestScope struct {
 }
 
 func (v *ElicitationRequestScope) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationRequestScope
+	v.RequestId = fresh.RequestId
 	type plain ElicitationRequestScope
 	type ElicitationRequestScope struct {
 		*plain
@@ -4905,6 +5026,8 @@ type ElicitationSessionScope struct {
 }
 
 func (v *ElicitationSessionScope) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationSessionScope
+	v.SessionId = fresh.SessionId
 	type plain ElicitationSessionScope
 	type ElicitationSessionScope struct {
 		*plain
@@ -5116,6 +5239,8 @@ type EmbeddedResource struct {
 }
 
 func (v *EmbeddedResource) UnmarshalJSON(b []byte) error {
+	var fresh EmbeddedResource
+	v.Resource = fresh.Resource
 	type plain EmbeddedResource
 	type EmbeddedResource struct {
 		*plain
@@ -5264,6 +5389,9 @@ type EnumOption struct {
 }
 
 func (v *EnumOption) UnmarshalJSON(b []byte) error {
+	var fresh EnumOption
+	v.Const = fresh.Const
+	v.Title = fresh.Title
 	type plain EnumOption
 	type EnumOption struct {
 		*plain
@@ -5303,6 +5431,9 @@ type EnvVariable struct {
 }
 
 func (v *EnvVariable) UnmarshalJSON(b []byte) error {
+	var fresh EnvVariable
+	v.Name = fresh.Name
+	v.Value = fresh.Value
 	type plain EnvVariable
 	type EnvVariable struct {
 		*plain
@@ -5344,6 +5475,9 @@ type Error struct {
 }
 
 func (v *Error) UnmarshalJSON(b []byte) error {
+	var fresh Error
+	v.Code = fresh.Code
+	v.Message = fresh.Message
 	type plain Error
 	type Error struct {
 		*plain
@@ -5727,6 +5861,9 @@ type HttpHeader struct {
 }
 
 func (v *HttpHeader) UnmarshalJSON(b []byte) error {
+	var fresh HttpHeader
+	v.Name = fresh.Name
+	v.Value = fresh.Value
 	type plain HttpHeader
 	type HttpHeader struct {
 		*plain
@@ -5766,6 +5903,8 @@ type IdleStateUpdateEndTurn struct {
 }
 
 func (v *IdleStateUpdateEndTurn) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateEndTurn
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateEndTurn
 	type IdleStateUpdateEndTurn struct {
 		*plain
@@ -5801,6 +5940,8 @@ type IdleStateUpdateMaxTokens struct {
 }
 
 func (v *IdleStateUpdateMaxTokens) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateMaxTokens
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateMaxTokens
 	type IdleStateUpdateMaxTokens struct {
 		*plain
@@ -5837,6 +5978,8 @@ type IdleStateUpdateMaxTurnRequests struct {
 }
 
 func (v *IdleStateUpdateMaxTurnRequests) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateMaxTurnRequests
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateMaxTurnRequests
 	type IdleStateUpdateMaxTurnRequests struct {
 		*plain
@@ -5872,6 +6015,8 @@ type IdleStateUpdateRefusal struct {
 }
 
 func (v *IdleStateUpdateRefusal) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateRefusal
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateRefusal
 	type IdleStateUpdateRefusal struct {
 		*plain
@@ -5907,6 +6052,8 @@ type IdleStateUpdateCancelled struct {
 }
 
 func (v *IdleStateUpdateCancelled) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateCancelled
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateCancelled
 	type IdleStateUpdateCancelled struct {
 		*plain
@@ -5947,6 +6094,8 @@ type IdleStateUpdateError struct {
 }
 
 func (v *IdleStateUpdateError) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateError
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateError
 	type IdleStateUpdateError struct {
 		*plain
@@ -6001,6 +6150,8 @@ func (v IdleStateUpdateOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *IdleStateUpdateOther) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateOther
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateOther
 	type IdleStateUpdateOther struct {
 		*plain
@@ -6321,6 +6472,9 @@ type ImageContent struct {
 }
 
 func (v *ImageContent) UnmarshalJSON(b []byte) error {
+	var fresh ImageContent
+	v.Data = fresh.Data
+	v.MimeType = fresh.MimeType
 	type plain ImageContent
 	type ImageContent struct {
 		*plain
@@ -6371,6 +6525,9 @@ type Implementation struct {
 }
 
 func (v *Implementation) UnmarshalJSON(b []byte) error {
+	var fresh Implementation
+	v.Name = fresh.Name
+	v.Version = fresh.Version
 	type plain Implementation
 	type Implementation struct {
 		*plain
@@ -6423,6 +6580,10 @@ type InitialSessionConfigOptionBoolean struct {
 }
 
 func (v *InitialSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	var fresh InitialSessionConfigOptionBoolean
+	v.ConfigId = fresh.ConfigId
+	v.Type = fresh.Type
+	v.Value = fresh.Value
 	type plain InitialSessionConfigOptionBoolean
 	type InitialSessionConfigOptionBoolean struct {
 		*plain
@@ -6474,6 +6635,9 @@ type InitialSessionConfigOptionValueId struct {
 }
 
 func (v *InitialSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
+	var fresh InitialSessionConfigOptionValueId
+	v.ConfigId = fresh.ConfigId
+	v.Value = fresh.Value
 	type plain InitialSessionConfigOptionValueId
 	type InitialSessionConfigOptionValueId struct {
 		*plain
@@ -6646,6 +6810,8 @@ func (v InitializeRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
+	var fresh InitializeRequest
+	v.ProtocolVersion = fresh.ProtocolVersion
 	type plain InitializeRequest
 	type InitializeRequest struct {
 		*plain
@@ -6717,6 +6883,8 @@ func (v InitializeResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
+	var fresh InitializeResponse
+	v.ProtocolVersion = fresh.ProtocolVersion
 	type plain InitializeResponse
 	type InitializeResponse struct {
 		*plain
@@ -6817,6 +6985,9 @@ type KillTerminalRequest struct {
 }
 
 func (v *KillTerminalRequest) UnmarshalJSON(b []byte) error {
+	var fresh KillTerminalRequest
+	v.SessionId = fresh.SessionId
+	v.TerminalId = fresh.TerminalId
 	type plain KillTerminalRequest
 	type KillTerminalRequest struct {
 		*plain
@@ -6947,6 +7118,8 @@ func (v ListSessionsResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ListSessionsResponse) UnmarshalJSON(b []byte) error {
+	var fresh ListSessionsResponse
+	v.Sessions = fresh.Sessions
 	type plain ListSessionsResponse
 	type ListSessionsResponse struct {
 		*plain
@@ -7041,6 +7214,10 @@ func (v LoadSessionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *LoadSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh LoadSessionRequest
+	v.Cwd = fresh.Cwd
+	v.McpServers = fresh.McpServers
+	v.SessionId = fresh.SessionId
 	type plain LoadSessionRequest
 	type LoadSessionRequest struct {
 		*plain
@@ -7324,6 +7501,11 @@ func (v McpServerHttpInline) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerHttpInline) UnmarshalJSON(b []byte) error {
+	var fresh McpServerHttpInline
+	v.Headers = fresh.Headers
+	v.Name = fresh.Name
+	v.Type = fresh.Type
+	v.Url = fresh.Url
 	type plain McpServerHttpInline
 	type McpServerHttpInline struct {
 		*plain
@@ -7395,6 +7577,11 @@ func (v McpServerSseInline) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerSseInline) UnmarshalJSON(b []byte) error {
+	var fresh McpServerSseInline
+	v.Headers = fresh.Headers
+	v.Name = fresh.Name
+	v.Type = fresh.Type
+	v.Url = fresh.Url
 	type plain McpServerSseInline
 	type McpServerSseInline struct {
 		*plain
@@ -7462,6 +7649,10 @@ type McpServerAcpInline struct {
 }
 
 func (v *McpServerAcpInline) UnmarshalJSON(b []byte) error {
+	var fresh McpServerAcpInline
+	v.Name = fresh.Name
+	v.ServerId = fresh.ServerId
+	v.Type = fresh.Type
 	type plain McpServerAcpInline
 	type McpServerAcpInline struct {
 		*plain
@@ -7703,6 +7894,9 @@ type McpServerAcp struct {
 }
 
 func (v *McpServerAcp) UnmarshalJSON(b []byte) error {
+	var fresh McpServerAcp
+	v.Name = fresh.Name
+	v.ServerId = fresh.ServerId
 	type plain McpServerAcp
 	type McpServerAcp struct {
 		*plain
@@ -7769,6 +7963,10 @@ func (v McpServerHttp) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerHttp) UnmarshalJSON(b []byte) error {
+	var fresh McpServerHttp
+	v.Headers = fresh.Headers
+	v.Name = fresh.Name
+	v.Url = fresh.Url
 	type plain McpServerHttp
 	type McpServerHttp struct {
 		*plain
@@ -7834,6 +8032,10 @@ func (v McpServerSse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerSse) UnmarshalJSON(b []byte) error {
+	var fresh McpServerSse
+	v.Headers = fresh.Headers
+	v.Name = fresh.Name
+	v.Url = fresh.Url
 	type plain McpServerSse
 	type McpServerSse struct {
 		*plain
@@ -7904,6 +8106,11 @@ func (v McpServerStdio) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerStdio) UnmarshalJSON(b []byte) error {
+	var fresh McpServerStdio
+	v.Args = fresh.Args
+	v.Command = fresh.Command
+	v.Env = fresh.Env
+	v.Name = fresh.Name
 	type plain McpServerStdio
 	type McpServerStdio struct {
 		*plain
@@ -7987,6 +8194,9 @@ func (v MultiSelectItemsString) MarshalJSON() ([]byte, error) {
 }
 
 func (v *MultiSelectItemsString) UnmarshalJSON(b []byte) error {
+	var fresh MultiSelectItemsString
+	v.Enum = fresh.Enum
+	v.Type = fresh.Type
 	type plain MultiSelectItemsString
 	type MultiSelectItemsString struct {
 		*plain
@@ -8047,6 +8257,8 @@ func (v MultiSelectItemsOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *MultiSelectItemsOther) UnmarshalJSON(b []byte) error {
+	var fresh MultiSelectItemsOther
+	v.Type = fresh.Type
 	type plain MultiSelectItemsOther
 	type MultiSelectItemsOther struct {
 		*plain
@@ -8236,6 +8448,8 @@ type MultiSelectPropertySchema struct {
 }
 
 func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
+	var fresh MultiSelectPropertySchema
+	v.Items = fresh.Items
 	type plain MultiSelectPropertySchema
 	type MultiSelectPropertySchema struct {
 		*plain
@@ -8325,6 +8539,9 @@ func (v NewSessionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *NewSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh NewSessionRequest
+	v.Cwd = fresh.Cwd
+	v.McpServers = fresh.McpServers
 	type plain NewSessionRequest
 	type NewSessionRequest struct {
 		*plain
@@ -8408,6 +8625,8 @@ type NewSessionResponse struct {
 }
 
 func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
+	var fresh NewSessionResponse
+	v.SessionId = fresh.SessionId
 	type plain NewSessionResponse
 	type NewSessionResponse struct {
 		*plain
@@ -8463,6 +8682,9 @@ type Notice struct {
 }
 
 func (v *Notice) UnmarshalJSON(b []byte) error {
+	var fresh Notice
+	v.Severity = fresh.Severity
+	v.Title = fresh.Title
 	type plain Notice
 	type Notice struct {
 		*plain
@@ -8578,6 +8800,10 @@ type PermissionOption struct {
 }
 
 func (v *PermissionOption) UnmarshalJSON(b []byte) error {
+	var fresh PermissionOption
+	v.Kind = fresh.Kind
+	v.Name = fresh.Name
+	v.OptionId = fresh.OptionId
 	type plain PermissionOption
 	type PermissionOption struct {
 		*plain
@@ -8664,6 +8890,8 @@ func (v Plan) MarshalJSON() ([]byte, error) {
 }
 
 func (v *Plan) UnmarshalJSON(b []byte) error {
+	var fresh Plan
+	v.Entries = fresh.Entries
 	type plain Plan
 	type Plan struct {
 		*plain
@@ -8744,6 +8972,10 @@ type PlanEntry struct {
 }
 
 func (v *PlanEntry) UnmarshalJSON(b []byte) error {
+	var fresh PlanEntry
+	v.Content = fresh.Content
+	v.Priority = fresh.Priority
+	v.Status = fresh.Status
 	type plain PlanEntry
 	type PlanEntry struct {
 		*plain
@@ -8849,6 +9081,9 @@ func (v PlanItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PlanItems) UnmarshalJSON(b []byte) error {
+	var fresh PlanItems
+	v.Entries = fresh.Entries
+	v.PlanId = fresh.PlanId
 	type plain PlanItems
 	type PlanItems struct {
 		*plain
@@ -8910,6 +9145,9 @@ type PlanMarkdown struct {
 }
 
 func (v *PlanMarkdown) UnmarshalJSON(b []byte) error {
+	var fresh PlanMarkdown
+	v.Content = fresh.Content
+	v.PlanId = fresh.PlanId
 	type plain PlanMarkdown
 	type PlanMarkdown struct {
 		*plain
@@ -8958,6 +9196,8 @@ type PlanRemoved struct {
 }
 
 func (v *PlanRemoved) UnmarshalJSON(b []byte) error {
+	var fresh PlanRemoved
+	v.PlanId = fresh.PlanId
 	type plain PlanRemoved
 	type PlanRemoved struct {
 		*plain
@@ -9001,6 +9241,8 @@ type PlanUpdate struct {
 }
 
 func (v *PlanUpdate) UnmarshalJSON(b []byte) error {
+	var fresh PlanUpdate
+	v.Plan = fresh.Plan
 	type plain PlanUpdate
 	type PlanUpdate struct {
 		*plain
@@ -9061,6 +9303,10 @@ func (v PlanUpdateContentItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PlanUpdateContentItems) UnmarshalJSON(b []byte) error {
+	var fresh PlanUpdateContentItems
+	v.Entries = fresh.Entries
+	v.PlanId = fresh.PlanId
+	v.Type = fresh.Type
 	type plain PlanUpdateContentItems
 	type PlanUpdateContentItems struct {
 		*plain
@@ -9122,6 +9368,10 @@ type PlanUpdateContentMarkdown struct {
 }
 
 func (v *PlanUpdateContentMarkdown) UnmarshalJSON(b []byte) error {
+	var fresh PlanUpdateContentMarkdown
+	v.Content = fresh.Content
+	v.PlanId = fresh.PlanId
+	v.Type = fresh.Type
 	type plain PlanUpdateContentMarkdown
 	type PlanUpdateContentMarkdown struct {
 		*plain
@@ -9364,6 +9614,9 @@ func (v PromptRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptRequest) UnmarshalJSON(b []byte) error {
+	var fresh PromptRequest
+	v.Prompt = fresh.Prompt
+	v.SessionId = fresh.SessionId
 	type plain PromptRequest
 	type PromptRequest struct {
 		*plain
@@ -9422,6 +9675,8 @@ type PromptResponse struct {
 }
 
 func (v *PromptResponse) UnmarshalJSON(b []byte) error {
+	var fresh PromptResponse
+	v.StopReason = fresh.StopReason
 	type plain PromptResponse
 	type PromptResponse struct {
 		*plain
@@ -9487,6 +9742,8 @@ func (v PromptSuggestion) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptSuggestion) UnmarshalJSON(b []byte) error {
+	var fresh PromptSuggestion
+	v.Prompt = fresh.Prompt
 	type plain PromptSuggestion
 	type PromptSuggestion struct {
 		*plain
@@ -9706,6 +9963,8 @@ func (v PromptSuggestionsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
+	var fresh PromptSuggestionsUpdate
+	v.Suggestions = fresh.Suggestions
 	type plain PromptSuggestionsUpdate
 	type PromptSuggestionsUpdate struct {
 		*plain
@@ -9793,6 +10052,9 @@ type ReadTextFileRequest struct {
 }
 
 func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
+	var fresh ReadTextFileRequest
+	v.Path = fresh.Path
+	v.SessionId = fresh.SessionId
 	type plain ReadTextFileRequest
 	type ReadTextFileRequest struct {
 		*plain
@@ -9838,6 +10100,8 @@ type ReadTextFileResponse struct {
 }
 
 func (v *ReadTextFileResponse) UnmarshalJSON(b []byte) error {
+	var fresh ReadTextFileResponse
+	v.Content = fresh.Content
 	type plain ReadTextFileResponse
 	type ReadTextFileResponse struct {
 		*plain
@@ -9879,6 +10143,9 @@ type ReleaseTerminalRequest struct {
 }
 
 func (v *ReleaseTerminalRequest) UnmarshalJSON(b []byte) error {
+	var fresh ReleaseTerminalRequest
+	v.SessionId = fresh.SessionId
+	v.TerminalId = fresh.TerminalId
 	type plain ReleaseTerminalRequest
 	type ReleaseTerminalRequest struct {
 		*plain
@@ -10049,6 +10316,8 @@ type RequestPermissionOutcomeCancelled struct {
 }
 
 func (v *RequestPermissionOutcomeCancelled) UnmarshalJSON(b []byte) error {
+	var fresh RequestPermissionOutcomeCancelled
+	v.Outcome = fresh.Outcome
 	type plain RequestPermissionOutcomeCancelled
 	type RequestPermissionOutcomeCancelled struct {
 		*plain
@@ -10080,6 +10349,9 @@ type RequestPermissionOutcomeSelected struct {
 }
 
 func (v *RequestPermissionOutcomeSelected) UnmarshalJSON(b []byte) error {
+	var fresh RequestPermissionOutcomeSelected
+	v.OptionId = fresh.OptionId
+	v.Outcome = fresh.Outcome
 	type plain RequestPermissionOutcomeSelected
 	type RequestPermissionOutcomeSelected struct {
 		*plain
@@ -10239,6 +10511,10 @@ func (v RequestPermissionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *RequestPermissionRequest) UnmarshalJSON(b []byte) error {
+	var fresh RequestPermissionRequest
+	v.Options = fresh.Options
+	v.SessionId = fresh.SessionId
+	v.ToolCall = fresh.ToolCall
 	type plain RequestPermissionRequest
 	type RequestPermissionRequest struct {
 		*plain
@@ -10295,6 +10571,8 @@ type RequestPermissionResponse struct {
 }
 
 func (v *RequestPermissionResponse) UnmarshalJSON(b []byte) error {
+	var fresh RequestPermissionResponse
+	v.Outcome = fresh.Outcome
 	type plain RequestPermissionResponse
 	type RequestPermissionResponse struct {
 		*plain
@@ -10368,6 +10646,9 @@ type ResourceLink struct {
 }
 
 func (v *ResourceLink) UnmarshalJSON(b []byte) error {
+	var fresh ResourceLink
+	v.Name = fresh.Name
+	v.Uri = fresh.Uri
 	type plain ResourceLink
 	type ResourceLink struct {
 		*plain
@@ -10453,6 +10734,9 @@ type ResumeSessionRequest struct {
 }
 
 func (v *ResumeSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh ResumeSessionRequest
+	v.Cwd = fresh.Cwd
+	v.SessionId = fresh.SessionId
 	type plain ResumeSessionRequest
 	type ResumeSessionRequest struct {
 		*plain
@@ -10590,6 +10874,8 @@ type SelectedPermissionOutcome struct {
 }
 
 func (v *SelectedPermissionOutcome) UnmarshalJSON(b []byte) error {
+	var fresh SelectedPermissionOutcome
+	v.OptionId = fresh.OptionId
 	type plain SelectedPermissionOutcome
 	type SelectedPermissionOutcome struct {
 		*plain
@@ -10897,6 +11183,8 @@ type SessionConfigBoolean struct {
 }
 
 func (v *SessionConfigBoolean) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigBoolean
+	v.CurrentValue = fresh.CurrentValue
 	type plain SessionConfigBoolean
 	type SessionConfigBoolean struct {
 		*plain
@@ -10945,6 +11233,12 @@ type SessionConfigOptionSelect struct {
 }
 
 func (v *SessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigOptionSelect
+	v.CurrentValue = fresh.CurrentValue
+	v.Id = fresh.Id
+	v.Name = fresh.Name
+	v.Options = fresh.Options
+	v.Type = fresh.Type
 	type plain SessionConfigOptionSelect
 	type SessionConfigOptionSelect struct {
 		*plain
@@ -11015,6 +11309,11 @@ type SessionConfigOptionBoolean struct {
 }
 
 func (v *SessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigOptionBoolean
+	v.CurrentValue = fresh.CurrentValue
+	v.Id = fresh.Id
+	v.Name = fresh.Name
+	v.Type = fresh.Type
 	type plain SessionConfigOptionBoolean
 	type SessionConfigOptionBoolean struct {
 		*plain
@@ -11222,6 +11521,9 @@ type SessionConfigSelect struct {
 }
 
 func (v *SessionConfigSelect) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigSelect
+	v.CurrentValue = fresh.CurrentValue
+	v.Options = fresh.Options
 	type plain SessionConfigSelect
 	type SessionConfigSelect struct {
 		*plain
@@ -11279,6 +11581,10 @@ func (v SessionConfigSelectGroup) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionConfigSelectGroup) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigSelectGroup
+	v.Group = fresh.Group
+	v.Name = fresh.Name
+	v.Options = fresh.Options
 	type plain SessionConfigSelectGroup
 	type SessionConfigSelectGroup struct {
 		*plain
@@ -11335,6 +11641,9 @@ type SessionConfigSelectOption struct {
 }
 
 func (v *SessionConfigSelectOption) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigSelectOption
+	v.Name = fresh.Name
+	v.Value = fresh.Value
 	type plain SessionConfigSelectOption
 	type SessionConfigSelectOption struct {
 		*plain
@@ -11585,6 +11894,9 @@ type SessionInfo struct {
 }
 
 func (v *SessionInfo) UnmarshalJSON(b []byte) error {
+	var fresh SessionInfo
+	v.Cwd = fresh.Cwd
+	v.SessionId = fresh.SessionId
 	type plain SessionInfo
 	type SessionInfo struct {
 		*plain
@@ -11764,6 +12076,8 @@ func (v SessionMessage) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionMessage) UnmarshalJSON(b []byte) error {
+	var fresh SessionMessage
+	v.MessageId = fresh.MessageId
 	type plain SessionMessage
 	type SessionMessage struct {
 		*plain
@@ -11820,6 +12134,9 @@ type SessionMessageChunk struct {
 }
 
 func (v *SessionMessageChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionMessageChunk
+	v.Content = fresh.Content
+	v.MessageId = fresh.MessageId
 	type plain SessionMessageChunk
 	type SessionMessageChunk struct {
 		*plain
@@ -11871,6 +12188,9 @@ type SessionMode struct {
 }
 
 func (v *SessionMode) UnmarshalJSON(b []byte) error {
+	var fresh SessionMode
+	v.Id = fresh.Id
+	v.Name = fresh.Name
 	type plain SessionMode
 	type SessionMode struct {
 		*plain
@@ -11930,6 +12250,9 @@ func (v SessionModeState) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionModeState) UnmarshalJSON(b []byte) error {
+	var fresh SessionModeState
+	v.AvailableModes = fresh.AvailableModes
+	v.CurrentModeId = fresh.CurrentModeId
 	type plain SessionModeState
 	type SessionModeState struct {
 		*plain
@@ -11985,6 +12308,9 @@ type SessionNotification struct {
 }
 
 func (v *SessionNotification) UnmarshalJSON(b []byte) error {
+	var fresh SessionNotification
+	v.SessionId = fresh.SessionId
+	v.Update = fresh.Update
 	type plain SessionNotification
 	type SessionNotification struct {
 		*plain
@@ -12071,6 +12397,8 @@ type SessionReference struct {
 }
 
 func (v *SessionReference) UnmarshalJSON(b []byte) error {
+	var fresh SessionReference
+	v.SessionId = fresh.SessionId
 	type plain SessionReference
 	type SessionReference struct {
 		*plain
@@ -12303,6 +12631,9 @@ type SessionUpdateUserMessageChunk struct {
 }
 
 func (v *SessionUpdateUserMessageChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateUserMessageChunk
+	v.Content = fresh.Content
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateUserMessageChunk
 	type SessionUpdateUserMessageChunk struct {
 		*plain
@@ -12353,6 +12684,9 @@ type SessionUpdateAgentMessageChunk struct {
 }
 
 func (v *SessionUpdateAgentMessageChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateAgentMessageChunk
+	v.Content = fresh.Content
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateAgentMessageChunk
 	type SessionUpdateAgentMessageChunk struct {
 		*plain
@@ -12403,6 +12737,9 @@ type SessionUpdateAgentThoughtChunk struct {
 }
 
 func (v *SessionUpdateAgentThoughtChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateAgentThoughtChunk
+	v.Content = fresh.Content
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateAgentThoughtChunk
 	type SessionUpdateAgentThoughtChunk struct {
 		*plain
@@ -12469,6 +12806,10 @@ type SessionUpdateToolCall struct {
 }
 
 func (v *SessionUpdateToolCall) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateToolCall
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Title = fresh.Title
+	v.ToolCallId = fresh.ToolCallId
 	type plain SessionUpdateToolCall
 	type SessionUpdateToolCall struct {
 		*plain
@@ -12604,6 +12945,9 @@ func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionToolCallUpdate
+	v.SessionUpdate = fresh.SessionUpdate
+	v.ToolCallId = fresh.ToolCallId
 	type plain SessionToolCallUpdate
 	type SessionToolCallUpdate struct {
 		*plain
@@ -12677,6 +13021,9 @@ func (v SessionUpdatePlan) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionUpdatePlan) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdatePlan
+	v.Entries = fresh.Entries
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdatePlan
 	type SessionUpdatePlan struct {
 		*plain
@@ -12728,6 +13075,9 @@ type SessionPlanUpdate struct {
 }
 
 func (v *SessionPlanUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionPlanUpdate
+	v.Plan = fresh.Plan
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionPlanUpdate
 	type SessionPlanUpdate struct {
 		*plain
@@ -12775,6 +13125,9 @@ type SessionUpdatePlanRemoved struct {
 }
 
 func (v *SessionUpdatePlanRemoved) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdatePlanRemoved
+	v.PlanId = fresh.PlanId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdatePlanRemoved
 	type SessionUpdatePlanRemoved struct {
 		*plain
@@ -12828,6 +13181,9 @@ func (v SessionAvailableCommandsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionAvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionAvailableCommandsUpdate
+	v.AvailableCommands = fresh.AvailableCommands
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionAvailableCommandsUpdate
 	type SessionAvailableCommandsUpdate struct {
 		*plain
@@ -12877,6 +13233,9 @@ type SessionCurrentModeUpdate struct {
 }
 
 func (v *SessionCurrentModeUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionCurrentModeUpdate
+	v.CurrentModeId = fresh.CurrentModeId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionCurrentModeUpdate
 	type SessionCurrentModeUpdate struct {
 		*plain
@@ -12930,6 +13289,9 @@ func (v SessionConfigOptionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionConfigOptionUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigOptionUpdate
+	v.ConfigOptions = fresh.ConfigOptions
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionConfigOptionUpdate
 	type SessionConfigOptionUpdate struct {
 		*plain
@@ -13000,6 +13362,8 @@ func (v SessionSessionInfoUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionSessionInfoUpdate
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionSessionInfoUpdate
 	type SessionSessionInfoUpdate struct {
 		*plain
@@ -13041,6 +13405,10 @@ type SessionUsageUpdate struct {
 }
 
 func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionUsageUpdate
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Size = fresh.Size
+	v.Used = fresh.Used
 	type plain SessionUsageUpdate
 	type SessionUsageUpdate struct {
 		*plain
@@ -13089,6 +13457,10 @@ type SessionUpdateNotice struct {
 }
 
 func (v *SessionUpdateNotice) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateNotice
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Severity = fresh.Severity
+	v.Title = fresh.Title
 	type plain SessionUpdateNotice
 	type SessionUpdateNotice struct {
 		*plain
@@ -13164,6 +13536,10 @@ func (v SessionCompactionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionCompactionUpdate
+	v.CompactionId = fresh.CompactionId
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Status = fresh.Status
 	type plain SessionCompactionUpdate
 	type SessionCompactionUpdate struct {
 		*plain
@@ -13218,6 +13594,10 @@ type SessionUpdateCompactionSummaryChunk struct {
 }
 
 func (v *SessionUpdateCompactionSummaryChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateCompactionSummaryChunk
+	v.CompactionId = fresh.CompactionId
+	v.Content = fresh.Content
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateCompactionSummaryChunk
 	type SessionUpdateCompactionSummaryChunk struct {
 		*plain
@@ -13288,6 +13668,9 @@ func (v SessionPromptSuggestionsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionPromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionPromptSuggestionsUpdate
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Suggestions = fresh.Suggestions
 	type plain SessionPromptSuggestionsUpdate
 	type SessionPromptSuggestionsUpdate struct {
 		*plain
@@ -13409,6 +13792,9 @@ func (v SessionSubagentUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionSubagentUpdate
+	v.SessionId = fresh.SessionId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionSubagentUpdate
 	type SessionSubagentUpdate struct {
 		*plain
@@ -13521,6 +13907,9 @@ func (v SessionUpdateSessionMessage) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateSessionMessage
+	v.MessageId = fresh.MessageId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateSessionMessage
 	type SessionUpdateSessionMessage struct {
 		*plain
@@ -13578,6 +13967,10 @@ type SessionUpdateSessionMessageChunk struct {
 }
 
 func (v *SessionUpdateSessionMessageChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateSessionMessageChunk
+	v.Content = fresh.Content
+	v.MessageId = fresh.MessageId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateSessionMessageChunk
 	type SessionUpdateSessionMessageChunk struct {
 		*plain
@@ -14283,6 +14676,11 @@ type SetSessionConfigOptionBoolean struct {
 }
 
 func (v *SetSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	var fresh SetSessionConfigOptionBoolean
+	v.ConfigId = fresh.ConfigId
+	v.SessionId = fresh.SessionId
+	v.Type = fresh.Type
+	v.Value = fresh.Value
 	type plain SetSessionConfigOptionBoolean
 	type SetSessionConfigOptionBoolean struct {
 		*plain
@@ -14342,6 +14740,10 @@ type SetSessionConfigOptionValueId struct {
 }
 
 func (v *SetSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
+	var fresh SetSessionConfigOptionValueId
+	v.ConfigId = fresh.ConfigId
+	v.SessionId = fresh.SessionId
+	v.Value = fresh.Value
 	type plain SetSessionConfigOptionValueId
 	type SetSessionConfigOptionValueId struct {
 		*plain
@@ -14511,6 +14913,8 @@ func (v SetSessionConfigOptionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SetSessionConfigOptionResponse) UnmarshalJSON(b []byte) error {
+	var fresh SetSessionConfigOptionResponse
+	v.ConfigOptions = fresh.ConfigOptions
 	type plain SetSessionConfigOptionResponse
 	type SetSessionConfigOptionResponse struct {
 		*plain
@@ -14556,6 +14960,9 @@ type SetSessionModeRequest struct {
 }
 
 func (v *SetSessionModeRequest) UnmarshalJSON(b []byte) error {
+	var fresh SetSessionModeRequest
+	v.ModeId = fresh.ModeId
+	v.SessionId = fresh.SessionId
 	type plain SetSessionModeRequest
 	type SetSessionModeRequest struct {
 		*plain
@@ -14635,6 +15042,8 @@ type StateUpdateRunning struct {
 }
 
 func (v *StateUpdateRunning) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateRunning
+	v.State = fresh.State
 	type plain StateUpdateRunning
 	type StateUpdateRunning struct {
 		*plain
@@ -14670,6 +15079,9 @@ type StateUpdateIdleEndTurn struct {
 }
 
 func (v *StateUpdateIdleEndTurn) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleEndTurn
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleEndTurn
 	type StateUpdateIdleEndTurn struct {
 		*plain
@@ -14709,6 +15121,9 @@ type StateUpdateIdleMaxTokens struct {
 }
 
 func (v *StateUpdateIdleMaxTokens) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleMaxTokens
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleMaxTokens
 	type StateUpdateIdleMaxTokens struct {
 		*plain
@@ -14749,6 +15164,9 @@ type StateUpdateIdleMaxTurnRequests struct {
 }
 
 func (v *StateUpdateIdleMaxTurnRequests) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleMaxTurnRequests
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleMaxTurnRequests
 	type StateUpdateIdleMaxTurnRequests struct {
 		*plain
@@ -14788,6 +15206,9 @@ type StateUpdateIdleRefusal struct {
 }
 
 func (v *StateUpdateIdleRefusal) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleRefusal
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleRefusal
 	type StateUpdateIdleRefusal struct {
 		*plain
@@ -14827,6 +15248,9 @@ type StateUpdateIdleCancelled struct {
 }
 
 func (v *StateUpdateIdleCancelled) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleCancelled
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleCancelled
 	type StateUpdateIdleCancelled struct {
 		*plain
@@ -14871,6 +15295,9 @@ type StateUpdateIdleError struct {
 }
 
 func (v *StateUpdateIdleError) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleError
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleError
 	type StateUpdateIdleError struct {
 		*plain
@@ -14929,6 +15356,9 @@ func (v StateUpdateIdleOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StateUpdateIdleOther) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleOther
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleOther
 	type StateUpdateIdleOther struct {
 		*plain
@@ -14968,6 +15398,8 @@ type StateUpdateIdleNone struct {
 }
 
 func (v *StateUpdateIdleNone) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleNone
+	v.State = fresh.State
 	type plain StateUpdateIdleNone
 	type StateUpdateIdleNone struct {
 		*plain
@@ -15250,6 +15682,8 @@ type StateUpdateRequiresAction struct {
 }
 
 func (v *StateUpdateRequiresAction) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateRequiresAction
+	v.State = fresh.State
 	type plain StateUpdateRequiresAction
 	type StateUpdateRequiresAction struct {
 		*plain
@@ -15281,6 +15715,8 @@ type StateUpdateUnknown struct {
 }
 
 func (v *StateUpdateUnknown) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateUnknown
+	v.State = fresh.State
 	type plain StateUpdateUnknown
 	type StateUpdateUnknown struct {
 		*plain
@@ -15323,6 +15759,8 @@ func (v StateUpdateOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StateUpdateOther) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateOther
+	v.State = fresh.State
 	type plain StateUpdateOther
 	type StateUpdateOther struct {
 		*plain
@@ -15582,6 +16020,8 @@ func (v StringMultiSelectItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StringMultiSelectItems) UnmarshalJSON(b []byte) error {
+	var fresh StringMultiSelectItems
+	v.Enum = fresh.Enum
 	type plain StringMultiSelectItems
 	type StringMultiSelectItems struct {
 		*plain
@@ -15863,6 +16303,8 @@ func (v SubagentUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SubagentUpdate
+	v.SessionId = fresh.SessionId
 	type plain SubagentUpdate
 	type SubagentUpdate struct {
 		*plain
@@ -15947,6 +16389,9 @@ func (v SystemPrompt) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SystemPrompt) UnmarshalJSON(b []byte) error {
+	var fresh SystemPrompt
+	v.Content = fresh.Content
+	v.Mode = fresh.Mode
 	type plain SystemPrompt
 	type SystemPrompt struct {
 		*plain
@@ -16027,6 +16472,8 @@ type Terminal struct {
 }
 
 func (v *Terminal) UnmarshalJSON(b []byte) error {
+	var fresh Terminal
+	v.TerminalId = fresh.TerminalId
 	type plain Terminal
 	type Terminal struct {
 		*plain
@@ -16103,6 +16550,9 @@ type TerminalOutputRequest struct {
 }
 
 func (v *TerminalOutputRequest) UnmarshalJSON(b []byte) error {
+	var fresh TerminalOutputRequest
+	v.SessionId = fresh.SessionId
+	v.TerminalId = fresh.TerminalId
 	type plain TerminalOutputRequest
 	type TerminalOutputRequest struct {
 		*plain
@@ -16152,6 +16602,9 @@ type TerminalOutputResponse struct {
 }
 
 func (v *TerminalOutputResponse) UnmarshalJSON(b []byte) error {
+	var fresh TerminalOutputResponse
+	v.Output = fresh.Output
+	v.Truncated = fresh.Truncated
 	type plain TerminalOutputResponse
 	type TerminalOutputResponse struct {
 		*plain
@@ -16198,6 +16651,8 @@ type TextContent struct {
 }
 
 func (v *TextContent) UnmarshalJSON(b []byte) error {
+	var fresh TextContent
+	v.Text = fresh.Text
 	type plain TextContent
 	type TextContent struct {
 		*plain
@@ -16236,6 +16691,9 @@ type TextResourceContents struct {
 }
 
 func (v *TextResourceContents) UnmarshalJSON(b []byte) error {
+	var fresh TextResourceContents
+	v.Text = fresh.Text
+	v.Uri = fresh.Uri
 	type plain TextResourceContents
 	type TextResourceContents struct {
 		*plain
@@ -16285,6 +16743,8 @@ func (v TitledMultiSelectItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *TitledMultiSelectItems) UnmarshalJSON(b []byte) error {
+	var fresh TitledMultiSelectItems
+	v.AnyOf = fresh.AnyOf
 	type plain TitledMultiSelectItems
 	type TitledMultiSelectItems struct {
 		*plain
@@ -16350,6 +16810,9 @@ type ToolCall struct {
 }
 
 func (v *ToolCall) UnmarshalJSON(b []byte) error {
+	var fresh ToolCall
+	v.Title = fresh.Title
+	v.ToolCallId = fresh.ToolCallId
 	type plain ToolCall
 	type ToolCall struct {
 		*plain
@@ -16413,6 +16876,9 @@ type ToolCallContentContent struct {
 }
 
 func (v *ToolCallContentContent) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallContentContent
+	v.Content = fresh.Content
+	v.Type = fresh.Type
 	type plain ToolCallContentContent
 	type ToolCallContentContent struct {
 		*plain
@@ -16460,6 +16926,10 @@ type ToolCallContentDiff struct {
 }
 
 func (v *ToolCallContentDiff) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallContentDiff
+	v.NewText = fresh.NewText
+	v.Path = fresh.Path
+	v.Type = fresh.Type
 	type plain ToolCallContentDiff
 	type ToolCallContentDiff struct {
 		*plain
@@ -16505,6 +16975,9 @@ type ToolCallContentTerminal struct {
 }
 
 func (v *ToolCallContentTerminal) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallContentTerminal
+	v.TerminalId = fresh.TerminalId
+	v.Type = fresh.Type
 	type plain ToolCallContentTerminal
 	type ToolCallContentTerminal struct {
 		*plain
@@ -16552,6 +17025,9 @@ type ToolCallContentSession struct {
 }
 
 func (v *ToolCallContentSession) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallContentSession
+	v.SessionId = fresh.SessionId
+	v.Type = fresh.Type
 	type plain ToolCallContentSession
 	type ToolCallContentSession struct {
 		*plain
@@ -16763,6 +17239,8 @@ type ToolCallLocation struct {
 }
 
 func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallLocation
+	v.Path = fresh.Path
 	type plain ToolCallLocation
 	type ToolCallLocation struct {
 		*plain
@@ -16894,6 +17372,8 @@ func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallUpdate
+	v.ToolCallId = fresh.ToolCallId
 	type plain ToolCallUpdate
 	type ToolCallUpdate struct {
 		*plain
@@ -17046,6 +17526,8 @@ type UnstableArchiveSessionRequest struct {
 }
 
 func (v *UnstableArchiveSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableArchiveSessionRequest
+	v.SessionId = fresh.SessionId
 	type plain UnstableArchiveSessionRequest
 	type UnstableArchiveSessionRequest struct {
 		*plain
@@ -17150,6 +17632,8 @@ type UnstableAuthAccount struct {
 }
 
 func (v *UnstableAuthAccount) UnmarshalJSON(b []byte) error {
+	var fresh UnstableAuthAccount
+	v.Label = fresh.Label
 	type plain UnstableAuthAccount
 	type UnstableAuthAccount struct {
 		*plain
@@ -17261,6 +17745,8 @@ type UnstableAuthStatusResponse struct {
 }
 
 func (v *UnstableAuthStatusResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableAuthStatusResponse
+	v.State = fresh.State
 	type plain UnstableAuthStatusResponse
 	type UnstableAuthStatusResponse struct {
 		*plain
@@ -17319,6 +17805,8 @@ type UnstableAuthStatusUpdateNotification struct {
 }
 
 func (v *UnstableAuthStatusUpdateNotification) UnmarshalJSON(b []byte) error {
+	var fresh UnstableAuthStatusUpdateNotification
+	v.State = fresh.State
 	type plain UnstableAuthStatusUpdateNotification
 	type UnstableAuthStatusUpdateNotification struct {
 		*plain
@@ -17364,6 +17852,8 @@ type UnstableDisableProviderRequest struct {
 }
 
 func (v *UnstableDisableProviderRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableDisableProviderRequest
+	v.ProviderId = fresh.ProviderId
 	type plain UnstableDisableProviderRequest
 	type UnstableDisableProviderRequest struct {
 		*plain
@@ -17481,6 +17971,9 @@ type UnstableForkSessionRequest struct {
 }
 
 func (v *UnstableForkSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableForkSessionRequest
+	v.Cwd = fresh.Cwd
+	v.SessionId = fresh.SessionId
 	type plain UnstableForkSessionRequest
 	type UnstableForkSessionRequest struct {
 		*plain
@@ -17558,6 +18051,8 @@ type UnstableForkSessionResponse struct {
 }
 
 func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableForkSessionResponse
+	v.SessionId = fresh.SessionId
 	type plain UnstableForkSessionResponse
 	type UnstableForkSessionResponse struct {
 		*plain
@@ -17647,6 +18142,8 @@ func (v UnstableListProvidersResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableListProvidersResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableListProvidersResponse
+	v.Providers = fresh.Providers
 	type plain UnstableListProvidersResponse
 	type UnstableListProvidersResponse struct {
 		*plain
@@ -17732,6 +18229,9 @@ func (v UnstableMcpError) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMcpError
+	v.Code = fresh.Code
+	v.Message = fresh.Message
 	type plain UnstableMcpError
 	type UnstableMcpError struct {
 		*plain
@@ -17791,6 +18291,10 @@ type UnstableMessageMcpNotification struct {
 }
 
 func (v *UnstableMessageMcpNotification) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMessageMcpNotification
+	v.Method = fresh.Method
+	v.RequestId = fresh.RequestId
+	v.ServerId = fresh.ServerId
 	type plain UnstableMessageMcpNotification
 	type UnstableMessageMcpNotification struct {
 		*plain
@@ -17854,6 +18358,10 @@ type UnstableMessageMcpRequest struct {
 }
 
 func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMessageMcpRequest
+	v.Method = fresh.Method
+	v.RequestId = fresh.RequestId
+	v.ServerId = fresh.ServerId
 	type plain UnstableMessageMcpRequest
 	type UnstableMessageMcpRequest struct {
 		*plain
@@ -17911,6 +18419,8 @@ type UnstableMessageMcpResult struct {
 }
 
 func (v *UnstableMessageMcpResult) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMessageMcpResult
+	v.Result = fresh.Result
 	type plain UnstableMessageMcpResult
 	type UnstableMessageMcpResult struct {
 		*plain
@@ -17939,6 +18449,8 @@ type UnstableMessageMcpError struct {
 }
 
 func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMessageMcpError
+	v.Error = fresh.Error
 	type plain UnstableMessageMcpError
 	type UnstableMessageMcpError struct {
 		*plain
@@ -18069,6 +18581,9 @@ type UnstableProviderCurrentConfig struct {
 }
 
 func (v *UnstableProviderCurrentConfig) UnmarshalJSON(b []byte) error {
+	var fresh UnstableProviderCurrentConfig
+	v.ApiType = fresh.ApiType
+	v.BaseUrl = fresh.BaseUrl
 	type plain UnstableProviderCurrentConfig
 	type UnstableProviderCurrentConfig struct {
 		*plain
@@ -18140,6 +18655,10 @@ func (v UnstableProviderInfo) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableProviderInfo) UnmarshalJSON(b []byte) error {
+	var fresh UnstableProviderInfo
+	v.ProviderId = fresh.ProviderId
+	v.Required = fresh.Required
+	v.Supported = fresh.Supported
 	type plain UnstableProviderInfo
 	type UnstableProviderInfo struct {
 		*plain
@@ -18222,6 +18741,8 @@ type UnstableSessionOptionsRequest struct {
 }
 
 func (v *UnstableSessionOptionsRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSessionOptionsRequest
+	v.Cwd = fresh.Cwd
 	type plain UnstableSessionOptionsRequest
 	type UnstableSessionOptionsRequest struct {
 		*plain
@@ -18350,6 +18871,8 @@ type UnstableSessionStatusRequest struct {
 }
 
 func (v *UnstableSessionStatusRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSessionStatusRequest
+	v.SessionId = fresh.SessionId
 	type plain UnstableSessionStatusRequest
 	type UnstableSessionStatusRequest struct {
 		*plain
@@ -18398,6 +18921,8 @@ type UnstableSessionStatusResponse struct {
 }
 
 func (v *UnstableSessionStatusResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSessionStatusResponse
+	v.Status = fresh.Status
 	type plain UnstableSessionStatusResponse
 	type UnstableSessionStatusResponse struct {
 		*plain
@@ -18450,6 +18975,10 @@ type UnstableSetProviderRequest struct {
 }
 
 func (v *UnstableSetProviderRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSetProviderRequest
+	v.ApiType = fresh.ApiType
+	v.BaseUrl = fresh.BaseUrl
+	v.ProviderId = fresh.ProviderId
 	type plain UnstableSetProviderRequest
 	type UnstableSetProviderRequest struct {
 		*plain
@@ -18559,6 +19088,9 @@ type UnstableSetSessionTitleRequest struct {
 }
 
 func (v *UnstableSetSessionTitleRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSetSessionTitleRequest
+	v.SessionId = fresh.SessionId
+	v.Title = fresh.Title
 	type plain UnstableSetSessionTitleRequest
 	type UnstableSetSessionTitleRequest struct {
 		*plain
@@ -18611,6 +19143,8 @@ type UnstableSetSessionTitleResponse struct {
 }
 
 func (v *UnstableSetSessionTitleResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSetSessionTitleResponse
+	v.Title = fresh.Title
 	type plain UnstableSetSessionTitleResponse
 	type UnstableSetSessionTitleResponse struct {
 		*plain
@@ -18662,6 +19196,8 @@ type UnstableUnarchiveSessionRequest struct {
 }
 
 func (v *UnstableUnarchiveSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableUnarchiveSessionRequest
+	v.SessionId = fresh.SessionId
 	type plain UnstableUnarchiveSessionRequest
 	type UnstableUnarchiveSessionRequest struct {
 		*plain
@@ -18733,6 +19269,8 @@ type UnstructuredCommandInput struct {
 }
 
 func (v *UnstructuredCommandInput) UnmarshalJSON(b []byte) error {
+	var fresh UnstructuredCommandInput
+	v.Hint = fresh.Hint
 	type plain UnstructuredCommandInput
 	type UnstructuredCommandInput struct {
 		*plain
@@ -18779,6 +19317,10 @@ type Usage struct {
 }
 
 func (v *Usage) UnmarshalJSON(b []byte) error {
+	var fresh Usage
+	v.InputTokens = fresh.InputTokens
+	v.OutputTokens = fresh.OutputTokens
+	v.TotalTokens = fresh.TotalTokens
 	type plain Usage
 	type Usage struct {
 		*plain
@@ -18827,6 +19369,9 @@ type UsageUpdate struct {
 }
 
 func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
+	var fresh UsageUpdate
+	v.Size = fresh.Size
+	v.Used = fresh.Used
 	type plain UsageUpdate
 	type UsageUpdate struct {
 		*plain
@@ -18866,6 +19411,9 @@ type WaitForTerminalExitRequest struct {
 }
 
 func (v *WaitForTerminalExitRequest) UnmarshalJSON(b []byte) error {
+	var fresh WaitForTerminalExitRequest
+	v.SessionId = fresh.SessionId
+	v.TerminalId = fresh.TerminalId
 	type plain WaitForTerminalExitRequest
 	type WaitForTerminalExitRequest struct {
 		*plain
@@ -18953,6 +19501,10 @@ type WriteTextFileRequest struct {
 }
 
 func (v *WriteTextFileRequest) UnmarshalJSON(b []byte) error {
+	var fresh WriteTextFileRequest
+	v.Content = fresh.Content
+	v.Path = fresh.Path
+	v.SessionId = fresh.SessionId
 	type plain WriteTextFileRequest
 	type WriteTextFileRequest struct {
 		*plain

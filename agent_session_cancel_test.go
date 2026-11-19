@@ -222,10 +222,21 @@ type cancelPeer struct {
 // reads every message the agent sends.
 func newCancelPeer(t *testing.T, agent agentFuncs) (*AgentSideConnection, *cancelPeer) {
 	t.Helper()
+	var conn *AgentSideConnection
+	p := newRawPeer(t, func(peerInput io.Writer, peerOutput io.Reader) {
+		conn = NewAgentSideConnection(agent, peerInput, peerOutput)
+		conn.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	})
+	return conn, p
+}
+
+// newRawPeer gives connect the two ends of a fake peer, and returns that peer,
+// which writes raw lines and reads every message the connection sends.
+func newRawPeer(t *testing.T, connect func(peerInput io.Writer, peerOutput io.Reader)) *cancelPeer {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
-	conn := NewAgentSideConnection(agent, outW, inR)
-	conn.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	connect(outW, inR)
 	p := &cancelPeer{t: t, in: inW, lines: make(chan anyMessage, 16)}
 	go func() {
 		s := bufio.NewScanner(outR)
@@ -237,7 +248,7 @@ func newCancelPeer(t *testing.T, agent agentFuncs) (*AgentSideConnection, *cance
 		}
 	}()
 	t.Cleanup(func() { _ = inW.Close(); _ = outW.Close() })
-	return conn, p
+	return p
 }
 
 func (p *cancelPeer) send(lines ...string) {

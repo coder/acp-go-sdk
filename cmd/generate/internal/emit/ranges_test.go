@@ -197,6 +197,40 @@ func TestWriteTypesJen_RangeChecksCompileOn32BitTargets(t *testing.T) {
 	checkGenerated(t, wideRangesSchema, map[string]string{"wide_test.go": wideRangesTest}, "GOARCH=386")
 }
 
+// rawBoundSchema has a $defs entry with a $ref and a bound but no type, which
+// classify makes an alias of json.RawMessage, so no integer check fits it.
+const rawBoundSchema = `{"$defs": {
+  "Plain": {"type": "integer"},
+  "Mid": {"$ref": "#/$defs/Plain", "maximum": 100},
+  "MidRequest": {"type": "object", "required": ["y"], "properties": {
+    "y": {"$ref": "#/$defs/Mid"},
+    "z": {"type": "array", "items": {"$ref": "#/$defs/Mid"}}}}
+}}`
+
+const rawBoundTest = `package acp
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestMidRequest_Validate_TakesARawValue(t *testing.T) {
+	var req MidRequest
+	if err := json.Unmarshal([]byte(` + "`" + `{"y":5,"z":[1]}` + "`" + `), &req); err != nil {
+		t.Fatal(err)
+	}
+	if err := req.Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil", err)
+	}
+}
+`
+
+// A bound on a value whose Go type is raw JSON adds no range check, which
+// would not compile.
+func TestWriteTypesJen_RawJSONGetsNoRangeCheck(t *testing.T) {
+	checkGenerated(t, rawBoundSchema, map[string]string{"raw_test.go": rawBoundTest})
+}
+
 // A format that formatRanges does not know stops the generator, so that a
 // new one gets a range before a peer can send a value out of it.
 func TestWriteTypesJen_PanicsOnAnUnknownIntegerFormat(t *testing.T) {

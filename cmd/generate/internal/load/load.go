@@ -81,8 +81,25 @@ type Definition struct {
 
 	// boolSchema records whether this definition was a boolean schema (true/false).
 	// JSON Schema allows boolean schemas, where true matches anything and false matches nothing.
-	// We ignore the semantic difference in codegen and treat both as permissive/unknown shapes.
+	// The Go types treat both as permissive/unknown shapes. The shapes read them
+	// (IsTrue, IsFalse).
 	boolSchema *bool `json:"-"`
+	// noKeys records whether this definition was a JSON object with no keys,
+	// the empty schema {}. A schema whose keywords Definition does not model,
+	// such as {"pattern": "x"}, also leaves every field zero, so the fields
+	// alone cannot tell the two apart.
+	noKeys bool
+}
+
+// IsTrue reports whether d is the boolean schema true or the empty schema
+// {}, which every value fits (JSON Schema 2020-12, section 4.3.2).
+func (d *Definition) IsTrue() bool {
+	return d != nil && (d.boolSchema != nil && *d.boolSchema || d.noKeys)
+}
+
+// IsFalse reports whether d is the boolean schema false, which no value fits.
+func (d *Definition) IsFalse() bool {
+	return d != nil && d.boolSchema != nil && !*d.boolSchema
 }
 
 // Members is a keyword, such as additionalProperties, that applies to the
@@ -132,6 +149,9 @@ func (d *Definition) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*d = Definition(a)
+	if bytes.HasPrefix(tb, []byte("{")) {
+		d.noKeys = len(bytes.TrimSpace(tb[1:len(tb)-1])) == 0
+	}
 	return nil
 }
 

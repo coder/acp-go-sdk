@@ -162,8 +162,8 @@ func TestAgentSideConnection_SessionCancelMarkersArePruned(t *testing.T) {
 	}
 	conn.mu.Lock()
 	got := len(conn.sessionCancelledAt)
-	_, newestKept := conn.sessionCancelledAt["flood-"+strconv.FormatUint(sent-1, 10)]
-	_, oldestKept := conn.sessionCancelledAt["other"]
+	_, newestKept := conn.sessionCancelledAt[sessionKeyOf("flood-"+strconv.FormatUint(sent-1, 10))]
+	_, oldestKept := conn.sessionCancelledAt[sessionKeyOf("other")]
 	conn.mu.Unlock()
 	if got != maxCancelMarkers || !newestKept || oldestKept {
 		t.Fatalf("after a flood: markers = %d (want %d), newest kept = %v, oldest kept = %v", got, maxCancelMarkers, newestKept, oldestKept)

@@ -1,6 +1,6 @@
 ---
 name: verify-schema-bump
-description: Offline and canary gates for a PR that bumps the ACP schema version of the Go SDK (schema/version). G1 regenerates the SDK at every upstream schema release between two versions and checks build, vet, method wiring and the exported-API diff; G2 round-trips real adapter transcripts and schema-built messages through the SDK's Go types and checks the x-deserialize-* hints; G7 builds known dependents (docker-agent, jaeger, coder) against the checkout. Use before and during any schema bump, when cmd/generate changes, or to list the API breaks a release note must name.
+description: Offline and canary gates for a PR that bumps the ACP schema version of the Go SDK (schema/version). G1 regenerates the SDK at every upstream schema release between two versions and checks build, vet, method wiring and the exported-API diff; G2 round-trips real adapter transcripts and schema-built messages through the SDK's Go types and checks the x-deserialize-* hints; G7 builds known dependents (docker-agent, jaeger, coder) against the checkout; the Rust probe reads the same values with the Rust SDK's schema crate and lists where the two SDKs differ. Use before and during any schema bump, when cmd/generate changes, or to list the API breaks a release note must name.
 ---
 
 # Verify a schema bump
@@ -12,11 +12,13 @@ A schema bump PR changes `schema/version`, regenerates the `*_gen.go` files and 
 | G1 | The generator works at every upstream release on the way, the target builds and vets, every method is wired, and the API breaks are known. | `scripts/g1-walk` | Release list, and schema files not yet cached. |
 | G2 | The SDK's Go types read and write real and schema-built messages without loss, and honor the schema's `x-deserialize-*` hints. | `scripts/g2-roundtrip` | Only to fill the Go module cache once. |
 | G7 | Known dependents still build, or each break is in the release notes. | `scripts/g7-canary` | Clones and Go modules. |
+| Rust | The SDK reads each value as the Rust crate `agent-client-protocol-schema` does. | `scripts/rust-diff` | crates.io for the first build, and the upstream tag list. |
 
-All commands run from the repository root. The scripts need Go and git; G1 also needs `curl` and a logged-in `gh`. On a Coder workspace, set the toolchain first:
+All commands run from the repository root. The scripts need Go and git; G1 also needs `curl` and a logged-in `gh`, and the Rust probe needs `cargo`. On a Coder workspace, set the toolchain first (the mise `cargo` shim can fail there, so name rustup's):
 
 ```bash
 export PATH=$HOME/.local/share/mise/installs/go/1.26.3/bin:$PATH; unset GOROOT
+export CARGO=$HOME/.cargo/bin/cargo
 S=.agents/skills/verify-schema-bump/scripts
 ```
 
@@ -27,6 +29,7 @@ S=.agents/skills/verify-schema-bump/scripts
 3. On the bump branch: `"$S"/g2-roundtrip`, and the same on the base branch. Compare the two `failures.txt` files (see G2).
 4. On the bump branch: `"$S"/g7-canary`. Each group of compile errors must match an entry in the release-note break list.
 5. When `cmd/generate` changes without a bump: G1 with `--from` set to the current version and `TARGET` set to the newest release, to see that the change helps at every later release.
+6. When a PR changes how the SDK decodes or encodes a value (a hint, a union, a number type), and on a bump branch after the crate pin moves: `"$S"/rust-diff`, then again with `RUST_CASES` set to a `G2_PROBES` file. Compare its `details.txt` with the base's.
 
 ## G1: generator walk
 
@@ -105,6 +108,36 @@ Evidence, in `$VSB_ROOT/runs/g2-VERSION-TIME/`: `test.log` (`go test -v`, with t
 
 G2 needs an SDK that compiles. At a schema version where the SDK does not build (see the G1 results below), it cannot run until the bump fixes the build.
 
+## Rust probe
+
+```bash
+"$S"/rust-diff                                    # the committed cases
+RUST_CASES=$PROBES "$S"/rust-diff                 # any cases file, such as a G2_PROBES file
+```
+
+The Rust SDK reads ACP messages with the types of the crate `agent-client-protocol-schema`, which upstream generates the schema from. `rustprobe/` is a small cargo program on that crate (feature `unstable`). Its `build.rs` writes one match arm per `$defs` name of the checkout's `schema/schema.json` and `schema/schema.unstable.json`, so each def decodes as the crate type of that name (`ProtocolVersion` is at the crate root, the rest in `v1`). The JSON-RPC envelope defs `AgentRequest`, `AgentResponse`, `AgentNotification`, their `Client` and `Proxy` twins, decode as the crate's envelope of the payload enum of that name, such as `v1::Response<v1::AgentResponse>`, because the crate names each envelope after its payload. It reads one case per line on stdin, `{"id","def","json"}`, and writes `{"id","ok":true,"out"}` with the value encoded again, or `{"id","ok":false,"err"}`. A def that the crate does not have fails the build.
+
+The crate versions apart from the schema: 1.18.0 is schema 1.32.0. The script first checks the pin. The crate's `.cargo_vcs_info.json` in the cargo registry names the upstream commit that it was published from, and that commit must be the one that the `schema-v<schema/version>` tag points to (`git ls-remote https://github.com/agentclientprotocol/agent-client-protocol refs/tags/schema-v1.32.0`). On a mismatch it prints both commits and stops. A bump moves the pin by hand: find the crate release whose tag `v<crate>` points at the same commit as `schema-v<new>`, set it in `.agents/skills/verify-schema-bump/rustprobe/Cargo.toml`, and run `cargo update -p agent-client-protocol-schema --manifest-path .agents/skills/verify-schema-bump/rustprobe/Cargo.toml` to refresh the committed `Cargo.lock`.
+
+Then it builds the probe with `cargo build --release --locked` in `$VSB_ROOT/cache/rustprobe` and runs `TestRust`, which reads each case with the SDK as the connection reads a message (decode; then `Validate` when the type has it and the def is a request or a notification, because the dispatcher validates those and `Connection.SendRequest` does not validate a result; then encode). It reads the def's generated type, so it does not model the two messages that `connection.go` reads with hand-written code: an error response, which it reads as `RequestError` with every field optional, and `$/cancel_request`, whose `requestId` it reads as raw JSON (so it takes `1.5`, which the generated `RequestId` rejects). Cases of `Error` and `CancelRequestNotification` compare the generated types only and with the probe. It sorts each case into one verdict:
+
+| Verdict | Meaning |
+| --- | --- |
+| `same` | Both accept it and write the same JSON. |
+| `both-reject` | Both reject it. |
+| `differs` | Both accept it and write different JSON. The line lists every differing path, with the Go and the Rust value. |
+| `go-only` | The SDK accepts it and Rust rejects it. The SDK is the more lenient reader. |
+| `rust-only` | Rust accepts it and the SDK rejects it. |
+| `no-type` | One side has no type for the def. |
+
+Before it compares the two outputs, it normalizes both as G2's `LOSSY` check does: a member that equals its property's schema default counts as absent, because Rust writes `"loadSession": false` where the SDK leaves the member out. Unlike G2, `null` and absent differ, because a patch field reads `null` as "clear" and an absent member as "unchanged", and an integer literal differs from a number literal of the same value (`2` against `2.0`): a reader that picks a union variant by the JSON type, such as `ElicitationContentValue`, reads them differently.
+
+Each case that does not agree is one line, `RUST VERDICT DEF ID: DETAIL`, such as `RUST differs CreateElicitationResponse 125/elicitation-number-2.0: 1 difference(s): /content/n: go=2 rust=2.0`. Pass: exit 0 and `RUST PASS`, every case `same` or `both-reject`. While the committed cases hold known differences, `rust-diff` exits 1 on `main` by design: compare the run's `details.txt` with the base's run, and a new line is a regression.
+
+`.agents/skills/verify-schema-bump/roundtrip/testdata/rust/cases.jsonl` holds one case per known difference, named after its issue (`82/...`, `125/...`), three controls, and one `envelope/...` case per Agent and Client envelope def. The crate's payload enums inside an envelope are untagged: they ignore `method` and take the first variant that the params or result fit. A `session/prompt` request in `ClientRequest` reads as a request with no members, and so does a `PromptResponse` result in `AgentResponse`. So each envelope case carries a payload that its first fitting variant reads whole, and a case about a payload belongs on its own def, such as `PromptRequest`. The case should leave the file, or move to the controls, when the PR that fixes it lands. With a `G2_PROBES` file, which has no `id`, a case is named `FILE:LINE`.
+
+Evidence, in `$VSB_ROOT/runs/rust-VERSION-TIME/`: `summary.txt` (the pin check and the counts), `details.txt` (one `RUST` line per case that does not agree) and `test.log`.
+
 ## G7: consumer canary
 
 ```bash
@@ -124,7 +157,7 @@ The scripts remove their worktrees and build folders on exit and keep the eviden
 
 ## Not in `make test`
 
-None of the gates runs in `make test`. G1 and G7 need the network. G2's data checks (`TestTranscripts`, `TestInstances`, `TestHints`) still fail with the accepted lines below, so they would turn CI red. `make test` runs the module's unit tests instead: it writes the registry with `registrygen`, then runs `go vet ./...` and `go test -skip '^(TestTranscripts|TestInstances|TestHints)$' ./...` in this folder, which covers `methodcheck`, `TestPatches` and the roundtrip helpers (`TestCompareJSON`, `TestFindHints_*`, `TestCheckHint`, `TestRoute`, `TestCorpusHasNoCredentials`). A new test runs there unless the skip list names it. When G2 passes at the current schema, replace those lines with `cd .agents/skills/verify-schema-bump && scripts/g2-roundtrip`: it takes about a second once the cache is warm.
+None of the gates runs in `make test`. G1, G7 and the Rust probe need the network, and the Rust probe needs cargo: `TestRust` skips itself unless `RUST_PROBE` names the probe binary. G2's data checks (`TestTranscripts`, `TestInstances`, `TestHints`) still fail with the accepted lines below, so they would turn CI red. `make test` runs the module's unit tests instead: it writes the registry with `registrygen`, then runs `go vet ./...` and `go test -skip '^(TestTranscripts|TestInstances|TestHints)$' ./...` in this folder, which covers `methodcheck`, `TestPatches` and the roundtrip helpers (`TestCompareJSON`, `TestFindHints_*`, `TestCheckHint`, `TestRoute`, `TestCorpusHasNoCredentials`) and the Rust probe's Go side (`TestCompareSides`, `TestReadCases`, and `TestRustCases_NameSDKTypes`, which checks that each committed case names a def that the SDK has a type for). A new test runs there unless the skip list names it. When G2 passes at the current schema, replace those lines with `cd .agents/skills/verify-schema-bump && scripts/g2-roundtrip`: it takes about a second once the cache is warm.
 
 ## Known results at schema 0.13.5
 
@@ -164,6 +197,8 @@ With the harness transcripts in the corpus (2026-11-18, schema 1.32.0, `main` at
 `unknown.txt` lists 5 keys: `models` of the new, load and resume session responses, and `sessionId` of the load and resume session responses, which Claude sends and schema 1.32.0 does not define.
 
 With unnamed members in the built values (#102, 2026-11-18, schema 1.32.0), G2 checks 1124 built values. `main` at `020bcaf` (v0.18.0) has one new `LOSSY` line: `CreateElicitationRequest` loses `example` in its `other` mode, whose schema says `"unevaluatedProperties": true`. With `CreateElicitationOther.AdditionalProperties` the line is gone.
+
+The Rust probe (2026-11-19, schema 1.32.0, `main` at `6217b27`, v0.20.0): the pin check passes, because crate 1.18.0 and `schema-v1.32.0` are both upstream commit `13b7658`. The 21 committed cases give 8 `same`, 1 `both-reject`, 3 `differs`, 7 `go-only` and 2 `rust-only`: every known difference of #82 and #125 shows, and every control and envelope case agrees. The 1669 bad values of a `G2_PROBES` file all read the same.
 
 Before those four PRs, G2 reported 183 distinct problems on `main` at `a0c38c3`: `HINT` 165 (the SDK honored no hint, and the test did not check a property in its union yet), `LOSSY` 14 (the 3 lines above, `_meta` and `annotations` of a `ContentBlock`, and properties of the unstable elicitation types) and `SCHEMA` 4 (encoded elicitation types without required properties).
 

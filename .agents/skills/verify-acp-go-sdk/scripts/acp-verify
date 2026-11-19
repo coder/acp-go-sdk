@@ -12,8 +12,9 @@
 #   acp-verify cleanup                     stop this run's processes, delete work/, keep evidence/
 #
 # Environment:
-#   ACP_VERIFY_ROOT  parent folder for runs (default ${TMPDIR:-/tmp}/acp-verify)
-#   ACP_VERIFY_RUN   the run folder that launch printed
+#   ACP_VERIFY_ROOT        parent folder for runs (default ${TMPDIR:-/tmp}/acp-verify)
+#   ACP_VERIFY_RUN         the run folder that launch printed
+#   ACP_VERIFY_STOP_GRACE  seconds cleanup waits after SIGTERM before SIGKILL (default 10)
 set -euo pipefail
 
 SKILL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -41,8 +42,19 @@ source_id() {
 # for a process that this run started.
 start_of() { ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' || true; }
 
-# ours PID START: the PID is alive and is still the process recorded.
-ours() { [ -n "$2" ] && [ "$(start_of "$1")" = "$2" ]; }
+# left_of PID START: the pids that still run of a process that tracked or
+# client-default recorded, and of the process group that has its pid as ID.
+# A live PID with another start time was reused, so neither it nor that group
+# is ours. Once the recorded process has exited, its group ID is not reused
+# while a member of the group runs, so the members left, such as an agent
+# that outlived the client that started it, are ours. A zombie has exited
+# and is left out.
+left_of() {
+	local now
+	now=$(start_of "$1")
+	[ -z "$now" ] || [ "$now" = "$2" ] || return 0
+	ps -A -o pid= -o pgid= -o stat= | awk -v p="$1" '($1 == p || $2 == p) && $3 !~ /^Z/ { print $1 }'
+}
 
 need_run() {
 	[ -n "${ACP_VERIFY_RUN:-}" ] || die "ACP_VERIFY_RUN is not set. Run 'acp-verify launch' and export what it prints."
@@ -58,16 +70,34 @@ need_run() {
 }
 
 # Start a command in the background, record its pid, wait for it, and
-# return its exit code. Cleanup kills only pids recorded here.
+# return its exit code. Cleanup stops only what is recorded here.
 tracked() {
-	# <&0: an explicit redirect, or bash gives a background job /dev/null.
+	# set -m starts the command in a process group of its own, with its pid
+	# as ID, so cleanup can stop every process that it starts, also one whose
+	# parent has exited. <&0: an explicit redirect, or bash gives a background
+	# job /dev/null.
+	set -m
 	"$@" <&0 &
-	local pid=$!
+	local pid=$! rc
+	set +m
 	printf '%s\t%s\t%s\n' "$pid" "$(start_of "$pid")" "$*" >>"$WORK/pids"
+	# The group no longer gets the signals sent to the caller's group, such
+	# as Ctrl-C, so pass them on. wait returns early when a trapped signal
+	# arrives, so wait again until the command has exited.
+	local sig signalled=0
+	for sig in INT TERM HUP; do
+		trap "signalled=1; kill -$sig -- -$pid 2>/dev/null" "$sig"
+	done
 	set +e
 	wait "$pid"
-	local rc=$?
+	rc=$?
+	while [ "$signalled" = 1 ]; do
+		signalled=0
+		wait "$pid"
+		rc=$?
+	done
 	set -e
+	trap - INT TERM HUP
 	return "$rc"
 }
 
@@ -133,11 +163,12 @@ cmd_doctor() {
 			ok=0
 		fi
 	fi
-	local live=0 pid start cmd
+	local live=0 pid start cmd left
 	while IFS=$'\t' read -r pid start cmd; do
 		[ -n "$pid" ] || continue
-		if ours "$pid" "$start"; then
-			echo "FAIL  pid $pid from this run is still running: $cmd"
+		left=$(left_of "$pid" "$start")
+		if [ -n "$left" ]; then
+			echo "FAIL  pid $(echo $left) from this run is still running: $cmd"
 			live=1
 			ok=0
 		fi
@@ -272,19 +303,62 @@ cmd_client_default() {
 	return "$rc"
 }
 
-cmd_cleanup() {
-	need_run
-	local pid start cmd
+# signal_left SIGNAL LIST: send SIGNAL to what left_of finds for each
+# "pid<TAB>start<TAB>command" line of LIST.
+signal_left() {
+	local pid start cmd left
 	while IFS=$'\t' read -r pid start cmd; do
 		[ -n "$pid" ] || continue
-		if ours "$pid" "$start"; then
-			# Kill the recorded process and its direct children (the agent
-			# that the client or acpwire started). Never by name.
-			pkill -TERM -P "$pid" 2>/dev/null || true
-			kill -TERM "$pid" 2>/dev/null || true
-			echo "stopped pid $pid ($cmd)"
-		fi
+		left=$(left_of "$pid" "$start")
+		[ -n "$left" ] || continue
+		# The group, which also reaches a member that starts now. A leftover
+		# that client-default recorded leads no group, so signal its pid.
+		# Each process gets the signal once. Never by name.
+		kill "-$1" -- "-$pid" 2>/dev/null || kill "-$1" $left 2>/dev/null || true
+	done <<<"$2"
+}
+
+# all_left LIST: every pid that left_of finds for the lines of LIST.
+all_left() {
+	local pid start cmd
+	while IFS=$'\t' read -r pid start cmd; do
+		[ -z "$pid" ] || left_of "$pid" "$start"
+	done <<<"$1"
+}
+
+cmd_cleanup() {
+	need_run
+	local grace=${ACP_VERIFY_STOP_GRACE:-10} live="" pid start cmd left
+	while IFS=$'\t' read -r pid start cmd; do
+		[ -n "$pid" ] && [ -n "$(left_of "$pid" "$start")" ] || continue
+		live+=$pid$'\t'$start$'\t'$cmd$'\n'
 	done <"$WORK/pids"
+	signal_left TERM "$live"
+	# Wait until every process is gone. After the grace period send SIGKILL,
+	# and give that 5 s more.
+	local signal=TERM deadline=$((SECONDS + grace))
+	while [ -n "$(all_left "$live")" ]; do
+		if [ "$SECONDS" -ge "$deadline" ]; then
+			[ "$signal" = TERM ] || break
+			echo "sending SIGKILL: still running ${grace}s after SIGTERM"
+			signal=KILL
+			deadline=$((SECONDS + 5))
+			signal_left KILL "$live"
+		fi
+		sleep 0.1
+	done
+	local failed=0
+	while IFS=$'\t' read -r pid start cmd; do
+		[ -n "$pid" ] || continue
+		left=$(left_of "$pid" "$start")
+		if [ -z "$left" ]; then
+			echo "stopped pid $pid ($cmd)"
+		else
+			echo "FAIL  pid $(echo $left) still running after SIGKILL: $cmd"
+			failed=1
+		fi
+	done <<<"$live"
+	[ "$failed" = 0 ] || die "kept $WORK, so cleanup can try again"
 	rm -rf "$WORK"
 	rm -f "$RUN/$MARKER"
 	echo "removed $WORK"

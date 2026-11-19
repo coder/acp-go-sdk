@@ -84,8 +84,12 @@ func (s *side) shapes() (map[string]*rule, error) {
 }
 
 // parseRule reads a shape literal, such as {kinds: kindString, values:
-// []any{"a"}}, or &shape{...}.
+// []any{"a"}}, or &shape{...}. nil, which a member that takes any value
+// gets, is the nil rule.
 func parseRule(e ast.Expr) (*rule, error) {
+	if id, ok := e.(*ast.Ident); ok && id.Name == "nil" {
+		return nil, nil
+	}
 	if u, ok := e.(*ast.UnaryExpr); ok {
 		e = u.X
 	}

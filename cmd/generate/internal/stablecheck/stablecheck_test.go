@@ -58,6 +58,11 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 			"kind":  {Type: "string", Const: "v1", DefaultOnError: true},
 			"label": {Type: "string", Not: &load.Definition{Const: "none"}, DefaultOnError: true},
 			"event": {AllOf: []*load.Definition{ref("Event")}, DefaultOnError: true},
+			// The rest rule does not apply to note, which takes any value.
+			"labels": {
+				Type: "object", Properties: map[string]*load.Definition{"note": {}},
+				AdditionalProperties: load.Members{Schema: str()}, DefaultOnError: true,
+			},
 		}),
 		// Event leaves the kinds of its other variants out of its catch-all.
 		"Event": {AnyOf: []*load.Definition{

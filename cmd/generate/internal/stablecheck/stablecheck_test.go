@@ -58,6 +58,7 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 			"kind":  {Type: "string", Const: "v1", DefaultOnError: true},
 			"label": {Type: "string", Not: &load.Definition{Const: "none"}, DefaultOnError: true},
 			"event": {AllOf: []*load.Definition{ref("Event")}, DefaultOnError: true},
+			"size":  {AnyOf: []*load.Definition{{Title: "Name", Type: "string"}, {Title: "Count", Type: "integer"}, {Title: "Ratio", Type: "number"}}, DefaultOnError: true},
 			// The rest rule does not apply to note, which takes any value.
 			"labels": {
 				Type: "object", Properties: map[string]*load.Definition{"note": {}},
@@ -112,6 +113,8 @@ func TestCompare_AllowsAdditions(t *testing.T) {
 		// Null went to no stable variant.
 		defs["Value"].AnyOf = append(defs["Value"].AnyOf, &load.Definition{Title: "Number", Type: "number"}, &load.Definition{Type: "null"})
 		defs["Hinted"].Properties["mode"].Enum = []any{"ask", "auto", "manual"}
+		// A hinted union may gain an alternative of another kind.
+		defs["Hinted"].Properties["size"].AnyOf = append(defs["Hinted"].Properties["size"].AnyOf, &load.Definition{Title: "Flag", Type: "boolean"})
 		// A new kind gets a variant, and the catch-all leaves it out.
 		other := defs["Event"].AnyOf[1]
 		other.Not.AnyOf = append(other.Not.AnyOf, obj(map[string]*load.Definition{"kind": {Type: "string", Const: "stop"}}, "kind"))
@@ -212,6 +215,13 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 				defs["Hinted"].Properties["mode"].Enum = []any{"ask"}
 			},
 			want: `shapes[shapeHintedMode]: loses the value "auto"`,
+		},
+		{
+			name: "a hinted union loses the kind of an alternative",
+			change: func(defs map[string]*load.Definition) {
+				defs["Hinted"].Properties["size"].AnyOf[2] = &load.Definition{Title: "Flag", Type: "boolean"}
+			},
+			want: "shapes[shapeHintedSize]: takes the kinds [kindBoolean kindInteger kindString] instead of [kindFraction kindInteger kindString]",
 		},
 		{
 			name: "a hinted property changes its const",

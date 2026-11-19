@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -38,22 +39,20 @@ func TestPlan_UnmarshalJSON_BadOrNullEntriesReadAsEmpty(t *testing.T) {
 			t.Errorf("%s decodes entries to %#v, want an empty non-nil slice", in, plan.Entries)
 		}
 	}
+	// The hints read a bad value as [], but the member must be there, as in
+	// the Rust SDK.
 	var plan Plan
-	if err := json.Unmarshal([]byte(`{}`), &plan); err != nil {
-		t.Fatalf("unmarshal {}: %v", err)
-	}
-	if plan.Entries != nil {
-		t.Errorf("{} decodes entries to %#v, want nil", plan.Entries)
+	var typeErr *json.UnmarshalTypeError
+	if err := json.Unmarshal([]byte(`{}`), &plan); !errors.As(err, &typeErr) || typeErr.Value != "missing member" || typeErr.Field != "entries" {
+		t.Errorf("unmarshal {}: error %v, want a missing member error at Plan.entries", err)
 	}
 }
 
-func TestPromptRequest_UnmarshalJSON_NullPromptStaysMissing(t *testing.T) {
+func TestPromptRequest_UnmarshalJSON_RejectsANullPrompt(t *testing.T) {
 	t.Parallel()
 	var req PromptRequest
-	if err := json.Unmarshal([]byte(`{"sessionId":"s","prompt":null}`), &req); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if err := req.Validate(); err == nil {
-		t.Errorf("Validate() accepted a null prompt")
+	var typeErr *json.UnmarshalTypeError
+	if err := json.Unmarshal([]byte(`{"sessionId":"s","prompt":null}`), &req); !errors.As(err, &typeErr) || typeErr.Value != "null" || typeErr.Field != "prompt" {
+		t.Errorf("unmarshal: error %v, want a null type error at PromptRequest.prompt", err)
 	}
 }

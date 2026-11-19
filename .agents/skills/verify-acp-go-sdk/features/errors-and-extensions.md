@@ -9,7 +9,7 @@ An editor that sends something the agent cannot serve gets a JSON-RPC error, and
 - `err-ext-notify` ignores an `_` notification and logs nothing about it.
 - `err-unknown-notify` ignores an unknown notification without `_` below the default log level: the SDK logs it at DEBUG, and the example agent logs from INFO up.
 - `err-notify-params` logs `failed to handle notification` at ERROR for a `session/cancel` notification whose params do not decode.
-- `err-invalid-params` answers `session/new` without `cwd` with `-32602` and `cwd is required`.
+- `err-invalid-params` answers `session/new` without `cwd` with `-32602` and the decode error `json: cannot unmarshal missing member into Go struct field NewSessionRequest.cwd of type string`.
 - `err-malformed` logs `failed to parse incoming message` for a line that is not JSON, and keeps serving.
 - `err-eof` exits 0 when its input closes.
 

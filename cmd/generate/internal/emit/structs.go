@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/ir"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
@@ -27,15 +28,31 @@ type fieldPlan struct {
 	// shape is the shapeID constant that a lenient decoder checks the
 	// decoded value, or each decoded item, against; nil for none.
 	shape Code
+	// nonNullItem is the Go type of the items or member values that the
+	// decoder rejects null for (typesBuilder.nonNullItem); nil for none.
+	nonNullItem Code
+	// required says that the decoder fails when the JSON object lacks the
+	// member, or holds null for it and takesNull is false (planFor).
+	// encoding/json leaves such a member at its Go zero value, which
+	// Validate cannot tell from a present zero value.
+	required, takesNull bool
 }
 
 func (p fieldPlan) hasFallback() bool {
 	return p.fallbackJSON != ""
 }
 
+// customDecode reports whether the generated UnmarshalJSON keeps the field
+// raw and decodes it on its own.
 func (p fieldPlan) customDecode() bool {
 	lenient := p.field.Lenient
-	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems
+	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems || p.nonNullItem != nil
+}
+
+// decoded reports whether the struct needs a generated UnmarshalJSON for the
+// field: to decode it on its own, or to check that it is present.
+func (p fieldPlan) decoded() bool {
+	return p.customDecode() || p.required
 }
 
 // encodesPointer says that MarshalJSON encodes the field through a pointer
@@ -54,8 +71,15 @@ func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 }
 
 func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
-	p := fieldPlan{field: field, patch: b.patch[field.Def], nullAsAbsent: b.nullAsAbsent[field.Def]}
 	def, lenient := field.Def, field.Lenient
+	p := fieldPlan{
+		field: field, patch: b.patch[def], nullAsAbsent: b.nullAsAbsent[def], nonNullItem: b.nonNullItem(field),
+		// As in the Rust SDK, a required member must be present, and may be
+		// null only where its schema accepts null or a hint reads null as
+		// the default. A schema default stands in for an absent member.
+		required:  field.Required && def.Default == nil,
+		takesNull: acceptsNull(b.schema, def) || lenient.DefaultOnNull || lenient.DefaultOnError,
+	}
 	if p.patch {
 		// A patch field reads absent, null, and a value apart, so it has no
 		// fallback, and only default-on-error, with or without
@@ -89,6 +113,69 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 		p.shape = b.shapes.site(owner, field, fieldType(field))
 	}
 	return p
+}
+
+// nonNullItem returns the Go type of the items of field, an array, or of its
+// member values, a map, when the decoder must reject a null one: the type is a
+// scalar, which encoding/json reads null into as its zero value, the item or
+// value schema does not accept null, and the field has no hint that tolerates
+// a bad value. It returns nil otherwise.
+func (b *typesBuilder) nonNullItem(field ir.Field) Code {
+	if field.Lenient.DefaultOnError || field.Lenient.SkipInvalidItems {
+		return nil
+	}
+	def := field.Def
+	if nonNull := nonNullAlternative(def); b.patch[def] && nonNull != nil {
+		// A patch field holds a value of its schema without null
+		// (patchValueType).
+		def = nonNull
+	}
+	var item *load.Definition
+	switch ir.PrimaryType(def) {
+	case "array":
+		item = def.Items
+	case "object":
+		if len(def.Properties) == 0 && def.Ref == "" && !freeMembers(def) {
+			item = def.AdditionalProperties.Schema
+		}
+	}
+	if item == nil || !b.scalar(item) || acceptsNull(b.schema, item) {
+		return nil
+	}
+	return jenTypeFor(item)
+}
+
+// scalar reports whether the Go type of d is a string, a number, or a boolean,
+// or a type that buildTypesJen defines as one of them.
+func (b *typesBuilder) scalar(d *load.Definition) bool {
+	if len(d.AllOf) > 0 && d.Ref == "" {
+		// The item takes the type of a part of its allOf, the one that
+		// jenTypeFor picks: the first $ref, else the first part.
+		parts := slices.DeleteFunc(slices.Clone(d.AllOf), func(e *load.Definition) bool { return e == nil })
+		if i := slices.IndexFunc(parts, func(e *load.Definition) bool { return e.Ref != "" }); i >= 0 {
+			return b.scalar(parts[i])
+		}
+		if len(parts) > 0 {
+			return b.scalar(parts[0])
+		}
+	}
+	if d.Ref != "" {
+		def := b.schema.Defs[strings.TrimPrefix(d.Ref, "#/$defs/")]
+		switch {
+		case def == nil:
+			return false
+		case len(def.Enum) > 0, isStringConstUnion(def), isOpenStringEnum(def):
+			return true
+		case len(def.AnyOf) > 0, len(def.OneOf) > 0:
+			return false
+		}
+		d = def
+	}
+	switch ir.PrimaryType(d) {
+	case "string", "integer", "number", "boolean":
+		return true
+	}
+	return len(d.Enum) > 0
 }
 
 func mapsToSliceOrMap(d *load.Definition) bool {
@@ -267,9 +354,24 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 		f.Line()
 	}
 
-	if decoded := customDecoded(plans); open || len(decoded) > 0 {
+	if open || slices.ContainsFunc(plans, fieldPlan.decoded) {
 		f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
-			b.emitDecodeFields(g, name, "v", decoded)
+			// emitRequireMembers reads a zero required field as a member that
+			// the JSON may lack, so each one starts at zero. The JSON must set
+			// it anyway; the other fields keep what a reused value holds.
+			var reset []Code
+			for _, p := range plans {
+				if p.required {
+					reset = append(reset, Id("v").Dot(p.field.Name).Op("=").Id("fresh").Dot(p.field.Name))
+				}
+			}
+			if len(reset) > 0 {
+				g.Var().Id("fresh").Id(name)
+				for _, c := range reset {
+					g.Add(c)
+				}
+			}
+			b.emitDecodeFields(g, name, "v", plans)
 			if open {
 				named := []Code{Id("b")}
 				for _, field := range fields {

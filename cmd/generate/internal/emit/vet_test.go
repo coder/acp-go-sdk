@@ -29,8 +29,8 @@ const objectUnionRequestSchema = `{"$defs": {
     ]}
 }}`
 
-// The generated dispatch decodes each request and calls Validate, which must
-// reject a request that lacks the required "message".
+// The generated dispatch decodes each request and calls Validate. The decode
+// rejects a request that lacks the required "message".
 const objectUnionRequestTest = `package acp
 
 import (
@@ -49,11 +49,12 @@ func TestCreateElicitationRequest_Validate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var req CreateElicitationRequest
-		if err := json.Unmarshal([]byte(tt.payload), &req); err != nil {
-			t.Fatalf("unmarshal %s: %v", tt.payload, err)
+		err := json.Unmarshal([]byte(tt.payload), &req)
+		if err == nil {
+			err = req.Validate()
 		}
-		if err := req.Validate(); (err != nil) != tt.wantErr {
-			t.Errorf("Validate() on %s = %v, wantErr %v", tt.payload, err, tt.wantErr)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("decode and Validate() of %s = %v, wantErr %v", tt.payload, err, tt.wantErr)
 		}
 	}
 }
@@ -247,12 +248,20 @@ func TestCreateElicitationOther_KeepsTheMembersThatNoPartNames(t *testing.T) {
 
 func TestFormMode_BadMetaReadsAsAbsentAndNilFieldsEncodesAsEmpty(t *testing.T) {
 	var mode FormMode
-	out := roundTrip(t, &mode, ` + "`" + `{"requestedSchema":{},"_meta":"bad","sessionId":"s"}` + "`" + `)
-	if want := ` + "`" + `{"requestedSchema":{},"fields":[],"sessionId":"s"}` + "`" + `; !sameJSON(t, out, want) {
+	out := roundTrip(t, &mode, ` + "`" + `{"requestedSchema":{},"fields":["f"],"_meta":"bad","sessionId":"s"}` + "`" + `)
+	if want := ` + "`" + `{"requestedSchema":{},"fields":["f"],"sessionId":"s"}` + "`" + `; !sameJSON(t, out, want) {
 		t.Errorf("FormMode encodes to %s, want %s", out, want)
 	}
 	if mode.Session == nil || mode.Session.SessionId != "s" || mode.Request != nil {
 		t.Errorf("FormMode scope = session %+v, request %+v, want the session scope", mode.Session, mode.Request)
+	}
+	mode.Fields = nil
+	encoded, err := json.Marshal(mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := ` + "`" + `{"requestedSchema":{},"fields":[],"sessionId":"s"}` + "`" + `; !sameJSON(t, string(encoded), want) {
+		t.Errorf("FormMode with nil fields encodes to %s, want %s", encoded, want)
 	}
 }
 

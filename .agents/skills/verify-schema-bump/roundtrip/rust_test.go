@@ -81,7 +81,8 @@ func TestRust(t *testing.T) {
 		counts[verdictGoOnly], counts[verdictRustOnly], counts[verdictNoType])
 }
 
-// readCases reads a cases file and names each unnamed case FILE:LINE.
+// readCases reads a cases file and names each unnamed case FILE:LINE. A file
+// without cases is an error: comparing nothing must not pass.
 func readCases(path string) ([]rustCase, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -108,6 +109,9 @@ func readCases(path string) ([]rustCase, error) {
 		}
 		seen[c.ID] = true
 		cases = append(cases, c)
+	}
+	if len(cases) == 0 {
+		return nil, fmt.Errorf("%s: no cases", path)
 	}
 	return cases, nil
 }
@@ -396,6 +400,9 @@ func TestReadCases(t *testing.T) {
 	}
 	if _, err := readCases(write("nodef.jsonl", `{"id":"x","json":1}`+"\n")); err == nil {
 		t.Error("readCases accepts a case without def")
+	}
+	if _, err := readCases(write("empty.jsonl", "\n")); err == nil {
+		t.Error("readCases accepts a file without cases")
 	}
 }
 

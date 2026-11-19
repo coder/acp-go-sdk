@@ -10,8 +10,8 @@ publish = false
 # 1.18.0 is schema 1.32.0.
 [dependencies]
 agent-client-protocol-schema = { version = "=1.18.0", features = ["unstable"] }
-serde = "1"
-serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
 
 [build-dependencies]
 serde_json = "1"

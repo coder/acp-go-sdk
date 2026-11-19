@@ -55,13 +55,17 @@ COVERED=(
 	"func (c *Connection) notificationSeq("
 	"func (c *Connection) handleInbound("
 	"func (c *Connection) sendInboundRequestError("
+	"func (c *Connection) queueRejection("
 	"func (c *Connection) cleanupPending("
 	"func (c *Connection) Done("
 	"func (c *Connection) waitForNotificationDrain("
 )
-# Constants that no covered function holds: the queue capacity, which the
-# model bounds at QueueCap, and the drain timeout.
-COVERED_CONSTS=(defaultMaxQueuedNotifications notificationQueueDrainTimeout)
+# Constants that no covered function holds: the default notification queue
+# capacity, which the model bounds at QueueCap, the drain timeout, and the
+# capacity of the rejection queue that receive sends to without blocking.
+COVERED_CONSTS=(defaultMaxQueuedNotifications notificationQueueDrainTimeout maxQueuedRejections)
+# Files that declare them.
+CONST_SRCS=("$SRC" "$REPO/limits.go")
 
 die() {
 	echo "check.sh: $*" >&2
@@ -87,10 +91,11 @@ need_body() {
 	printf '%s\n' "$b"
 }
 
-# need_const NAME: print the line that declares the constant NAME.
+# need_const NAME: print the declaration of the constant NAME as "NAME = value",
+# alone or in a const block, with gofmt's alignment squeezed out.
 need_const() {
 	local l
-	l=$(NAME="$1" awk '$1 == ENVIRON["NAME"] && $2 == "="' "$SRC")
+	l=$(NAME="$1" awk '{ sub(/^[ \t]*const[ \t]+/, ""); $1 = $1 } $1 == ENVIRON["NAME"] && $2 == "="' "${CONST_SRCS[@]}")
 	[ "$(grep -c . <<<"$l")" = 1 ] || drift "constant not found once: $1"
 	printf '%s\n' "$l"
 }
@@ -150,6 +155,7 @@ B_wait=$(need_body "func (c *Connection) waitNotifications(")
 B_peer=$(need_body "func (c *Connection) startPeerWait(")
 B_inb=$(need_body "func (c *Connection) waitInboundBarrier(")
 B_drain=$(need_body "func (c *Connection) waitForNotificationDrain(")
+B_queue=$(need_body "func (c *Connection) queueRejection(")
 
 # Shape the model assumes. A change here needs a new model, not a flag.
 [ "$(count "$B_new" "go c.receive()")" = 1 ] || drift "NewConnection must start receive() once"
@@ -167,9 +173,38 @@ fi
 ! has "$B_proc" "go c.handleInbound" || drift "processNotifications runs handlers concurrently"
 has "$B_recv" "c.handleResponse(&msg)" || drift "receive() no longer calls handleResponse(&msg)"
 ! has "$B_recv" "go c.handleResponse" || drift "receive() handles responses concurrently"
-has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m}:" ||
+has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m, size: size}:" ||
 	drift "receive() no longer queues notifications with a non-blocking send"
 has "$B_recv" "c.lastEnqueuedNotificationSeq++" || drift "receive() no longer numbers notifications"
+# The model lets receive read whenever the peer sends, so the read loop must
+# never wait for the peer to read: it writes nothing itself (its request
+# goroutines do), and queueRejection hands each rejection to writeRejections
+# with a non-blocking send.
+for w in "c.sendMessage(" "c.writeLine(" "c.sendInboundRequestError(&msg"; do
+	! has "$B_recv" "$w" || drift "receive() writes to the peer ($w), so it can wait for the peer to read"
+done
+has "$B_queue" "case c.rejections <- line:" && has "$B_queue" "default:" ||
+	drift "queueRejection no longer queues with a non-blocking send"
+# The limits on what the connection holds from the peer act before a message
+# touches barrier state, so the model needs no action for them. A request that
+# does not fit queues its reply, or closes the connection when the queue is
+# full, before it reads the watermark, and it never starts a goroutine. A
+# notification that does not fit closes the connection before it is numbered:
+# the overflow path without the rollback.
+l_hold_req=$(line_of "$B_recv" "if rejection := c.budget.holdRequest(size); rejection != nil {")
+l_reject=$(line_of "$B_recv" "if !c.queueRejection(&msg, rejection) {")
+l_reject_close=$(line_of "$B_recv" "c.shutdownReceive(errRejectionQueueOverflow)")
+l_watermark=$(line_of "$B_recv" "watermark := c.lastEnqueuedNotificationSeq")
+l_hold_note=$(line_of "$B_recv" "if !c.budget.holdNotification(size) {")
+l_budget_close=$(line_of "$B_recv" "c.shutdownReceive(errByteBudgetExceeded)")
+l_number=$(line_of "$B_recv" "c.lastEnqueuedNotificationSeq++")
+{ [ -n "$l_hold_req" ] && [ -n "$l_reject" ] && [ -n "$l_reject_close" ] && [ -n "$l_watermark" ] &&
+	[ "$l_hold_req" -lt "$l_reject" ] && [ "$l_reject" -lt "$l_reject_close" ] &&
+	[ "$l_reject_close" -lt "$l_watermark" ]; } ||
+	drift "receive() no longer rejects a request that it cannot hold before the request reads the watermark"
+{ [ -n "$l_hold_note" ] && [ -n "$l_budget_close" ] && [ -n "$l_number" ] &&
+	[ "$l_hold_note" -lt "$l_budget_close" ] && [ "$l_budget_close" -lt "$l_number" ]; } ||
+	drift "receive() no longer closes on a notification over the byte budget before it numbers the notification"
 
 # The wait loop, with or without the release while the running handler waits
 # on the peer.

@@ -14,10 +14,7 @@ import (
 	"time"
 )
 
-const (
-	notificationQueueDrainTimeout = 5 * time.Second
-	defaultMaxQueuedNotifications = 1024
-)
+const notificationQueueDrainTimeout = 5 * time.Second
 
 var errNotificationQueueOverflow = errors.New("notification queue overflow")
 
@@ -34,6 +31,7 @@ type queuedNotification struct {
 	seq     uint64
 	arrival uint64
 	msg     *anyMessage
+	size    int
 }
 
 // handlingNotification is the ctx value that processNotifications gives each
@@ -93,6 +91,38 @@ type cancelRequestParams struct {
 	RequestID json.RawMessage `json:"requestId"`
 }
 
+// MethodHandler handles a request or a notification from the peer. It never
+// gets a $/cancel_request notification: the connection handles those itself.
+// The connection calls it by these rules:
+//
+//   - Notification handlers run one at a time, in arrival order, on one
+//     goroutine.
+//   - Each request handler runs on its own goroutine. It starts after the
+//     handlers of all notifications that arrived before the request have
+//     returned, so a slow notification handler delays every later
+//     notification and, except as the next two rules say, every later
+//     request. Notifications that arrive after the request do not delay it.
+//   - A request handler also starts while the running notification handler
+//     waits for the response to a request that it made with its ctx, because
+//     the peer can need this request's answer first.
+//   - If the peer disconnects while a request waits to start, its handler
+//     starts at once with a cancelled ctx.
+//   - If a $/cancel_request for the request arrives while the request waits to
+//     start, the peer gets a -32800 error response and the handler never runs.
+//     When the peer disconnects right after the cancel, the waiting request
+//     can see the disconnect first. The handler then starts with a cancelled
+//     ctx, as on any disconnect during the wait.
+//     A later $/cancel_request, even one just before the handler starts, only cancels its ctx.
+//
+// A request that a handler makes waits for notification handlers too, as
+// SendRequest describes. A request that a request handler makes with its ctx
+// can return while the running notification handler waits for the peer, so
+// the request handler can go on before earlier notifications have run. On an
+// AgentSideConnection, a session/cancel queued behind that notification
+// handler then reaches a running prompt late: RequestPermission in Prompt can
+// return the client's answer, which the client sent after the cancel, while
+// the prompt's ctx is still live. The ctx ends once the earlier handler
+// returns and the cancel runs.
 type MethodHandler func(ctx context.Context, method string, params json.RawMessage) (any, *RequestError)
 
 // Connection is a simple JSON-RPC 2.0 connection over line-delimited JSON.
@@ -143,9 +173,34 @@ type Connection struct {
 	// notificationQueue serializes notification processing to maintain order.
 	// It is bounded to keep memory usage predictable.
 	notificationQueue chan queuedNotification
+
+	// rejections holds the replies to requests that the connection does not
+	// hold, for writeRejections, so that receive never writes to the peer.
+	rejections chan []byte
+
+	budget peerBudget
 }
 
-func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader) *Connection {
+// NewConnection returns a Connection that writes messages to peerInput and
+// reads them from peerOutput. It starts reading at once and calls handler for
+// each request and notification from the peer that fits its limits, except a
+// $/cancel_request notification. The connection handles that one itself, at
+// once: it cancels the ctx of the in-flight request from the peer with that
+// id, or ignores an unknown id. Notification handlers run one at a time, in
+// arrival order. A request handler waits for the handlers of the notifications
+// that arrived before the request. MethodHandler lists these rules and their
+// exceptions. opts set the limits on what it holds from the peer: a request
+// over a limit gets a -32603 reply instead of a handler call, and a
+// notification over a limit closes the connection (see ConnectionOption).
+func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
+	limits := connectionLimits{
+		byteBudget:             defaultByteBudget,
+		maxInboundRequests:     defaultMaxInboundRequests,
+		maxQueuedNotifications: defaultMaxQueuedNotifications,
+	}
+	for _, opt := range opts {
+		opt(&limits)
+	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
 	c := &Connection{
@@ -161,7 +216,9 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		cancel:              cancel,
 		inboundCtx:          inboundCtx,
 		inboundCancel:       inboundCancel,
-		notificationQueue:   make(chan queuedNotification, defaultMaxQueuedNotifications),
+		notificationQueue:   make(chan queuedNotification, limits.maxQueuedNotifications),
+		rejections:          make(chan []byte, maxQueuedRejections),
+		budget:              peerBudget{maxBytes: limits.byteBudget, maxRequests: limits.maxInboundRequests},
 	}
 	c.notifyCond = sync.NewCond(&c.notifyMu)
 	go func() {
@@ -173,6 +230,7 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 	go c.sendCancelRequests()
 	go c.receive()
 	go c.processNotifications()
+	go c.writeRejections()
 	return c
 }
 
@@ -452,7 +510,25 @@ func (c *Connection) receive() {
 		case msg.ID != nil && msg.Method == "":
 			c.handleResponse(&msg)
 		case msg.Method != "":
+			size := len(line)
 			if msg.ID != nil {
+				idKey, err := canonicalJSONRPCIDKey(*msg.ID)
+				if err != nil {
+					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", string(*msg.ID))
+					idKey = string(*msg.ID)
+				}
+				// The request keeps its id twice: in msg for the reply, and
+				// as the key in c.inflight.
+				size += len(idKey)
+				if rejection := c.budget.holdRequest(size); rejection != nil {
+					c.loggerOrDefault().Warn("rejected request from the peer", "method", msg.Method, "err", rejection)
+					if !c.queueRejection(&msg, rejection) {
+						c.loggerOrDefault().Error("the peer does not read the rejections of its requests; closing connection", "err", errRejectionQueueOverflow, "method", msg.Method, "queued", len(c.rejections))
+						c.shutdownReceive(errRejectionQueueOverflow)
+						return
+					}
+					continue
+				}
 				// Requests observe the notification queue as it stood when they arrived.
 				// Notifications already accepted onto the queue must finish before the
 				// handler starts, while later notifications must not delay the request.
@@ -462,11 +538,6 @@ func (c *Connection) receive() {
 				watermark := c.lastEnqueuedNotificationSeq
 				c.notifyMu.Unlock()
 
-				idKey, err := canonicalJSONRPCIDKey(*msg.ID)
-				if err != nil {
-					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", string(*msg.ID))
-					idKey = string(*msg.ID)
-				}
 				reqCtx, cancel := context.WithCancelCause(c.ctx)
 				c.inboundMessages++
 				arrival := c.inboundMessages
@@ -486,6 +557,7 @@ func (c *Connection) receive() {
 						c.mu.Unlock()
 
 						cancel(nil)
+						c.budget.releaseRequest(size)
 					}()
 					if err := c.waitInboundBarrier(reqCtx, watermark); err != nil {
 						select {
@@ -506,6 +578,12 @@ func (c *Connection) receive() {
 				continue
 			}
 
+			if !c.budget.holdNotification(size) {
+				c.loggerOrDefault().Error("notification does not fit the byte budget; closing connection", "err", errByteBudgetExceeded, "method", msg.Method, "size", size, "budget", c.budget.maxBytes)
+				c.shutdownReceive(errByteBudgetExceeded)
+				return
+			}
+
 			// Queue the notification for sequential processing. The sequence number marks
 			// the response-scoped barrier boundary for requests that observe later responses.
 			m := msg
@@ -514,7 +592,7 @@ func (c *Connection) receive() {
 			c.lastEnqueuedNotificationSeq++
 			seq := c.lastEnqueuedNotificationSeq
 			select {
-			case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m}:
+			case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m, size: size}:
 				c.notifyMu.Unlock()
 			default:
 				if c.lastEnqueuedNotificationSeq != seq {
@@ -528,6 +606,7 @@ func (c *Connection) receive() {
 					panic("completed notification sequence exceeded enqueued notification sequence")
 				}
 				c.notifyMu.Unlock()
+				c.budget.releaseNotification(size)
 				c.loggerOrDefault().Error("failed to queue notification; closing connection", "err", errNotificationQueueOverflow, "capacity", cap(c.notificationQueue), "queued", len(c.notificationQueue))
 				c.shutdownReceive(errNotificationQueueOverflow)
 				return
@@ -556,6 +635,7 @@ func (c *Connection) shutdownReceive(cause error) {
 	// IMPORTANT: Do not block this receive goroutine waiting for the drain to complete;
 	// notification handlers may legitimately block until their context is canceled.
 	close(c.notificationQueue)
+	close(c.rejections)
 
 	c.notifyMu.Lock()
 	finalEnqueuedSeq := c.lastEnqueuedNotificationSeq
@@ -581,6 +661,7 @@ func (c *Connection) processNotifications() {
 	for queued := range c.notificationQueue {
 		handlerCtx := context.WithValue(c.inboundCtx, handlingNotificationKey{}, handlingNotification{conn: c, seq: queued.seq, arrival: queued.arrival})
 		c.handleInbound(handlerCtx, queued.msg)
+		c.budget.releaseNotification(queued.size)
 
 		c.notifyMu.Lock()
 		expectedSeq := c.completedNotificationSeq + 1
@@ -710,17 +791,57 @@ func (c *Connection) sendInboundRequestError(req *anyMessage, err *RequestError)
 	})
 }
 
+// queueRejection queues the reply to a request that the connection does not
+// hold, charged at its length. It reports false when the queue is full: the
+// peer does not read its replies.
+func (c *Connection) queueRejection(req *anyMessage, rejection *RequestError) bool {
+	line, err := encodeLine(anyMessage{ID: req.ID, Error: rejection})
+	if err != nil {
+		c.loggerOrDefault().Error("failed to encode a rejection", "err", err)
+		return true
+	}
+	if !c.budget.holdRejection(len(line)) {
+		return false
+	}
+	select {
+	case c.rejections <- line:
+		return true
+	default:
+		c.budget.releaseRejection(len(line))
+		return false
+	}
+}
+
+// writeRejections writes the queued rejections until shutdownReceive closes
+// the queue. It is the only goroutine that waits for the peer to read them.
+func (c *Connection) writeRejections() {
+	for line := range c.rejections {
+		_ = c.writeLine(line)
+		c.budget.releaseRejection(len(line))
+	}
+}
+
 func (c *Connection) sendMessage(msg anyMessage) error {
-	msg.JSONRPC = "2.0"
-	b, err := json.Marshal(msg)
+	line, err := encodeLine(msg)
 	if err != nil {
 		return err
 	}
-	b = append(b, '\n')
+	return c.writeLine(line)
+}
 
+func encodeLine(msg anyMessage) ([]byte, error) {
+	msg.JSONRPC = "2.0"
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
+}
+
+func (c *Connection) writeLine(line []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	_, err = c.w.Write(b)
+	_, err := c.w.Write(line)
 	return err
 }
 

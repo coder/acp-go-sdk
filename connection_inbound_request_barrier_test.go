@@ -326,6 +326,113 @@ func TestConnection_InboundRequestStartsWhileHandlerWaitsOnPeer(t *testing.T) {
 	}
 }
 
+// A notification handler makes a request, and the peer answers it only after
+// we answer the peer's own request, whose handler makes a request with its
+// ctx. The response to that request must not wait for the notification
+// handler, or the two handlers and the peer wait for each other. The peer's
+// request can arrive after the notification, and then it starts while the
+// notification handler waits on the peer, or before it.
+func TestConnection_RequestHandlerGetsResponseWhileHandlerWaitsOnPeer(t *testing.T) {
+	for _, tt := range []struct {
+		name              string
+		notificationFirst bool
+	}{
+		{name: "request after notification", notificationFirst: true},
+		{name: "request before notification", notificationFirst: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			aReader, bWriter := io.Pipe()
+			bReader, aWriter := io.Pipe()
+			t.Cleanup(func() {
+				_ = aWriter.Close()
+				_ = bWriter.Close()
+			})
+			discard := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+			callbackStarted := make(chan struct{})
+			askArrived := make(chan struct{})
+			callbackAnswered := make(chan struct{})
+			notificationDone := make(chan error, 1)
+			var a *Connection
+			a = NewConnection(func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+				switch method {
+				case "notification":
+					_, err := SendRequest[json.RawMessage](a, ctx, "ask", nil)
+					notificationDone <- err
+					return nil, nil
+				case "callback":
+					close(callbackStarted)
+					select {
+					case <-askArrived:
+					case <-ctx.Done():
+						return nil, toReqErr(ctx.Err())
+					}
+					if _, err := SendRequest[json.RawMessage](a, ctx, "lookup", nil); err != nil {
+						return nil, toReqErr(err)
+					}
+					return map[string]bool{"ok": true}, nil
+				default:
+					return nil, NewMethodNotFound(method)
+				}
+			}, aWriter, aReader)
+			a.SetLogger(discard)
+			b := NewConnection(func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+				switch method {
+				case "ask":
+					close(askArrived)
+					select {
+					case <-callbackAnswered:
+						return map[string]bool{"ok": true}, nil
+					case <-ctx.Done():
+						return nil, toReqErr(ctx.Err())
+					}
+				case "lookup":
+					return map[string]bool{"ok": true}, nil
+				default:
+					return nil, NewMethodNotFound(method)
+				}
+			}, bWriter, bReader)
+			b.SetLogger(discard)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			notify := func() {
+				if err := b.SendNotification(ctx, "notification", nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.notificationFirst {
+				notify()
+			}
+			callbackDone := make(chan error, 1)
+			go func() {
+				_, err := SendRequest[json.RawMessage](b, ctx, "callback", nil)
+				callbackDone <- err
+			}()
+			if !tt.notificationFirst {
+				select {
+				case <-callbackStarted:
+				case <-ctx.Done():
+					t.Fatal("callback handler did not start")
+				}
+				notify()
+			}
+			if err := <-callbackDone; err != nil {
+				t.Fatalf("callback error = %v", err)
+			}
+			close(callbackAnswered)
+			select {
+			case err := <-notificationDone:
+				if err != nil {
+					t.Fatalf("notification handler's request error = %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("notification handler did not get its response")
+			}
+		})
+	}
+}
+
 // outboundRequestID waits for our request with method and returns its id.
 func (p *inboundBarrierTestPeer) outboundRequestID(t *testing.T, method string) any {
 	t.Helper()

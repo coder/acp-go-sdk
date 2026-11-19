@@ -405,10 +405,11 @@ func TestWriteTypesJen_GeneratedPackagePassesVetAndTests(t *testing.T) {
 }
 
 // checkGenerated writes types_gen.go and helpers_gen.go for schemaJSON, plus
-// the extra files, into a scratch module, and runs go vet and go test there.
-// go vet type-checks the package, so it fails when the generated code does not
-// compile or has a vet finding such as unreachable code.
-func checkGenerated(t *testing.T, schemaJSON string, extra map[string]string) {
+// the extra files, into a scratch module, and runs go vet and go test there,
+// with env added to the environment, such as GOARCH=386. go vet type-checks
+// the package, so it fails when the generated code does not compile or has a
+// vet finding such as unreachable code.
+func checkGenerated(t *testing.T, schemaJSON string, extra map[string]string, env ...string) {
 	t.Helper()
 	goTool, err := exec.LookPath("go")
 	if err != nil {
@@ -446,7 +447,7 @@ func checkGenerated(t *testing.T, schemaJSON string, extra map[string]string) {
 	for _, args := range [][]string{{"vet", "."}, {"test", "-count=1", "."}} {
 		cmd := exec.Command(goTool, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOFLAGS=", "GOWORK=off")
+		cmd.Env = append(append(os.Environ(), "GOFLAGS=", "GOWORK=off"), env...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("go %s on the generated package: %v\n%s", args[0], err, out)
 		}

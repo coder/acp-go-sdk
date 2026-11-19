@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -499,15 +500,15 @@ func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
 	return ""
 }
 
-// integerType is the Go type of an integer schema: int64 for the formats
-// int64, uint32, and uint64, so that a 32-bit target holds every value that a
-// peer sends (such as the exit code 3221225477 of a Windows process, or a
-// token count above 2^31), and int otherwise. A uint64 above 2^63 does not fit;
-// no ACP value comes near it.
+// integerType is the Go type of an integer schema: int64 for a format whose
+// range (formatRange) goes beyond an int32, which are int64, uint32, and
+// uint64, so that a 32-bit target holds every value that a peer sends (such
+// as the exit code 3221225477 of a Windows process, or a token count above
+// 2^31), and int otherwise. A uint64 above 2^63 does not fit; no ACP value
+// comes near it.
 func integerType(d *load.Definition) *Statement {
-	if d != nil {
-		switch d.Format {
-		case "int64", "uint32", "uint64":
+	if d != nil && d.Format != "" {
+		if r := formatRange(d.Format); r.min < math.MinInt32 || r.max > math.MaxInt32 {
 			return Int64()
 		}
 	}

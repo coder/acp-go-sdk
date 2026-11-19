@@ -18,18 +18,18 @@ func rawReply(t *testing.T, connect func(peerInput io.Writer, peerOutput io.Read
 	return p.await("the reply to "+line, func(m anyMessage) bool { return m.Method == "" })
 }
 
-// nullItemsCase is a request that a connection receives. want is a part of
+// requestCase is a request that a connection receives. want is a part of
 // the -32602 error that the connection must answer with, and "" for a valid
 // request that reaches the handler. check, when set, looks at the request that
 // the handler got.
-type nullItemsCase struct {
+type requestCase struct {
 	name, method, params string
 	invalid              bool
 	want                 string
 	check                func(t *testing.T, params any)
 }
 
-func runNullItemsCase(t *testing.T, tt nullItemsCase, connect func(called chan<- any, peerInput io.Writer, peerOutput io.Reader)) {
+func runRequestCase(t *testing.T, tt requestCase, connect func(called chan<- any, peerInput io.Writer, peerOutput io.Reader)) {
 	t.Helper()
 	called := make(chan any, 1)
 	line := `{"jsonrpc":"2.0","id":1,"method":"` + tt.method + `","params":` + tt.params + `}`
@@ -69,7 +69,7 @@ func runNullItemsCase(t *testing.T, tt nullItemsCase, connect func(called chan<-
 func TestAgentSideConnection_RejectsNullItemsAndValues(t *testing.T) {
 	t.Parallel()
 	const stdio = `{"name":"m","command":"c","env":[],"args":`
-	tests := []nullItemsCase{
+	tests := []requestCase{
 		{name: "new session additional directory", method: AgentMethodSessionNew, params: `{"cwd":"/w","mcpServers":[],"additionalDirectories":["/a",null]}`, invalid: true, want: "NewSessionRequest.additionalDirectories"},
 		{name: "new session stdio server arg", method: AgentMethodSessionNew, params: `{"cwd":"/w","mcpServers":[` + stdio + `["-v",null]}]}`, invalid: true},
 		{name: "load session additional directory", method: AgentMethodSessionLoad, params: `{"sessionId":"s","cwd":"/w","mcpServers":[],"additionalDirectories":[null]}`, invalid: true, want: "LoadSessionRequest.additionalDirectories"},
@@ -103,7 +103,7 @@ func TestAgentSideConnection_RejectsNullItemsAndValues(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runNullItemsCase(t, tt, func(called chan<- any, w io.Writer, r io.Reader) {
+			runRequestCase(t, tt, func(called chan<- any, w io.Writer, r io.Reader) {
 				NewAgentSideConnection(agentFuncs{
 					NewSessionFunc: func(_ context.Context, p NewSessionRequest) (NewSessionResponse, error) {
 						called <- p
@@ -138,7 +138,7 @@ func TestClientSideConnection_RejectsNullItemsAndValues(t *testing.T) {
 	form := func(schema string) string {
 		return `{"mode":"form","message":"m","sessionId":"s","requestedSchema":` + schema + `}`
 	}
-	tests := []nullItemsCase{
+	tests := []requestCase{
 		{name: "terminal arg", method: ClientMethodTerminalCreate, params: `{"sessionId":"s","command":"ls","args":["-l",null]}`, invalid: true, want: "CreateTerminalRequest.args"},
 		{name: "elicitation enum value", method: ClientMethodElicitationCreate, params: form(`{"type":"object","properties":{"x":{"type":"string","enum":["a",null]}}}`), invalid: true},
 		{name: "elicitation multi-select enum value", method: ClientMethodElicitationCreate, params: form(`{"type":"object","properties":{"x":{"type":"array","items":{"type":"string","enum":["a",null]}}}}`), invalid: true},
@@ -160,7 +160,7 @@ func TestClientSideConnection_RejectsNullItemsAndValues(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runNullItemsCase(t, tt, func(called chan<- any, w io.Writer, r io.Reader) {
+			runRequestCase(t, tt, func(called chan<- any, w io.Writer, r io.Reader) {
 				NewClientSideConnection(&clientFuncs{
 					CreateTerminalFunc: func(_ context.Context, p CreateTerminalRequest) (CreateTerminalResponse, error) {
 						called <- p

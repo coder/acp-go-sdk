@@ -57,7 +57,14 @@ const writePID = `echo $$ >"$ACP_TEST_PIDFILE.tmp" && mv "$ACP_TEST_PIDFILE.tmp"
 // ignored signal stays ignored across exec.
 const sleepIgnoringTERM = "trap '' TERM\n" + writePID + "exec sleep 300\n"
 
-func acpVerifyCmd(run string, env []string, args ...string) *exec.Cmd {
+func acpVerifyCmd(t *testing.T, run string, env []string, args ...string) *exec.Cmd {
+	t.Helper()
+	// go test caches a result by the files that the test opens itself, not
+	// the ones that bash opens, so read the script here: an edit to it then
+	// runs the test again.
+	if _, err := os.ReadFile(acpVerify); err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command("bash", append([]string{acpVerify}, args...)...)
 	cmd.Env = append(os.Environ(), append([]string{"ACP_VERIFY_RUN=" + run}, env...)...)
 	return cmd
@@ -100,14 +107,14 @@ func TestAcpVerify_CleanupStopsTheAgentThatTheClientStarted(t *testing.T) {
 	run := fakeRun(t, `"$1" </dev/null >/dev/null 2>&1 &`+"\n", sleepIgnoringTERM)
 	pidFile := filepath.Join(t.TempDir(), "agent.pid")
 	env := []string{"ACP_TEST_PIDFILE=" + pidFile, "ACP_VERIFY_STOP_GRACE=1"}
-	if out, err := acpVerifyCmd(run, env, "client", "orphan", "").CombinedOutput(); err != nil {
+	if out, err := acpVerifyCmd(t, run, env, "client", "orphan", "").CombinedOutput(); err != nil {
 		t.Fatalf("acp-verify client: %v\n%s", err, out)
 	}
 	agent := waitForPID(t, pidFile)
 	if !running(agent) {
 		t.Fatalf("agent pid %d is not running before cleanup", agent)
 	}
-	out, err := acpVerifyCmd(run, env, "cleanup").CombinedOutput()
+	out, err := acpVerifyCmd(t, run, env, "cleanup").CombinedOutput()
 	if err != nil {
 		t.Fatalf("acp-verify cleanup: %v\n%s", err, out)
 	}
@@ -129,7 +136,7 @@ func TestAcpVerify_CleanupWaitsForARecordedProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer log.Close()
-	drive := acpVerifyCmd(run, env, "client", "hung", "")
+	drive := acpVerifyCmd(t, run, env, "client", "hung", "")
 	drive.Stdout, drive.Stderr = log, log
 	if err := drive.Start(); err != nil {
 		t.Fatal(err)
@@ -137,7 +144,7 @@ func TestAcpVerify_CleanupWaitsForARecordedProcess(t *testing.T) {
 	client := waitForPID(t, pidFile)
 	_ = drive.Process.Kill()
 	_ = drive.Wait()
-	out, err := acpVerifyCmd(run, env, "cleanup").CombinedOutput()
+	out, err := acpVerifyCmd(t, run, env, "cleanup").CombinedOutput()
 	if err != nil {
 		t.Fatalf("acp-verify cleanup: %v\n%s", err, out)
 	}
@@ -163,8 +170,7 @@ func TestAcpVerify_LaunchRefusesARootThatAnACLOpens(t *testing.T) {
 	if out, err := exec.Command("setfacl", "-m", "u:nobody:rwx", root).CombinedOutput(); err != nil {
 		t.Skipf("this file system takes no ACL: %v\n%s", err, out)
 	}
-	cmd := exec.Command("bash", acpVerify, "launch")
-	cmd.Env = append(os.Environ(), "ACP_VERIFY_ROOT="+root)
+	cmd := acpVerifyCmd(t, "", []string{"ACP_VERIFY_ROOT=" + root}, "launch")
 	out, err := cmd.CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 2 || !strings.Contains(string(out), "other users can write") {

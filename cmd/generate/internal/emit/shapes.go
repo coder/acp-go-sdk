@@ -72,6 +72,15 @@ func (t *shapeTable) site(owner string, field ir.Field, goType Code) Code {
 		return nil
 	}
 	n := t.node(withoutNull(def))
+	if withoutNull(def) != def {
+		// A bound next to the null alternative holds for the value too.
+		if r := ownRange(t.schema, def); r != nil {
+			if n == nil {
+				n = &shapeNode{}
+			}
+			n.ints = intersect(n.ints, r)
+		}
+	}
 	if !t.strict(n) && !n.untypedRules(fmt.Sprintf("%#v", goType)) {
 		return nil
 	}

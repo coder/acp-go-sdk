@@ -167,7 +167,11 @@ func (b *typesBuilder) heldRange(def *load.Definition, via []container) *intRang
 	}
 	var r *intRange
 	for ; def != nil; def = b.referred(def) {
-		r = intersect(r, ownRange(b.schema, withoutNull(def)))
+		// A bound can sit next to the null alternative or on it.
+		r = intersect(r, ownRange(b.schema, def))
+		if inner := withoutNull(def); inner != def {
+			r = intersect(r, ownRange(b.schema, inner))
+		}
 	}
 	return r
 }

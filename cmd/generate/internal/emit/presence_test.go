@@ -145,6 +145,28 @@ func TestHolder_UnmarshalJSON_NamesThePathOfANestedMember(t *testing.T) {
 	}
 }
 
+// A decode replaces the value it decodes into, so a field that a reused value
+// holds from before neither hides an absent required member nor survives.
+// Every other required member decodes to a value that is not zero, so only
+// the reused count could hide the absent one.
+func TestConfig_UnmarshalJSON_ReplacesAReusedValue(t *testing.T) {
+	const others = "\"args\":[\"a\"],\"flag\":true,\"free\":{\"k\":1},\"inner\":{\"note\":\"x\"},\"maybe\":\"m\",\"name\":\"n\",\"version\":1"
+	tests := []struct{ in, want string }{
+		{"{" + others + "}", "missing member Config.count int"},
+		{"{\"count\":null," + others + "}", "null Config.count int"},
+	}
+	for _, tt := range tests {
+		c := Config{Count: 5}
+		if got := typeError(json.Unmarshal([]byte(tt.in), &c)); got != tt.want {
+			t.Errorf("%s into a reused Config: error %s, want %s", tt.in, got, tt.want)
+		}
+	}
+	c := Config{Title: "old"}
+	if err := json.Unmarshal([]byte(config), &c); err != nil || c.Title != "" {
+		t.Errorf("reused Config decodes %s to title %q (error %v), want no title", config, c.Title, err)
+	}
+}
+
 func TestServer_UnmarshalJSON_RejectsAVariantWithoutARequiredMember(t *testing.T) {
 	var s Server
 	if err := json.Unmarshal([]byte(` + "`" + `{"type":"http"}` + "`" + `), &s); err == nil {

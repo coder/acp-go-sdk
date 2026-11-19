@@ -433,6 +433,98 @@ func TestConnection_RequestHandlerGetsResponseWhileHandlerWaitsOnPeer(t *testing
 	}
 }
 
+// A ctx that outlives the handler of a request from the peer, such as one from
+// context.WithoutCancel, gets the full wait: once the handler has returned, the
+// peer no longer waits for its answer.
+func TestConnection_RequestHandlerCtxGetsFullWaitAfterHandlerReturns(t *testing.T) {
+	aReader, bWriter := io.Pipe()
+	bReader, aWriter := io.Pipe()
+	t.Cleanup(func() {
+		_ = aWriter.Close()
+		_ = bWriter.Close()
+	})
+	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	handlerCtx := make(chan context.Context, 1)
+	notificationDone := make(chan error, 1)
+	var a *Connection
+	a = NewConnection(func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		switch method {
+		case "notification":
+			_, err := SendRequest[json.RawMessage](a, ctx, "ask", nil)
+			notificationDone <- err
+			return nil, nil
+		case "callback":
+			handlerCtx <- context.WithoutCancel(ctx)
+			return map[string]bool{"ok": true}, nil
+		default:
+			return nil, NewMethodNotFound(method)
+		}
+	}, aWriter, aReader)
+	a.SetLogger(discard)
+	askArrived := make(chan struct{})
+	answerAsk := make(chan struct{})
+	b := NewConnection(func(ctx context.Context, method string, _ json.RawMessage) (any, *RequestError) {
+		switch method {
+		case "ask":
+			close(askArrived)
+			select {
+			case <-answerAsk:
+				return map[string]bool{"ok": true}, nil
+			case <-ctx.Done():
+				return nil, toReqErr(ctx.Err())
+			}
+		case "lookup":
+			return map[string]bool{"ok": true}, nil
+		default:
+			return nil, NewMethodNotFound(method)
+		}
+	}, bWriter, bReader)
+	b.SetLogger(discard)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := SendRequest[json.RawMessage](b, ctx, "callback", nil); err != nil {
+		t.Fatalf("callback error = %v", err)
+	}
+	outlivingCtx := <-handlerCtx
+	if err := b.SendNotification(ctx, "notification", nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-askArrived:
+	case <-ctx.Done():
+		t.Fatal("notification handler's request did not arrive")
+	}
+	lookupDone := make(chan error, 1)
+	go func() {
+		_, err := SendRequest[json.RawMessage](a, outlivingCtx, "lookup", nil)
+		lookupDone <- err
+	}()
+	select {
+	case err := <-lookupDone:
+		t.Fatalf("request returned (err = %v) while the notification handler still ran", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(answerAsk)
+	select {
+	case err := <-lookupDone:
+		if err != nil {
+			t.Fatalf("lookup error = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("lookup did not return")
+	}
+	select {
+	case err := <-notificationDone:
+		if err != nil {
+			t.Fatalf("notification handler's request error = %v", err)
+		}
+	default:
+		t.Fatal("request returned before the notification handler")
+	}
+}
+
 // outboundRequestID waits for our request with method and returns its id.
 func (p *inboundBarrierTestPeer) outboundRequestID(t *testing.T, method string) any {
 	t.Helper()

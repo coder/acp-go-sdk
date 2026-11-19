@@ -478,9 +478,6 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}}, Description: "HTTP."}}},
 		"Mode":   {Type: "string", Enum: []any{"ask"}},
-		"Item":   {Type: "object", AllOf: []*Definition{ref("Base")}},
-		"Base":   {Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
-		"Extra":  {Type: "object", Properties: map[string]*Definition{"extra": {Type: "string", Description: "Extra."}}},
 	}}
 	unstableSchema := &Schema{Defs: map[string]*Definition{
 		"Caps": {Type: "object", Properties: map[string]*Definition{
@@ -495,15 +492,10 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		}},
 		"Server": {AnyOf: []*Definition{{Properties: map[string]*Definition{"type": {Const: "http"}, "url": {Type: "string", Description: "The URL."}}, Description: "HTTP."}}},
 		"Mode":   {Type: "string", Enum: []any{"ask", "auto"}},
-		"Item": {Type: "object", AllOf: []*Definition{
-			ref("Base"), ref("Extra"), {Type: "object", Properties: map[string]*Definition{"inline": {Type: "string"}}},
-		}},
-		"Base":  {Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
-		"Extra": {Type: "object", Properties: map[string]*Definition{"extra": {Type: "string", Description: "Extra."}}},
 	}}
 	for _, schema := range []*Schema{stableSchema, unstableSchema} {
 		schema.Defs["InitRequest"] = &Definition{Type: "object", XMethod: "init", XSide: "agent", Properties: map[string]*Definition{
-			"caps": ref("Caps"), "server": ref("Server"), "mode": ref("Mode"), "item": ref("Item"),
+			"caps": ref("Caps"), "server": ref("Server"), "mode": ref("Mode"),
 		}}
 	}
 	meta := &Meta{Version: 1, AgentMethods: map[string]string{"init": "init"}}
@@ -528,24 +520,6 @@ func TestMergeStableAndUnstable_MarksNestedAndEnumAdditions(t *testing.T) {
 		if !want {
 			t.Errorf("%s description = %q", where, got)
 		}
-	}
-	// An added allOf part marks the properties that it brings into Item. A
-	// part that refers to Extra becomes an inline copy, so that Extra itself
-	// stays as it is.
-	item := combined.Defs["Item"].AllOf
-	if len(item) != 3 || item[0].Ref != "#/$defs/Base" || item[1].Ref != "" {
-		t.Fatalf("Item.allOf = %+v, want Base, an inline copy of Extra, and the inline part", item)
-	}
-	for where, got := range map[string]string{
-		"Item allOf Extra.extra": item[1].Properties["extra"].Description,
-		"Item allOf inline":      item[2].Properties["inline"].Description,
-	} {
-		if !strings.HasPrefix(got, unstableNote) {
-			t.Errorf("%s description = %q", where, got)
-		}
-	}
-	if got := combined.Defs["Extra"].Properties["extra"].Description; got != "Extra." {
-		t.Errorf("Extra.extra description = %q, want it unmarked", got)
 	}
 	if got := combined.Defs["Mode"].EnumNotes; len(got) != 1 || got["auto"] != unstableNote {
 		t.Errorf("Mode.EnumNotes = %v, want the note on auto only", got)
@@ -694,9 +668,9 @@ func dropEmpty(v any) any {
 }
 
 // The unstable version of a shared definition replaces the stable one, so it
-// may only add to it: properties, alternatives, allOf parts, enum values, and
-// descriptions. Any other change would change a stable Go type, so the merge
-// fails and names each change.
+// may only add to it: properties, alternatives, enum values, and descriptions.
+// Any other change would change a stable Go type, so the merge fails and names
+// each change.
 func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 	str := func() *Definition { return &Definition{Type: "string"} }
 	obj := func(props map[string]*Definition, required ...string) *Definition {
@@ -789,6 +763,19 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			stable:   map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask", "auto"}}},
 			unstable: map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask"}}},
 			want:     []string{`Mode: removes enum value auto`},
+		},
+		{
+			// The emitter takes the Go type of a node from its allOf parts.
+			name:     "a property gains an allOf reference",
+			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"cwd": str()}), "Cost": obj(map[string]*Definition{"amount": str()})},
+			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"cwd": {Type: "string", AllOf: []*Definition{ref("Cost")}}}), "Cost": obj(map[string]*Definition{"amount": str()})},
+			want:     []string{`Options.cwd: adds allOf part 0, which can change its Go type`},
+		},
+		{
+			name:     "a definition gains an allOf part",
+			stable:   map[string]*Definition{"Item": {Type: "object", AllOf: []*Definition{ref("Base")}}, "Base": obj(nil), "Extra": obj(nil)},
+			unstable: map[string]*Definition{"Item": {Type: "object", AllOf: []*Definition{ref("Base"), ref("Extra")}}, "Base": obj(nil), "Extra": obj(nil)},
+			want:     []string{`Item: adds allOf part 1, which can change its Go type`},
 		},
 		{
 			name:     "the items are removed",

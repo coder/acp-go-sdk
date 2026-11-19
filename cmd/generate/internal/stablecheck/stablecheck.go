@@ -136,7 +136,11 @@ func typecheck(fset *token.FileSet, imp types.Importer, pkgDir, genDir string) (
 			s.index(f)
 		}
 	}
-	s.info = &types.Info{Types: map[ast.Expr]types.TypeAndValue{}}
+	s.info = &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{},
+		Defs:  map[*ast.Ident]types.Object{},
+		Uses:  map[*ast.Ident]types.Object{},
+	}
 	conf := types.Config{Importer: imp, Error: func(error) {}}
 	s.pkg, _ = conf.Check("acp", fset, files, s.info)
 	return s, nil
@@ -286,18 +290,22 @@ func bodyChanges(old, new *side) []string {
 }
 
 // newProjection returns the projection for a function, or for a method of
-// recv. The stable names are the fields of a struct receiver, else the
-// package-level names of old's generated files, such as the constants of an
-// enum. The added names are the fields that new adds to the receiver and the
-// package-level names that only new declares.
+// recv, in a body of new. The stable names are the fields of a struct
+// receiver, else the package-level names of old's generated files, such as
+// the constants of an enum. The added names are the fields that new adds to
+// the receiver and the package-level names that only new declares.
 func newProjection(old, new *side, recv string, isMethod bool) *projection {
-	p := &projection{stable: old.declared, added: map[string]bool{}, addedFields: map[string]bool{}, guards: map[string]*ast.IfStmt{}}
+	p := &projection{
+		info: new.info, scope: new.pkg.Scope(),
+		stable: old.declared, added: map[string]bool{}, addedFields: map[string]bool{},
+		guards: map[string]*ast.IfStmt{},
+	}
 	if stable, ok := old.fields(recv); isMethod && ok {
-		p.stable = stable
+		p.stable, p.stableFields = nil, stable
 		fields, _ := new.fields(recv)
 		for field := range fields {
 			if !stable[field] {
-				p.added[field], p.addedFields[field] = true, true
+				p.addedFields[field] = true
 			}
 		}
 	}
@@ -322,10 +330,13 @@ func sortedKeys[V any](m map[string]V) []string {
 // added and to none in stable. It records the removed statements that can
 // return with a nil error.
 type projection struct {
-	stable, added map[string]bool
-	// addedFields holds the fields of the receiver type in added.
-	addedFields map[string]bool
-	early       []ast.Node
+	info  *types.Info
+	scope *types.Scope
+	// stable and added hold package-level names, stableFields and
+	// addedFields the names of the fields of a struct receiver.
+	stable, added             map[string]bool
+	stableFields, addedFields map[string]bool
+	early                     []ast.Node
 	// guards holds the removed if statements without init or else, by the
 	// text of their condition.
 	guards map[string]*ast.IfStmt
@@ -362,17 +373,39 @@ func (p *projection) acceptRejected(old *ast.BlockStmt) {
 	})
 }
 
-// refers reports whether n names something in added, and something in
-// stable.
+// refers reports whether n names something added, and something stable.
 func (p *projection) refers(n ast.Node) (added, stable bool) {
 	ast.Inspect(n, func(n ast.Node) bool {
 		if id, ok := n.(*ast.Ident); ok {
-			added = added || p.added[id.Name]
-			stable = stable || p.stable[id.Name]
+			a, s := p.names(id)
+			added, stable = added || a, stable || s
 		}
 		return true
 	})
 	return added, stable
+}
+
+// names reports whether id stands for an added name and for a stable one,
+// by the object that it denotes: a field, of the receiver or of a local
+// struct type that mirrors it, stands only for a field name, a
+// package-level object only for a package-level name, and a local object,
+// such as the type Alias of a MarshalJSON, for neither. An identifier that
+// the type checker did not resolve stands for what it spells.
+func (p *projection) names(id *ast.Ident) (added, stable bool) {
+	obj := p.info.Uses[id]
+	if obj == nil {
+		obj = p.info.Defs[id]
+	}
+	field, isVar := obj.(*types.Var)
+	switch {
+	case obj == nil:
+		return p.added[id.Name] || p.addedFields[id.Name], p.stable[id.Name] || p.stableFields[id.Name]
+	case isVar && field.IsField():
+		return p.addedFields[id.Name], p.stableFields[id.Name]
+	case obj.Parent() == p.scope:
+		return p.added[id.Name], p.stable[id.Name]
+	}
+	return false, false
 }
 
 // block removes from b, at any depth, what refers only to added names: a
@@ -469,8 +502,10 @@ func (p *projection) earlyReturns(name string, body *ast.BlockStmt) []string {
 	for _, n := range p.early {
 		var later string
 		ast.Inspect(body, func(m ast.Node) bool {
-			if id, ok := m.(*ast.Ident); ok && later == "" && p.stable[id.Name] && id.Pos() > n.Pos() {
-				later = id.Name
+			if id, ok := m.(*ast.Ident); ok && later == "" && id.Pos() > n.Pos() {
+				if _, stable := p.names(id); stable {
+					later = id.Name
+				}
 			}
 			return later == ""
 		})
@@ -485,8 +520,10 @@ func (p *projection) earlyReturns(name string, body *ast.BlockStmt) []string {
 func (p *projection) firstStable(n ast.Node) string {
 	name := ""
 	ast.Inspect(n, func(n ast.Node) bool {
-		if id, ok := n.(*ast.Ident); ok && name == "" && p.stable[id.Name] {
-			name = id.Name
+		if id, ok := n.(*ast.Ident); ok && name == "" {
+			if _, stable := p.names(id); stable {
+				name = id.Name
+			}
 		}
 		return name == ""
 	})
@@ -498,12 +535,14 @@ func (p *projection) firstStable(n ast.Node) string {
 func (p *projection) firstAdded(n ast.Node) string {
 	field, name := "", ""
 	ast.Inspect(n, func(n ast.Node) bool {
-		if id, ok := n.(*ast.Ident); ok && p.added[id.Name] {
-			if field == "" && p.addedFields[id.Name] {
-				field = id.Name
-			}
-			if name == "" {
-				name = id.Name
+		if id, ok := n.(*ast.Ident); ok {
+			if added, _ := p.names(id); added {
+				if field == "" && p.addedFields[id.Name] {
+					field = id.Name
+				}
+				if name == "" {
+					name = id.Name
+				}
 			}
 		}
 		return field == ""

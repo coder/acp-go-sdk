@@ -135,9 +135,10 @@ func TestCompare_AllowsAdditions(t *testing.T) {
 		defs["Tone"].Enum = []any{"warm", "cool", "other"}
 		// A decoder for a hint of an added property only handles it.
 		defs["Plain"].Properties["level"] = &load.Definition{Type: "string", Default: "low", DefaultOnError: true}
-		// The field Alias shares its name with the local type of the
-		// stable MarshalJSON of Update.
+		// The fields Alias and Update share their names with the local
+		// type and the receiver type of the stable MarshalJSON of Update.
 		defs["Update"].Properties["alias"] = str()
+		defs["Update"].Properties["update"] = str()
 	}))
 	if err != nil {
 		t.Fatal(err)

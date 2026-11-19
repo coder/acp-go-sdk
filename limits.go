@@ -28,7 +28,9 @@ const (
 // request is held until its reply is written, and a notification until its
 // handler returns. A request that does not fit gets a -32603 reply, and its
 // handler does not run. A notification that does not fit closes the
-// connection. The default is 64 MiB. WithByteBudget panics if n < 1.
+// connection. Responses to this side's own requests do not count, nor does the
+// line that the connection is reading, which can be up to 10 MiB. The default
+// is 64 MiB. WithByteBudget panics if n < 1.
 func WithByteBudget(n int) ConnectionOption {
 	mustBePositive("WithByteBudget", n)
 	return func(l *connectionLimits) { l.byteBudget = n }

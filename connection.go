@@ -530,7 +530,7 @@ func (c *Connection) receive() {
 			}
 
 			if !c.budget.holdNotification(size) {
-				c.loggerOrDefault().Error("notification does not fit the byte budget; closing connection", "err", errByteBudgetExceeded, "size", size, "budget", c.budget.maxBytes)
+				c.loggerOrDefault().Error("notification does not fit the byte budget; closing connection", "err", errByteBudgetExceeded, "method", msg.Method, "size", size, "budget", c.budget.maxBytes)
 				c.shutdownReceive(errByteBudgetExceeded)
 				return
 			}

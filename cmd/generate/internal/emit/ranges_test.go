@@ -15,7 +15,7 @@ import (
 // int64, a nested struct, and a patch field. Spot.line and the items of marks
 // are lenient sites, and maybe is a lenient site that holds a struct with a
 // uint64. tight, the items of caps and Spot.col put a bound next to a $ref or
-// an allOf, which has no type of its own.
+// an allOf, which has no type of its own, and frac has bounds 0.5 and 1e1.
 const integerRangesSchema = `{"$defs": {
   "Version": {"type": "integer", "format": "uint16", "minimum": 0, "maximum": 65535},
   "Level": {"type": "integer", "format": "int32", "minimum": 1, "maximum": 10},
@@ -32,6 +32,7 @@ const integerRangesSchema = `{"$defs": {
     "lines": {"type": "array", "items": {"type": "integer", "format": "uint32", "minimum": 0}},
     "levels": {"type": "object", "additionalProperties": {"$ref": "#/$defs/Level"}},
     "narrow": {"type": ["integer", "null"], "format": "uint32", "minimum": 5, "maximum": 10},
+    "frac": {"type": ["integer", "null"], "minimum": 0.5, "maximum": 1e1},
     "tight": {"anyOf": [{"$ref": "#/$defs/Version", "minimum": 1}, {"type": "null"}]},
     "caps": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/Version"}], "maximum": 10}},
     "big": {"type": ["integer", "null"], "format": "int64"},
@@ -75,6 +76,9 @@ func TestPingRequest_Validate_ChecksIntegerRanges(t *testing.T) {
 		{"explicit bounds", with(` + "`" + `"narrow":5` + "`" + `), ""},
 		{"below explicit bounds", with(` + "`" + `"narrow":4` + "`" + `), "narrow must be between 5 and 10"},
 		{"above explicit bounds", with(` + "`" + `"narrow":11` + "`" + `), "narrow must be between 5 and 10"},
+		{"bounds that are not integer text", with(` + "`" + `"frac":1` + "`" + `), ""},
+		{"below a fractional minimum", with(` + "`" + `"frac":0` + "`" + `), "frac must be between 1 and 10"},
+		{"above a maximum in exponent form", with(` + "`" + `"frac":11` + "`" + `), "frac must be between 1 and 10"},
 		{"bound beside a $ref", with(` + "`" + `"tight":1` + "`" + `), ""},
 		{"below a bound beside a $ref", with(` + "`" + `"tight":0` + "`" + `), "tight must be between 1 and 65535"},
 		{"item above a bound beside an allOf", with(` + "`" + `"caps":[10,11]` + "`" + `), "caps[1] must be between 0 and 10"},
@@ -145,6 +149,35 @@ func errorText(err error) string {
 
 func TestWriteTypesJen_ValidateChecksIntegerRanges(t *testing.T) {
 	checkGenerated(t, integerRangesSchema, map[string]string{"ranges_test.go": integerRangesTest})
+}
+
+// wideRangesSchema has integers without a format, whose Go type is int, with
+// bounds that an int on a 32-bit target cannot hold.
+const wideRangesSchema = `{"$defs": {
+  "Plain": {"type": "integer"},
+  "WideRequest": {"type": "object", "properties": {
+    "high": {"type": ["integer", "null"], "maximum": 4294967295},
+    "low": {"type": ["integer", "null"], "minimum": -4294967296},
+    "count": {"anyOf": [{"$ref": "#/$defs/Plain", "maximum": 4294967296}, {"type": "null"}]}}}
+}}`
+
+const wideRangesTest = `package acp
+
+import "testing"
+
+func TestWideRequest_Validate_ChecksWideBounds(t *testing.T) {
+	one, plain := 1, Plain(1)
+	req := WideRequest{High: &one, Low: &one, Count: &plain}
+	if err := req.Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil", err)
+	}
+}
+`
+
+// A bound that does not fit an int32 compiles on a 32-bit target too.
+func TestWriteTypesJen_RangeChecksCompileOn32BitTargets(t *testing.T) {
+	checkGenerated(t, wideRangesSchema, map[string]string{"wide_test.go": wideRangesTest})
+	checkGenerated(t, wideRangesSchema, map[string]string{"wide_test.go": wideRangesTest}, "GOARCH=386")
 }
 
 // A format that formatRanges does not know stops the generator, so that a

@@ -14,6 +14,7 @@ go build ./...
 | Required members are checked at every depth | [Required members](#required-members) |
 | A `null` item of a string array, or a `null` value of a string map, fails to decode | [Null items and map values](#null-items-and-map-values) |
 | A required member that is missing, or `null` where the schema does not allow it, fails to decode | [Missing and null required members](#missing-and-null-required-members) |
+| An integer out of the range of its schema fails `Validate`, or reads as unset where the schema tolerates a bad value | [Integer ranges](#integer-ranges) |
 
 ## Required members
 
@@ -217,3 +218,50 @@ Every member that the rules above let through when it was missing or `null`, and
 | `UnstableSetSessionTitleResponse` | `title`: missing or `null` | `session/set_title` response to the client |
 
 The rows come from the generated decoders of this release and of the checks above: each `requireMember` call on a path from a message that a connection reads, without the members that `Validate` or the choice of a union variant already rejected, and without lenient properties.
+
+## Integer ranges
+
+Since v0.20.0 an integer of format `uint32` or `uint64` is an `int64`, and one of format `int32` or `uint16` is an `int`, and the SDK checked neither `format` nor `minimum` and `maximum`. So `"line": -1` in `fs/read_text_file` reached `Client.ReadTextFile`, and `"protocolVersion": 70000` reached `Agent.Initialize`. The Rust SDK reads each integer as the Rust type that its format names (`i32`, `u16`, `u32`, `u64`) and fails the message, so v0.21.0 checks the range: the format's range, narrowed by `minimum` and `maximum`.
+
+- `Validate` checks every integer that a field holds, required, optional, an item or a map member, also through a named type such as `ProtocolVersion`. A request out of range gets `-32602` and a notification is dropped, with an error such as `line must be between 0 and 4294967295`, `outputByteLimit must be at least 0` or `update: used must be at least 0`.
+- A property with `x-deserialize-default-on-error`, such as `line` of a tool call location or an `exitCode`, reads a value out of range as unset and keeps the object around it, as the Rust SDK does. So does a lenient property that holds an object with an integer out of range: `"usage": {"totalTokens": -1, ...}` of a `session/prompt` result reads as no usage.
+- An integer of format `int64`, such as `size` of a resource link, needs no check: an `int64` holds every value.
+- A `uint64` above `math.MaxInt64` still fails to decode, as in v0.20.0, because an `int64` cannot hold it. The Rust SDK accepts it.
+- `minLength` and `minItems`, such as a `notice` with `"title": ""` or a prompt suggestion with `"prompt": []`, and the string format `uri` are not checked. The Rust SDK does not check them either.
+
+Every property that now rejects an integer out of range, or reads it as unset:
+
+| Type | Property | Allowed | Where it arrives, and what a value out of range does there |
+| --- | --- | --- | --- |
+| `CreateTerminalRequest` | `outputByteLimit` | at least 0 | `terminal/create` request to the client: -32602, no handler call |
+| `ElicitationPropertySchemaArray` | `maxItems` | at least 0 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
+| `ElicitationPropertySchemaArray` | `minItems` | at least 0 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
+| `ElicitationPropertySchemaString` | `maxLength` | between 0 and 4294967295 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
+| `ElicitationPropertySchemaString` | `minLength` | between 0 and 4294967295 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
+| `Error` | `code` | between -2147483648 and 2147483647 | `session/update` notification to the client, in `update.state.error`: `update.state.error` reads as unset |
+| `InitializeRequest` | `protocolVersion` | between 0 and 65535 | `initialize` request to the agent: -32602, no handler call |
+| `InitializeResponse` | `protocolVersion` | between 0 and 65535 | `initialize` response to the client: not checked, because the SDK does not call `Validate` on a response |
+| `MultiSelectPropertySchema` | `maxItems` | at least 0 | no message carries it; `Validate` reports it when you call it |
+| `MultiSelectPropertySchema` | `minItems` | at least 0 | no message carries it; `Validate` reports it when you call it |
+| `ReadTextFileRequest` | `limit` | between 0 and 4294967295 | `fs/read_text_file` request to the client: -32602, no handler call |
+| `ReadTextFileRequest` | `line` | between 0 and 4294967295 | `fs/read_text_file` request to the client: -32602, no handler call |
+| `SessionUsageUpdate` | `size` | at least 0 | `session/update` notification to the client, in `update`: dropped, no handler call |
+| `SessionUsageUpdate` | `used` | at least 0 | `session/update` notification to the client, in `update`: dropped, no handler call |
+| `StringPropertySchema` | `maxLength` | between 0 and 4294967295 | no message carries it; `Validate` reports it when you call it |
+| `StringPropertySchema` | `minLength` | between 0 and 4294967295 | no message carries it; `Validate` reports it when you call it |
+| `TerminalExitStatus` | `exitCode` | between 0 and 4294967295 | `terminal/output` response to the agent, in `exitStatus`: `exitStatus.exitCode` reads as unset |
+| `ToolCallLocation` | `line` | between 0 and 4294967295 | `session/request_permission` request to the client, in `toolCall.locations[]`: `toolCall.locations[].line` reads as unset; `session/update` notification to the client, in `update.locations[]`: `update.locations[].line` reads as unset |
+| `UnstableMcpError` | `code` | between -2147483648 and 2147483647 | `mcp/message` response to the agent, in `error`: not checked, because the SDK does not call `Validate` on a response |
+| `Usage` | `cachedReadTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage.cachedReadTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.cachedReadTokens` reads as unset |
+| `Usage` | `cachedWriteTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage.cachedWriteTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.cachedWriteTokens` reads as unset |
+| `Usage` | `inputTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
+| `Usage` | `outputTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
+| `Usage` | `thoughtTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage.thoughtTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.thoughtTokens` reads as unset |
+| `Usage` | `totalTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
+| `UsageUpdate` | `size` | at least 0 | no message carries it; `Validate` reports it when you call it |
+| `UsageUpdate` | `used` | at least 0 | no message carries it; `Validate` reports it when you call it |
+| `WaitForTerminalExitResponse` | `exitCode` | between 0 and 4294967295 | `terminal/wait_for_exit` response to the agent: `exitCode` reads as unset |
+
+The rows come from the generated code: the range checks of each `Validate`, and the ranges in the shapes of the lenient decoders, followed from each method that the connection reads.
+
+These types get a `Validate` method, because they check a range or hold a type that does: `ElicitationPropertySchemaString`, `SessionUsageUpdate`, `StringPropertySchema`, `UnstableMcpError`, `UnstableMessageMcpError`, `UsageUpdate`, `Usage`.

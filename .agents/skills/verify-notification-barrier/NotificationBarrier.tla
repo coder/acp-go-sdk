@@ -508,7 +508,8 @@ EntersBarrier(r) ==
 \* the one of notification completed + 1, has a request that waits on the
 \* peer: !(stopAtPeerWait && c.peerWaits[c.completedNotificationSeq+1] > 0).
 \* So does InCall after its response: waitNotificationsUpTo sets
-\* stopAtPeerWait for the reqCtx of a request handler.
+\* stopAtPeerWait for the reqCtx of a request handler that still runs, and
+\* InCall's handler waits for it.
 StopsAtPeerWait(r) ==
     /\ \/ r \in InReqs /\ InboundStopsAtPeerWait
        \/ r \in InCalls /\ RequestCtxStopsAtPeerWait

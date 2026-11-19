@@ -49,6 +49,7 @@ COVERED=(
 	"func (c *Connection) SendRequestNoResult("
 	"func (c *Connection) waitForResponse("
 	"func (c *Connection) waitNotificationsUpTo("
+	"func (c *Connection) runningRequestHandler("
 	"func (c *Connection) waitNotifications("
 	"func (c *Connection) startPeerWait("
 	"func (c *Connection) waitInboundBarrier("
@@ -131,6 +132,7 @@ B_resp=$(need_body "func (c *Connection) handleResponse(")
 B_send=$(need_body "func SendRequest[T any](c *Connection,")
 B_sendnr=$(need_body "func (c *Connection) SendRequestNoResult(")
 B_upto=$(need_body "func (c *Connection) waitNotificationsUpTo(")
+B_running=$(need_body "func (c *Connection) runningRequestHandler(")
 B_wait=$(need_body "func (c *Connection) waitNotifications(")
 B_peer=$(need_body "func (c *Connection) startPeerWait(")
 B_inb=$(need_body "func (c *Connection) waitInboundBarrier(")
@@ -281,14 +283,19 @@ else
 	InboundStopsAtPeerWait=FALSE
 fi
 
-# After its response, a request that a request handler makes with its reqCtx
-# also stops at a peer wait. That needs the handlingRequest value on reqCtx,
-# the handler call with reqCtx, and waitNotificationsUpTo setting
-# stopAtPeerWait for that value.
-UPTO_CTX="h, ok := ctx.Value(handlingRequestKey{}).(handlingRequest)"
-UPTO_STOP="return c.waitNotifications(ctx, target, ok && h.conn == c)"
+# After its response, a request that a running request handler makes with its
+# reqCtx also stops at a peer wait. That needs the handlingRequest value on
+# reqCtx, the handler call with reqCtx, and waitNotificationsUpTo setting
+# stopAtPeerWait for that value while the handler's arrival is in flight. The
+# model's InCall runs while its handler runs, so the in-flight check holds.
+UPTO_STOP="return c.waitNotifications(ctx, target, c.runningRequestHandler(ctx))"
+RUNNING_CTX="h, ok := ctx.Value(handlingRequestKey{}).(handlingRequest)"
+RUNNING_LOOKUP="_, running := c.inflightArrivals[h.arrival]"
 REQ_CTX="reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})"
-if has "$B_upto" "$UPTO_CTX" && has "$B_upto" "$UPTO_STOP"; then
+if has "$B_upto" "$UPTO_STOP"; then
+	if ! has "$B_running" "$RUNNING_CTX" || ! has "$B_running" "$RUNNING_LOOKUP"; then
+		drift "runningRequestHandler no longer looks up the handler's arrival in c.inflightArrivals"
+	fi
 	upto_stop=TRUE
 elif has "$B_upto" "return c.waitNotifications(ctx, target, false)"; then
 	upto_stop=FALSE

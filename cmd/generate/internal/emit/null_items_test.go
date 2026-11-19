@@ -4,7 +4,8 @@ import "testing"
 
 // nullItemsSchema has arrays and maps of scalars, as AuthMethodTerminal has
 // args and env and NewSessionRequest has additionalDirectories, next to fields
-// whose schema or hints let null through. Change has a patch field, as
+// whose schema or hints let null through. wrapped takes its item type through
+// an allOf, as a property does. Change has a patch field, as
 // SubagentUpdate has, and Target an own property of a union wrapper.
 const nullItemsSchema = `{"$defs": {
   "Kind": {"type": "string", "enum": ["read", "edit"]},
@@ -15,6 +16,7 @@ const nullItemsSchema = `{"$defs": {
     "env": {"type": ["object", "null"], "additionalProperties": {"type": "string"}},
     "counts": {"type": "array", "items": {"type": "integer"}},
     "kinds": {"type": "array", "items": {"$ref": "#/$defs/Kind"}},
+    "wrapped": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/Kind"}]}},
     "optional": {"type": "array", "items": {"type": ["string", "null"]}},
     "tags": {"type": "array", "items": {"type": "string"}, "x-deserialize-skip-invalid-items": true},
     "labels": {"type": "object", "additionalProperties": {"type": "string"}, "x-deserialize-default-on-error": true}
@@ -57,6 +59,7 @@ func TestConfig_UnmarshalJSON_RejectsNullItemsAndValues(t *testing.T) {
 		{"string map value", ` + "`" + `{"args":[],"env":{"A":"1","B":null}}` + "`" + `, "env"},
 		{"integer item", ` + "`" + `{"args":[],"counts":[1,null]}` + "`" + `, "counts"},
 		{"enum item", ` + "`" + `{"args":[],"kinds":["read",null]}` + "`" + `, "kinds"},
+		{"enum item through allOf", ` + "`" + `{"args":[],"wrapped":["read",null]}` + "`" + `, "wrapped"},
 	}
 	for _, tt := range tests {
 		var c Config

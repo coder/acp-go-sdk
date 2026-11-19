@@ -8,7 +8,7 @@ import "testing"
 // x-deserialize-default-on-null, and a free value. Server is a union whose
 // http variant needs url, as McpServer has it, and Scoped a union wrapper
 // with an own required property, as the form mode of CreateElicitationRequest
-// has requestedSchema.
+// has requestedSchema. Raw has a required member of raw JSON.
 const presenceSchema = `{"$defs": {
   "Inner": {"type": "object", "properties": {"note": {"type": "string"}}},
   "Version": {"type": "integer", "format": "uint16"},
@@ -24,6 +24,8 @@ const presenceSchema = `{"$defs": {
       "args": {"type": "array", "items": {"type": "string"}, "x-deserialize-default-on-null": true},
       "free": {},
       "title": {"type": "string"}}},
+  "Raw": {"type": "object", "required": ["value"], "properties": {
+    "value": {"anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "boolean"}]}}},
   "Holder": {"type": "object", "required": ["config"], "properties": {
     "config": {"$ref": "#/$defs/Config"},
     "more": {"type": "array", "items": {"$ref": "#/$defs/Config"}}}},
@@ -164,6 +166,27 @@ func TestConfig_UnmarshalJSON_ChecksRequiredMembersOfAReusedValue(t *testing.T) 
 	c := Config{Title: "old"}
 	if err := json.Unmarshal([]byte(config), &c); err != nil || c.Title != "old" {
 		t.Errorf("reused Config decodes %s to title %q (error %v), want the title it held", config, c.Title, err)
+	}
+}
+
+// A required member whose Go type is raw JSON holds the bytes null for a
+// null, which is not its zero value.
+func TestRaw_UnmarshalJSON_RejectsANullRawMember(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"{\"value\":null}", "null Raw.value json.RawMessage"},
+		{"{}", "missing member Raw.value json.RawMessage"},
+	}
+	for _, tt := range tests {
+		var r Raw
+		if got := typeError(json.Unmarshal([]byte(tt.in), &r)); got != tt.want {
+			t.Errorf("%s: error %s, want %s", tt.in, got, tt.want)
+		}
+	}
+	for _, in := range []string{"{\"value\":\"s\"}", "{\"value\":1}"} {
+		var r Raw
+		if err := json.Unmarshal([]byte(in), &r); err != nil {
+			t.Errorf("%s: %v", in, err)
+		}
 	}
 }
 

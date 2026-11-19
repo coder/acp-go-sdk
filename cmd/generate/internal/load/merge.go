@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -306,15 +307,24 @@ type versions struct{ stable, unstable map[string]*Definition }
 // addition, at any depth. path names the node, and each line starts with it;
 // root is set for the definition itself. The nodes of s and u are paired as
 // markUnstableAdditions pairs them, and an alternative is named by its stable
-// index. u may add properties, alternatives to a union, and enum values, give
-// its default members for the properties that it adds, and change
-// descriptions. Any other change, such as a removed or newly required
-// property or a new type, changes the stable Go type. So does a new allOf
-// part, since the emitter takes the type of a node from its allOf parts
-// (jenTypeFor), and an alternative that makes a node a union: one without
-// alternatives, or, below the root, one whose alternatives are a value and
-// null, which a field holds as a pointer (jenTypeForOptional). Below the
-// root, a node without properties that gains some becomes a struct.
+// index.
+//
+// u may add properties, alternatives, and enum values, and default members
+// for the properties that it adds. Anything else changes the stable Go type
+// or how it decodes: a removed node, another keyword or required list, a
+// description that changes beyond its link targets (ir reads descriptions to
+// find Patch fields), and these additions, which change what the emitter
+// makes of a node:
+//   - an allOf part, since the type of a node comes from them (jenTypeFor);
+//   - alternatives on a node without any, or below the root on a value and
+//     null, which a field holds as a pointer (jenTypeForOptional);
+//   - an alternative that is not a string on a union of strings, which is a
+//     string type (isStringConstUnion, isOpenStringEnum);
+//   - an alternative that moves an anonymous one, whose type is named by its
+//     index (emitUnion);
+//   - the enum value "other", which unknown values then decode as;
+//   - below the root, properties on a node without any, which makes it a
+//     struct.
 func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) []string {
 	switch {
 	case s == nil && u == nil:
@@ -325,6 +335,9 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) 
 		return []string{path + ": added where the stable version has none"}
 	}
 	var out []string
+	if linkTargets.ReplaceAllString(s.Description, "") != linkTargets.ReplaceAllString(u.Description, "") {
+		out = append(out, path+": changes its description, which can change its Go type")
+	}
 	for name, sprop := range s.Properties {
 		out = append(out, vs.nonAdditiveChanges(sprop, u.Properties[name], path+"."+name, false)...)
 	}
@@ -336,19 +349,31 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) 
 		s, u    []*Definition
 	}{{"anyOf", s.AnyOf, u.AnyOf}, {"oneOf", s.OneOf, u.OneOf}, {"allOf", s.AllOf, u.AllOf}} {
 		match := map[*Definition]*Definition{}
-		added := false
+		index := map[*Definition]int{}
+		for i, spart := range parts.s {
+			index[spart] = i
+		}
+		var added []*Definition
 		for i, spart := range counterparts(parts.s, parts.u) {
+			_, identity := alternativeKey(spart)
 			switch {
+			case spart != nil && !identity && index[spart] != i && parts.keyword != "allOf" && !isStringUnion(parts.s) && !isNull(spart):
+				out = append(out, fmt.Sprintf("%s.%s[%d]: moves to %d, which renames its Go type", path, parts.keyword, index[spart], i))
+				fallthrough
 			case spart != nil:
 				match[spart] = parts.u[i]
 			case parts.keyword == "allOf":
 				out = append(out, fmt.Sprintf("%s: adds allOf part %d, which can change its Go type", path, i))
 			default:
-				added = true
+				added = append(added, parts.u[i])
 			}
 		}
-		if added && (len(parts.s) == 0 || !root && isNullable(parts.s)) {
+		switch {
+		case len(added) == 0:
+		case len(parts.s) == 0 || !root && isNullable(parts.s):
 			out = append(out, fmt.Sprintf("%s: becomes a union (%s), which changes its Go type", path, parts.keyword))
+		case isStringUnion(parts.s) && !isStringUnion(added):
+			out = append(out, fmt.Sprintf("%s: adds an alternative that is not a string (%s), which makes its Go type a union", path, parts.keyword))
 		}
 		for i, spart := range parts.s {
 			out = append(out, vs.nonAdditiveChanges(spart, match[spart], fmt.Sprintf("%s.%s[%d]", path, parts.keyword, i), false)...)
@@ -380,6 +405,9 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) 
 		if !values[fmt.Sprint(v)] {
 			out = append(out, fmt.Sprintf("%s: removes enum value %v", path, v))
 		}
+	}
+	if hasOther(u) && !hasOther(s) {
+		out = append(out, path+": adds the enum value \"other\", which unknown values then decode as")
 	}
 	if !vs.extendsDefault(s, u, s.Default, u.Default) {
 		out = append(out, fmt.Sprintf("%s: changes default from %s to %s", path, jsonText(s.Default), jsonText(u.Default)))
@@ -434,30 +462,73 @@ func (vs versions) extendsDefault(s, u *Definition, sv, uv any) bool {
 	return true
 }
 
-// properties returns the properties of d, or of the definition in defs that
-// d refers to with $ref or an allOf part.
+// properties returns the properties of d and of the definitions in defs that
+// d refers to with $ref or allOf parts, which the emitter merges (expandAllOf).
 func properties(d *Definition, defs map[string]*Definition) map[string]*Definition {
-	for seen := map[*Definition]bool{}; d != nil && !seen[d]; {
-		seen[d] = true
-		if len(d.Properties) > 0 {
-			return d.Properties
+	out := map[string]*Definition{}
+	seen := map[*Definition]bool{}
+	var collect func(*Definition)
+	collect = func(d *Definition) {
+		if d == nil || seen[d] {
+			return
 		}
-		ref := d.Ref
-		for _, part := range d.AllOf {
-			if ref == "" && part != nil {
-				ref = part.Ref
+		seen[d] = true
+		for name, prop := range d.Properties {
+			if out[name] == nil {
+				out[name] = prop
 			}
 		}
-		d = defs[strings.TrimPrefix(ref, "#/$defs/")]
+		collect(defs[strings.TrimPrefix(d.Ref, "#/$defs/")])
+		for _, part := range d.AllOf {
+			collect(part)
+		}
 	}
-	return nil
+	collect(d)
+	return out
 }
 
 // isNullable reports whether alts, the alternatives of a node, are a value
 // and null, which the emitter writes as a pointer to the value.
 func isNullable(alts []*Definition) bool {
-	return len(alts) == 2 && slices.ContainsFunc(alts, func(d *Definition) bool { return d != nil && d.Type == "null" })
+	return len(alts) == 2 && slices.ContainsFunc(alts, isNull)
 }
+
+func isNull(d *Definition) bool { return d != nil && d.Type == "null" }
+
+// isStringUnion reports whether alts are all strings, string constants or
+// plain strings, which the emitter writes as a string type with constants.
+func isStringUnion(alts []*Definition) bool {
+	return len(alts) > 0 && !slices.ContainsFunc(alts, func(d *Definition) bool {
+		if d == nil {
+			return true
+		}
+		if _, ok := d.Const.(string); ok {
+			return false
+		}
+		return d.Type != "string" || d.Const != nil || d.Ref != "" || len(d.Properties) > 0 || d.Items != nil ||
+			len(d.AnyOf) > 0 || len(d.OneOf) > 0 || len(d.AllOf) > 0 || len(d.Enum) > 0
+	})
+}
+
+// hasOther reports whether d, an enum or a union of string constants, has the
+// member "other", which the emitter decodes every unknown value as.
+func hasOther(d *Definition) bool {
+	for _, v := range d.Enum {
+		if v == "other" {
+			return true
+		}
+	}
+	for _, alt := range d.OneOf {
+		if alt != nil && alt.Const == "other" {
+			return true
+		}
+	}
+	return false
+}
+
+// linkTargets matches the targets of Markdown links, which the unstable
+// schema points at the draft docs from schema 1.27.0 on.
+var linkTargets = regexp.MustCompile(`\]\([^)]*\)`)
 
 // jsonText renders a keyword value as JSON. Members renders as its Open flag,
 // since nonAdditiveChanges compares its Schema on its own.

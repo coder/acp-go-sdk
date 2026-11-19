@@ -85,7 +85,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 	t.Run("a changed shared definition keeps its name and an unstable-only one is copied", func(t *testing.T) {
 		stableMeta := &Meta{Version: 1}
 		stableSchema := &Schema{Defs: map[string]*Definition{
-			"FooParams": {Description: "stable params", Type: "object"},
+			"FooParams": {Description: "Params.", Type: "object"},
 		}}
 
 		unstableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"foo": "unstable/foo"}}
@@ -98,7 +98,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 					"params": ref("FooParams"),
 				},
 			},
-			"FooParams":  {Description: "unstable params", Type: "object", Properties: map[string]*Definition{"opts": ref("FooOptions")}},
+			"FooParams":  {Description: "Params.", Type: "object", Properties: map[string]*Definition{"opts": ref("FooOptions")}},
 			"FooOptions": {Type: "object"},
 		}}
 
@@ -140,7 +140,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 					"leaf": ref("Leaf"),
 				},
 			},
-			"Leaf": {Description: "stable leaf", Type: "object"},
+			"Leaf": {Description: "A leaf.", Type: "object"},
 		}}
 
 		unstableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"foo": "unstable/foo"}}
@@ -161,7 +161,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 				},
 			},
 			// Changed descendant reachable only through unchanged Wrapper.
-			"Leaf": {Description: "unstable leaf", Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
+			"Leaf": {Description: "A leaf.", Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
 		}}
 
 		_, combinedSchema := mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
@@ -227,7 +227,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 		stableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"stableThing": "stable/method"}}
 		stableSchema := &Schema{Defs: map[string]*Definition{
 			"StableThingRequest": {
-				Description: "stable StableThingRequest",
+				Description: "A stable thing.",
 				Type:        "object",
 				XMethod:     "stable/method",
 				XSide:       "agent",
@@ -246,7 +246,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 			},
 			// Changed relative to stable (a new property), so it will be duplicated.
 			"StableThingRequest": {
-				Description: "unstable StableThingRequest",
+				Description: "A stable thing.",
 				Type:        "object",
 				XMethod:     "stable/method",
 				XSide:       "agent",
@@ -333,7 +333,7 @@ func TestMergeStableAndUnstable(t *testing.T) {
 		stableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"stable": "stable/method"}}
 		unstableMeta := &Meta{Version: 1, AgentMethods: map[string]string{"foo": "unstable/foo"}}
 
-		stableParams := &Definition{Description: "stable params", Type: "object"}
+		stableParams := &Definition{Description: "Params.", Type: "object"}
 		stableReq := &Definition{
 			Type:    "object",
 			XMethod: "stable/method",
@@ -356,13 +356,13 @@ func TestMergeStableAndUnstable(t *testing.T) {
 					"params": ref("FooParams"),
 				},
 			},
-			"FooParams": {Description: "unstable params", Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
+			"FooParams": {Description: "Params.", Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}},
 		}}
 
 		_, _ = mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
 
-		if got := stableSchema.Defs["FooParams"].Description; got != "stable params" {
-			t.Fatalf("expected stable FooParams description to remain unchanged; got %q", got)
+		if got := stableSchema.Defs["FooParams"].Properties; len(got) != 0 {
+			t.Fatalf("expected stable FooParams to remain without properties; got %v", got)
 		}
 		if got := stableSchema.Defs["StableRequest"].Properties["params"].Ref; got != "#/$defs/FooParams" {
 			t.Fatalf("expected stable StableRequest refs to remain unchanged; got %q", got)
@@ -811,6 +811,38 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			want:     []string{`Options.settings: changes default from {} to {"mode":"auto"}`},
 		},
 		{
+			// A union of strings is a string type with constants.
+			name:     "a union of strings gains another alternative",
+			stable:   map[string]*Definition{"Category": {AnyOf: []*Definition{{Type: "string", Const: "mode"}, str()}}},
+			unstable: map[string]*Definition{"Category": {AnyOf: []*Definition{{Type: "string", Const: "mode"}, str(), {Type: "integer"}}}},
+			want:     []string{`Category: adds an alternative that is not a string (anyOf), which makes its Go type a union`},
+		},
+		{
+			// An anonymous variant is named by its index.
+			name: "an alternative goes before anonymous ones",
+			stable: map[string]*Definition{"Shape": {AnyOf: []*Definition{
+				obj(map[string]*Definition{"a": str()}), obj(map[string]*Definition{"b": str()}),
+			}}},
+			unstable: map[string]*Definition{"Shape": {AnyOf: []*Definition{
+				obj(map[string]*Definition{"c": str()}), obj(map[string]*Definition{"a": str()}), obj(map[string]*Definition{"b": str()}),
+			}}},
+			want: []string{`Shape.anyOf[0]: moves to 1, which renames its Go type`, `Shape.anyOf[1]: moves to 2, which renames its Go type`},
+		},
+		{
+			// Unknown values of an enum with "other" decode as "other".
+			name:     "an enum gains other",
+			stable:   map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask"}}},
+			unstable: map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask", "other"}}},
+			want:     []string{`Mode: adds the enum value "other", which unknown values then decode as`},
+		},
+		{
+			// ir reads descriptions to find Patch fields.
+			name:     "a description changes",
+			stable:   options(obj(map[string]*Definition{"cwd": {Type: "string", Description: "The directory."}})),
+			unstable: options(obj(map[string]*Definition{"cwd": {Type: "string", Description: "The directory. Omitted means unchanged."}, "b": str()})),
+			want:     []string{`Options.cwd: changes its description, which can change its Go type`},
+		},
+		{
 			name:     "the items are removed",
 			stable:   options(obj(map[string]*Definition{"tags": {Type: "array", Items: str()}})),
 			unstable: options(obj(map[string]*Definition{"tags": {Type: "array"}})),
@@ -850,6 +882,14 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 // acp when McpCapabilities gains that property. The properties of a member
 // come from the definition that it refers to.
 func TestMergeStableAndUnstable_AllowsDefaultsThatGainMembers(t *testing.T) {
+	str := func() *Definition { return &Definition{Type: "string"} }
+	withMode := func(defaults map[string]any) map[string]any {
+		out := map[string]any{"mode": "ask"}
+		for k, v := range defaults {
+			out[k] = v
+		}
+		return out
+	}
 	defs := func(members ...string) map[string]*Definition {
 		props, defaults := map[string]*Definition{}, map[string]any{}
 		for _, m := range members {
@@ -863,6 +903,9 @@ func TestMergeStableAndUnstable_AllowsDefaultsThatGainMembers(t *testing.T) {
 			}},
 			"InitializeResponse": {Type: "object", Properties: map[string]*Definition{
 				"agentCapabilities": {AllOf: []*Definition{ref("AgentCapabilities")}, Default: map[string]any{"mcpCapabilities": defaults}},
+				// The members of this default come from its own properties
+				// and from McpCapabilities.
+				"settings": {Type: "object", Properties: map[string]*Definition{"mode": str()}, AllOf: []*Definition{ref("McpCapabilities")}, Default: withMode(defaults)},
 			}},
 		}
 	}
@@ -874,6 +917,23 @@ func TestMergeStableAndUnstable_AllowsDefaultsThatGainMembers(t *testing.T) {
 	}
 	if got := combined.Defs["McpCapabilities"].Properties["acp"].Description; !strings.HasPrefix(got, unstableNote) {
 		t.Errorf("McpCapabilities.acp description = %q, want the note", got)
+	}
+}
+
+// The unstable schema points the links of its descriptions at the draft docs
+// from schema 1.27.0 on, so a description may change its link targets.
+func TestMergeStableAndUnstable_AllowsDescriptionsThatOnlyChangeLinks(t *testing.T) {
+	caps := func(url string, props ...string) map[string]*Definition {
+		d := &Definition{Type: "object", Description: "See [the docs](" + url + ").", Properties: map[string]*Definition{}}
+		for _, p := range props {
+			d.Properties[p] = &Definition{Type: "boolean"}
+		}
+		return map[string]*Definition{"Caps": d}
+	}
+	meta, stable, unstable := reachedSchemas(caps("https://example.com/v1/caps", "fs"), caps("https://example.com/v1/draft/caps", "fs", "plan"))
+	_, combined := mustMerge(t, meta, stable, meta, unstable)
+	if got, want := combined.Defs["Caps"].Description, "See [the docs](https://example.com/v1/draft/caps)."; got != want {
+		t.Errorf("Caps description = %q, want the unstable %q", got, want)
 	}
 }
 

@@ -890,6 +890,12 @@ TimerSpec == Spec /\ WF_vars(DrainTimerFires)
 \* too.
 NestedSpec == Spec /\ WF_vars(PeerResponds(Nested)) /\ \A r \in InCalls : WF_vars(PeerResponds(r))
 
+\* The deep peer-wait configs: as NestedSpec, and a peer that answers the
+\* handler's request only after our reply sends its own request in the end,
+\* or closes. Without this, that peer never answers the handler's request,
+\* and an app request that waits for the handler waits on the peer.
+PeerSendsSpec == NestedSpec /\ \A q \in InReqs : WF_vars(PeerSendsInReq(q))
+
 -----------------------------------------------------------------------------
 (* Properties. Each says one thing that a user of the SDK relies on. *)
 

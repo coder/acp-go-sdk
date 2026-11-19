@@ -1,6 +1,8 @@
 package load
 
 import (
+	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -627,5 +629,269 @@ func TestMergeStableAndUnstable_IgnoresRootsThatTheMetadataDoesNotList(t *testin
 	_, combined := mustMerge(t, meta, stableSchema, meta, unstableSchema)
 	if got := combined.Defs["Shared"].Properties; len(got) != 1 {
 		t.Errorf("Shared properties = %v, want the stable version", got)
+	}
+}
+
+// reachedSchemas returns a stable and an unstable schema with the given
+// definitions, and an InitRequest in both that reaches each of them, so that
+// the merge promotes the ones that changed.
+func reachedSchemas(stableDefs, unstableDefs map[string]*Definition) (meta *Meta, stable, unstable *Schema) {
+	stable = &Schema{Defs: map[string]*Definition{}}
+	unstable = &Schema{Defs: map[string]*Definition{}}
+	props := map[string]*Definition{}
+	for _, pair := range []struct {
+		schema *Schema
+		defs   map[string]*Definition
+	}{{stable, stableDefs}, {unstable, unstableDefs}} {
+		for name, def := range pair.defs {
+			pair.schema.Defs[name] = def
+			props[name] = ref(name)
+		}
+	}
+	for _, schema := range []*Schema{stable, unstable} {
+		schema.Defs["InitRequest"] = &Definition{Type: "object", XMethod: "init", XSide: "agent", Properties: props}
+	}
+	return &Meta{Version: 1, AgentMethods: map[string]string{"init": "init"}}, stable, unstable
+}
+
+// compactJSON renders d as JSON without its empty keywords.
+func compactJSON(d *Definition) string {
+	b, _ := json.Marshal(d)
+	var v any
+	_ = json.Unmarshal(b, &v)
+	b, _ = json.Marshal(dropEmpty(v))
+	return string(b)
+}
+
+func dropEmpty(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		for k, x := range v {
+			if v[k] = dropEmpty(x); v[k] == nil {
+				delete(v, k)
+			}
+		}
+		if len(v) == 0 {
+			return nil
+		}
+	case []any:
+		if len(v) == 0 {
+			return nil
+		}
+		for i, x := range v {
+			v[i] = dropEmpty(x)
+		}
+	case string:
+		if v == "" {
+			return nil
+		}
+	case bool:
+		if !v {
+			return nil
+		}
+	}
+	return v
+}
+
+// The unstable version of a shared definition replaces the stable one, so it
+// may only add to it: properties, alternatives, allOf parts, enum values, and
+// descriptions. Any other change would change a stable Go type, so the merge
+// fails and names each change.
+func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
+	str := func() *Definition { return &Definition{Type: "string"} }
+	obj := func(props map[string]*Definition, required ...string) *Definition {
+		return &Definition{Type: "object", Properties: props, Required: required}
+	}
+	options := func(d *Definition) map[string]*Definition { return map[string]*Definition{"Options": d} }
+	stdio := func(props ...string) *Definition {
+		d := &Definition{Title: "stdio", Type: "object", Properties: map[string]*Definition{}}
+		for _, p := range props {
+			d.Properties[p] = str()
+		}
+		return d
+	}
+	cases := []struct {
+		name             string
+		stable, unstable map[string]*Definition
+		want             []string
+	}{
+		{
+			// Schemas 0.13.5 to 1.17.0: the stable value is a value ID, the
+			// unstable one a boolean or a value ID.
+			name: "a required property moves into the alternatives",
+			stable: map[string]*Definition{
+				"SetSessionConfigOptionRequest": obj(map[string]*Definition{
+					"sessionId": str(), "configId": str(), "value": ref("SessionConfigValueId"),
+				}, "sessionId", "configId", "value"),
+				"SessionConfigValueId": str(),
+			},
+			unstable: map[string]*Definition{
+				"SetSessionConfigOptionRequest": {
+					Type:       "object",
+					Properties: map[string]*Definition{"sessionId": str(), "configId": str()},
+					Required:   []string{"sessionId", "configId"},
+					AnyOf: []*Definition{
+						obj(map[string]*Definition{"value": {Type: "boolean"}, "type": {Type: "string", Const: "boolean"}}, "type", "value"),
+						{Title: "value_id", Type: "object", Properties: map[string]*Definition{"value": ref("SessionConfigValueId")}, Required: []string{"value"}},
+					},
+				},
+				"SessionConfigValueId": str(),
+			},
+			want: []string{
+				`SetSessionConfigOptionRequest.value: removed`,
+				`SetSessionConfigOptionRequest: no longer requires "value"`,
+			},
+		},
+		{
+			name:     "an existing property becomes required",
+			stable:   options(obj(map[string]*Definition{"a": str(), "b": str()}, "a")),
+			unstable: options(obj(map[string]*Definition{"a": str(), "b": str()}, "a", "b")),
+			want:     []string{`Options: requires "b"`},
+		},
+		{
+			name:     "an added property is required",
+			stable:   options(obj(map[string]*Definition{"a": str()}, "a")),
+			unstable: options(obj(map[string]*Definition{"a": str(), "c": str()}, "a", "c")),
+			want:     []string{`Options: requires "c"`},
+		},
+		{
+			name:     "a property is no longer required",
+			stable:   options(obj(map[string]*Definition{"a": str()}, "a")),
+			unstable: options(obj(map[string]*Definition{"a": str()})),
+			want:     []string{`Options: no longer requires "a"`},
+		},
+		{
+			name:     "a property changes type",
+			stable:   options(obj(map[string]*Definition{"size": {Type: "integer"}})),
+			unstable: options(obj(map[string]*Definition{"size": {Type: "string"}})),
+			want:     []string{`Options.size: changes type from "integer" to "string"`},
+		},
+		{
+			name:     "a property refers to another definition",
+			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"id": ref("SessionId")}), "SessionId": str(), "ThreadId": str()},
+			unstable: map[string]*Definition{"Options": obj(map[string]*Definition{"id": ref("ThreadId")}), "SessionId": str(), "ThreadId": str()},
+			want:     []string{`Options.id: changes $ref from "#/$defs/SessionId" to "#/$defs/ThreadId"`},
+		},
+		{
+			name:     "an alternative is removed",
+			stable:   options(&Definition{AnyOf: []*Definition{stdio(), {Title: "http", Type: "object"}}}),
+			unstable: options(&Definition{AnyOf: []*Definition{stdio()}}),
+			want:     []string{`Options.anyOf[1]: removed`},
+		},
+		{
+			name:     "a property of a matched alternative is removed",
+			stable:   options(&Definition{AnyOf: []*Definition{stdio("command", "args")}}),
+			unstable: options(&Definition{AnyOf: []*Definition{stdio("command")}}),
+			want:     []string{`Options.anyOf[0].args: removed`},
+		},
+		{
+			name:     "an enum value is removed",
+			stable:   map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask", "auto"}}},
+			unstable: map[string]*Definition{"Mode": {Type: "string", Enum: []any{"ask"}}},
+			want:     []string{`Mode: removes enum value auto`},
+		},
+		{
+			name:     "the items are removed",
+			stable:   options(obj(map[string]*Definition{"tags": {Type: "array", Items: str()}})),
+			unstable: options(obj(map[string]*Definition{"tags": {Type: "array"}})),
+			want:     []string{`Options.tags.items: removed`},
+		},
+		{
+			name:     "a default changes",
+			stable:   options(obj(map[string]*Definition{"mode": {Type: "string", Default: "ask"}})),
+			unstable: options(obj(map[string]*Definition{"mode": {Type: "string", Default: "auto"}})),
+			want:     []string{`Options.mode: changes default from "ask" to "auto"`},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			meta, stable, unstable := reachedSchemas(tc.stable, tc.unstable)
+			_, combined, err := MergeStableAndUnstable(meta, stable, meta, unstable)
+			if err == nil {
+				for name, def := range combined.Defs {
+					if def != stable.Defs[name] && tc.stable[name] != nil {
+						t.Errorf("merge succeeded and changed the stable %s to %s", name, compactJSON(def))
+					}
+				}
+				t.FailNow()
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not say %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+// A default may gain members, as the default of
+// AgentCapabilities.mcpCapabilities gains acp when the unstable version adds
+// that property, and so does the default of the object above it.
+func TestMergeStableAndUnstable_AllowsDefaultsThatGainMembers(t *testing.T) {
+	caps := func(members ...string) *Definition {
+		props, defaults := map[string]*Definition{}, map[string]any{}
+		for _, m := range members {
+			props[m] = &Definition{Type: "boolean", Default: false}
+			defaults[m] = false
+		}
+		return &Definition{Type: "object", Properties: map[string]*Definition{
+			"mcpCapabilities": {Type: "object", Properties: props, Default: defaults},
+		}, Default: map[string]any{"mcpCapabilities": defaults}}
+	}
+	meta, stable, unstable := reachedSchemas(
+		map[string]*Definition{"AgentCapabilities": caps("http")},
+		map[string]*Definition{"AgentCapabilities": caps("http", "acp")},
+	)
+	_, combined := mustMerge(t, meta, stable, meta, unstable)
+	mcp := combined.Defs["AgentCapabilities"].Properties["mcpCapabilities"]
+	if got, want := mcp.Default, (map[string]any{"http": false, "acp": false}); !reflect.DeepEqual(got, want) {
+		t.Errorf("mcpCapabilities default = %v, want the unstable %v", got, want)
+	}
+	if got := mcp.Properties["acp"].Description; !strings.HasPrefix(got, unstableNote) {
+		t.Errorf("mcpCapabilities.acp description = %q, want the note", got)
+	}
+}
+
+// Two stable alternatives with one identity, here a title, match the unstable
+// alternatives with that identity in order, so that only the added one is
+// marked.
+func TestMergeStableAndUnstable_MatchesSameKeyAlternativesInOrder(t *testing.T) {
+	text := func() []*Definition {
+		return []*Definition{
+			{Title: "text", Type: "object", Description: "Plain.", Properties: map[string]*Definition{"text": {Type: "string"}}},
+			{Title: "text", Type: "object", Description: "Rich.", Properties: map[string]*Definition{"text": {Type: "string"}, "mime": {Type: "string"}}},
+		}
+	}
+	meta, stable, unstable := reachedSchemas(
+		map[string]*Definition{"Content": {AnyOf: text()}},
+		map[string]*Definition{"Content": {AnyOf: append(text(), &Definition{Title: "image", Type: "object", Description: "Image."})}},
+	)
+	_, combined := mustMerge(t, meta, stable, meta, unstable)
+	for i, want := range []string{"Plain.", "Rich.", unstableNote + "\n\nImage."} {
+		if got := combined.Defs["Content"].AnyOf[i].Description; got != want {
+			t.Errorf("Content alternative %d description = %q, want %q", i, got, want)
+		}
+	}
+}
+
+// An added property whose description only mentions UNSTABLE gets the note.
+// One whose description starts with the marker, as the schema writes some of
+// them inline, is marked already.
+func TestMergeStableAndUnstable_MarksDescriptionsThatOnlyMentionUnstable(t *testing.T) {
+	caps := func(props map[string]*Definition) map[string]*Definition {
+		props["fs"] = &Definition{Type: "boolean"}
+		return map[string]*Definition{"Caps": {Type: "object", Properties: props}}
+	}
+	mentions := "Replaces the UNSTABLE beta flag."
+	inline := "**UNSTABLE** Token usage of the session."
+	meta, stable, unstable := reachedSchemas(caps(map[string]*Definition{}), caps(map[string]*Definition{
+		"beta":  {Type: "boolean", Description: mentions},
+		"usage": {Type: "object", Description: inline},
+	}))
+	_, combined := mustMerge(t, meta, stable, meta, unstable)
+	for name, want := range map[string]string{"beta": unstableNote + "\n\n" + mentions, "usage": inline} {
+		if got := combined.Defs["Caps"].Properties[name].Description; got != want {
+			t.Errorf("Caps.%s description = %q, want %q", name, got, want)
+		}
 	}
 }

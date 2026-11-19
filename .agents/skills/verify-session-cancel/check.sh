@@ -217,10 +217,13 @@ in_order "$B_recv" "c.inboundMessages++" "c.lastEnqueuedNotificationSeq++" \
 [ "$(grep -Fc "c.inboundMessages++" <<<"$B_recv")" = 2 ] ||
 	drift "receive numbers messages in a new set of places: the model gives every request and queued notification one arrival"
 # A message over the connection's limits takes no arrival: a request that does
-# not fit gets its reply and is skipped, and a notification that does not fit
-# closes the connection, each before c.inboundMessages++. So the model leaves
-# them out: a rejected session/cancel or session/prompt never runs.
-in_order "$B_recv" "if rejection := c.budget.holdRequest(size); rejection != nil {" "continue" "c.inboundMessages++" \
+# not fit queues its reply and is skipped, or closes the connection when the
+# rejection queue is full, and a notification that does not fit closes the
+# connection, each before c.inboundMessages++. So the model leaves them out: a
+# rejected session/cancel or session/prompt never runs.
+in_order "$B_recv" "if rejection := c.budget.holdRequest(size); rejection != nil {" \
+	"if !c.queueRejection(&msg, rejection) {" "c.shutdownReceive(errRejectionQueueOverflow)" "return" \
+	"continue" "c.inboundMessages++" \
 	"if !c.budget.holdNotification(size) {" "return" "c.inboundMessages++" ||
 	drift "receive numbers a message that it does not hold (ReceivePrompt, ReceiveNotification)"
 

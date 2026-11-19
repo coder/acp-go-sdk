@@ -26,9 +26,10 @@ type rule struct {
 
 // shapeChanges compares each entry of old's shapes table with its version
 // in new. The new version may only add to it: values, members, and
-// alternatives, as when a union of the schema gains a variant, whose
-// discriminator value its catch-all variant's not rule then lists too. Any
-// other change can make the decoder default or drop a stable value.
+// alternatives, and its not rules may only take less. When a union of the
+// schema gains a variant, the not rule of its catch-all variant gains an
+// alternative for the variant's discriminator value. Any other change can
+// make the decoder default or drop a stable value.
 func shapeChanges(old, new *side) []string {
 	oldEntries, err := old.shapes()
 	if err != nil {
@@ -214,21 +215,57 @@ func (r *rule) lostIn(n *rule, path string) string {
 	for _, sub := range []struct {
 		name string
 		r, n *rule
-	}{{"rest", r.rest, n.rest}, {"items", r.items, n.items}, {"not", r.not, n.not}} {
+	}{{"rest", r.rest, n.rest}, {"items", r.items, n.items}} {
 		if change := sub.r.lostIn(sub.n, path+"."+sub.name); change != "" {
 			return change
 		}
 	}
+	// A value fits a rule only if it does not fit its not rule, so the
+	// merged not rule may take only values that the stable one takes.
+	switch {
+	case n.not == nil:
+	case r.not == nil:
+		return path + ".not: is new"
+	case n.not.lostIn(r.not, "") != "":
+		return path + ".not: takes values that the stable rule does not"
+	}
 	if (r.anyOf == nil) != (n.anyOf == nil) {
 		return path + ": gains or loses its alternatives"
 	}
+	grows := len(n.anyOf) > len(r.anyOf)
 	used := map[*rule]bool{}
 	for i, alt := range r.anyOf {
-		j := slices.IndexFunc(n.anyOf, func(b *rule) bool { return !used[b] && alt.lostIn(b, "") == "" })
+		j := slices.IndexFunc(n.anyOf, func(b *rule) bool {
+			if used[b] {
+				return false
+			}
+			if grows {
+				b = b.withoutNewExclusions(alt)
+			}
+			return alt.lostIn(b, "") == ""
+		})
 		if j < 0 {
 			return fmt.Sprintf("%s.anyOf[%d]: has no merged version", path, i)
 		}
 		used[n.anyOf[j]] = true
 	}
 	return ""
+}
+
+// withoutNewExclusions returns b, an alternative of a union that gains
+// alternatives, without the alternatives of its not rule that the not rule
+// of alt, its stable version, has no version of. A catch-all variant gains
+// them when its union gains a variant: the new variant takes the values
+// that the catch-all then leaves out.
+func (b *rule) withoutNewExclusions(alt *rule) *rule {
+	if b.not == nil || alt.not == nil || b.not.anyOf == nil || alt.not.anyOf == nil {
+		return b
+	}
+	not := *b.not
+	not.anyOf = slices.DeleteFunc(slices.Clone(not.anyOf), func(x *rule) bool {
+		return !slices.ContainsFunc(alt.not.anyOf, func(y *rule) bool { return x.lostIn(y, "") == "" })
+	})
+	out := *b
+	out.not = &not
+	return &out
 }

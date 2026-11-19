@@ -131,6 +131,7 @@ type budgetPeer struct {
 	t          *testing.T
 	inR        *io.PipeReader
 	inW        *io.PipeWriter
+	outR       *io.PipeReader
 	peerInput  io.Writer
 	peerOutput io.Reader
 	replies    chan anyMessage
@@ -157,12 +158,9 @@ func (b *lockedBuffer) String() string {
 
 func newBudgetPeer(t *testing.T) *budgetPeer {
 	t.Helper()
-	inR, inW := io.Pipe()
-	outR, outW := io.Pipe()
-	p := &budgetPeer{t: t, inR: inR, inW: inW, peerInput: outW, peerOutput: inR, replies: make(chan anyMessage, 4096)}
-	p.logger = slog.New(slog.NewTextHandler(&p.logs, nil))
+	p := newSilentPeer(t)
 	go func() {
-		s := bufio.NewScanner(outR)
+		s := bufio.NewScanner(p.outR)
 		s.Buffer(nil, 16<<20)
 		for s.Scan() {
 			var m anyMessage
@@ -171,6 +169,16 @@ func newBudgetPeer(t *testing.T) *budgetPeer {
 			}
 		}
 	}()
+	return p
+}
+
+// newSilentPeer makes a peer that reads nothing that the connection writes.
+func newSilentPeer(t *testing.T) *budgetPeer {
+	t.Helper()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	p := &budgetPeer{t: t, inR: inR, inW: inW, outR: outR, peerInput: outW, peerOutput: inR, replies: make(chan anyMessage, 4096)}
+	p.logger = slog.New(slog.NewTextHandler(&p.logs, nil))
 	t.Cleanup(func() {
 		_ = inW.Close()
 		_ = outW.Close()
@@ -191,6 +199,21 @@ func (p *budgetPeer) writeAll(line *wireLine, first, last int) <-chan struct{} {
 		defer close(done)
 		for n := first; n <= last; n++ {
 			if _, err := p.inW.Write(line.number(n)); err != nil {
+				return
+			}
+		}
+	}()
+	return done
+}
+
+// writeLines writes lines in the background, so that a test that fails while
+// the connection reads nothing does not hang on the write.
+func (p *budgetPeer) writeLines(lines ...[]byte) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for _, line := range lines {
+			if _, err := p.inW.Write(line); err != nil {
 				return
 			}
 		}
@@ -283,9 +306,12 @@ func warmUp(t *testing.T, p *budgetPeer) {
 
 func waitHeld(t *testing.T, c *Connection, wantBytes, wantRequests int) {
 	t.Helper()
-	waitUntil(t, fmt.Sprintf("the connection holds %d bytes and %d requests", wantBytes, wantRequests), func() bool {
+	waitUntil(t, fmt.Sprintf("the connection holds %d bytes and %d requests, and no rejection waits", wantBytes, wantRequests), func() bool {
 		b, r := c.budget.held()
-		return b == wantBytes && r == wantRequests
+		c.budget.mu.Lock()
+		rejections := c.budget.rejectionBytes
+		c.budget.mu.Unlock()
+		return b == wantBytes && r == wantRequests && rejections == 0
 	})
 }
 
@@ -889,6 +915,60 @@ func TestConnection_PeersThatFloodEachOtherGetEveryAnswer(t *testing.T) {
 		if s.ok.Load() != held || s.rejected.Load() != calls-held || s.failed.Load() != 0 {
 			t.Errorf("%s: %d answered, %d rejected, %d failed; want %d, %d and 0", name, s.ok.Load(), s.rejected.Load(), s.failed.Load(), held, calls-held)
 		}
+	}
+}
+
+// A peer that sends requests over the cap and reads none of the rejections
+// fills the rejection queue, by count or by bytes, and then the connection
+// closes. Until then the read loop reads on.
+func TestConnectionBudget_ClosesWhenThePeerReadsNoRejections(t *testing.T) {
+	const budget = 1 << 20
+	small := requestLine(t, "_block", 128)
+	hugeID := newWireLine(t, `{"jsonrpc":"2.0","id":"{n}{pad}","method":"_block","params":{}}`, 300<<10)
+	tests := []struct {
+		name      string
+		rejected  *wireLine
+		fit, more int
+	}{
+		{name: "count", rejected: small, fit: 10, more: maxQueuedRejections},
+		{name: "bytes", rejected: hugeID, fit: budget / hugeID.size(), more: 1},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			p := newSilentPeer(t)
+			g := newGate(t, "_block")
+			var seen atomic.Int64
+			c := newBudgetConnection(t, p, func(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
+				if method == "_seen" {
+					seen.Add(1)
+				}
+				return g.handler(ctx, method, params)
+			}, WithMaxInboundRequests(1), WithByteBudget(budget))
+			seenNote := notificationLine(t, "_seen", 128)
+
+			p.write(small.number(1))
+			waitUntil(t, "the held request runs", func() bool { return g.entered.Load() == 1 })
+			var lines [][]byte
+			for n := 2; n <= 1+tt.fit; n++ {
+				lines = append(lines, bytes.Clone(tt.rejected.number(n)))
+			}
+			writes := p.writeLines(append(lines, seenNote.number(1))...)
+			waitUntil(t, "the read loop reads past the waiting rejections", func() bool { return seen.Load() == 1 })
+			if !isOpen(c.Done()) {
+				t.Fatalf("%d rejections that wait closed the connection", tt.fit)
+			}
+			<-writes
+
+			writes = p.writeAll(tt.rejected, 2+tt.fit, 1+tt.fit+tt.more)
+			waitDone(t, c.Done())
+			p.cutOff(writes)
+			if !strings.Contains(p.logs.String(), "does not read the rejections") {
+				t.Errorf("the log does not name the rejections:\n%s", p.logs.String())
+			}
+			_ = p.outR.CloseWithError(io.ErrClosedPipe)
+			waitHeld(t, c, 0, 0)
+		})
 	}
 }
 

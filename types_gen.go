@@ -201,6 +201,8 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -213,11 +215,11 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Result = &v
+					return nil
 				}
-				u.Result = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -230,11 +232,11 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Error = &v
+					return nil
 				}
-				u.Error = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -244,6 +246,9 @@ func (u *AgentResponse) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -446,22 +451,22 @@ func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "terminal":
-				var v AuthMethodTerminalInline
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "terminal":
+			var v AuthMethodTerminalInline
+			if json.Unmarshal(b, &v) == nil {
 				u.Terminal = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v AuthMethodAgent
@@ -472,12 +477,16 @@ func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 			if raw := string(m["name"]); raw == "" || raw == "null" {
 				match = false
 			}
+			switch disc {
+			case "terminal":
+				match = false
+			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Agent = &v
+					return nil
 				}
-				u.Agent = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -487,6 +496,9 @@ func (u *AuthMethod) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -731,6 +743,8 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -740,11 +754,11 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Unstructured = &v
+					return nil
 				}
-				u.Unstructured = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -754,6 +768,9 @@ func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -1141,6 +1158,8 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -1153,11 +1172,11 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Result = &v
+					return nil
 				}
-				u.Result = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -1170,11 +1189,11 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Error = &v
+					return nil
 				}
-				u.Error = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -1184,6 +1203,9 @@ func (u *ClientResponse) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -1772,50 +1794,50 @@ func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "text":
-				var v ContentBlockText
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "text":
+			var v ContentBlockText
+			if json.Unmarshal(b, &v) == nil {
 				u.Text = &v
 				return nil
-			case "image":
-				var v ContentBlockImage
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "image":
+			var v ContentBlockImage
+			if json.Unmarshal(b, &v) == nil {
 				u.Image = &v
 				return nil
-			case "audio":
-				var v ContentBlockAudio
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "audio":
+			var v ContentBlockAudio
+			if json.Unmarshal(b, &v) == nil {
 				u.Audio = &v
 				return nil
-			case "resource_link":
-				var v ContentBlockResourceLink
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "resource_link":
+			var v ContentBlockResourceLink
+			if json.Unmarshal(b, &v) == nil {
 				u.ResourceLink = &v
 				return nil
-			case "resource":
-				var v ContentBlockResource
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "resource":
+			var v ContentBlockResource
+			if json.Unmarshal(b, &v) == nil {
 				u.Resource = &v
 				return nil
 			}
+			failed = true
 		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
@@ -1824,6 +1846,9 @@ func (u *ContentBlock) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -2008,6 +2033,8 @@ func (u *CreateElicitationForm) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -2029,11 +2056,11 @@ func (u *CreateElicitationForm) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Session = &v
+					return nil
 				}
-				u.Session = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -2043,11 +2070,11 @@ func (u *CreateElicitationForm) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Request = &v
+					return nil
 				}
-				u.Request = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -2057,6 +2084,9 @@ func (u *CreateElicitationForm) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -2127,6 +2157,8 @@ func (u *CreateElicitationUrl) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -2148,11 +2180,11 @@ func (u *CreateElicitationUrl) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Session = &v
+					return nil
 				}
-				u.Session = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -2162,11 +2194,11 @@ func (u *CreateElicitationUrl) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Request = &v
+					return nil
 				}
-				u.Request = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -2176,6 +2208,9 @@ func (u *CreateElicitationUrl) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -2257,6 +2292,8 @@ func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -2279,11 +2316,11 @@ func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Session = &v
+					return nil
 				}
-				u.Session = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -2293,11 +2330,11 @@ func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Request = &v
+					return nil
 				}
-				u.Request = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -2307,6 +2344,9 @@ func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -2380,29 +2420,29 @@ func (u *CreateElicitationRequest) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["mode"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "form":
-				var v CreateElicitationForm
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["mode"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "form":
+			var v CreateElicitationForm
+			if json.Unmarshal(b, &v) == nil {
 				u.Form = &v
 				return nil
-			case "url":
-				var v CreateElicitationUrl
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "url":
+			var v CreateElicitationUrl
+			if json.Unmarshal(b, &v) == nil {
 				u.Url = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v CreateElicitationOther
@@ -2410,12 +2450,16 @@ func (u *CreateElicitationRequest) UnmarshalJSON(b []byte) error {
 			if !strings.HasPrefix(string(m["mode"]), "\"") {
 				match = false
 			}
+			switch disc {
+			case "form", "url":
+				match = false
+			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Other = &v
+					return nil
 				}
-				u.Other = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -2425,6 +2469,9 @@ func (u *CreateElicitationRequest) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -2648,36 +2695,36 @@ func (u *CreateElicitationResponse) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["action"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "accept":
-				var v CreateElicitationAccept
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["action"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "accept":
+			var v CreateElicitationAccept
+			if json.Unmarshal(b, &v) == nil {
 				u.Accept = &v
 				return nil
-			case "decline":
-				var v CreateElicitationDecline
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "decline":
+			var v CreateElicitationDecline
+			if json.Unmarshal(b, &v) == nil {
 				u.Decline = &v
 				return nil
-			case "cancel":
-				var v CreateElicitationCancel
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "cancel":
+			var v CreateElicitationCancel
+			if json.Unmarshal(b, &v) == nil {
 				u.Cancel = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v CreateElicitationResponseOther
@@ -2685,12 +2732,16 @@ func (u *CreateElicitationResponse) UnmarshalJSON(b []byte) error {
 			if !strings.HasPrefix(string(m["action"]), "\"") {
 				match = false
 			}
+			switch disc {
+			case "accept", "decline", "cancel":
+				match = false
+			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Other = &v
+					return nil
 				}
-				u.Other = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -2700,6 +2751,9 @@ func (u *CreateElicitationResponse) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -3172,6 +3226,8 @@ func (u *ElicitationFormMode) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -3191,11 +3247,11 @@ func (u *ElicitationFormMode) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Session = &v
+					return nil
 				}
-				u.Session = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -3205,11 +3261,11 @@ func (u *ElicitationFormMode) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Request = &v
+					return nil
 				}
-				u.Request = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -3219,6 +3275,9 @@ func (u *ElicitationFormMode) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -3615,50 +3674,50 @@ func (u *ElicitationPropertySchema) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "string":
-				var v ElicitationPropertySchemaString
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "string":
+			var v ElicitationPropertySchemaString
+			if json.Unmarshal(b, &v) == nil {
 				u.String = &v
 				return nil
-			case "number":
-				var v ElicitationPropertySchemaNumber
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "number":
+			var v ElicitationPropertySchemaNumber
+			if json.Unmarshal(b, &v) == nil {
 				u.Number = &v
 				return nil
-			case "integer":
-				var v ElicitationPropertySchemaInteger
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "integer":
+			var v ElicitationPropertySchemaInteger
+			if json.Unmarshal(b, &v) == nil {
 				u.Integer = &v
 				return nil
-			case "boolean":
-				var v ElicitationPropertySchemaBoolean
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "boolean":
+			var v ElicitationPropertySchemaBoolean
+			if json.Unmarshal(b, &v) == nil {
 				u.Boolean = &v
 				return nil
-			case "array":
-				var v ElicitationPropertySchemaArray
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "array":
+			var v ElicitationPropertySchemaArray
+			if json.Unmarshal(b, &v) == nil {
 				u.Array = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v ElicitationPropertySchemaOther
@@ -3666,12 +3725,16 @@ func (u *ElicitationPropertySchema) UnmarshalJSON(b []byte) error {
 			if !strings.HasPrefix(string(m["type"]), "\"") {
 				match = false
 			}
+			switch disc {
+			case "string", "number", "integer", "boolean", "array":
+				match = false
+			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Other = &v
+					return nil
 				}
-				u.Other = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -3681,6 +3744,9 @@ func (u *ElicitationPropertySchema) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -3922,6 +3988,8 @@ func (u *ElicitationUrlMode) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -3941,11 +4009,11 @@ func (u *ElicitationUrlMode) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Session = &v
+					return nil
 				}
-				u.Session = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -3955,11 +4023,11 @@ func (u *ElicitationUrlMode) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Request = &v
+					return nil
 				}
-				u.Request = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -3969,6 +4037,9 @@ func (u *ElicitationUrlMode) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -4053,6 +4124,8 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -4065,11 +4138,11 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.TextResourceContents = &v
+					return nil
 				}
-				u.TextResourceContents = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -4082,11 +4155,11 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.BlobResourceContents = &v
+					return nil
 				}
-				u.BlobResourceContents = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -4096,6 +4169,9 @@ func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -4841,60 +4917,60 @@ func (u *IdleStateUpdate) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		if raw := string(m["stopReason"]); raw != "" && raw != "null" && !strings.HasPrefix(raw, "\"") {
 			delete(m, "stopReason")
 		}
-		{
-			var disc string
-			if v, ok := m["stopReason"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "end_turn":
-				var v IdleStateUpdateEndTurn
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["stopReason"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "end_turn":
+			var v IdleStateUpdateEndTurn
+			if json.Unmarshal(b, &v) == nil {
 				u.EndTurn = &v
 				return nil
-			case "max_tokens":
-				var v IdleStateUpdateMaxTokens
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "max_tokens":
+			var v IdleStateUpdateMaxTokens
+			if json.Unmarshal(b, &v) == nil {
 				u.MaxTokens = &v
 				return nil
-			case "max_turn_requests":
-				var v IdleStateUpdateMaxTurnRequests
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "max_turn_requests":
+			var v IdleStateUpdateMaxTurnRequests
+			if json.Unmarshal(b, &v) == nil {
 				u.MaxTurnRequests = &v
 				return nil
-			case "refusal":
-				var v IdleStateUpdateRefusal
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "refusal":
+			var v IdleStateUpdateRefusal
+			if json.Unmarshal(b, &v) == nil {
 				u.Refusal = &v
 				return nil
-			case "cancelled":
-				var v IdleStateUpdateCancelled
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "cancelled":
+			var v IdleStateUpdateCancelled
+			if json.Unmarshal(b, &v) == nil {
 				u.Cancelled = &v
 				return nil
-			case "error":
-				var v IdleStateUpdateError
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "error":
+			var v IdleStateUpdateError
+			if json.Unmarshal(b, &v) == nil {
 				u.Error = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v IdleStateUpdateOther
@@ -4902,12 +4978,16 @@ func (u *IdleStateUpdate) UnmarshalJSON(b []byte) error {
 			if !strings.HasPrefix(string(m["stopReason"]), "\"") {
 				match = false
 			}
+			switch disc {
+			case "end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled", "error":
+				match = false
+			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Other = &v
+					return nil
 				}
-				u.Other = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -4917,11 +4997,11 @@ func (u *IdleStateUpdate) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.None = &v
+					return nil
 				}
-				u.None = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -4931,6 +5011,9 @@ func (u *IdleStateUpdate) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -5196,22 +5279,22 @@ func (u *InitialSessionConfigOption) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "boolean":
-				var v InitialSessionConfigOptionBoolean
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "boolean":
+			var v InitialSessionConfigOptionBoolean
+			if json.Unmarshal(b, &v) == nil {
 				u.Boolean = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v InitialSessionConfigOptionValueId
@@ -5220,11 +5303,11 @@ func (u *InitialSessionConfigOption) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.ValueId = &v
+					return nil
 				}
-				u.ValueId = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -5234,6 +5317,9 @@ func (u *InitialSessionConfigOption) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -6040,36 +6126,36 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "http":
-				var v McpServerHttpInline
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "http":
+			var v McpServerHttpInline
+			if json.Unmarshal(b, &v) == nil {
 				u.Http = &v
 				return nil
-			case "sse":
-				var v McpServerSseInline
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "sse":
+			var v McpServerSseInline
+			if json.Unmarshal(b, &v) == nil {
 				u.Sse = &v
 				return nil
-			case "acp":
-				var v McpServerAcpInline
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "acp":
+			var v McpServerAcpInline
+			if json.Unmarshal(b, &v) == nil {
 				u.Acp = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v McpServerStdio
@@ -6087,11 +6173,11 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Stdio = &v
+					return nil
 				}
-				u.Stdio = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -6101,6 +6187,9 @@ func (u *McpServer) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -6447,22 +6536,22 @@ func (u *MultiSelectItems) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "string":
-				var v MultiSelectItemsString
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "string":
+			var v MultiSelectItemsString
+			if json.Unmarshal(b, &v) == nil {
 				u.String = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v MultiSelectItemsOther
@@ -6470,12 +6559,16 @@ func (u *MultiSelectItems) UnmarshalJSON(b []byte) error {
 			if !strings.HasPrefix(string(m["type"]), "\"") {
 				match = false
 			}
+			switch disc {
+			case "string":
+				match = false
+			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Other = &v
+					return nil
 				}
-				u.Other = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -6485,11 +6578,11 @@ func (u *MultiSelectItems) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Titled = &v
+					return nil
 				}
-				u.Titled = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -6499,6 +6592,9 @@ func (u *MultiSelectItems) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -7279,29 +7375,29 @@ func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "items":
-				var v PlanUpdateContentItems
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "items":
+			var v PlanUpdateContentItems
+			if json.Unmarshal(b, &v) == nil {
 				u.Items = &v
 				return nil
-			case "markdown":
-				var v PlanUpdateContentMarkdown
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "markdown":
+			var v PlanUpdateContentMarkdown
+			if json.Unmarshal(b, &v) == nil {
 				u.Markdown = &v
 				return nil
 			}
+			failed = true
 		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
@@ -7310,6 +7406,9 @@ func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -8087,29 +8186,29 @@ func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["outcome"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "cancelled":
-				var v RequestPermissionOutcomeCancelled
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["outcome"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "cancelled":
+			var v RequestPermissionOutcomeCancelled
+			if json.Unmarshal(b, &v) == nil {
 				u.Cancelled = &v
 				return nil
-			case "selected":
-				var v RequestPermissionOutcomeSelected
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "selected":
+			var v RequestPermissionOutcomeSelected
+			if json.Unmarshal(b, &v) == nil {
 				u.Selected = &v
 				return nil
 			}
+			failed = true
 		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
@@ -8118,6 +8217,9 @@ func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -8862,29 +8964,29 @@ func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "select":
-				var v SessionConfigOptionSelect
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "select":
+			var v SessionConfigOptionSelect
+			if json.Unmarshal(b, &v) == nil {
 				u.Select = &v
 				return nil
-			case "boolean":
-				var v SessionConfigOptionBoolean
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "boolean":
+			var v SessionConfigOptionBoolean
+			if json.Unmarshal(b, &v) == nil {
 				u.Boolean = &v
 				return nil
 			}
+			failed = true
 		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
@@ -8893,6 +8995,9 @@ func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -9112,6 +9217,8 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 	} else {
@@ -9133,11 +9240,11 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 				}
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Ungrouped = &v
+					return nil
 				}
-				u.Ungrouped = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -9155,13 +9262,16 @@ func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
 				}
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Grouped = &v
+					return nil
 				}
-				u.Grouped = &v
-				return nil
+				failed = true
 			}
 		}
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -10951,155 +11061,155 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["sessionUpdate"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "user_message_chunk":
-				var v SessionUpdateUserMessageChunk
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["sessionUpdate"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "user_message_chunk":
+			var v SessionUpdateUserMessageChunk
+			if json.Unmarshal(b, &v) == nil {
 				u.UserMessageChunk = &v
 				return nil
-			case "agent_message_chunk":
-				var v SessionUpdateAgentMessageChunk
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "agent_message_chunk":
+			var v SessionUpdateAgentMessageChunk
+			if json.Unmarshal(b, &v) == nil {
 				u.AgentMessageChunk = &v
 				return nil
-			case "agent_thought_chunk":
-				var v SessionUpdateAgentThoughtChunk
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "agent_thought_chunk":
+			var v SessionUpdateAgentThoughtChunk
+			if json.Unmarshal(b, &v) == nil {
 				u.AgentThoughtChunk = &v
 				return nil
-			case "tool_call":
-				var v SessionUpdateToolCall
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "tool_call":
+			var v SessionUpdateToolCall
+			if json.Unmarshal(b, &v) == nil {
 				u.ToolCall = &v
 				return nil
-			case "tool_call_update":
-				var v SessionToolCallUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "tool_call_update":
+			var v SessionToolCallUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.ToolCallUpdate = &v
 				return nil
-			case "plan":
-				var v SessionUpdatePlan
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "plan":
+			var v SessionUpdatePlan
+			if json.Unmarshal(b, &v) == nil {
 				u.Plan = &v
 				return nil
-			case "plan_update":
-				var v SessionPlanUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "plan_update":
+			var v SessionPlanUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.PlanUpdate = &v
 				return nil
-			case "plan_removed":
-				var v SessionUpdatePlanRemoved
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "plan_removed":
+			var v SessionUpdatePlanRemoved
+			if json.Unmarshal(b, &v) == nil {
 				u.PlanRemoved = &v
 				return nil
-			case "available_commands_update":
-				var v SessionAvailableCommandsUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "available_commands_update":
+			var v SessionAvailableCommandsUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.AvailableCommandsUpdate = &v
 				return nil
-			case "current_mode_update":
-				var v SessionCurrentModeUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "current_mode_update":
+			var v SessionCurrentModeUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.CurrentModeUpdate = &v
 				return nil
-			case "config_option_update":
-				var v SessionConfigOptionUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "config_option_update":
+			var v SessionConfigOptionUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.ConfigOptionUpdate = &v
 				return nil
-			case "session_info_update":
-				var v SessionSessionInfoUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "session_info_update":
+			var v SessionSessionInfoUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.SessionInfoUpdate = &v
 				return nil
-			case "usage_update":
-				var v SessionUsageUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "usage_update":
+			var v SessionUsageUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.UsageUpdate = &v
 				return nil
-			case "notice":
-				var v SessionUpdateNotice
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "notice":
+			var v SessionUpdateNotice
+			if json.Unmarshal(b, &v) == nil {
 				u.Notice = &v
 				return nil
-			case "compaction_update":
-				var v SessionCompactionUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "compaction_update":
+			var v SessionCompactionUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.CompactionUpdate = &v
 				return nil
-			case "compaction_summary_chunk":
-				var v SessionUpdateCompactionSummaryChunk
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "compaction_summary_chunk":
+			var v SessionUpdateCompactionSummaryChunk
+			if json.Unmarshal(b, &v) == nil {
 				u.CompactionSummaryChunk = &v
 				return nil
-			case "prompt_suggestions_update":
-				var v SessionPromptSuggestionsUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "prompt_suggestions_update":
+			var v SessionPromptSuggestionsUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.PromptSuggestionsUpdate = &v
 				return nil
-			case "subagent_update":
-				var v SessionSubagentUpdate
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "subagent_update":
+			var v SessionSubagentUpdate
+			if json.Unmarshal(b, &v) == nil {
 				u.SubagentUpdate = &v
 				return nil
-			case "session_message":
-				var v SessionUpdateSessionMessage
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "session_message":
+			var v SessionUpdateSessionMessage
+			if json.Unmarshal(b, &v) == nil {
 				u.SessionMessage = &v
 				return nil
-			case "session_message_chunk":
-				var v SessionUpdateSessionMessageChunk
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "session_message_chunk":
+			var v SessionUpdateSessionMessageChunk
+			if json.Unmarshal(b, &v) == nil {
 				u.SessionMessageChunk = &v
 				return nil
 			}
+			failed = true
 		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
@@ -11108,6 +11218,9 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -11505,22 +11618,22 @@ func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "boolean":
-				var v SetSessionConfigOptionBoolean
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "boolean":
+			var v SetSessionConfigOptionBoolean
+			if json.Unmarshal(b, &v) == nil {
 				u.Boolean = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v SetSessionConfigOptionValueId
@@ -11529,11 +11642,11 @@ func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.ValueId = &v
+					return nil
 				}
-				u.ValueId = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -11543,6 +11656,9 @@ func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -12010,60 +12126,60 @@ func (u *StateUpdateIdle) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		if raw := string(m["stopReason"]); raw != "" && raw != "null" && !strings.HasPrefix(raw, "\"") {
 			delete(m, "stopReason")
 		}
-		{
-			var disc string
-			if v, ok := m["stopReason"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "end_turn":
-				var v StateUpdateIdleEndTurn
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["stopReason"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "end_turn":
+			var v StateUpdateIdleEndTurn
+			if json.Unmarshal(b, &v) == nil {
 				u.EndTurn = &v
 				return nil
-			case "max_tokens":
-				var v StateUpdateIdleMaxTokens
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "max_tokens":
+			var v StateUpdateIdleMaxTokens
+			if json.Unmarshal(b, &v) == nil {
 				u.MaxTokens = &v
 				return nil
-			case "max_turn_requests":
-				var v StateUpdateIdleMaxTurnRequests
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "max_turn_requests":
+			var v StateUpdateIdleMaxTurnRequests
+			if json.Unmarshal(b, &v) == nil {
 				u.MaxTurnRequests = &v
 				return nil
-			case "refusal":
-				var v StateUpdateIdleRefusal
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "refusal":
+			var v StateUpdateIdleRefusal
+			if json.Unmarshal(b, &v) == nil {
 				u.Refusal = &v
 				return nil
-			case "cancelled":
-				var v StateUpdateIdleCancelled
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "cancelled":
+			var v StateUpdateIdleCancelled
+			if json.Unmarshal(b, &v) == nil {
 				u.Cancelled = &v
 				return nil
-			case "error":
-				var v StateUpdateIdleError
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "error":
+			var v StateUpdateIdleError
+			if json.Unmarshal(b, &v) == nil {
 				u.Error = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v StateUpdateIdleOther
@@ -12071,12 +12187,16 @@ func (u *StateUpdateIdle) UnmarshalJSON(b []byte) error {
 			if !strings.HasPrefix(string(m["stopReason"]), "\"") {
 				match = false
 			}
+			switch disc {
+			case "end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled", "error":
+				match = false
+			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Other = &v
+					return nil
 				}
-				u.Other = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -12086,11 +12206,11 @@ func (u *StateUpdateIdle) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.None = &v
+					return nil
 				}
-				u.None = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -12100,6 +12220,9 @@ func (u *StateUpdateIdle) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -12307,43 +12430,43 @@ func (u *StateUpdate) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["state"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "running":
-				var v StateUpdateRunning
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["state"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "running":
+			var v StateUpdateRunning
+			if json.Unmarshal(b, &v) == nil {
 				u.Running = &v
 				return nil
-			case "idle":
-				var v StateUpdateIdle
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "idle":
+			var v StateUpdateIdle
+			if json.Unmarshal(b, &v) == nil {
 				u.Idle = &v
 				return nil
-			case "requires_action":
-				var v StateUpdateRequiresAction
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "requires_action":
+			var v StateUpdateRequiresAction
+			if json.Unmarshal(b, &v) == nil {
 				u.RequiresAction = &v
 				return nil
-			case "unknown":
-				var v StateUpdateUnknown
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "unknown":
+			var v StateUpdateUnknown
+			if json.Unmarshal(b, &v) == nil {
 				u.Unknown = &v
 				return nil
 			}
+			failed = true
 		}
 		{
 			var v StateUpdateOther
@@ -12351,12 +12474,16 @@ func (u *StateUpdate) UnmarshalJSON(b []byte) error {
 			if !strings.HasPrefix(string(m["state"]), "\"") {
 				match = false
 			}
+			switch disc {
+			case "running", "idle", "requires_action", "unknown":
+				match = false
+			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Other = &v
+					return nil
 				}
-				u.Other = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -12366,6 +12493,9 @@ func (u *StateUpdate) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -13306,43 +13436,43 @@ func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
-		{
-			var disc string
-			if v, ok := m["type"]; ok {
-				json.Unmarshal(v, &disc)
-			}
-			switch disc {
-			case "content":
-				var v ToolCallContentContent
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+		var disc string
+		if v, ok := m["type"]; ok {
+			json.Unmarshal(v, &disc)
+		}
+		switch disc {
+		case "content":
+			var v ToolCallContentContent
+			if json.Unmarshal(b, &v) == nil {
 				u.Content = &v
 				return nil
-			case "diff":
-				var v ToolCallContentDiff
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "diff":
+			var v ToolCallContentDiff
+			if json.Unmarshal(b, &v) == nil {
 				u.Diff = &v
 				return nil
-			case "terminal":
-				var v ToolCallContentTerminal
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "terminal":
+			var v ToolCallContentTerminal
+			if json.Unmarshal(b, &v) == nil {
 				u.Terminal = &v
 				return nil
-			case "session":
-				var v ToolCallContentSession
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
-				}
+			}
+			failed = true
+		case "session":
+			var v ToolCallContentSession
+			if json.Unmarshal(b, &v) == nil {
 				u.Session = &v
 				return nil
 			}
+			failed = true
 		}
 	} else {
 		if _, ok := err.(*json.UnmarshalTypeError); !ok {
@@ -13351,6 +13481,9 @@ func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }
@@ -14491,6 +14624,8 @@ func (u *UnstableMessageMcpResponse) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
 	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err == nil {
 		{
@@ -14500,11 +14635,11 @@ func (u *UnstableMessageMcpResponse) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Result = &v
+					return nil
 				}
-				u.Result = &v
-				return nil
+				failed = true
 			}
 		}
 		{
@@ -14514,11 +14649,11 @@ func (u *UnstableMessageMcpResponse) UnmarshalJSON(b []byte) error {
 				match = false
 			}
 			if match {
-				if json.Unmarshal(b, &v) != nil {
-					return errors.New("invalid variant payload")
+				if json.Unmarshal(b, &v) == nil {
+					u.Error = &v
+					return nil
 				}
-				u.Error = &v
-				return nil
+				failed = true
 			}
 		}
 	} else {
@@ -14528,6 +14663,9 @@ func (u *UnstableMessageMcpResponse) UnmarshalJSON(b []byte) error {
 	}
 	var arr []map[string]json.RawMessage
 	if json.Unmarshal(b, &arr) == nil {
+	}
+	if failed {
+		return errors.New("invalid variant payload")
 	}
 	return errors.New("no matching variant for union")
 }

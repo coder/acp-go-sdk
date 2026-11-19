@@ -176,7 +176,8 @@ func exprs(e ast.Expr) []string {
 }
 
 // lostIn returns what r loses in n, its merged version, at path, or "" when
-// n is r with additions: values, members, and alternatives.
+// n is r with additions: values beside the values of r, members, and
+// alternatives.
 func (r *rule) lostIn(n *rule, path string) string {
 	switch {
 	case r == nil && n == nil:
@@ -193,6 +194,8 @@ func (r *rule) lostIn(n *rule, path string) string {
 		return fmt.Sprintf("%s: requires %v instead of %v", path, n.required, r.required)
 	case r.values != nil && n.values == nil:
 		return path + ": takes any value"
+	case r.values == nil && n.values != nil:
+		return fmt.Sprintf("%s: takes only the values %v", path, n.values)
 	}
 	for _, v := range r.values {
 		if !slices.Contains(n.values, v) {

@@ -14,14 +14,16 @@ import (
 // minimum and maximum narrow its format, explicit bounds on a property, an
 // int64, a nested struct, and a patch field. Spot.line and the items of marks
 // are lenient sites, and maybe is a lenient site that holds a struct with a
-// uint64.
+// uint64. tight, the items of caps and Spot.col put a bound next to a $ref or
+// an allOf, which has no type of its own.
 const integerRangesSchema = `{"$defs": {
   "Version": {"type": "integer", "format": "uint16", "minimum": 0, "maximum": 65535},
   "Level": {"type": "integer", "format": "int32", "minimum": 1, "maximum": 10},
   "Count": {"type": "object", "required": ["n"], "properties": {"n": {"type": "integer", "format": "uint64", "minimum": 0}}},
   "Spot": {"type": "object", "required": ["path"], "properties": {
     "path": {"type": "string"},
-    "line": {"type": ["integer", "null"], "format": "uint32", "minimum": 0, "x-deserialize-default-on-error": true}}},
+    "line": {"type": ["integer", "null"], "format": "uint32", "minimum": 0, "x-deserialize-default-on-error": true},
+    "col": {"$ref": "#/$defs/Version", "maximum": 10, "x-deserialize-default-on-error": true}}},
   "PingRequest": {"type": "object", "required": ["version", "offset", "count"], "properties": {
     "version": {"allOf": [{"$ref": "#/$defs/Version"}]},
     "offset": {"type": "integer", "format": "int32"},
@@ -30,6 +32,8 @@ const integerRangesSchema = `{"$defs": {
     "lines": {"type": "array", "items": {"type": "integer", "format": "uint32", "minimum": 0}},
     "levels": {"type": "object", "additionalProperties": {"$ref": "#/$defs/Level"}},
     "narrow": {"type": ["integer", "null"], "format": "uint32", "minimum": 5, "maximum": 10},
+    "tight": {"anyOf": [{"$ref": "#/$defs/Version", "minimum": 1}, {"type": "null"}]},
+    "caps": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/Version"}], "maximum": 10}},
     "big": {"type": ["integer", "null"], "format": "int64"},
     "count": {"$ref": "#/$defs/Count"},
     "latest": {"type": ["integer", "null"], "format": "uint16", "description": "Omitted means unchanged. ` + "`null`" + ` clears it."},
@@ -71,6 +75,9 @@ func TestPingRequest_Validate_ChecksIntegerRanges(t *testing.T) {
 		{"explicit bounds", with(` + "`" + `"narrow":5` + "`" + `), ""},
 		{"below explicit bounds", with(` + "`" + `"narrow":4` + "`" + `), "narrow must be between 5 and 10"},
 		{"above explicit bounds", with(` + "`" + `"narrow":11` + "`" + `), "narrow must be between 5 and 10"},
+		{"bound beside a $ref", with(` + "`" + `"tight":1` + "`" + `), ""},
+		{"below a bound beside a $ref", with(` + "`" + `"tight":0` + "`" + `), "tight must be between 1 and 65535"},
+		{"item above a bound beside an allOf", with(` + "`" + `"caps":[10,11]` + "`" + `), "caps[1] must be between 0 and 10"},
 		{"int64 is not checked", with(` + "`" + `"big":-9223372036854775808` + "`" + `), ""},
 		{"nested struct", ` + "`" + `{"version":1,"offset":0,"count":{"n":-1}}` + "`" + `, "count: n must be at least 0"},
 		{"patch above", with(` + "`" + `"latest":65536` + "`" + `), "latest must be between 0 and 65535"},
@@ -111,6 +118,12 @@ func TestPingRequest_UnmarshalJSON_ReadsLenientIntegersOutOfRangeAsAbsent(t *tes
 		var spot Spot
 		if err := json.Unmarshal([]byte(` + "`" + `{"path":"/p","line":` + "`" + `+line+` + "`" + `}` + "`" + `), &spot); err != nil || spot.Line != nil {
 			t.Errorf("line %s reads as %v with error %v, want absent", line, spot.Line, err)
+		}
+	}
+	for col, want := range map[string]Version{"10": 10, "11": 0} {
+		var spot Spot
+		if err := json.Unmarshal([]byte(` + "`" + `{"path":"/p","col":` + "`" + `+col+` + "`" + `}` + "`" + `), &spot); err != nil || spot.Col != want {
+			t.Errorf("col %s beside its $ref reads as %v with error %v, want %v", col, spot.Col, err, want)
 		}
 	}
 	var spot Spot

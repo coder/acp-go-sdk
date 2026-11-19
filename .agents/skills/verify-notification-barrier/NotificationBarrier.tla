@@ -489,10 +489,12 @@ CappedTarget(r) ==
 
 \* waitNotifications(ctx, target, stopAtPeerWait): target 0 returns at once.
 \* Otherwise take notifyMu, cap the target, and start the ctx.Done
-\* broadcaster. From here on resp[r] is the target.
+\* broadcaster. From here on resp[r] is the target. A request from the peer
+\* always gets here: InboundWaits sets its target, and WaitsForBarrier is
+\* about SendRequest and SendRequestNoResult only.
 EntersBarrier(r) ==
     /\ callerPc[r] = "barrier"
-    /\ IF ~WaitsForBarrier \/ resp[r] = 0
+    /\ IF (~WaitsForBarrier /\ r \notin InReqs) \/ resp[r] = 0
        THEN /\ SetResult(r, "ok") /\ SetPc(r, "done")
             /\ UNCHANGED <<lock, waker, resp>>
             /\ RecordExit(r)

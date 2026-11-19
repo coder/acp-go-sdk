@@ -369,12 +369,14 @@ func TestCompareSides_KeepsNullApartFromAbsent(t *testing.T) {
 }
 
 // The connection validates inbound requests and notifications, not the
-// result of a request it sent.
+// result of a request it sent. A response still fails to decode without a
+// required member, so the response here has its members and only breaks a
+// Validate rule: an empty session ID.
 func TestGoSide_ValidatesOnlyRequestsAndNotifications(t *testing.T) {
-	if g := goSide("CreateTerminalRequest", []byte(`{"sessionId":"s"}`)); g.OK {
-		t.Error("goSide accepts a CreateTerminalRequest without command, which the dispatcher rejects")
+	if g := goSide("CreateTerminalRequest", []byte(`{"sessionId":"s","command":""}`)); g.OK {
+		t.Error("goSide accepts a CreateTerminalRequest with an empty command, which the dispatcher rejects")
 	}
-	if g := goSide("ListSessionsResponse", []byte(`{}`)); !g.OK {
+	if g := goSide("ListSessionsResponse", []byte(`{"sessions":[{"sessionId":"","cwd":"/w"}]}`)); !g.OK {
 		t.Errorf("goSide rejects a ListSessionsResponse that Connection.SendRequest accepts: %s", g.Err)
 	}
 }

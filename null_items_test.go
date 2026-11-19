@@ -1,7 +1,6 @@
 package acp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -11,35 +10,12 @@ import (
 )
 
 // rawReply sends the JSON-RPC request line to a connection that connect builds
-// on a pair of pipes, and returns the connection's reply.
+// on a fake peer (newRawPeer), and returns the connection's reply.
 func rawReply(t *testing.T, connect func(peerInput io.Writer, peerOutput io.Reader), line string) anyMessage {
 	t.Helper()
-	inR, inW := io.Pipe()
-	outR, outW := io.Pipe()
-	t.Cleanup(func() {
-		_ = inW.Close()
-		_ = outW.Close()
-	})
-	connect(outW, inR)
-	replies := make(chan anyMessage, 1)
-	go func() {
-		sc := bufio.NewScanner(outR)
-		for sc.Scan() {
-			var msg anyMessage
-			if json.Unmarshal(sc.Bytes(), &msg) == nil {
-				replies <- msg
-				return
-			}
-		}
-	}()
-	go func() { _, _ = io.WriteString(inW, line+"\n") }()
-	select {
-	case msg := <-replies:
-		return msg
-	case <-time.After(5 * time.Second):
-		t.Fatalf("no reply to %s", line)
-		return anyMessage{}
-	}
+	p := newRawPeer(t, connect)
+	p.send(line)
+	return p.await("the reply to "+line, func(m anyMessage) bool { return m.Method == "" })
 }
 
 // nullItemsCase is a request that a connection receives. want is a part of

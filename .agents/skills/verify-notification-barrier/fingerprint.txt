@@ -7,7 +7,7 @@ cc9723bca064980c6103e00bb3e95765fe9c5ce1b96261ed33020deeef24a018  func (c *Conne
 f41b53dbc152eb541c95aa128abbfc4e7afd92aab9d43feb8399264baefe8566  func SendRequest[T any](c *Connection,
 5501eee3e4b0a557960ff811976f34bf02ba901b634addab228c0577e119f6cb  func (c *Connection) SendRequestNoResult(
 b2c8f8f5df90031f3b244b8b997c11ace52b905c1ed69d0d15ecab8a2ee6a3e1  func (c *Connection) waitForResponse(
-e025a1953d6b4d4e6b61ae3e7e8115920c0b48ce13e2e2e90c82dade3ef2c95e  func (c *Connection) waitNotificationsUpTo(
+a239159ff407a0e6819bc740cfe41b4cf2a780270e56543b9899a03174656446  func (c *Connection) waitNotificationsUpTo(
 7b4e5e3ffb566d11fd4a0f3517d9df31566178b8d2c94f5344b1d6b18d3c1acc  func (c *Connection) runningRequestHandler(
 8ef9b3537d842153780141d02dac4a88b1c7c8da1b300c198ff421f90d1812cc  func (c *Connection) waitNotifications(
 6632b6156f326675dd5e6bc89df29fd2eceb55d061bb61910ee4f3f65d4838a5  func (c *Connection) startPeerWait(

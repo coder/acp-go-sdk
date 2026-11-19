@@ -899,9 +899,17 @@ func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, i
 // waitNotificationsUpTo is the wait of SendRequest and SendRequestNoResult
 // after the response. For the ctx of a running handler of a request from the
 // peer, it also ends while the running notification handler waits on the
-// peer, as waitInboundBarrier does before that handler starts.
+// peer, as waitInboundBarrier does before that handler starts. The handler
+// can return during the wait. The peer then has its answer, so a wait that
+// ended early goes on.
 func (c *Connection) waitNotificationsUpTo(ctx context.Context, target uint64) error {
-	return c.waitNotifications(ctx, target, c.runningRequestHandler(ctx))
+	if c.runningRequestHandler(ctx) {
+		err := c.waitNotifications(ctx, target, true)
+		if err != nil || c.runningRequestHandler(ctx) {
+			return err
+		}
+	}
+	return c.waitNotifications(ctx, target, false)
 }
 
 // runningRequestHandler reports whether ctx belongs to the handler of a

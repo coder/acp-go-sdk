@@ -286,21 +286,25 @@ fi
 # After its response, a request that a running request handler makes with its
 # reqCtx also stops at a peer wait. That needs the handlingRequest value on
 # reqCtx, the handler call with reqCtx, and waitNotificationsUpTo setting
-# stopAtPeerWait for that value while the handler's arrival is in flight. The
-# model's InCall runs while its handler runs, so the in-flight check holds.
-UPTO_STOP="return c.waitNotifications(ctx, target, c.runningRequestHandler(ctx))"
+# stopAtPeerWait while the handler's arrival is in flight, before and after the
+# wait. The model's InCall runs while its handler runs, so both checks hold and
+# the full wait after them never runs.
+UPTO_IF="if c.runningRequestHandler(ctx) {"
+UPTO_STOP="err := c.waitNotifications(ctx, target, true)"
+UPTO_RECHECK="if err != nil || c.runningRequestHandler(ctx) {"
+UPTO_FULL="return c.waitNotifications(ctx, target, false)"
 RUNNING_CTX="h, ok := ctx.Value(handlingRequestKey{}).(handlingRequest)"
 RUNNING_LOOKUP="_, running := c.inflightArrivals[h.arrival]"
 REQ_CTX="reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})"
-if has "$B_upto" "$UPTO_STOP"; then
+if has "$B_upto" "$UPTO_IF" && has "$B_upto" "$UPTO_STOP" && has "$B_upto" "$UPTO_RECHECK" && has "$B_upto" "$UPTO_FULL"; then
 	if ! has "$B_running" "$RUNNING_CTX" || ! has "$B_running" "$RUNNING_LOOKUP"; then
 		drift "runningRequestHandler no longer looks up the handler's arrival in c.inflightArrivals"
 	fi
 	upto_stop=TRUE
-elif has "$B_upto" "return c.waitNotifications(ctx, target, false)"; then
-	upto_stop=FALSE
-else
+elif has "$B_upto" "runningRequestHandler" || ! has "$B_upto" "$UPTO_FULL"; then
 	drift "waitNotificationsUpTo calls waitNotifications in a new form"
+else
+	upto_stop=FALSE
 fi
 if [ "$upto_stop" = TRUE ] && [ "$LoopStopsAtPeerWait" = TRUE ] &&
 	has "$B_recv" "$REQ_CTX" && has "$B_recv" "c.handleInbound(reqCtx, m)"; then

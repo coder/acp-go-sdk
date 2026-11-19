@@ -148,6 +148,7 @@ Not covered, with what a user sees when it goes wrong:
 - Disconnect: a prompt keeps running after the client exits. `verify-notification-barrier` checks that handlers get a canceled ctx.
 - What `a.agent.Cancel` does other than call the client: the agent's own cancel logic is the agent's code.
 - The request ID that `receive` puts in `c.inflight`.
+- The #129 response-barrier release: a request that a running prompt makes with its ctx, such as `RequestPermission`, returns while the running notification handler waits on the client. The fingerprint does not include `waitNotificationsUpTo`, so the late `session/cancel` that this release allows is outside what the model checks: the prompt goes on with a live ctx until the earlier handler returns. `TestAgentSideConnection_SessionCancelReachesPromptLateAfterPeerWait` pins it.
 
 A pass covers the model within these bounds, not the whole SDK.
 

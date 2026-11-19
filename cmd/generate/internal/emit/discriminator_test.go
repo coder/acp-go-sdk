@@ -190,7 +190,8 @@ func TestUnion_UnmarshalJSON_SelectsAVariantByExactKeys(t *testing.T) {
 // members the schema does not name. Strict has a "none" variant and a
 // discriminator without the hint. State is StateUpdate, whose idle variant
 // holds Idle. No released schema has the last two: Marked has a required
-// property that is always null, and Bag names no property at all.
+// property that is always null, which must be there all the same, and Bag
+// names no property at all.
 const catchAllUnionSchema = `{"$defs": {
   "Failure": {"type": "object", "properties": {
     "error": {"type": ["string", "null"], "x-deserialize-default-on-error": true}}},
@@ -281,7 +282,6 @@ func TestCatchAllUnions_RoundTrip(t *testing.T) {
 		{func() any { return new(Bag) }, ` + "`" + `{"a":1,"b":[true]}` + "`" + `, ""},
 		{func() any { return new(Bag) }, ` + "`" + `{}` + "`" + `, ""},
 		{func() any { return new(Marked) }, ` + "`" + `{"marker":null,"note":"n"}` + "`" + `, ""},
-		{func() any { return new(Marked) }, ` + "`" + `{"note":"n"}` + "`" + `, ` + "`" + `{"marker":null,"note":"n"}` + "`" + `},
 	}
 	for _, tt := range tests {
 		v := tt.into()
@@ -301,6 +301,9 @@ func TestCatchAllUnions_RoundTrip(t *testing.T) {
 		if !sameJSON(t, string(out), want) {
 			t.Errorf("%s decodes and encodes to %s, want %s", tt.in, out, want)
 		}
+	}
+	if err := json.Unmarshal([]byte(` + "`" + `{"note":"n"}` + "`" + `), new(Marked)); err == nil {
+		t.Error("a Marked without marker decodes, want an error")
 	}
 }
 

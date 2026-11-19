@@ -8,8 +8,8 @@ import (
 )
 
 // A shape holds the rules of a JSON Schema node that the Go types do not
-// check: required members, closed enums and consts, where null is allowed,
-// and which union variant a value can be. A property with an
+// check: required members, closed enums and consts, the range of an integer,
+// where null is allowed, and which union variant a value can be. A property with an
 // x-deserialize-default-on-error or x-deserialize-skip-invalid-items hint
 // checks its value against the shape of its schema after the value decodes.
 // A value that does not fit reads as the property's default, or its array
@@ -18,14 +18,17 @@ import (
 //
 // The generator writes one shape per $defs entry that a hinted property
 // reaches, in the table shapes in types_gen.go, and names its index
-// shape<Def>. A shape ignores formats, numeric bounds, string lengths, and
-// the rule that a oneOf value fits only one variant. A member of an object
+// shape<Def>. A shape ignores string formats, string lengths, and the rule
+// that a oneOf value fits only one variant, as the Rust types do. The range of
+// an integer comes from its format, which names a Rust type, and from minimum
+// and maximum. A member of an object
 // whose own hint tolerates a bad value has no rules in the shape, because
 // it reads as its default and the object around it stays.
 type shape struct {
 	ref      shapeID           // a shapes entry that the value fits too
 	kinds    jsonKind          // the kinds of value that fit; 0 for every kind
 	values   []any             // the values that fit (an enum or a const); nil for any
+	ints     *intRange         // the integers that fit; nil for any
 	required []string          // the members that an object must have
 	props    map[string]*shape // the members that an object may have
 	rest     *shape            // each member that props does not name
@@ -33,6 +36,9 @@ type shape struct {
 	anyOf    []*shape          // the value fits one of them
 	not      *shape            // the value does not fit it
 }
+
+// intRange is the closed range of integers from min to max.
+type intRange struct{ min, max int64 }
 
 // shapeID is an index into shapes. The zero value names no shape.
 type shapeID int
@@ -74,6 +80,12 @@ func (s *shape) fits(v any) bool {
 	}
 	if s.values != nil && !slices.Contains(s.values, v) {
 		return false
+	}
+	if n, ok := v.(json.Number); ok && s.ints != nil {
+		// A number that is not an int64 is out of every range.
+		if i, err := n.Int64(); err != nil || i < s.ints.min || i > s.ints.max {
+			return false
+		}
 	}
 	switch v := v.(type) {
 	case map[string]any:

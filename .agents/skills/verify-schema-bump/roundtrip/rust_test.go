@@ -315,6 +315,31 @@ func TestCompareSides_UsesTheSchemaDefault(t *testing.T) {
 	}
 }
 
+// A patch field reads null as "clear" and an absent member as "unchanged",
+// so the two must not compare equal.
+func TestCompareSides_KeepsNullApartFromAbsent(t *testing.T) {
+	schemas := []schemaRef{{node: map[string]any{
+		"type":       "object",
+		"properties": map[string]any{"title": map[string]any{"type": []any{"string", "null"}}},
+	}}}
+	got, detail := compareSides(sideResult{OK: true, Out: json.RawMessage(`{"title":null}`)},
+		sideResult{OK: true, Out: json.RawMessage(`{}`)}, schemas)
+	if got != verdictDiffers {
+		t.Errorf("verdict = %s (%s), want differs", got, detail)
+	}
+}
+
+// The connection validates inbound requests and notifications, not the
+// result of a request it sent.
+func TestGoSide_ValidatesOnlyRequestsAndNotifications(t *testing.T) {
+	if g := goSide("CreateTerminalRequest", []byte(`{"sessionId":"s"}`)); g.OK {
+		t.Error("goSide accepts a CreateTerminalRequest without command, which the dispatcher rejects")
+	}
+	if g := goSide("ListSessionsResponse", []byte(`{}`)); !g.OK {
+		t.Errorf("goSide rejects a ListSessionsResponse that Connection.SendRequest accepts: %s", g.Err)
+	}
+}
+
 func TestReadCases(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, text string) string {

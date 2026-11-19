@@ -23,11 +23,13 @@ const (
 	defaultMaxQueuedNotifications = 1024
 )
 
-// WithByteBudget sets how many bytes of the peer's requests and notifications
-// the connection holds at once. A message counts the length of its line. A
-// request is held until its reply is written, and a notification until its
-// handler returns. A request that does not fit gets a -32603 reply, and its
-// handler does not run. A notification that does not fit closes the
+// WithByteBudget sets how many bytes of the peer's requests the connection
+// holds at once, and how many bytes of its notifications. Requests and
+// notifications each have the whole budget, so requests that fill it never
+// stop a notification such as session/cancel. A message counts the length of
+// its line. A request is held until its reply is written, and a notification
+// until its handler returns. A request that does not fit gets a -32603 reply,
+// and its handler does not run. A notification that does not fit closes the
 // connection. Responses to this side's own requests do not count, nor does the
 // line that the connection is reading, which can be up to 10 MiB. The default
 // is 64 MiB. WithByteBudget panics if n < 1.
@@ -66,11 +68,15 @@ var (
 	errInboundRequestOverBudget = NewInternalError(map[string]any{"error": "request from the peer exceeds the byte budget"})
 )
 
+// peerBudget counts what a Connection holds from the peer. Requests and
+// notifications each have the whole byte budget, so requests that fill it
+// never close the connection on the next notification.
 type peerBudget struct {
 	maxBytes, maxRequests int
 	mu                    sync.Mutex
-	bytes                 int
 	requests              int
+	requestBytes          int
+	notificationBytes     int
 }
 
 func (b *peerBudget) holdRequest(size int) *RequestError {
@@ -79,11 +85,11 @@ func (b *peerBudget) holdRequest(size int) *RequestError {
 	if b.requests >= b.maxRequests {
 		return errTooManyInboundRequests
 	}
-	if size > b.maxBytes-b.bytes {
+	if size > b.maxBytes-b.requestBytes {
 		return errInboundRequestOverBudget
 	}
 	b.requests++
-	b.bytes += size
+	b.requestBytes += size
 	return nil
 }
 
@@ -91,21 +97,21 @@ func (b *peerBudget) releaseRequest(size int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.requests--
-	b.bytes -= size
+	b.requestBytes -= size
 }
 
 func (b *peerBudget) holdNotification(size int) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if size > b.maxBytes-b.bytes {
+	if size > b.maxBytes-b.notificationBytes {
 		return false
 	}
-	b.bytes += size
+	b.notificationBytes += size
 	return true
 }
 
 func (b *peerBudget) releaseNotification(size int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.bytes -= size
+	b.notificationBytes -= size
 }

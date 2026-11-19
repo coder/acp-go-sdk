@@ -20,7 +20,7 @@ import (
 func (b *peerBudget) held() (bytes, requests int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.bytes, b.requests
+	return b.requestBytes + b.notificationBytes, b.requests
 }
 
 func liveHeap() int64 {
@@ -441,35 +441,44 @@ func TestConnectionBudget_ClosesOnNotificationOverByteBudget(t *testing.T) {
 	waitHeld(t, c, 0, 0)
 }
 
-func TestConnectionBudget_SharesBudgetBetweenRequestsAndNotifications(t *testing.T) {
-	const budget, requests = 1 << 20, 3
+func TestConnectionBudget_KeepsRequestsAndNotificationsApart(t *testing.T) {
+	const budget, requests, notes = 1 << 20, 3, 5
 	request := requestLine(t, "_block", 300<<10)
-	note := notificationLine(t, "_note", 200<<10)
-	if requests*request.size() > budget || requests*request.size()+note.size() <= budget {
-		t.Fatal("SETUP: the requests must fit the budget, and the notification must not fit beside them")
+	note := notificationLine(t, "_block", 200<<10)
+	if requests*request.size() > budget || (requests+1)*request.size() <= budget ||
+		notes*note.size() > budget || (notes+1)*note.size() <= budget {
+		t.Fatal("SETUP: the requests and the notifications must each fill the budget")
 	}
 	p := newBudgetPeer(t)
 	g := newGate(t, "_block")
 	c := newBudgetConnection(t, p, g.handler, WithByteBudget(budget))
 
 	before := liveHeap()
-	p.write(note.number(1))
-	waitHeld(t, c, 0, 0)
-	for n := 1; n <= requests; n++ {
+	for n := 1; n <= requests+1; n++ {
 		p.write(request.number(n))
 	}
-	waitHeld(t, c, requests*request.size(), requests)
-	if !isOpen(c.Done()) {
-		t.Fatal("the connection closed before the notification that does not fit")
+	if rejected := rejectedIDs(t, p, 1); !rejected[lineID(requests+1)] {
+		t.Errorf("rejected %v, want request %d", rejected, requests+1)
 	}
+	writes := p.writeAll(note, 1, notes)
+	want := requests*request.size() + notes*note.size()
+	waitUntil(t, "the notifications are held or close the connection", func() bool {
+		b, _ := c.budget.held()
+		return b == want || !isOpen(c.Done())
+	})
+	if !isOpen(c.Done()) {
+		t.Fatal("notifications that fit the budget closed the connection beside requests that fill it")
+	}
+	<-writes
 
-	writes := p.writeAll(note, 2, 2)
+	writes = p.writeAll(note, notes+1, notes+1)
 	waitDone(t, c.Done())
 	p.cutOff(writes)
 	retained(t, c, before)
 	if !strings.Contains(p.logs.String(), "byte budget") {
 		t.Errorf("the log does not name the byte budget:\n%s", p.logs.String())
 	}
+	g.open()
 	waitHeld(t, c, 0, 0)
 }
 

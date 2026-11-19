@@ -212,10 +212,17 @@ in_order "$B_recv" "watermark := c.lastEnqueuedNotificationSeq" "c.inboundMessag
 	"delete(c.inflight, idKey)" "c.handleInbound(reqCtx, m)" ||
 	drift "receive no longer numbers each request and records it in flight before the request goroutine (ReceivePrompt, ReceiveAddsInflight, Exit)"
 in_order "$B_recv" "c.inboundMessages++" "c.lastEnqueuedNotificationSeq++" \
-	"case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m}:" ||
+	"case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m, size: size}:" ||
 	drift "receive no longer numbers and queues notifications (ReceiveNotification)"
 [ "$(grep -Fc "c.inboundMessages++" <<<"$B_recv")" = 2 ] ||
 	drift "receive numbers messages in a new set of places: the model gives every request and queued notification one arrival"
+# A message over the connection's limits takes no arrival: a request that does
+# not fit gets its reply and is skipped, and a notification that does not fit
+# closes the connection, each before c.inboundMessages++. So the model leaves
+# them out: a rejected session/cancel or session/prompt never runs.
+in_order "$B_recv" "if rejection := c.budget.holdRequest(size); rejection != nil {" "continue" "c.inboundMessages++" \
+	"if !c.budget.holdNotification(size) {" "return" "c.inboundMessages++" ||
+	drift "receive numbers a message that it does not hold (ReceivePrompt, ReceiveNotification)"
 
 # MarkerCancelsWhen: registerPrompt cancels at once when a later cancel ran.
 if has "$B_reg" "if hasArrival && cancelledAt > arrival {"; then

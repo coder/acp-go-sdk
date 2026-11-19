@@ -154,9 +154,26 @@ fi
 ! has "$B_proc" "go c.handleInbound" || drift "processNotifications runs handlers concurrently"
 has "$B_recv" "c.handleResponse(&msg)" || drift "receive() no longer calls handleResponse(&msg)"
 ! has "$B_recv" "go c.handleResponse" || drift "receive() handles responses concurrently"
-has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m}:" ||
+has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m, size: size}:" ||
 	drift "receive() no longer queues notifications with a non-blocking send"
 has "$B_recv" "c.lastEnqueuedNotificationSeq++" || drift "receive() no longer numbers notifications"
+# The limits on what the connection holds from the peer act before a message
+# touches barrier state, so the model needs no action for them. A request that
+# does not fit gets its reply before it reads the watermark, and it never
+# starts a goroutine. A notification that does not fit closes the connection
+# before it is numbered: the overflow path without the rollback.
+l_hold_req=$(line_of "$B_recv" "if rejection := c.budget.holdRequest(size); rejection != nil {")
+l_reject=$(line_of "$B_recv" "c.sendInboundRequestError(&msg, rejection)")
+l_watermark=$(line_of "$B_recv" "watermark := c.lastEnqueuedNotificationSeq")
+l_hold_note=$(line_of "$B_recv" "if !c.budget.holdNotification(size) {")
+l_budget_close=$(line_of "$B_recv" "c.shutdownReceive(errByteBudgetExceeded)")
+l_number=$(line_of "$B_recv" "c.lastEnqueuedNotificationSeq++")
+{ [ -n "$l_hold_req" ] && [ -n "$l_reject" ] && [ -n "$l_watermark" ] &&
+	[ "$l_hold_req" -lt "$l_reject" ] && [ "$l_reject" -lt "$l_watermark" ]; } ||
+	drift "receive() no longer answers a request that it cannot hold before the request reads the watermark"
+{ [ -n "$l_hold_note" ] && [ -n "$l_budget_close" ] && [ -n "$l_number" ] &&
+	[ "$l_hold_note" -lt "$l_budget_close" ] && [ "$l_budget_close" -lt "$l_number" ]; } ||
+	drift "receive() no longer closes on a notification over the byte budget before it numbers the notification"
 
 # The wait loop, with or without the release while the running handler waits
 # on the peer.

@@ -113,7 +113,9 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 		c.descends = len(b.checkPlan(ir.Fields(def.Properties, def.Required), false, nil)) > 0
 	} else {
 		c.descends = b.validates(leaf)
-		c.bounds = b.heldRange(def, c.via)
+		if b.integerGoType(leaf) {
+			c.bounds = b.heldRange(def, c.via)
+		}
 		c.boundsInInt64 = c.bounds != nil && leaf != "int64" && (c.bounds.min < math.MinInt32 || c.bounds.max > math.MaxInt32)
 	}
 	return c
@@ -138,6 +140,18 @@ func peelContainers(goType Code) ([]container, string) {
 			return via, s
 		}
 	}
+}
+
+// integerGoType reports whether name, the Go type that a field holds, is an
+// integer: int, int64, or a $defs entry that becomes a named integer type. A
+// range check compares only such a value; raw JSON, such as a $defs entry
+// with a $ref and a bound but no type, gets none.
+func (b *typesBuilder) integerGoType(name string) bool {
+	if name == "int" || name == "int64" {
+		return true
+	}
+	def := b.schema.Defs[name]
+	return def != nil && classify(def) == primitiveKind && ir.PrimaryType(def) == "integer"
 }
 
 // stringType reports whether name is a $defs entry that becomes a named

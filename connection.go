@@ -114,7 +114,7 @@ type cancelRequestParams struct {
 //     When the peer disconnects right after the cancel, the waiting request
 //     can see the disconnect first. The handler then starts with a cancelled
 //     ctx, as on any disconnect during the wait.
-//     A $/cancel_request that arrives while the handler runs cancels its ctx.
+//     A later $/cancel_request, even one just before the handler starts, only cancels its ctx.
 //
 // A request that a handler makes waits for notification handlers too, as
 // SendRequest describes. A request that a request handler makes with its ctx

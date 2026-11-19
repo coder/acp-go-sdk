@@ -27,7 +27,7 @@ export ACP_VERIFY_ROOT="${XUM_SCRATCH_DIR:-${TMPDIR:-/tmp}}/acp-verify"   # opti
 "$V" launch
 ```
 
-`launch` builds `acp-example-agent`, `acp-example-client` and `acpwire` from the current checkout into a new run folder. It needs only Go. It creates the root folder with mode 0700, and it refuses a root that another user owns or can write to, or that is a symlink, because later commands run the binaries in it. Its last line is `export ACP_VERIFY_RUN=<run folder>`. Shell state does not carry over between tool calls, so start every later command with both variables:
+`launch` builds `acp-example-agent`, `acp-example-client` and `acpwire` from the current checkout into a new run folder. It needs only Go. It creates the root folder with mode 0700, and it refuses a root that another user owns or can write to, or that is a symlink, because later commands run the binaries in it. The write check reads the mode bits, which also cover POSIX ACLs: an ACL entry that lets another user or group write raises the ACL mask, and the group mode bits show the mask. ACLs that the mode bits do not show, such as NFSv4 or macOS ACLs, are not checked. Its last line is `export ACP_VERIFY_RUN=<run folder>`. Shell state does not carry over between tool calls, so start every later command with both variables:
 
 ```bash
 V=.agents/skills/verify-acp-go-sdk/scripts/acp-verify; export ACP_VERIFY_RUN=<run folder from launch>
@@ -55,7 +55,7 @@ Drive the agent with a journey, as an editor would:
 "$V" wire prompt-allow.jsonl prompt-allow     # journey file in journeys/, evidence label
 ```
 
-`acpwire` starts the agent, plays the journey, answers the agent's requests (such as `session/request_permission`) from rules in the journey, and prints one PASS or FAIL line per step. Exit 1 means a step failed. A journey is one JSON object per line. The comment at the top of `scripts/acpwire/main.go` lists every step type. Request ids count up from 1 in the order of the `send` steps, so a `$/cancel_request` can name an earlier request by its number.
+`acpwire` starts the agent, plays the journey, answers the agent's requests (such as `session/request_permission`) from rules in the journey, and prints one PASS or FAIL line per step. Exit 1 means a step failed. A journey is one JSON object per line. The comment at the top of `scripts/acpwire/main.go` lists every step type. A journey with an unknown field, a negative `count`, or a negative `sleep` or `timeout` does not load (exit 2). In `expect` and `where`, numbers compare by exact value: `1` equals `1.0`, and no digit of an integer above 2^53 is rounded away. When an automatic answer to an agent request cannot be written to the agent, the run fails. Request ids count up from 1 in the order of the `send` steps, so a `$/cancel_request` can name an earlier request by its number.
 
 Drive the example client, as a developer at a terminal would:
 
@@ -89,7 +89,7 @@ Proof standards:
 "$V" cleanup
 ```
 
-`cleanup` stops only the processes that this run recorded, and their direct children. It checks each process's start time first, so a reused PID is left alone. It never kills by process name. Then it deletes `work/` (binaries and process list) and keeps `evidence/`. It prints the evidence path. A run that was cleaned up cannot be driven again: launch a new one.
+Each drive starts its command in a process group of its own and records it. `cleanup` stops only those groups, and the leftovers that `client-default` recorded: every process in them, also an agent that outlived the client that started it. It checks each recorded process's start time first, so a reused PID and its group are left alone. It never kills by process name. It sends SIGTERM, waits up to `ACP_VERIFY_STOP_GRACE` seconds (default 10), sends SIGKILL to what is left, and prints `stopped pid N` only once a group is gone. If a process outlives SIGKILL by 5 s, cleanup exits 2 and keeps `work/`, so `doctor` still reports it and cleanup can run again. Otherwise it deletes `work/` (binaries and process list), keeps `evidence/`, and prints the evidence path. `doctor` reports a process in a recorded group as still running too. A run that was cleaned up cannot be driven again: launch a new one.
 
 After cleanup, confirm that the proof is still there, for example with `ls "$ACP_VERIFY_RUN/evidence"`.
 

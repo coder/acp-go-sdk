@@ -3,7 +3,7 @@
 # agent-client-protocol-schema (rustprobe/), and list each value that the two
 # read differently.
 #
-# usage: rust-diff [go test flags]
+# usage: rust-diff [go test flags, but not -run or -skip]
 # env: RUST_CASES  cases file, one {"id","def","json"} per line (default:
 #                  roundtrip/testdata/rust/cases.jsonl); a G2_PROBES file works
 #      VSB_ROOT    run folder root (default: ${TMPDIR:-/tmp}/verify-schema-bump)
@@ -57,7 +57,12 @@ RUST_PROBE=$vsb/cache/rustprobe/release/rustprobe RUST_CASES=$cases \
 	go test ./roundtrip -run '^TestRust$' -count=1 -v "$@" >"$run/test.log" 2>&1 || status=$?
 sed -nE 's/^ +rust_test\.go:[0-9]+: (RUST .*)/\1/p' "$run/test.log" >"$run/details.txt"
 cat "$run/details.txt"
-grep -oE 'SUMMARY .*' "$run/test.log" | tee -a "$run/summary.txt" || true
 grep -E '^(FAIL|ok|panic|#)' "$run/test.log" | grep -v '^FAIL$' | tee -a "$run/summary.txt" || true
 echo "evidence: $run"
+# A -run or -skip in the extra flags can deselect TestRust, and go test then
+# passes without comparing anything.
+if ! grep -oE 'SUMMARY rust: .*' "$run/test.log" | tee -a "$run/summary.txt"; then
+	echo "RUST FAIL: TestRust did not run; do not pass -run or -skip"
+	exit 1
+fi
 if [ $status = 0 ]; then echo "RUST PASS"; else echo "RUST FAIL"; exit 1; fi

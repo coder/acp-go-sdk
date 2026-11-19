@@ -249,3 +249,15 @@ func TestAuthMethodTerminal_UnmarshalJSON_RejectsNullArgsAndEnvValues(t *testing
 		t.Errorf("authMethods = %+v, want only the agent method", resp.AuthMethods)
 	}
 }
+
+// An elicitation answer whose string array holds null matches no variant of
+// ElicitationContentValue, as in the Rust SDK, instead of reading the null as "".
+func TestCreateElicitationResponse_UnmarshalJSON_RejectsANullItemOfAStringArray(t *testing.T) {
+	var resp CreateElicitationResponse
+	if err := json.Unmarshal([]byte(`{"action":"accept","content":{"x":["ok",null]}}`), &resp); err == nil {
+		t.Errorf("an answer with a null string array item decodes to %+v, want an error", resp)
+	}
+	if err := json.Unmarshal([]byte(`{"action":"accept","content":{"x":["ok",""]}}`), &resp); err != nil {
+		t.Errorf("an answer with a string array decodes with error %v", err)
+	}
+}

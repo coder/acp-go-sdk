@@ -6,7 +6,8 @@ import "testing"
 // args and env and NewSessionRequest has additionalDirectories, next to fields
 // whose schema or hints let null through. wrapped takes its item type through
 // an allOf, as a property does. Change has a patch field, as
-// SubagentUpdate has, and Target an own property of a union wrapper.
+// SubagentUpdate has, Target an own property of a union wrapper, and Value an
+// array variant, as ElicitationContentValue has.
 const nullItemsSchema = `{"$defs": {
   "Kind": {"type": "string", "enum": ["read", "edit"]},
   "Named": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
@@ -24,6 +25,9 @@ const nullItemsSchema = `{"$defs": {
   "Change": {"type": "object", "properties": {
     "dirs": {"type": ["array", "null"], "items": {"type": "string"}, "description": "Omitted means unchanged. ` + "`null`" + ` clears it."}
   }},
+  "Value": {"anyOf": [
+    {"title": "Text", "type": "string"},
+    {"title": "TextArray", "type": "array", "items": {"type": "string"}}]},
   "Target": {"properties": {"hosts": {"type": "array", "items": {"type": "string"}}},
     "anyOf": [
       {"title": "Text", "type": "string"},
@@ -128,6 +132,17 @@ func TestChange_UnmarshalJSON_RejectsANullItemOfAPatch(t *testing.T) {
 		if got != want {
 			t.Errorf("%s decodes dirs as %s, want %s", in, got, want)
 		}
+	}
+}
+
+// A null item fails the array variant, so no variant matches.
+func TestValue_UnmarshalJSON_RejectsANullItemOfAnArrayVariant(t *testing.T) {
+	var v Value
+	if err := json.Unmarshal([]byte(` + "`" + `["a",null]` + "`" + `), &v); err == nil {
+		t.Errorf("an array variant with a null item decodes to %+v, want an error", v)
+	}
+	if err := json.Unmarshal([]byte(` + "`" + `["a",""]` + "`" + `), &v); err != nil || v.TextArray == nil || len(*v.TextArray) != 2 {
+		t.Errorf("an array variant decodes to %+v (error %v), want two items", v, err)
 	}
 }
 

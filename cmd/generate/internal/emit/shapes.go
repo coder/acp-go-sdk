@@ -158,7 +158,7 @@ func (t *shapeTable) node(d *load.Definition) *shapeNode {
 		n.values = scalars(d.Enum)
 	default:
 		// The values of an enum or a const decide alone.
-		n.ints = ownRange(d)
+		n.ints = ownRange(t.schema, d)
 	}
 	n.required = d.Required
 	n.rest = t.node(d.AdditionalProperties.Schema)

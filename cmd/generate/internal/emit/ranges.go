@@ -48,13 +48,10 @@ func formatRange(format string) intRange {
 }
 
 // ownRange returns the range that the keywords of d itself allow, when d is
-// an integer schema: its format intersected with minimum and maximum. It
-// returns nil when they allow every int64.
-func ownRange(d *load.Definition) *intRange {
-	if d == nil {
-		return nil
-	}
-	if kinds := kindsOf(d.Type); !slices.Contains(kinds, "kindInteger") || slices.Contains(kinds, "kindFraction") {
+// an integer schema (integer): its format intersected with minimum and
+// maximum. It returns nil when they allow every int64.
+func ownRange(schema *load.Schema, d *load.Definition) *intRange {
+	if d == nil || !integer(schema, d) {
 		return nil
 	}
 	r := formatRange(d.Format)
@@ -95,6 +92,11 @@ func intersect(r, o *intRange) *intRange {
 // null, stands for through $ref or an allOf of one $ref, and nil when it
 // stands for none.
 func (b *typesBuilder) referred(d *load.Definition) *load.Definition {
+	return referredDef(b.schema, d)
+}
+
+// referredDef is referred for the $defs of schema.
+func referredDef(schema *load.Schema, d *load.Definition) *load.Definition {
 	d = withoutNull(d)
 	ref := d.Ref
 	if ref == "" && len(d.AllOf) == 1 && d.AllOf[0] != nil {
@@ -103,7 +105,22 @@ func (b *typesBuilder) referred(d *load.Definition) *load.Definition {
 	if ref == "" {
 		return nil
 	}
-	return b.schema.Defs[strings.TrimPrefix(ref, "#/$defs/")]
+	return schema.Defs[strings.TrimPrefix(ref, "#/$defs/")]
+}
+
+// integer reports whether d is an integer schema: by its own type, or, when
+// it has none, by the schema that it stands for (referredDef), so that a
+// minimum or maximum next to a $ref, or next to an allOf of one, counts.
+func integer(schema *load.Schema, d *load.Definition) bool {
+	for seen := map[*load.Definition]bool{}; d != nil && d.Type == nil && !seen[d]; {
+		seen[d] = true
+		d = referredDef(schema, d)
+	}
+	if d == nil {
+		return false
+	}
+	kinds := kindsOf(d.Type)
+	return slices.Contains(kinds, "kindInteger") && !slices.Contains(kinds, "kindFraction")
 }
 
 // target returns the schema at the end of the $refs from d (referred),
@@ -132,7 +149,7 @@ func (b *typesBuilder) heldRange(def *load.Definition, via []container) *intRang
 	}
 	var r *intRange
 	for ; def != nil; def = b.referred(def) {
-		r = intersect(r, ownRange(withoutNull(def)))
+		r = intersect(r, ownRange(b.schema, withoutNull(def)))
 	}
 	return r
 }

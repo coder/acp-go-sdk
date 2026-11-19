@@ -273,14 +273,10 @@ if has "$B_recv" "$IN_BARRIER"; then
 		drift "waitInboundBarrier calls waitNotifications in a new form"
 	fi
 	l_cause=$(line_of "$B_inb" "$INB_CAUSE")
-	if [ -n "$l_cause" ] && [ "$l_cause" -gt "$l_iw" ]; then PostWaitChecksCtx=TRUE; fi
-elif has "$B_recv" "if err := c.waitNotifications(reqCtx, watermark, true); err != nil {"; then
-	InboundWaits=TRUE
-	in_stop=TRUE
-elif has "$B_recv" "if err := c.waitNotifications(reqCtx, watermark, false); err != nil {" ||
-	has "$B_recv" "if err := c.waitNotificationsUpTo(reqCtx, watermark); err != nil {"; then
-	InboundWaits=TRUE
-	in_stop=FALSE
+	l_ret=$(line_of "$B_inb" "return toReqErr(cause)")
+	if [ -n "$l_cause" ] && [ "$l_cause" -gt "$l_iw" ] && [ "$l_ret" = $((l_cause + 1)) ]; then
+		PostWaitChecksCtx=TRUE
+	fi
 elif has "$B_recv" "waitNotifications" || has "$B_recv" "waitInboundBarrier"; then
 	drift "receive() waits for earlier notifications in a new form"
 else
@@ -291,6 +287,8 @@ if [ "$InboundWaits" = TRUE ]; then
 	has "$B_recv" "watermark := c.lastEnqueuedNotificationSeq" ||
 		drift "receive() waits for a watermark that it no longer reads from lastEnqueuedNotificationSeq"
 fi
+# While connected, a wait error gets the error reply, not the handler.
+if has "$B_recv" "c.sendInboundRequestError(m, toReqErr(err))"; then WaitErrorReplies=TRUE; else WaitErrorReplies=FALSE; fi
 if [ "$in_stop" = TRUE ] && [ "$LoopStopsAtPeerWait" = TRUE ]; then
 	InboundStopsAtPeerWait=TRUE
 else
@@ -403,6 +401,7 @@ FACTS="CONSTANTS
     PeerWaitBroadcasts = $PeerWaitBroadcasts
     PeerWaitEnds = $PeerWaitEnds
     PostWaitChecksCtx = $PostWaitChecksCtx
+    WaitErrorReplies = $WaitErrorReplies
     RequestCtxStopsAtPeerWait = $RequestCtxStopsAtPeerWait"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from connection.go:"

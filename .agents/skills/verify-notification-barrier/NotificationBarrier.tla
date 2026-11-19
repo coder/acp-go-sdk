@@ -42,6 +42,7 @@ CONSTANTS
     PeerWaitBroadcasts,       \* startPeerWait broadcasts on notifyCond after the increment
     PeerWaitEnds,             \* donePeerWait decrements peerWaits[seq] after waitForResponse
     PostWaitChecksCtx,        \* waitInboundBarrier returns the cancel error when ctx ended as the wait cleared
+    WaitErrorReplies,         \* receive answers a wait error with sendInboundRequestError while connected
     RequestCtxStopsAtPeerWait \* waitNotificationsUpTo stops at a peer wait for a request handler's ctx
 
 ASSUME WatermarkSource \in {"enqueued", "completed"}
@@ -766,7 +767,8 @@ InHandlerStarts(q) ==
     /\ InVarsBut(q)
 
 \* select { case <-c.Done(): c.handleInbound(reqCtx, m); default: }, else
-\* c.sendInboundRequestError(m, toReqErr(err)). The deferred delete from
+\* c.sendInboundRequestError(m, toReqErr(err)) (WaitErrorReplies). Without
+\* it, the handler starts with the ended ctx. The deferred delete from
 \* c.inflight follows the reply; the model folds it into the reply step.
 InChecksDone(q) ==
     /\ inPc[q] = "checkDone"
@@ -774,9 +776,13 @@ InChecksDone(q) ==
        THEN /\ inPc' = [inPc EXCEPT ![q] = "handler"]
             /\ inStart' = [inStart EXCEPT ![q] = "disconnected"]
             /\ UNCHANGED inflight
-       ELSE /\ inPc' = [inPc EXCEPT ![q] = "errReplied"]
+       ELSE IF WaitErrorReplies
+       THEN /\ inPc' = [inPc EXCEPT ![q] = "errReplied"]
             /\ inflight' = inflight \ {q}
             /\ UNCHANGED inStart
+       ELSE /\ inPc' = [inPc EXCEPT ![q] = "handler"]
+            /\ inStart' = [inStart EXCEPT ![q] = "cancelled"]
+            /\ UNCHANGED inflight
     /\ UNCHANGED inCheckSaw
     /\ InVarsBut(q)
 

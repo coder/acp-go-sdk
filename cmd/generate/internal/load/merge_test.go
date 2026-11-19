@@ -815,7 +815,7 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			name:     "a union of strings gains another alternative",
 			stable:   map[string]*Definition{"Category": {AnyOf: []*Definition{{Type: "string", Const: "mode"}, str()}}},
 			unstable: map[string]*Definition{"Category": {AnyOf: []*Definition{{Type: "string", Const: "mode"}, str(), {Type: "integer"}}}},
-			want:     []string{`Category: adds an alternative that is not a string (anyOf), which makes its Go type a union`},
+			want:     []string{`Category: turns from a string type into a struct, union, or plain type, which changes its Go type`},
 		},
 		{
 			// An anonymous variant is named by its index.
@@ -827,6 +827,31 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 				obj(map[string]*Definition{"c": str()}), obj(map[string]*Definition{"a": str()}), obj(map[string]*Definition{"b": str()}),
 			}}},
 			want: []string{`Shape.anyOf[0]: moves to 1, which renames its Go type`, `Shape.anyOf[1]: moves to 2, which renames its Go type`},
+		},
+		{
+			// A definition with enum values is a string enum.
+			name:     "a definition gains enum values",
+			stable:   map[string]*Definition{"Level": {Type: "integer"}},
+			unstable: map[string]*Definition{"Level": {Type: "integer", Enum: []any{1, 2}}},
+			want:     []string{`Level: turns from a struct, union, or plain type into an enum, which changes its Go type`},
+		},
+		{
+			// A field with enum values is a string.
+			name:     "a property gains enum values",
+			stable:   options(obj(map[string]*Definition{"level": {Type: "integer"}})),
+			unstable: options(obj(map[string]*Definition{"level": {Type: "integer", Enum: []any{1, 2}}})),
+			want:     []string{`Options.level: gains enum values, which makes its Go type a string`},
+		},
+		{
+			// A union without keys to pick a variant by tries them in order.
+			name: "two titled alternatives swap",
+			stable: map[string]*Definition{"Value": {AnyOf: []*Definition{
+				{Title: "number", Type: "number"}, {Title: "integer", Type: "integer"},
+			}}},
+			unstable: map[string]*Definition{"Value": {AnyOf: []*Definition{
+				{Title: "integer", Type: "integer"}, {Title: "number", Type: "number"},
+			}}},
+			want: []string{`Value.anyOf[1]: moves before another stable alternative, which can change what a value decodes as`},
 		},
 		{
 			// Unknown values of an enum with "other" decode as "other".
@@ -938,12 +963,19 @@ func TestMergeStableAndUnstable_AllowsDescriptionsThatOnlyChangeLinks(t *testing
 }
 
 // A union definition is a union type, so it may gain an alternative even when
-// its alternatives are a value and null.
+// its alternatives are a value and null, and the constant "other" is just a
+// variant of a union that is not an enum.
 func TestMergeStableAndUnstable_AllowsAlternativesOfAUnionDefinition(t *testing.T) {
 	value := func(alts ...*Definition) map[string]*Definition {
 		return map[string]*Definition{"Value": {AnyOf: append([]*Definition{ref("Text"), {Type: "null"}}, alts...)}, "Text": {Type: "string"}}
 	}
-	meta, stable, unstable := reachedSchemas(value(), value(&Definition{Type: "integer", Description: "A count."}))
+	// A union that is not an enum may gain the constant "other" as a variant.
+	kind := func(alts ...*Definition) *Definition {
+		return &Definition{OneOf: append([]*Definition{ref("Text"), {Type: "integer"}}, alts...)}
+	}
+	stableDefs, unstableDefs := value(), value(&Definition{Type: "integer", Description: "A count."})
+	stableDefs["Kind"], unstableDefs["Kind"] = kind(), kind(&Definition{Type: "string", Const: "other"})
+	meta, stable, unstable := reachedSchemas(stableDefs, unstableDefs)
 	_, combined := mustMerge(t, meta, stable, meta, unstable)
 	if got := combined.Defs["Value"].AnyOf[2].Description; got != unstableNote+"\n\nA count." {
 		t.Errorf("Value alternative 2 description = %q, want the note", got)

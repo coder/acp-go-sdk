@@ -348,32 +348,38 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) 
 		keyword string
 		s, u    []*Definition
 	}{{"anyOf", s.AnyOf, u.AnyOf}, {"oneOf", s.OneOf, u.OneOf}, {"allOf", s.AllOf, u.AllOf}} {
-		match := map[*Definition]*Definition{}
-		index := map[*Definition]int{}
-		for i, spart := range parts.s {
-			index[spart] = i
-		}
-		var added []*Definition
+		match, uindex := map[*Definition]*Definition{}, map[*Definition]int{}
+		added := false
 		for i, spart := range counterparts(parts.s, parts.u) {
-			_, identity := alternativeKey(spart)
 			switch {
-			case spart != nil && !identity && index[spart] != i && parts.keyword != "allOf" && !isStringUnion(parts.s) && !isNull(spart):
-				out = append(out, fmt.Sprintf("%s.%s[%d]: moves to %d, which renames its Go type", path, parts.keyword, index[spart], i))
-				fallthrough
 			case spart != nil:
-				match[spart] = parts.u[i]
+				match[spart], uindex[parts.u[i]] = parts.u[i], i
 			case parts.keyword == "allOf":
 				out = append(out, fmt.Sprintf("%s: adds allOf part %d, which can change its Go type", path, i))
 			default:
-				added = append(added, parts.u[i])
+				added = true
 			}
 		}
-		switch {
-		case len(added) == 0:
-		case len(parts.s) == 0 || !root && isNullable(parts.s):
+		if added && (len(parts.s) == 0 || !root && isNullable(parts.s)) {
 			out = append(out, fmt.Sprintf("%s: becomes a union (%s), which changes its Go type", path, parts.keyword))
-		case isStringUnion(parts.s) && !isStringUnion(added):
-			out = append(out, fmt.Sprintf("%s: adds an alternative that is not a string (%s), which makes its Go type a union", path, parts.keyword))
+		}
+		// The emitter names a variant of a union definition without an
+		// identity by its index (Variant<N>), and it tries the variants
+		// that it cannot pick by their keys in order (emitUnion).
+		last := -1
+		for i, spart := range parts.s {
+			upart := match[spart]
+			if !root || parts.keyword == "allOf" || emittedAs(s) != "" || upart == nil {
+				continue
+			}
+			_, identity := alternativeKey(spart)
+			switch j := uindex[upart]; {
+			case !identity && !isNull(spart) && j != i:
+				out = append(out, fmt.Sprintf("%s.%s[%d]: moves to %d, which renames its Go type", path, parts.keyword, i, j))
+			case j < last:
+				out = append(out, fmt.Sprintf("%s.%s[%d]: moves before another stable alternative, which can change what a value decodes as", path, parts.keyword, i))
+			}
+			last = max(last, uindex[upart])
 		}
 		for i, spart := range parts.s {
 			out = append(out, vs.nonAdditiveChanges(spart, match[spart], fmt.Sprintf("%s.%s[%d]", path, parts.keyword, i), false)...)
@@ -406,7 +412,13 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) 
 			out = append(out, fmt.Sprintf("%s: removes enum value %v", path, v))
 		}
 	}
-	if hasOther(u) && !hasOther(s) {
+	if ks, ku := emittedAs(s), emittedAs(u); root && ks != ku {
+		out = append(out, fmt.Sprintf("%s: turns from %s into %s, which changes its Go type", path, kindName(ks), kindName(ku)))
+	}
+	if !root && len(s.Enum) == 0 && len(u.Enum) > 0 && s.Type != "string" {
+		out = append(out, path+": gains enum values, which makes its Go type a string")
+	}
+	if root && emittedAs(u) == "an enum" && hasOther(u) && !hasOther(s) {
 		out = append(out, path+": adds the enum value \"other\", which unknown values then decode as")
 	}
 	if !vs.extendsDefault(s, u, s.Default, u.Default) {
@@ -495,23 +507,60 @@ func isNullable(alts []*Definition) bool {
 
 func isNull(d *Definition) bool { return d != nil && d.Type == "null" }
 
-// isStringUnion reports whether alts are all strings, string constants or
-// plain strings, which the emitter writes as a string type with constants.
-func isStringUnion(alts []*Definition) bool {
+// emittedAs names the string type that the emitter writes for a definition
+// with enum values or alternatives of strings (WriteTypesJen), or returns ""
+// for a struct, union, or another type.
+func emittedAs(d *Definition) string {
+	switch {
+	case len(d.Enum) > 0 || isStringConstUnion(d.OneOf):
+		return "an enum"
+	case isOpenStringEnum(d.AnyOf):
+		return "a string type"
+	}
+	return ""
+}
+
+func kindName(kind string) string {
+	if kind == "" {
+		return "a struct, union, or plain type"
+	}
+	return kind
+}
+
+// isStringConstUnion reports whether alts, the oneOf of a definition, are
+// string constants, as emit's isStringConstUnion does.
+func isStringConstUnion(alts []*Definition) bool {
 	return len(alts) > 0 && !slices.ContainsFunc(alts, func(d *Definition) bool {
 		if d == nil {
 			return true
 		}
-		if _, ok := d.Const.(string); ok {
-			return false
-		}
-		return d.Type != "string" || d.Const != nil || d.Ref != "" || len(d.Properties) > 0 || d.Items != nil ||
-			len(d.AnyOf) > 0 || len(d.OneOf) > 0 || len(d.AllOf) > 0 || len(d.Enum) > 0
+		_, ok := d.Const.(string)
+		return !ok
 	})
 }
 
+// isOpenStringEnum reports whether alts, the anyOf of a definition, are plain
+// strings and at least one string constant, as emit's isOpenStringEnum does.
+func isOpenStringEnum(alts []*Definition) bool {
+	sawConst := false
+	for _, d := range alts {
+		if d == nil || d.Type != "string" || d.Ref != "" || len(d.Properties) > 0 || d.Items != nil ||
+			len(d.AnyOf) > 0 || len(d.OneOf) > 0 || len(d.AllOf) > 0 || len(d.Enum) > 0 {
+			return false
+		}
+		if d.Const != nil {
+			if _, ok := d.Const.(string); !ok {
+				return false
+			}
+			sawConst = true
+		}
+	}
+	return sawConst
+}
+
 // hasOther reports whether d, an enum or a union of string constants, has the
-// member "other", which the emitter decodes every unknown value as.
+// member "other", which the emitter decodes every unknown value as
+// (emitEnum).
 func hasOther(d *Definition) bool {
 	for _, v := range d.Enum {
 		if v == "other" {

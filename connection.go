@@ -737,6 +737,15 @@ func (c *Connection) sendMessage(msg anyMessage) error {
 // uses the handler's ctx while the handler runs: a goroutine that the handler
 // starts and that needs the full wait must get a ctx that does not derive from
 // the handler's ctx.
+//
+// A request that the handler of a request from the peer makes with its own
+// ctx, or a ctx derived from it, gets the full wait with one exception. While
+// the request handler runs and the running notification handler waits for a
+// response to a request that it made with its ctx, SendRequest does not wait
+// for that notification handler or the notifications after it, because the
+// peer can need the request handler's answer before it sends that response.
+// A ctx that outlives the request handler, such as one from
+// context.WithoutCancel, gets the full wait once the handler has returned.
 func SendRequest[T any](c *Connection, ctx context.Context, method string, params any) (T, error) {
 	var result T
 
@@ -887,15 +896,42 @@ func (c *Connection) waitForResponse(ctx context.Context, pr *pendingResponse, i
 	}
 }
 
+// waitNotificationsUpTo is the wait of SendRequest and SendRequestNoResult
+// after the response. For the ctx of a running handler of a request from the
+// peer, it also ends while the running notification handler waits on the
+// peer, as waitInboundBarrier does before that handler starts. The handler
+// can return during the wait. The peer then has its answer, so a wait that
+// ended early goes on.
 func (c *Connection) waitNotificationsUpTo(ctx context.Context, target uint64) error {
+	if c.runningRequestHandler(ctx) {
+		err := c.waitNotifications(ctx, target, true)
+		if err != nil || c.runningRequestHandler(ctx) {
+			return err
+		}
+	}
 	return c.waitNotifications(ctx, target, false)
+}
+
+// runningRequestHandler reports whether ctx belongs to the handler of a
+// request from the peer on c that has not returned. A ctx that outlives the
+// handler, such as one from context.WithoutCancel, keeps the handlingRequest
+// value, but the peer no longer waits for that handler's answer.
+func (c *Connection) runningRequestHandler(ctx context.Context) bool {
+	h, ok := ctx.Value(handlingRequestKey{}).(handlingRequest)
+	if !ok || h.conn != c {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, running := c.inflightArrivals[h.arrival]
+	return running
 }
 
 // waitNotifications waits until the handlers of the notifications up to
 // target have returned. With stopAtPeerWait, it also returns while the running
-// notification handler waits for a response from the peer: the request from
-// the peer that waits here can be the one that the peer must get an answer to
-// before it answers the handler.
+// notification handler waits for a response from the peer: the peer can need
+// the answer to a request of its own first, and that request's handler waits
+// here, before it starts or in a request that it makes with its ctx.
 func (c *Connection) waitNotifications(ctx context.Context, target uint64, stopAtPeerWait bool) error {
 	if target == 0 {
 		return nil

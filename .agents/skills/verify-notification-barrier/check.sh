@@ -34,7 +34,8 @@ TLA_URL=https://github.com/tlaplus/tlaplus/releases/download/v$TLA_VERSION/tla2t
 
 # config:expected TLC exit code. 0 = pass, 13 = liveness violation.
 CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0
-	inbound-request.cfg:0 inbound-slow-handler.cfg:0 inbound-nested.cfg:0 inbound-nested-peer.cfg:0)
+	inbound-request.cfg:0 inbound-slow-handler.cfg:0 inbound-nested.cfg:0 inbound-nested-peer.cfg:0
+	inbound-call.cfg:0 inbound-call-peer.cfg:0)
 DEEP_CONFIGS=(deep-two-callers.cfg:0)
 
 COVERED=(
@@ -48,6 +49,7 @@ COVERED=(
 	"func (c *Connection) SendRequestNoResult("
 	"func (c *Connection) waitForResponse("
 	"func (c *Connection) waitNotificationsUpTo("
+	"func (c *Connection) runningRequestHandler("
 	"func (c *Connection) waitNotifications("
 	"func (c *Connection) startPeerWait("
 	"func (c *Connection) waitInboundBarrier("
@@ -130,6 +132,7 @@ B_resp=$(need_body "func (c *Connection) handleResponse(")
 B_send=$(need_body "func SendRequest[T any](c *Connection,")
 B_sendnr=$(need_body "func (c *Connection) SendRequestNoResult(")
 B_upto=$(need_body "func (c *Connection) waitNotificationsUpTo(")
+B_running=$(need_body "func (c *Connection) runningRequestHandler(")
 B_wait=$(need_body "func (c *Connection) waitNotifications(")
 B_peer=$(need_body "func (c *Connection) startPeerWait(")
 B_inb=$(need_body "func (c *Connection) waitInboundBarrier(")
@@ -154,9 +157,6 @@ has "$B_recv" "c.handleResponse(&msg)" || drift "receive() no longer calls handl
 has "$B_recv" "case c.notificationQueue <- queuedNotification{seq: seq, arrival: c.inboundMessages, msg: &m}:" ||
 	drift "receive() no longer queues notifications with a non-blocking send"
 has "$B_recv" "c.lastEnqueuedNotificationSeq++" || drift "receive() no longer numbers notifications"
-
-has "$B_upto" "return c.waitNotifications(ctx, target, false)" ||
-	drift "waitNotificationsUpTo is no longer waitNotifications(ctx, target, false)"
 
 # The wait loop, with or without the release while the running handler waits
 # on the peer.
@@ -283,6 +283,36 @@ else
 	InboundStopsAtPeerWait=FALSE
 fi
 
+# After its response, a request that a running request handler makes with its
+# reqCtx also stops at a peer wait. That needs the handlingRequest value on
+# reqCtx, the handler call with reqCtx, and waitNotificationsUpTo setting
+# stopAtPeerWait while the handler's arrival is in flight, before and after the
+# wait. The model's InCall runs while its handler runs, so both checks hold and
+# the full wait after them never runs.
+UPTO_IF="if c.runningRequestHandler(ctx) {"
+UPTO_STOP="err := c.waitNotifications(ctx, target, true)"
+UPTO_RECHECK="if err != nil || c.runningRequestHandler(ctx) {"
+UPTO_FULL="return c.waitNotifications(ctx, target, false)"
+RUNNING_CTX="h, ok := ctx.Value(handlingRequestKey{}).(handlingRequest)"
+RUNNING_LOOKUP="_, running := c.inflightArrivals[h.arrival]"
+REQ_CTX="reqCtx = context.WithValue(reqCtx, handlingRequestKey{}, handlingRequest{conn: c, arrival: arrival})"
+if has "$B_upto" "$UPTO_IF" && has "$B_upto" "$UPTO_STOP" && has "$B_upto" "$UPTO_RECHECK" && has "$B_upto" "$UPTO_FULL"; then
+	if ! has "$B_running" "$RUNNING_CTX" || ! has "$B_running" "$RUNNING_LOOKUP"; then
+		drift "runningRequestHandler no longer looks up the handler's arrival in c.inflightArrivals"
+	fi
+	upto_stop=TRUE
+elif has "$B_upto" "runningRequestHandler" || ! has "$B_upto" "$UPTO_FULL"; then
+	drift "waitNotificationsUpTo calls waitNotifications in a new form"
+else
+	upto_stop=FALSE
+fi
+if [ "$upto_stop" = TRUE ] && [ "$LoopStopsAtPeerWait" = TRUE ] &&
+	has "$B_recv" "$REQ_CTX" && has "$B_recv" "c.handleInbound(reqCtx, m)"; then
+	RequestCtxStopsAtPeerWait=TRUE
+else
+	RequestCtxStopsAtPeerWait=FALSE
+fi
+
 # startPeerWait around waitForResponse, in both request functions.
 has "$B_peer" "seq, ok := c.notificationSeq(ctx)" ||
 	drift "startPeerWait no longer finds the running handler with notificationSeq(ctx)"
@@ -358,7 +388,8 @@ FACTS="CONSTANTS
     PeerWaitCounts = $PeerWaitCounts
     PeerWaitBroadcasts = $PeerWaitBroadcasts
     PeerWaitEnds = $PeerWaitEnds
-    PostWaitChecksCtx = $PostWaitChecksCtx"
+    PostWaitChecksCtx = $PostWaitChecksCtx
+    RequestCtxStopsAtPeerWait = $RequestCtxStopsAtPeerWait"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from connection.go:"
 sed -n '2,$p' "$OUT/facts.cfg"

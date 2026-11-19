@@ -795,6 +795,14 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			want:     []string{`Options.session: becomes a union (anyOf), which changes its Go type`},
 		},
 		{
+			// A field without properties is a map or Meta, one with
+			// properties a struct of its own.
+			name:     "a property without properties gains some",
+			stable:   options(obj(map[string]*Definition{"_meta": {Type: "object", AdditionalProperties: Members{Open: true}}})),
+			unstable: options(obj(map[string]*Definition{"_meta": {Type: "object", AdditionalProperties: Members{Open: true}, Properties: map[string]*Definition{"traceId": str()}}})),
+			want:     []string{`Options._meta: gains properties, which makes its Go type a struct`},
+		},
+		{
 			// Only a property that the unstable version adds may bring a
 			// member into the default.
 			name:     "a default gains a member for an existing property",

@@ -313,7 +313,8 @@ type versions struct{ stable, unstable map[string]*Definition }
 // part, since the emitter takes the type of a node from its allOf parts
 // (jenTypeFor), and an alternative that makes a node a union: one without
 // alternatives, or, below the root, one whose alternatives are a value and
-// null, which a field holds as a pointer (jenTypeForOptional).
+// null, which a field holds as a pointer (jenTypeForOptional). Below the
+// root, a node without properties that gains some becomes a struct.
 func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) []string {
 	switch {
 	case s == nil && u == nil:
@@ -326,6 +327,9 @@ func (vs versions) nonAdditiveChanges(s, u *Definition, path string, root bool) 
 	var out []string
 	for name, sprop := range s.Properties {
 		out = append(out, vs.nonAdditiveChanges(sprop, u.Properties[name], path+"."+name, false)...)
+	}
+	if !root && len(s.Properties) == 0 && len(u.Properties) > 0 {
+		out = append(out, path+": gains properties, which makes its Go type a struct")
 	}
 	for _, parts := range []struct {
 		keyword string

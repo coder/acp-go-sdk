@@ -1,6 +1,6 @@
 # Migrating to v0.21.0
 
-v0.21.0 makes inbound decoding stricter: the SDK rejects a message that the ACP schema forbids and that the Rust SDK rejects too. The ACP schema stays at 1.32.0, and `acp.Agent` and `acp.Client` do not change, so your code compiles as before.
+v0.21.0 makes inbound decoding stricter: the SDK rejects a message that the ACP schema forbids and that the Rust SDK rejects too, apart from the few differences in bold below. The ACP schema stays at 1.32.0, and `acp.Agent` and `acp.Client` do not change, so your code compiles as before.
 
 ```bash
 go get github.com/coder/acp-go-sdk@v0.21.0
@@ -27,6 +27,8 @@ The connection calls `Validate` on every request and notification it reads. In v
 - Inside a lenient member (`x-deserialize-default-on-error` or `x-deserialize-skip-invalid-items` in the schema), such as the `configOptions` of a `config_option_update`, the SDK reads a bad value as the default or drops the item, as the Rust SDK does, and checks nothing more. A required lenient array must still be present.
 
 **An empty ID is rejected.** The Rust SDK accepts `""` for a required ID, such as `"sessionId": ""`. The Go SDK rejects it, because a Go string holds `""` both for a missing member and for an empty one.
+
+**An `http` MCP server entry that also holds stdio members is rejected.** `{"type":"http","name":"n","command":"c","args":[],"env":[]}` fails with `headers is required`. The Rust SDK falls back to the stdio variant when the `http` variant fails, and reads the entry as a stdio server. No recorded peer sends such an entry.
 
 **The error names the path of the member.** For an empty ID the `data.error` of the `-32602` error reads, for example, `mcpServers[0]: serverId is required` or `toolCall: toolCallId is required`. A member that is missing fails before `Validate` runs, when the message decodes ([Missing and null required members](#missing-and-null-required-members)).
 

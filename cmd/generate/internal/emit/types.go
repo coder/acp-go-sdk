@@ -1305,7 +1305,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
 		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
 			if len(wrapperFields) > 0 {
-				obj.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", customDecoded(wrapperPlans)) })
+				obj.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", wrapperPlans) })
 			}
 			if open {
 				obj.Id("u").Dot(additionalPropertiesField).Op("=").Id("additionalProperties").Call(append([]Code{Id("b")}, named...)...)

@@ -143,10 +143,10 @@ func TestNewSessionRequest_UnmarshalJSON_ReadsNullOnlyWhereHinted(t *testing.T) 
 	}{
 		{"all arrays present", ` + "`" + `{"cwd":"/w","mcpServers":["a"],"roots":[],"suggestions":["s",5]}` + "`" + `, true, true},
 		{"null with default-on-null reads as empty", ` + "`" + `{"cwd":"/w","mcpServers":null,"roots":[],"suggestions":[]}` + "`" + `, true, true},
-		{"absent with default-on-null stays missing", ` + "`" + `{"cwd":"/w","roots":[],"suggestions":[]}` + "`" + `, true, false},
+		{"absent with default-on-null is an error", ` + "`" + `{"cwd":"/w","roots":[],"suggestions":[]}` + "`" + `, false, false},
 		{"default-on-null does not tolerate another type", ` + "`" + `{"cwd":"/w","mcpServers":"x","roots":[],"suggestions":[]}` + "`" + `, false, false},
-		{"null without a hint stays missing", ` + "`" + `{"cwd":"/w","mcpServers":[],"roots":null,"suggestions":[]}` + "`" + `, true, false},
-		{"null with skip-invalid-items alone stays missing", ` + "`" + `{"cwd":"/w","mcpServers":[],"roots":[],"suggestions":null}` + "`" + `, true, false},
+		{"null without a hint is an error", ` + "`" + `{"cwd":"/w","mcpServers":[],"roots":null,"suggestions":[]}` + "`" + `, false, false},
+		{"null with skip-invalid-items alone is an error", ` + "`" + `{"cwd":"/w","mcpServers":[],"roots":[],"suggestions":null}` + "`" + `, false, false},
 	}
 	for _, tt := range tests {
 		var req NewSessionRequest

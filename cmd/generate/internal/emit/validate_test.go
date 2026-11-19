@@ -48,16 +48,12 @@ func TestPingRequest_Validate_ChecksRequiredMembersAtEveryDepth(t *testing.T) {
 		name, payload, wantErr string
 	}{
 		{"valid", "{" + valid + "}", ""},
-		{"required ID missing", ` + "`" + `{"kind":"a","note":"n","items":[],"servers":[]}` + "`" + `, "thingId is required"},
 		{"required ID empty", ` + "`" + `{"thingId":"","kind":"a","note":"n","items":[],"servers":[]}` + "`" + `, "thingId is required"},
-		{"closed enum missing", ` + "`" + `{"thingId":"t","note":"n","items":[],"servers":[]}` + "`" + `, "kind is required"},
+		{"closed enum empty", ` + "`" + `{"thingId":"t","kind":"","note":"n","items":[],"servers":[]}` + "`" + `, "kind is required"},
 		{"plain string of a message empty", ` + "`" + `{"thingId":"t","kind":"a","note":"","items":[],"servers":[]}` + "`" + `, "note is required"},
-		{"required array missing", ` + "`" + `{"thingId":"t","kind":"a","note":"n","servers":[]}` + "`" + `, "items is required"},
-		{"ID of an array item missing", ` + "`" + `{"thingId":"t","kind":"a","note":"n","items":[{"id":"i","label":"l"},{"label":"l"}],"servers":[]}` + "`" + `, "items[1]: id is required"},
 		{"ID of an array item empty", ` + "`" + `{"thingId":"t","kind":"a","note":"n","items":[{"id":"","label":"l"}],"servers":[]}` + "`" + `, "items[0]: id is required"},
 		{"nested plain string empty", ` + "`" + `{"thingId":"t","kind":"a","note":"n","items":[{"id":"i","label":""}],"servers":[{"name":""}]}` + "`" + `, ""},
-		{"anyOf variant missing its ID", ` + "`" + `{"thingId":"t","kind":"a","note":"n","items":[],"servers":[{"type":"x","tags":[]}]}` + "`" + `, "servers[0]: serverId is required"},
-		{"anyOf variant missing its array", ` + "`" + `{"thingId":"t","kind":"a","note":"n","items":[],"servers":[{"type":"x","serverId":"s"}]}` + "`" + `, "servers[0]: tags is required"},
+		{"anyOf variant with an empty ID", ` + "`" + `{"thingId":"t","kind":"a","note":"n","items":[],"servers":[{"type":"x","serverId":"","tags":[]}]}` + "`" + `, "servers[0]: serverId is required"},
 		{"optional pointer null", "{" + valid + ` + "`" + `,"best":null}` + "`" + `, ""},
 		{"optional pointer with an empty ID", "{" + valid + ` + "`" + `,"best":{"id":"","label":"l"}}` + "`" + `, "best: id is required"},
 		{"patch null", "{" + valid + ` + "`" + `,"latest":null}` + "`" + `, ""},
@@ -73,6 +69,19 @@ func TestPingRequest_Validate_ChecksRequiredMembersAtEveryDepth(t *testing.T) {
 		if got := errorText(err); got != tt.wantErr {
 			t.Errorf("%s: Validate() on %s = %q, want %q", tt.name, tt.payload, got, tt.wantErr)
 		}
+	}
+}
+
+// A decode fails without a required member, so only a value built in Go
+// holds a nil required array.
+func TestPingRequest_Validate_RejectsANilRequiredArray(t *testing.T) {
+	var req PingRequest
+	if err := json.Unmarshal([]byte(` + "`" + `{"thingId":"t","kind":"a","note":"n","items":[],"servers":[]}` + "`" + `), &req); err != nil {
+		t.Fatal(err)
+	}
+	req.Items = nil
+	if err := req.Validate(); errorText(err) != "items is required" {
+		t.Errorf("Validate() with nil items = %v, want items is required", err)
 	}
 }
 

@@ -27,15 +27,28 @@ type fieldPlan struct {
 	// nonNullItem is the Go type of the items or member values that the
 	// decoder rejects null for (typesBuilder.nonNullItem); nil for none.
 	nonNullItem Code
+	// required says that the decoder fails when the JSON object lacks the
+	// member, or holds null for it and takesNull is false (planFor).
+	// encoding/json leaves such a member at its Go zero value, which
+	// Validate cannot tell from a present zero value.
+	required, takesNull bool
 }
 
 func (p fieldPlan) hasFallback() bool {
 	return p.fallbackJSON != ""
 }
 
+// customDecode reports whether the generated UnmarshalJSON keeps the field
+// raw and decodes it on its own.
 func (p fieldPlan) customDecode() bool {
 	lenient := p.field.Lenient
 	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems || p.nonNullItem != nil
+}
+
+// decoded reports whether the struct needs a generated UnmarshalJSON for the
+// field: to decode it on its own, or to check that it is present.
+func (p fieldPlan) decoded() bool {
+	return p.customDecode() || p.required
 }
 
 // patches returns the patch fields of plans.
@@ -59,8 +72,15 @@ func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 }
 
 func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
-	p := fieldPlan{field: field, patch: b.patch[field.Def], nullAsAbsent: b.nullAsAbsent[field.Def], nonNullItem: b.nonNullItem(field)}
 	def, lenient := field.Def, field.Lenient
+	p := fieldPlan{
+		field: field, patch: b.patch[def], nullAsAbsent: b.nullAsAbsent[def], nonNullItem: b.nonNullItem(field),
+		// As in the Rust SDK, a required member must be present, and may be
+		// null only where its schema accepts null or a hint reads null as
+		// the default. A schema default stands in for an absent member.
+		required:  field.Required && def.Default == nil,
+		takesNull: acceptsNull(b.schema, def) || lenient.DefaultOnNull || lenient.DefaultOnError,
+	}
 	if p.patch {
 		// A patch field reads absent, null, and a value apart, so it has no
 		// fallback, and only default-on-error, with or without
@@ -316,9 +336,9 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 		f.Line()
 	}
 
-	if decoded := customDecoded(plans); open || len(decoded) > 0 {
+	if open || slices.ContainsFunc(plans, fieldPlan.decoded) {
 		f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
-			b.emitDecodeFields(g, name, "v", decoded)
+			b.emitDecodeFields(g, name, "v", plans)
 			if open {
 				named := []Code{Id("b")}
 				for _, field := range fields {

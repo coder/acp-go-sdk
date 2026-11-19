@@ -8,6 +8,7 @@ import (
 
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/emit"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/stablecheck"
 )
 
 func main() {
@@ -62,23 +63,16 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		// The merge must leave every stable Go type as the stable schema
+		// alone writes it, but for additions.
+		if err := stablecheck.Compare(repoRoot, schemaVersion, stablecheck.Run{Meta: meta, Schema: schema}, stablecheck.Run{Meta: mergedMeta, Schema: mergedSchema}); err != nil {
+			panic(err)
+		}
 		meta = mergedMeta
 		schema = mergedSchema
 	}
 
-	if err := emit.WriteConstantsJen(outDir, meta, schemaVersion); err != nil {
-		panic(err)
-	}
-
-	if err := emit.WriteTypesJen(outDir, schema, meta); err != nil {
-		panic(err)
-	}
-	if err := emit.WriteDispatchJen(outDir, schema, meta); err != nil {
-		panic(err)
-	}
-
-	// Emit helpers after types so they can reference generated structs.
-	if err := emit.WriteHelpersJen(outDir, schema, meta); err != nil {
+	if err := emit.WriteFiles(outDir, schema, meta, schemaVersion); err != nil {
 		panic(err)
 	}
 }

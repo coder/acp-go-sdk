@@ -9,6 +9,7 @@ The inputs are `load.Meta` and `load.Schema` from `github.com/coder/acp-go-sdk/c
 
 ## Interface
 
+- `WriteFiles(outDir string, schema *load.Schema, meta *load.Meta, schemaVersion string) error` calls `WriteConstantsJen`, `WriteTypesJen`, `WriteDispatchJen`, then `WriteHelpersJen`, so that the generator and `stablecheck` write the same files [files.go:WriteFiles]
 - `WriteConstantsJen(outDir string, meta *load.Meta, schemaVersion string) error` writes `ProtocolVersionNumber`, `SchemaVersion` (set to `schemaVersion`), and the `AgentMethod<Name>`, `ClientMethod<Name>`, and `ProtocolMethod<Name>` constants to `constants_gen.go`. A method group with no methods gets no const block [constants.go:WriteConstantsJen] [constants_test.go:TestWriteConstantsJen_DeclaresConstants]
 - `WriteTypesJen(outDir string, schema *load.Schema, meta *load.Meta) error` writes every schema type plus the `Agent` and `Client` interfaces and one optional single-method interface per other method, such as `AgentLoader` and `AgentUnstableForkSession`, to `types_gen.go` [types.go:WriteTypesJen, emitInterfaces]
 - `WriteDispatchJen(outDir string, schema *load.Schema, meta *load.Meta) error` writes `agent_gen.go` (the `AgentSideConnection.handle` switch and the agent-to-client wrappers) and `client_gen.go` (the `ClientSideConnection.handle` switch and the client-to-agent wrappers) [dispatch.go:WriteDispatchJen]

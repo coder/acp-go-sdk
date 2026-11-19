@@ -17,8 +17,8 @@ import (
 //     carries the unstable additions. Each property and each alternative that
 //     only the unstable version has is marked **UNSTABLE** in its description,
 //     unless the schema marks it already. The merge fails, naming the
-//     change, when the unstable version removes a property, requires a member,
-//     or changes a type (nonAdditiveChanges).
+//     change, when the unstable version removes a property, alternative, or
+//     enum value, requires a member, or changes a type (nonAdditiveChanges).
 //   - A definition that only the unstable schema has, and that a stable method
 //     or a definition above reaches, keeps its name.
 //   - Unstable-only methods (present only in unstable meta) are added. Their
@@ -223,8 +223,8 @@ func buildUnstableDuplicateSet(combinedSchema *Schema, unstableSchema *Schema, u
 // it promotes nothing. The unions of every request, response, or
 // notification of a side (AgentRequest and the like) are no method's types,
 // so they keep their stable version. It fails when the unstable version of
-// a shared definition removes a property, requires a member, or changes a
-// type (nonAdditiveChanges).
+// a shared definition removes a property, alternative, or enum value,
+// requires a member, or changes a type (nonAdditiveChanges).
 func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires, wires map[string]struct{}) (map[string]struct{}, error) {
 	promoted := map[string]struct{}{}
 	var methodRoots []string
@@ -245,7 +245,7 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 		if udef == nil || sdef == nil || sameShape(sdef, udef) {
 			continue
 		}
-		changes = append(changes, nonAdditiveChanges(sdef, udef, name)...)
+		changes = append(changes, versions{stableSchema.Defs, unstableSchema.Defs}.nonAdditiveChanges(sdef, udef, name)...)
 		copyDef := deepCopyDefinition(udef)
 		markUnstableAdditions(sdef, copyDef, unstableSchema.Defs)
 		combinedSchema.Defs[name] = copyDef
@@ -297,45 +297,100 @@ func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unst
 	return promoted, nil
 }
 
+// versions holds the $defs of the stable and the unstable schema, which
+// resolve the $refs of the two versions of a shared definition.
+type versions struct{ stable, unstable map[string]*Definition }
+
 // nonAdditiveChanges returns a line for each of these changes from s, the
 // stable version of a definition, to u, its unstable version, at any depth:
-// a removed property, a member that becomes required, and a changed type
-// keyword. path names the node, and nodes are paired as markUnstableAdditions
-// pairs them. The generator's own check (stablecheck) compares the Go code of
-// the stable types, which catches more; these lines name the change in the
-// schema, and a new required member is one that no Go declaration shows.
-func nonAdditiveChanges(s, u *Definition, path string) []string {
+// a removed property, alternative, allOf part, or enum value; a member that
+// u, or an allOf part that only u has, requires and s does not; and a
+// changed type keyword, whose list form is a set. path names the node, and
+// nodes are paired as markUnstableAdditions pairs them. The generator's own
+// check (stablecheck) compares the Go code of the stable types, which catches
+// more; these lines name the change in the schema, and cover what no Go
+// declaration shows: a new required member, and the enum values and
+// alternatives of a property whose hints the decoder checks against a shape.
+func (vs versions) nonAdditiveChanges(s, u *Definition, path string) []string {
 	if s == nil || u == nil {
 		return nil
 	}
 	var out []string
 	for name, sprop := range s.Properties {
 		if uprop, ok := u.Properties[name]; ok {
-			out = append(out, nonAdditiveChanges(sprop, uprop, path+"."+name)...)
+			out = append(out, vs.nonAdditiveChanges(sprop, uprop, path+"."+name)...)
 		} else {
 			out = append(out, path+"."+name+": removed")
 		}
 	}
-	for _, name := range u.Required {
-		if !slices.Contains(s.Required, name) {
-			out = append(out, fmt.Sprintf("%s: requires %q", path, name))
-		}
-	}
-	if !reflect.DeepEqual(s.Type, u.Type) {
+	if typeSet(s.Type) != typeSet(u.Type) {
 		out = append(out, fmt.Sprintf("%s: changes type from %s to %s", path, jsonText(s.Type), jsonText(u.Type)))
 	}
+	for _, v := range s.Enum {
+		if !slices.ContainsFunc(u.Enum, func(w any) bool { return fmt.Sprint(w) == fmt.Sprint(v) }) {
+			out = append(out, fmt.Sprintf("%s: removes enum value %v", path, v))
+		}
+	}
+	required := u.Required
 	for _, parts := range []struct {
 		keyword string
 		s, u    []*Definition
 	}{{"anyOf", s.AnyOf, u.AnyOf}, {"oneOf", s.OneOf, u.OneOf}, {"allOf", s.AllOf, u.AllOf}} {
-		for i, spart := range counterparts(parts.s, parts.u) {
-			if spart != nil {
-				out = append(out, nonAdditiveChanges(spart, parts.u[i], fmt.Sprintf("%s.%s[%d]", path, parts.keyword, slices.Index(parts.s, spart)))...)
+		matched := counterparts(parts.s, parts.u)
+		for i, spart := range matched {
+			switch {
+			case spart != nil:
+				out = append(out, vs.nonAdditiveChanges(spart, parts.u[i], fmt.Sprintf("%s.%s[%d]", path, parts.keyword, slices.Index(parts.s, spart)))...)
+			case parts.keyword == "allOf":
+				required = append(required, requiredBy(parts.u[i], vs.unstable, map[*Definition]bool{})...)
+			}
+		}
+		for i, spart := range parts.s {
+			if !slices.Contains(matched, spart) {
+				out = append(out, fmt.Sprintf("%s.%s[%d]: removed", path, parts.keyword, i))
 			}
 		}
 	}
-	out = append(out, nonAdditiveChanges(s.Items, u.Items, path+".items")...)
-	return append(out, nonAdditiveChanges(s.AdditionalProperties.Schema, u.AdditionalProperties.Schema, path+".additionalProperties")...)
+	stableRequired := requiredBy(s, vs.stable, map[*Definition]bool{})
+	for _, name := range required {
+		if !slices.Contains(stableRequired, name) {
+			out = append(out, fmt.Sprintf("%s: requires %q", path, name))
+		}
+	}
+	out = append(out, vs.nonAdditiveChanges(s.Items, u.Items, path+".items")...)
+	return append(out, vs.nonAdditiveChanges(s.AdditionalProperties.Schema, u.AdditionalProperties.Schema, path+".additionalProperties")...)
+}
+
+// requiredBy returns the members that d requires, itself, through its $ref,
+// or through its allOf parts, with defs resolving the $refs. seen stops a
+// cycle of references.
+func requiredBy(d *Definition, defs map[string]*Definition, seen map[*Definition]bool) []string {
+	if d == nil || seen[d] {
+		return nil
+	}
+	seen[d] = true
+	out := append([]string(nil), d.Required...)
+	if d.Ref != "" {
+		out = append(out, requiredBy(defs[strings.TrimPrefix(d.Ref, "#/$defs/")], defs, seen)...)
+	}
+	for _, part := range d.AllOf {
+		out = append(out, requiredBy(part, defs, seen)...)
+	}
+	return out
+}
+
+// typeSet renders a type keyword so that its list form compares as a set.
+func typeSet(t any) string {
+	list, ok := t.([]any)
+	if !ok {
+		return fmt.Sprint(t)
+	}
+	names := make([]string, len(list))
+	for i, v := range list {
+		names[i] = fmt.Sprint(v)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }
 
 func jsonText(v any) string {

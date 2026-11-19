@@ -763,6 +763,32 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			want:     `Options.tags.items: changes type from "string" to "integer"`,
 		},
 		{
+			name:     "an alternative is removed",
+			stable:   options(&Definition{AnyOf: []*Definition{stdio(), {Title: "http", Type: "object"}}}),
+			unstable: options(&Definition{AnyOf: []*Definition{stdio()}}),
+			want:     `Options.anyOf[1]: removed`,
+		},
+		{
+			// A property's enum can be visible only in the shape that the
+			// decoder checks a hinted value against.
+			name:     "an enum value is removed",
+			stable:   options(obj(map[string]*Definition{"mode": {Type: "string", Enum: []any{"ask", "auto"}}})),
+			unstable: options(obj(map[string]*Definition{"mode": {Type: "string", Enum: []any{"ask"}}})),
+			want:     `Options.mode: removes enum value auto`,
+		},
+		{
+			name:     "an added allOf part requires a member",
+			stable:   options(obj(map[string]*Definition{"mode": str()})),
+			unstable: options(&Definition{Type: "object", Properties: map[string]*Definition{"mode": str()}, AllOf: []*Definition{{Required: []string{"mode"}}}}),
+			want:     `Options: requires "mode"`,
+		},
+		{
+			name:     "an added allOf reference requires a member",
+			stable:   map[string]*Definition{"Options": obj(map[string]*Definition{"id": str()}), "Base": obj(map[string]*Definition{"id": str()}, "id")},
+			unstable: map[string]*Definition{"Options": {Type: "object", Properties: map[string]*Definition{"id": str()}, AllOf: []*Definition{ref("Base")}}, "Base": obj(map[string]*Definition{"id": str()}, "id")},
+			want:     `Options: requires "id"`,
+		},
+		{
 			name:     "a property of a matched alternative is removed",
 			stable:   options(&Definition{AnyOf: []*Definition{stdio("command", "args")}}),
 			unstable: options(&Definition{AnyOf: []*Definition{stdio("command")}}),
@@ -786,6 +812,25 @@ func TestMergeStableAndUnstable_FailsOnNonAdditiveChanges(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A type list is a set, and a member that a stable allOf part requires
+// already stays required in an added part.
+func TestMergeStableAndUnstable_AllowsReorderedTypesAndKnownRequirements(t *testing.T) {
+	base := func() *Definition {
+		return &Definition{Type: "object", Properties: map[string]*Definition{"id": {Type: "string"}}, Required: []string{"id"}}
+	}
+	meta, stable, unstable := reachedSchemas(
+		map[string]*Definition{"Base": base(), "Options": {
+			AllOf:      []*Definition{ref("Base")},
+			Properties: map[string]*Definition{"cwd": {Type: []any{"string", "null"}}},
+		}},
+		map[string]*Definition{"Base": base(), "Options": {
+			AllOf:      []*Definition{ref("Base"), {Required: []string{"id"}}},
+			Properties: map[string]*Definition{"cwd": {Type: []any{"null", "string"}}, "b": {Type: "string"}},
+		}},
+	)
+	mustMerge(t, meta, stable, meta, unstable)
 }
 
 // Two stable alternatives with one identity, here a title, match the unstable

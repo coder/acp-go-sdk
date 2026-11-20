@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -516,12 +517,19 @@ func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
 // 2^31), and int otherwise. A uint64 above 2^63 does not fit; no ACP value
 // comes near it.
 func integerType(d *load.Definition) *Statement {
-	if d != nil && d.Format != "" {
-		if r := formatRange(d.Format); r.min < math.MinInt32 || r.max > math.MaxInt32 {
-			return Int64()
-		}
+	if wideInteger(d) {
+		return Int64()
 	}
 	return Int()
+}
+
+// wideInteger reports whether the integer schema d is int64 (integerType).
+func wideInteger(d *load.Definition) bool {
+	if d == nil || d.Format == "" {
+		return false
+	}
+	r := formatRange(d.Format)
+	return r.min < math.MinInt32 || r.max > math.MaxInt32
 }
 
 // Type mapping helpers (unchanged behavior vs original)
@@ -1013,8 +1021,9 @@ func (a unionAlternative) isInlineObject() bool { return a.kind == objectAlt }
 // when it takes every value of its type. It panics on a value that the Go type
 // of the alternative cannot hold exactly, since without its literal the
 // decoder would take every value of the type or a rounded one: a value of
-// another JSON type, null, an array or object, a fraction under integer, or a
-// number of magnitude 2^53 or more, which may be rounded when it loads.
+// another JSON type, null, an array or object, a fraction under integer, a
+// number of magnitude 2^53 or more, which may be rounded when it loads, or an
+// int beyond int32, which does not compile on a 32-bit target.
 func (a unionAlternative) values(union string) []Code {
 	if a.kind != valueAlt {
 		return nil
@@ -1026,8 +1035,11 @@ func (a unionAlternative) values(union string) []Code {
 		switch value := value.(type) {
 		case float64:
 			exact := math.Abs(value) < 1<<53
-			if t == "integer" && exact && value == math.Trunc(value) {
-				lit = Lit(int(value))
+			fits := wideInteger(a.value) || (value >= math.MinInt32 && value <= math.MaxInt32)
+			if t == "integer" && exact && value == math.Trunc(value) && fits {
+				// An untyped constant from int64, so that the literal is the
+				// same when the generator runs on a 32-bit host.
+				lit = Id(strconv.FormatInt(int64(value), 10))
 			}
 			if t == "number" && exact {
 				lit = Lit(value)

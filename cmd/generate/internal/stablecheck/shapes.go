@@ -321,10 +321,10 @@ func (b *rule) withoutClaimedExclusions(alt *rule, added []*rule) *rule {
 	return &out
 }
 
-// claims reports whether x takes only objects whose member m, which x
-// requires, holds one of the values that a takes for m, and a takes only
-// those values for m, as a variant pins its discriminator: the not rule of a
-// catch-all leaves out the discriminator values of the variants.
+// claims reports whether x takes only objects that a pins by a member:
+// objects whose member m, which x requires, holds one of the values that the
+// rule of a for m lists. A variant pins its discriminator so, and the not
+// rule of a catch-all leaves out the discriminator values of the variants.
 func (a *rule) claims(x *rule) bool {
 	if !slices.Equal(x.kinds, []string{"kindObject"}) {
 		return false

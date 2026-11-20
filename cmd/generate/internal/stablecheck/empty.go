@@ -54,13 +54,17 @@ func (p *projection) emptyResults(call *ast.CallExpr) []ast.Expr {
 		return nil
 	}
 	cond, ok := guard.Cond.(*ast.BinaryExpr)
-	if !ok || cond.Op != token.EQL || !isBuiltin(p.info, cond.X, "len") {
+	if !ok || cond.Op != token.EQL {
+		return nil
+	}
+	length, ok := cond.X.(*ast.CallExpr)
+	if !ok || len(length.Args) != 1 || ident(length.Args[0]) == nil || p.info.Uses[ident(length.Fun)] != types.Universe.Lookup("len") {
 		return nil
 	}
 	if zero, ok := cond.Y.(*ast.BasicLit); !ok || zero.Value != "0" {
 		return nil
 	}
-	if i := slices.Index(params, p.info.Uses[ident(cond.X.(*ast.CallExpr).Args[0])]); i < 0 || !p.emptyField(call.Args[i]) {
+	if i := slices.Index(params, p.info.Uses[ident(length.Args[0])]); i < 0 || !p.emptyField(call.Args[i]) {
 		return nil
 	}
 	ret, ok := guard.Body.List[0].(*ast.ReturnStmt)
@@ -186,14 +190,4 @@ func (s *side) is(e ast.Expr, obj types.Object) bool {
 func ident(e ast.Expr) *ast.Ident {
 	id, _ := e.(*ast.Ident)
 	return id
-}
-
-// isBuiltin reports whether e is a call of the builtin function name with
-// one argument that is an identifier.
-func isBuiltin(info *types.Info, e ast.Expr, name string) bool {
-	call, ok := e.(*ast.CallExpr)
-	if !ok || len(call.Args) != 1 || ident(call.Args[0]) == nil {
-		return false
-	}
-	return info.Uses[ident(call.Fun)] == types.Universe.Lookup(name)
 }

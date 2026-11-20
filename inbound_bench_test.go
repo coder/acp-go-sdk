@@ -32,16 +32,17 @@ import (
 // Codex adapters and the verify-acp-go-sdk journeys in testdata/bench, and the
 // transcripts that verify-schema-bump's G2 gate round-trips. testdata/bench
 // and .agents are modules of their own, so the module zip that the Go proxy
-// serves has neither: a test that needs the corpus skips there. In a checkout
-// each folder that exists must match its glob; the corpus digest tells the
-// corpora apart.
-var inboundCorpusGlobs = []struct {
-	dir  string
-	glob string
-}{
-	{"testdata/bench", "testdata/bench/*/*.jsonl"},
-	{".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts", ".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl"},
+// serves has neither, and a test that needs the corpus skips there. Where
+// either folder exists, every glob must match, so a lost source fails loudly.
+var inboundCorpusGlobs = []string{
+	"testdata/bench/claude-agent-acp/*.jsonl",
+	"testdata/bench/codex-acp/*.jsonl",
+	"testdata/bench/g3/*.jsonl",
+	".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl",
 }
+
+// inboundCorpusRoots are the folders that the module zip leaves out.
+var inboundCorpusRoots = []string{"testdata/bench", ".agents"}
 
 // An inboundMessage is one message of the corpus, as the side that receives
 // it reads it.
@@ -60,18 +61,21 @@ type inboundMessage struct {
 func loadInboundCorpus(tb testing.TB) []inboundMessage {
 	tb.Helper()
 	var paths []string
-	for _, g := range inboundCorpusGlobs {
-		if _, err := os.Stat(g.dir); errors.Is(err, fs.ErrNotExist) {
-			continue
+	zip := true
+	for _, root := range inboundCorpusRoots {
+		if _, err := os.Stat(root); !errors.Is(err, fs.ErrNotExist) {
+			zip = false
 		}
-		matches, err := filepath.Glob(g.glob)
+	}
+	if zip {
+		tb.Skip("no corpus: this is the module zip, which leaves out testdata/bench and .agents")
+	}
+	for _, g := range inboundCorpusGlobs {
+		matches, err := filepath.Glob(g)
 		if err != nil || len(matches) == 0 {
-			tb.Fatalf("no corpus files match %s: %v", g.glob, err)
+			tb.Fatalf("no corpus files match %s: %v", g, err)
 		}
 		paths = append(paths, matches...)
-	}
-	if len(paths) == 0 {
-		tb.Skip("no corpus: this is the module zip, which leaves out testdata/bench and .agents")
 	}
 	sort.Strings(paths)
 	var corpus []inboundMessage

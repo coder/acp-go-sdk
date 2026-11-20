@@ -43,4 +43,6 @@ RUNS=20 BENCH='^BenchmarkInbound$' scripts/bench origin/main
 
 This folder is a Go module of its own (`go.mod`, no code), so the module zip
 that the Go proxy serves leaves it out and consumers do not download it. The
-corpus tests skip when the folder is missing.
+corpus tests skip only when both this folder and `.agents` are missing, as in
+the module zip. Otherwise every source folder must hold transcripts, so a
+lost source fails the tests instead of shrinking the corpus.

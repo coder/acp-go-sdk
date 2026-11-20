@@ -101,6 +101,13 @@ need_const() {
 }
 
 has() { grep -Fq -- "$2" <<<"$1"; }
+# code_from BODY TEXT N: the first N code lines of BODY from the first line
+# that holds TEXT, with indentation and comment-only lines dropped.
+code_from() {
+	TEXT="$2" N="$3" awk '!on && index($0, ENVIRON["TEXT"]) { on = 1 }
+		on { sub(/^[ \t]+/, "") }
+		on && !/^\/\// && n < ENVIRON["N"] + 0 { print; n++ }' <<<"$1"
+}
 line_of() { { grep -Fn -- "$2" <<<"$1" || true; } | head -n 1 | cut -d: -f1; }
 count() { grep -Fc -- "$2" <<<"$1" || true; }
 
@@ -330,8 +337,21 @@ if [ "$InboundWaits" = TRUE ]; then
 	has "$B_recv" "watermark := c.lastEnqueuedNotificationSeq" ||
 		drift "receive() waits for a watermark that it no longer reads from lastEnqueuedNotificationSeq"
 fi
-# While connected, a wait error gets the error reply, not the handler.
-if has "$B_recv" "c.sendInboundRequestError(m, toReqErr(err))"; then WaitErrorReplies=TRUE; else WaitErrorReplies=FALSE; fi
+# While connected, a wait error gets the error reply, not the handler: the
+# whole branch after the wait, with the disconnect check first and a return
+# right after the reply, then the handler call for a nil error.
+WAIT_ERR_BRANCH="$IN_BARRIER
+select {
+case <-c.Done():
+c.handleInbound(reqCtx, m)
+return
+default:
+}
+c.sendInboundRequestError(m, toReqErr(err))
+return
+}
+c.handleInbound(reqCtx, m)"
+if [ "$(code_from "$B_recv" "$IN_BARRIER" 11)" = "$WAIT_ERR_BRANCH" ]; then WaitErrorReplies=TRUE; else WaitErrorReplies=FALSE; fi
 if [ "$in_stop" = TRUE ] && [ "$LoopStopsAtPeerWait" = TRUE ]; then
 	InboundStopsAtPeerWait=TRUE
 else

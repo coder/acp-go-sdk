@@ -134,7 +134,7 @@ Lines are at the sync commit, moved by later commits that changed only comments 
 
 ## Facts that check.sh reads
 
-Each fact sets one model constant. The last column is the result of setting the fact to its broken value at the sync commit, which shows that each property can fail.
+Each fact sets one model constant. The last column is the result of setting the fact to its broken value at the sync commit, which shows that each property can fail. A fact that names a position reads TRUE only for that exact code. `WaitErrorReplies` needs the whole wait-error branch of the `InChecksDone` row, comment lines aside: the `c.Done()` case that starts the handler and returns, an empty `default`, the reply, a `return` right after it, and the handler call after the branch. Dropping that `return`, or swapping what the two branches do, makes it FALSE.
 
 | Fact | Code at the sync commit | Broken value makes this fail |
 | --- | --- | --- |

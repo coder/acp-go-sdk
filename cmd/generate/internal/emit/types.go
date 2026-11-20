@@ -328,15 +328,29 @@ func (b *typesBuilder) emitInterfaces(side string, methods map[string]string, gr
 // that handles mi.
 func (b *typesBuilder) interfaceMethod(mi *ir.MethodInfo) []Code {
 	code := appendDocComments(nil, methodDescription(b.schema, mi))
+	return append(code, methodSignature(b.schema, mi, Id(mi.Name)))
+}
+
+// methodSignature appends to s the parameters and the results of the Go
+// method that handles mi: (ctx, params) and an error, plus the response
+// before the error for a request whose response is not null.
+func methodSignature(schema *load.Schema, mi *ir.MethodInfo, s *Statement) *Statement {
 	ctx := Id("ctx").Qual("context", "Context")
 	if mi.Notif != "" {
-		return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Notif)).Error())
+		return s.Params(ctx, Id("params").Id(mi.Notif)).Error()
 	}
-	respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
-	if ir.IsNullResponse(b.schema.Defs[respName]) {
-		return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Req)).Error())
+	resp, ok := responseType(schema, mi)
+	if !ok {
+		return s.Params(ctx, Id("params").Id(mi.Req)).Error()
 	}
-	return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Req)).Params(Id(respName), Error()))
+	return s.Params(ctx, Id("params").Id(mi.Req)).Params(Id(resp), Error())
+}
+
+// responseType returns the Go type of the response to the request mi, and
+// false when the response is null.
+func responseType(schema *load.Schema, mi *ir.MethodInfo) (string, bool) {
+	name := strings.TrimSuffix(mi.Req, "Request") + "Response"
+	return name, !ir.IsNullResponse(schema.Defs[name])
 }
 
 func isStringConstUnion(def *load.Definition) bool {

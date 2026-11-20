@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/ir"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 )
 
@@ -202,6 +203,39 @@ func (b *typesBuilder) heldRange(def *load.Definition, via []container) *intRang
 		}
 	}
 	return r
+}
+
+// mustHoldDefault panics when the default of field, an integer whose Go type
+// is goType, is not an integer within that type and within bounds, the range
+// that Validate checks (nil for none). The default fills an absent member, so
+// Validate would reject a message that leaves the member out, or setDefault
+// would fail to decode the default and leave 0. Such a schema contradicts
+// itself, and none from 1.18.0 through 1.33.0 has one.
+func mustHoldDefault(field ir.Field, goType string, bounds *intRange) {
+	n, ok := field.Def.Default.(float64)
+	if !ok {
+		return
+	}
+	t := formatType("")
+	for _, ft := range formatTypes {
+		if ft.name == goType {
+			t = ft
+		}
+	}
+	lo, hi := big.NewInt(t.min), new(big.Int).SetUint64(t.max)
+	if bounds != nil {
+		if bounds.min != math.MinInt64 {
+			lo = big.NewInt(bounds.min)
+		}
+		if bounds.max != math.MaxInt64 {
+			hi = big.NewInt(bounds.max)
+		}
+	}
+	var v big.Rat
+	v.SetFloat64(n)
+	if !v.IsInt() || v.Num().Cmp(lo) < 0 || v.Num().Cmp(hi) > 0 {
+		panic(fmt.Sprintf("default %s of integer property %q is not an integer between %s and %s", strconv.FormatFloat(n, 'g', -1, 64), field.Prop, lo, hi))
+	}
 }
 
 // checkRange returns the statement that returns an error when the integer v,

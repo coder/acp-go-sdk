@@ -124,6 +124,7 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 	goType := b.integerGoType(leaf)
 	if goType != "" {
 		c.bounds = b.heldRange(def, c.via)
+		mustHoldDefault(field, goType, c.bounds)
 	}
 	c.boundsInInt64 = c.bounds != nil && goType == "int" && (c.bounds.min < math.MinInt32 || c.bounds.max > math.MaxInt32)
 	if optional && c.bounds != nil {

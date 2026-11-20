@@ -213,9 +213,10 @@ func (b *typesBuilder) heldRange(def *load.Definition, via []container) *intRang
 // itself, and none from 1.18.0 through 1.33.0 has one. It panics on a default
 // of 2^53 or beyond too, which load may have rounded.
 func mustHoldDefault(field ir.Field, goType string, bounds *intRange) {
+	// planFor calls it only for a default that is not null.
 	n, ok := field.Def.Default.(float64)
 	if !ok {
-		return
+		panic(fmt.Sprintf("default %v of integer property %q is not a number", field.Def.Default, field.Prop))
 	}
 	t := formatType("")
 	for _, ft := range formatTypes {

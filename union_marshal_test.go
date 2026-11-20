@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -150,5 +151,29 @@ func TestUnion_MarshalJSON_RoundTripsTheG2Transcripts(t *testing.T) {
 	}
 	if counts["ContentBlock"] == 0 || counts["RequestPermissionOutcome"] == 0 {
 		t.Fatalf("checked %v, want each union at least once", counts)
+	}
+}
+
+// A handler whose result holds a zero union gets a -32603 reply that names
+// the union in data.error.
+func TestClientSideConnection_RequestPermission_NamesAZeroOutcomeInItsReply(t *testing.T) {
+	t.Parallel()
+	c2aR, c2aW := io.Pipe()
+	a2cR, a2cW := io.Pipe()
+	t.Cleanup(func() { _ = c2aW.Close(); _ = a2cW.Close() })
+	NewClientSideConnection(&clientFuncs{
+		RequestPermissionFunc: func(context.Context, RequestPermissionRequest) (RequestPermissionResponse, error) {
+			return RequestPermissionResponse{}, nil
+		},
+	}, c2aW, a2cR)
+	agent := NewAgentSideConnection(agentFuncs{}, a2cW, c2aR)
+	_, err := agent.RequestPermission(context.Background(), RequestPermissionRequest{
+		SessionId: "s",
+		ToolCall:  ToolCallUpdate{ToolCallId: "t"},
+		Options:   []PermissionOption{},
+	})
+	var re *RequestError
+	if !errors.As(err, &re) || re.Code != -32603 || !strings.Contains(string(re.Data), "RequestPermissionOutcome has no variant set") {
+		t.Fatalf("RequestPermission answered with a zero outcome = %v, want -32603 whose data names RequestPermissionOutcome", err)
 	}
 }

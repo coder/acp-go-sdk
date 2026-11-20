@@ -109,6 +109,7 @@ The rows come from the generated `Validate` methods of v0.20.0 and v0.21.0, foll
 ### Validate on values you build
 
 - Every union, and each struct that has one of the checks above, now has a `Validate` method: 112 types more than in v0.20.0, such as `ContentChunk`, `McpServerAcpInline` and `PermissionOption`. A `oneOf` union's `Validate` requires exactly one variant set, and an `anyOf` union's one at least (`McpServer has no variant set`), so `Validate` on a zero union fails.
+- `json.Marshal` of a zero union, such as `acp.ContentBlock{}`, fails with `ContentBlock has no variant set`, the error that `Validate` gives. v0.20.0 failed it too, with encoding/json's `unexpected end of JSON input`. A send method, such as `SessionUpdate` with no update set, returns it inside its `-32602` error, and nothing is sent.
 - `SessionConfigOption.Validate` no longer rejects an empty `name`. The SDK never calls it on its own: the requests and notifications that it reads hold a `SessionConfigOption` only in a lenient member.
 - The `Validate` of a response type checks the same rules. The SDK does not call it on a response that it receives.
 

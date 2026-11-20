@@ -62,15 +62,20 @@ func TestUnion_ZeroValueInAMessage_ValidateAgreesWithMarshalJSON(t *testing.T) {
 	}
 }
 
-// A session/update with no update set fails in SessionUpdate and says why.
+// A session/update with no update set fails in SessionUpdate, says why, and
+// sends nothing.
 func TestAgentSideConnection_SessionUpdate_NamesAZeroUpdate(t *testing.T) {
 	t.Parallel()
 	inR, inW := io.Pipe()
 	t.Cleanup(func() { _ = inW.Close() })
-	conn := NewAgentSideConnection(agentFuncs{}, io.Discard, inR)
+	var sent lockedBuffer
+	conn := NewAgentSideConnection(agentFuncs{}, &sent, inR)
 	err := conn.SessionUpdate(context.Background(), SessionNotification{SessionId: "s"})
 	if err == nil || !strings.Contains(err.Error(), "SessionUpdate has no variant set") {
 		t.Fatalf("SessionUpdate with no update set = %v, want an error that names SessionUpdate", err)
+	}
+	if s := sent.String(); s != "" {
+		t.Errorf("SessionUpdate with no update set sent %q, want nothing", s)
 	}
 }
 

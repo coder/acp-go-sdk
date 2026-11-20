@@ -1542,11 +1542,8 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				}
 			})
 		}
-		if len(wrapperFields) > 0 {
-			g.Return(Nil(), Qual("errors", "New").Call(Lit(name+" has no variant set")))
-		} else {
-			g.Return(Index().Byte().Values(), Nil())
-		}
+		// A union with no variant set has no JSON form, as Validate says.
+		g.Return(Nil(), Qual("errors", "New").Call(Lit(name+" has no variant set")))
 	})
 	f.Line()
 

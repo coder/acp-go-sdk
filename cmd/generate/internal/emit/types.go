@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -493,12 +494,22 @@ func classify(def *load.Definition) defKind {
 	}
 }
 
-// isRefAlias reports whether def has no keyword but an allOf of one $ref,
-// which makes it the schema that the $ref names.
+// isRefAlias reports whether def has no keyword but an allOf of one entry
+// that has no keyword but a $ref, which makes it the schema that the $ref
+// names.
 func isRefAlias(def *load.Definition) bool {
-	return def.Type == nil && len(def.AllOf) == 1 && def.AllOf[0] != nil && strings.HasPrefix(def.AllOf[0].Ref, "#/$defs/") &&
-		len(def.Properties) == 0 && len(def.AnyOf) == 0 && len(def.OneOf) == 0 && len(def.Enum) == 0 &&
-		def.Const == nil && def.Items == nil && !def.AdditionalProperties.Open && def.AdditionalProperties.Schema == nil
+	if len(def.AllOf) != 1 || def.AllOf[0] == nil || !strings.HasPrefix(def.AllOf[0].Ref, "#/$defs/") {
+		return false
+	}
+	return onlyAnnotations(*def, load.Definition{AllOf: def.AllOf}) && onlyAnnotations(*def.AllOf[0], load.Definition{Ref: def.AllOf[0].Ref})
+}
+
+// onlyAnnotations reports whether d is bare once its annotations, which do
+// not change what it accepts, are left out. It compares every field, so a
+// keyword that load.Definition learns later counts too.
+func onlyAnnotations(d, bare load.Definition) bool {
+	d.Description, d.Title, d.XSide, d.XMethod, d.DocsIgnore = "", "", "", "", false
+	return reflect.DeepEqual(d, bare)
 }
 
 // emitValidate declares the Validate method of the type name, whose receiver

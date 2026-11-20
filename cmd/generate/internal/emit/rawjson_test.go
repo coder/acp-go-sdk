@@ -89,13 +89,17 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 }
 
 // A definition that is only an allOf of one $ref is that schema, so it is an
-// alias of the type that the $ref names. An allOf with another keyword is not.
+// alias of the type that the $ref names. An allOf with another keyword, at
+// either level, is not.
 func TestWriteTypesJen_AllOfOneRefIsAnAlias(t *testing.T) {
 	src, _ := emitUnionFiles(t, `{"$defs": {
   "Init": {"type": "object", "properties": {"version": {"type": "integer"}}},
   "ProxyInit": {"description": "Init, for a proxy.", "allOf": [{"$ref": "#/$defs/Init"}]},
   "Both": {"allOf": [{"$ref": "#/$defs/Init"}, {"$ref": "#/$defs/Init"}]},
-  "Named": {"allOf": [{"$ref": "#/$defs/Init"}], "properties": {"name": {"type": "string"}}}
+  "Named": {"allOf": [{"$ref": "#/$defs/Init"}], "properties": {"name": {"type": "string"}}},
+  "InnerNamed": {"allOf": [{"$ref": "#/$defs/Init", "properties": {"name": {"type": "string"}}}]},
+  "Open": {"allOf": [{"$ref": "#/$defs/Init"}], "unevaluatedProperties": true},
+  "Negated": {"allOf": [{"$ref": "#/$defs/Init"}], "not": {"required": ["version"]}}
 }}`)
 	file, err := parser.ParseFile(token.NewFileSet(), "types_gen.go", src, 0)
 	if err != nil {
@@ -110,7 +114,8 @@ func TestWriteTypesJen_AllOfOneRefIsAnAlias(t *testing.T) {
 			}
 		}
 	}
-	want := map[string]string{"ProxyInit": "Init", "Both": "json.RawMessage", "Named": "json.RawMessage"}
+	want := map[string]string{"ProxyInit": "Init", "Both": "json.RawMessage", "Named": "json.RawMessage",
+		"InnerNamed": "json.RawMessage", "Open": "json.RawMessage", "Negated": "json.RawMessage"}
 	for name, typ := range want {
 		if got[name] != typ {
 			t.Errorf("%s is an alias of %q, want %q", name, got[name], typ)

@@ -13,6 +13,16 @@
 {"id":"125/resource-union-fallback","def":"EmbeddedResourceResource","json":{"uri":"file:///a","text":5,"blob":"YQ=="}}
 {"id":"control/uint32-negative","def":"ReadTextFileRequest","json":{"sessionId":"s","path":"/a","line":-1}}
 {"id":"control/uint32-above-range","def":"ReadTextFileRequest","json":{"sessionId":"s","path":"/a","line":4294967296}}
+{"id":"control/integer-u64-above-i64","def":"SessionNotification","json":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":9223372036854775808,"size":18446744073709551615}}}
+{"id":"control/integer-u64-above-range","def":"SessionNotification","json":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":18446744073709551616,"size":1}}}
+{"id":"control/integer-u64-negative-zero","def":"SessionNotification","json":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":-0,"size":1}}}
+{"id":"control/integer-u64-max-request","def":"CreateTerminalRequest","json":{"sessionId":"s","command":"c","outputByteLimit":18446744073709551615}}
+{"id":"control/integer-u64-max-lenient","def":"PromptResponse","json":{"stopReason":"end_turn","usage":{"inputTokens":2,"outputTokens":4,"totalTokens":18446744073709551615,"thoughtTokens":18446744073709551615}}}
+{"id":"control/integer-u32-above-range","def":"StringPropertySchema","json":{"type":"string","maxLength":4294967296}}
+{"id":"control/integer-u32-fraction","def":"ReadTextFileRequest","json":{"sessionId":"s","path":"/a","line":1.0}}
+{"id":"control/integer-u16-above-range-result","def":"InitializeResponse","json":{"protocolVersion":65536}}
+{"id":"control/integer-i32-above-range","def":"ErrorCode","json":2147483648}
+{"id":"control/integer-i32-below-range","def":"ErrorCode","json":-2147483649}
 {"id":"envelope/agent-request","def":"AgentRequest","json":{"id":2,"method":"fs/read_text_file","params":{"sessionId":"s","path":"/a"}}}
 {"id":"envelope/client-request","def":"ClientRequest","json":{"id":0,"method":"initialize","params":{"protocolVersion":1}}}
 {"id":"envelope/agent-response","def":"AgentResponse","json":{"id":0,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true}}}}

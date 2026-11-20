@@ -124,6 +124,33 @@ func TestClientSideConnection_DropsAUsageUpdateOutOfRange(t *testing.T) {
 	}
 }
 
+// used and size of a usage_update, and outputByteLimit of terminal/create, are
+// u64 in the Rust SDK, which reads every value up to 2^64-1. So does the
+// client: the handler gets the value, and no digit of it is lost.
+func TestClientSideConnection_ReadsAUint64AboveMaxInt64(t *testing.T) {
+	t.Parallel()
+	const above = "9223372036854775808" // 2^63
+	const top = "18446744073709551615"  // 2^64-1
+	u := firstUpdate(t, `{"sessionUpdate":"usage_update","used":`+above+`,"size":`+top+`}`).Update.UsageUpdate
+	if got, _ := json.Marshal(u); u == nil || string(got) != `{"size":`+top+`,"used":`+above+`}` {
+		t.Errorf("usage_update reads as %s, want used %s and size %s", got, above, top)
+	}
+	runRequestCase(t, requestCase{
+		method: ClientMethodTerminalCreate,
+		params: `{"sessionId":"s","command":"ls","outputByteLimit":` + top + `}`,
+		check: func(t *testing.T, p any) {
+			if got, _ := json.Marshal(p.(CreateTerminalRequest).OutputByteLimit); string(got) != top {
+				t.Errorf("outputByteLimit = %s, want %s", got, top)
+			}
+		},
+	}, func(called chan<- any, w io.Writer, r io.Reader) {
+		NewClientSideConnection(&clientFuncs{CreateTerminalFunc: func(_ context.Context, p CreateTerminalRequest) (CreateTerminalResponse, error) {
+			called <- p
+			return CreateTerminalResponse{TerminalId: "t"}, nil
+		}}, w, r)
+	})
+}
+
 // line of a tool call location has x-deserialize-default-on-error, so the Rust
 // SDK reads a value out of the u32 range as absent and keeps the location.
 func TestClientSideConnection_ReadsALocationLineOutOfRangeAsAbsent(t *testing.T) {

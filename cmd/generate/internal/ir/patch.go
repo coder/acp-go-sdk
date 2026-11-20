@@ -29,10 +29,15 @@ var (
 	// patchProperty matches the description of a property that is a patch
 	// field on its own: "Omitted means unchanged. `null` clears it.", "Set to
 	// null to clear."
-	patchProperty = regexp.MustCompile("(?i)omitt(?:ed|ing)[^.]*\\bunchanged\\b|\\bnull`? (?:clears|removes)\\b|set to null to clear")
-	// mentionsNull matches a property description that says what null does.
-	mentionsNull = regexp.MustCompile(`(?i)\bnull\b`)
+	patchProperty = regexp.MustCompile("(?i)omitt(?:ed|ing)[^.]*\\bunchanged\\b|" + nullClearsPattern)
+	// nullClears matches a property description that says that null clears
+	// the property.
+	nullClears = regexp.MustCompile("(?i)" + nullClearsPattern)
 )
+
+// nullClearsPattern matches text that says that null clears a property:
+// "`null` clears it.", "`null` removes it.", "Set to null to clear."
+const nullClearsPattern = "\\bnull`? (?:clears|removes)\\b|set to null to clear"
 
 // PatchFields returns the patch fields of the object definitions in schema,
 // keyed by the property's definition. An object variant of a union that takes
@@ -66,10 +71,9 @@ func PatchFields(schema *load.Schema) map[*load.Definition]bool {
 // NullAsAbsent returns the patch fields of schema for which the schema
 // defines no clear: the optional properties of an object that says only that
 // it carries the changed fields (changedOnly, and neither patchedObject nor a
-// "have patch semantics" sentence), whose own description does not say what
-// null does. ACP v1 peers, the Rust SDK among them, read null in these fields
-// as absent: all of ToolCallUpdate except name, and _meta of
-// SessionInfoUpdate.
+// "have patch semantics" sentence), whose own description does not say that
+// null clears them. ACP v1 reads null in these fields as absent, and so does
+// the Rust SDK: all of ToolCallUpdate, and _meta of SessionInfoUpdate.
 func NullAsAbsent(schema *load.Schema) map[*load.Definition]bool {
 	out := map[*load.Definition]bool{}
 	for _, def := range schema.Defs {
@@ -78,7 +82,7 @@ func NullAsAbsent(schema *load.Schema) map[*load.Definition]bool {
 			continue
 		}
 		for name, prop := range def.Properties {
-			if prop == nil || slices.Contains(def.Required, name) || mentionsNull.MatchString(prop.Description) {
+			if prop == nil || slices.Contains(def.Required, name) || nullClears.MatchString(prop.Description) {
 				continue
 			}
 			out[prop] = true

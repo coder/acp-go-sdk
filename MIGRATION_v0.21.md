@@ -15,6 +15,7 @@ go build ./...
 | A `null` item of a string array, or a `null` value of a string map, fails to decode | [Null items and map values](#null-items-and-map-values) |
 | A required member that is missing, or `null` where the schema does not allow it, fails to decode | [Missing and null required members](#missing-and-null-required-members) |
 | An integer out of the range of its schema fails `Validate`, or reads as unset where the schema tolerates a bad value | [Integer ranges](#integer-ranges) |
+| A `null` in a `tool_call_update` field, or in `_meta` of a `session_info_update`, reads as unset, and `PatchNull` there is left out | [Null in a tool call update](#null-in-a-tool-call-update) |
 
 ## Required members
 
@@ -265,3 +266,12 @@ Every property that now rejects an integer out of range, or reads it as unset:
 The rows come from the generated code: the range checks of each `Validate`, and the ranges in the shapes of the lenient decoders, followed from each method that the connection reads.
 
 These types get a `Validate` method, because they check a range or hold a type that does: `ElicitationPropertySchemaString`, `SessionUsageUpdate`, `StringPropertySchema`, `UnstableMcpError`, `UnstableMessageMcpError`, `UsageUpdate`, `Usage`.
+
+## Null in a tool call update
+
+ACP v1 defines no clear for the fields of a `ToolCallUpdate` and for `_meta` of a `SessionInfoUpdate`: a `null` there leaves the stored value unchanged, as an absent member does. The protocol docs say so for `name`, `rawInput` and `rawOutput`, the v2 migration guide says that v1 treats `null` like omission, and the Rust SDK reads every such `null` as absent. v0.20.0 read it as `IsNull()` and asked you to treat that like `IsUnset()`. v0.21.0 reads it as unset, and the API does not change:
+
+- A `null` member reads as `IsUnset()`, and `IsNull()` is false. This holds for every field of `ToolCallUpdate`, the `toolCall` of `session/request_permission`, the `tool_call_update` variant of `SessionUpdate` (`SessionToolCallUpdate`), and `_meta` of `SessionInfoUpdate` and of its variant `SessionSessionInfoUpdate`. Code that treated `IsNull()` like `IsUnset()` there needs no change.
+- `acp.PatchNull[T]()` in these fields is left out of the JSON, where v0.20.0 wrote `null`. ACP v1 reads both as "unchanged", and the Rust SDK leaves the member out too.
+- To clear `content` or `locations`, send an empty list, as in v0.20.0: `acp.PatchSet([]acp.ToolCallContent{})` or `WithUpdateContent([]acp.ToolCallContent{})`.
+- `title` and `updatedAt` of `SessionInfoUpdate`, and the patch fields of `CompactionUpdate`, `SubagentUpdate` and `SessionMessage`, whose schema says that `null` clears them, still read and write `null` as a clear.

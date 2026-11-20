@@ -12314,8 +12314,8 @@ type SessionInfoUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Human-readable title for the session. Set to null to clear.
 	Title Patch[string] `json:"title"`
@@ -12333,7 +12333,7 @@ func (v SessionInfoUpdate) MarshalJSON() ([]byte, error) {
 		UpdatedAt *Patch[string] `json:"updatedAt,omitempty"`
 	}
 	return json.Marshal(wire{
-		Meta:      a.Meta.orNil(),
+		Meta:      a.Meta.setOrNil(),
 		Title:     a.Title.orNil(),
 		UpdatedAt: a.UpdatedAt.orNil(),
 	})
@@ -12351,7 +12351,7 @@ func (v *SessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
 	return nil
@@ -13233,49 +13233,52 @@ type SessionToolCallUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
 	// the existing name is left unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Name Patch[string] `json:"name"`
 	// Update the raw input.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawOutput     Patch[json.RawMessage] `json:"rawOutput"`
 	SessionUpdate string                 `json:"sessionUpdate"`
 	// Update the execution status.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
@@ -13299,16 +13302,16 @@ func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
 		ToolCallId    ToolCallId                 `json:"toolCallId"`
 	}
 	return json.Marshal(wire{
-		Content:       a.Content.orNil(),
-		Kind:          a.Kind.orNil(),
-		Locations:     a.Locations.orNil(),
-		Meta:          a.Meta.orNil(),
-		Name:          a.Name.orNil(),
-		RawInput:      a.RawInput.orNil(),
-		RawOutput:     a.RawOutput.orNil(),
+		Content:       a.Content.setOrNil(),
+		Kind:          a.Kind.setOrNil(),
+		Locations:     a.Locations.setOrNil(),
+		Meta:          a.Meta.setOrNil(),
+		Name:          a.Name.setOrNil(),
+		RawInput:      a.RawInput.setOrNil(),
+		RawOutput:     a.RawOutput.setOrNil(),
 		SessionUpdate: a.SessionUpdate,
-		Status:        a.Status.orNil(),
-		Title:         a.Title.orNil(),
+		Status:        a.Status.setOrNil(),
+		Title:         a.Title.setOrNil(),
 		ToolCallId:    a.ToolCallId,
 	})
 }
@@ -13334,15 +13337,15 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
-	decodePatchItems(raw.Content, &v.Content, shapeToolCallContent)
-	decodePatch(raw.Kind, &v.Kind)
-	decodePatchItems(raw.Locations, &v.Locations, shapeToolCallLocation)
-	decodePatch(raw.Name, &v.Name)
-	decodePatch(raw.RawInput, &v.RawInput)
-	decodePatch(raw.RawOutput, &v.RawOutput)
-	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
-	decodePatch(raw.Title, &v.Title)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
+	decodePatchItems(absentIfNull(raw.Content), &v.Content, shapeToolCallContent)
+	decodePatch(absentIfNull(raw.Kind), &v.Kind)
+	decodePatchItems(absentIfNull(raw.Locations), &v.Locations, shapeToolCallLocation)
+	decodePatch(absentIfNull(raw.Name), &v.Name)
+	decodePatch(absentIfNull(raw.RawInput), &v.RawInput)
+	decodePatch(absentIfNull(raw.RawOutput), &v.RawOutput)
+	decodePatch(absentIfNull(raw.Status), &v.Status, shapeToolCallStatus)
+	decodePatch(absentIfNull(raw.Title), &v.Title)
 	if maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.ToolCallId) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
@@ -13702,8 +13705,8 @@ type SessionSessionInfoUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta          Patch[Meta] `json:"_meta"`
 	SessionUpdate string      `json:"sessionUpdate"`
 	// Human-readable title for the session. Set to null to clear.
@@ -13723,7 +13726,7 @@ func (v SessionSessionInfoUpdate) MarshalJSON() ([]byte, error) {
 		UpdatedAt     *Patch[string] `json:"updatedAt,omitempty"`
 	}
 	return json.Marshal(wire{
-		Meta:          a.Meta.orNil(),
+		Meta:          a.Meta.setOrNil(),
 		SessionUpdate: a.SessionUpdate,
 		Title:         a.Title.orNil(),
 		UpdatedAt:     a.UpdatedAt.orNil(),
@@ -13744,7 +13747,7 @@ func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
 	if maybeAbsent(&v.SessionUpdate) {
@@ -17745,48 +17748,51 @@ type ToolCallUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
 	// the existing name is left unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Name Patch[string] `json:"name"`
 	// Update the raw input.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawOutput Patch[json.RawMessage] `json:"rawOutput"`
 	// Update the execution status.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
@@ -17809,15 +17815,15 @@ func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
 		ToolCallId ToolCallId                 `json:"toolCallId"`
 	}
 	return json.Marshal(wire{
-		Content:    a.Content.orNil(),
-		Kind:       a.Kind.orNil(),
-		Locations:  a.Locations.orNil(),
-		Meta:       a.Meta.orNil(),
-		Name:       a.Name.orNil(),
-		RawInput:   a.RawInput.orNil(),
-		RawOutput:  a.RawOutput.orNil(),
-		Status:     a.Status.orNil(),
-		Title:      a.Title.orNil(),
+		Content:    a.Content.setOrNil(),
+		Kind:       a.Kind.setOrNil(),
+		Locations:  a.Locations.setOrNil(),
+		Meta:       a.Meta.setOrNil(),
+		Name:       a.Name.setOrNil(),
+		RawInput:   a.RawInput.setOrNil(),
+		RawOutput:  a.RawOutput.setOrNil(),
+		Status:     a.Status.setOrNil(),
+		Title:      a.Title.setOrNil(),
 		ToolCallId: a.ToolCallId,
 	})
 }
@@ -17842,15 +17848,15 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
-	decodePatchItems(raw.Content, &v.Content, shapeToolCallContent)
-	decodePatch(raw.Kind, &v.Kind)
-	decodePatchItems(raw.Locations, &v.Locations, shapeToolCallLocation)
-	decodePatch(raw.Name, &v.Name)
-	decodePatch(raw.RawInput, &v.RawInput)
-	decodePatch(raw.RawOutput, &v.RawOutput)
-	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
-	decodePatch(raw.Title, &v.Title)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
+	decodePatchItems(absentIfNull(raw.Content), &v.Content, shapeToolCallContent)
+	decodePatch(absentIfNull(raw.Kind), &v.Kind)
+	decodePatchItems(absentIfNull(raw.Locations), &v.Locations, shapeToolCallLocation)
+	decodePatch(absentIfNull(raw.Name), &v.Name)
+	decodePatch(absentIfNull(raw.RawInput), &v.RawInput)
+	decodePatch(absentIfNull(raw.RawOutput), &v.RawOutput)
+	decodePatch(absentIfNull(raw.Status), &v.Status, shapeToolCallStatus)
+	decodePatch(absentIfNull(raw.Title), &v.Title)
 	if maybeAbsent(&v.ToolCallId) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
@@ -21294,6 +21300,16 @@ func decodePatchItems[T any](raw json.RawMessage, dst *Patch[[]T], check ...shap
 			*dst = PatchSet(v)
 		}
 	}
+}
+
+// absentIfNull returns nil for a raw null, and raw otherwise, so that a patch
+// field for which the schema defines no clear reads null as absent, as ACP v1
+// reads it.
+func absentIfNull(raw json.RawMessage) json.RawMessage {
+	if string(raw) == "null" {
+		return nil
+	}
+	return raw
 }
 
 // additionalProperties returns the members of the JSON object b that named

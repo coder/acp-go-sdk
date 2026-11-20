@@ -170,6 +170,7 @@ type typesBuilder struct {
 	// nullAsAbsent those of them that have no clear (ir.NullAsAbsent).
 	patch, nullAsAbsent map[*load.Definition]bool
 	usesPatch           bool
+	usesAbsentIfNull    bool
 	usesNilIf           bool
 	// validated memoizes validates per $defs entry.
 	validated map[string]bool

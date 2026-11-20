@@ -1008,32 +1008,44 @@ func (a unionAlternative) isNull() bool { return a.kind == nullAlt }
 
 func (a unionAlternative) isInlineObject() bool { return a.kind == objectAlt }
 
-// values returns the literals of the values that a valueAlt takes: its const
-// or the members of its enum. It returns none when it takes every value of
-// its type.
-func (a unionAlternative) values() []Code {
+// values returns the literals of the values that a valueAlt of the union
+// named union takes: its const or the members of its enum. It returns none
+// when it takes every value of its type. It panics on a value that the Go type
+// of the alternative cannot hold exactly, since without its literal the
+// decoder would take every value of the type or a rounded one: a value of
+// another JSON type, null, an array or object, a fraction under integer, or a
+// number of magnitude 2^53 or more, which may be rounded when it loads.
+func (a unionAlternative) values(union string) []Code {
 	if a.kind != valueAlt {
 		return nil
 	}
+	t := ir.PrimaryType(a.value)
 	var lits []Code
 	for _, value := range namedValues(a.expanded) {
-		switch t := ir.PrimaryType(a.value); value := value.(type) {
+		var lit Code
+		switch value := value.(type) {
 		case float64:
-			if t == "integer" {
-				lits = append(lits, Lit(int(value)))
+			exact := math.Abs(value) < 1<<53
+			if t == "integer" && exact && value == math.Trunc(value) {
+				lit = Lit(int(value))
 			}
-			if t == "number" {
-				lits = append(lits, Lit(value))
+			if t == "number" && exact {
+				lit = Lit(value)
 			}
 		case string:
 			if t == "string" {
-				lits = append(lits, Lit(value))
+				lit = Lit(value)
 			}
 		case bool:
 			if t == "boolean" {
-				lits = append(lits, Lit(value))
+				lit = Lit(value)
 			}
 		}
+		if lit == nil {
+			b, _ := json.Marshal(value)
+			panic(fmt.Sprintf("an alternative of type %s of union %q names the value %s, which its Go type cannot hold exactly", t, union, b))
+		}
+		lits = append(lits, lit)
 	}
 	return lits
 }
@@ -1278,7 +1290,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				nullKeys = append(nullKeys, pk)
 			}
 		}
-		values := alt.values()
+		values := alt.values(name)
 		var validated fieldCheck
 		if ref != "" {
 			validated.descends = b.validates(strings.TrimPrefix(ref, "#/$defs/"))

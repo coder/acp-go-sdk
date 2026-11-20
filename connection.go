@@ -194,6 +194,12 @@ type Connection struct {
 // exceptions. opts set the limits on what it holds from the peer: a request
 // over a limit gets a -32603 reply instead of a handler call, and a
 // notification over a limit closes the connection (see ConnectionOption).
+//
+// The connection never closes peerInput or peerOutput. A write to a peer that
+// stopped reading blocks, and every later write waits behind it: a handler's
+// reply, SendRequest and SendNotification. Nothing in the connection ends
+// that write, not even Done or a ctx. Once Done closes, close the transport
+// (peerInput, or the process or socket behind it) so that the writes return.
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
 	limits := connectionLimits{
 		byteBudget:             defaultByteBudget,
@@ -1310,7 +1316,9 @@ func (c *Connection) prepareNotification(method string, params any) (anyMessage,
 }
 
 // Done returns a channel that is closed when the underlying reader loop exits
-// (typically when the peer disconnects or the input stream is closed).
+// (typically when the peer disconnects or the input stream is closed). It does
+// not end a write that blocks on a peer that stopped reading: close the
+// transport after Done closes (see NewConnection).
 func (c *Connection) Done() <-chan struct{} {
 	return c.ctx.Done()
 }

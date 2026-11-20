@@ -509,14 +509,27 @@ jobs:
         run: |
           set -euo pipefail
 
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "Release $TAG already exists."
-            exit 0
-          fi
-
           prerelease=()
+          want_prerelease=false
           if [[ "$TAG" == *-* ]]; then
             prerelease=(--prerelease)
+            want_prerelease=true
+          fi
+
+          # A re-run keeps a release that exists, but only one that a
+          # consumer sees as this version: published, and a prerelease
+          # exactly when the version has a "-".
+          if release="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease 2> /dev/null)"; then
+            if [[ "$(jq -r .isDraft <<< "$release")" != false ]]; then
+              echo "::error::Release $TAG exists as a draft. Publish it or delete it, then use Re-run failed jobs."
+              exit 1
+            fi
+            if [[ "$(jq -r .isPrerelease <<< "$release")" != "$want_prerelease" ]]; then
+              echo "::error::Release $TAG exists, but its prerelease flag is not $want_prerelease. Fix the flag, then use Re-run failed jobs."
+              exit 1
+            fi
+            echo "Release $TAG already exists."
+            exit 0
           fi
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "$TAG" --notes "ACP schema $SCHEMA" "${prerelease[@]}"

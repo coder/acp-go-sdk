@@ -159,8 +159,9 @@ choose **Re-run failed jobs**. Do not start a new run, because its `preflight`
 refuses a tag that exists.
 
 - `publish` reads the current state first. It keeps a tag that points at the
-  release commit and a release that exists, and creates only what is missing.
-  It fails on a tag that points at another commit. A re-run of `publish` asks
+  release commit and a published release with the right prerelease flag, and
+  creates only what is missing. It fails on a tag that points at another
+  commit, a draft release, or a release with the wrong prerelease flag. A re-run of `publish` asks
   for approval again.
 - A re-run of `proxy` or `notes` repeats its work.
 

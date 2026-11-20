@@ -31,9 +31,10 @@ import (
 // inboundCorpusGlobs name the recorded traffic: the fixtures of the Claude and
 // Codex adapters and the verify-acp-go-sdk journeys in testdata/bench, and the
 // transcripts that verify-schema-bump's G2 gate round-trips. testdata/bench
-// and .agents are modules of their own, so the module zip that the Go proxy
-// serves has neither, and a test that needs the corpus skips there. Where
-// either folder exists, every glob must match, so a lost source fails loudly.
+// and .agents/skills/verify-schema-bump are modules of their own, so the
+// module zip that the Go proxy serves has neither (it keeps the rest of
+// .agents), and a test that needs the corpus skips there. Where either folder
+// exists, every glob must match, so a lost source fails loudly.
 var inboundCorpusGlobs = []string{
 	"testdata/bench/claude-agent-acp/*.jsonl",
 	"testdata/bench/codex-acp/*.jsonl",
@@ -41,8 +42,8 @@ var inboundCorpusGlobs = []string{
 	".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl",
 }
 
-// inboundCorpusRoots are the folders that the module zip leaves out.
-var inboundCorpusRoots = []string{"testdata/bench", ".agents"}
+// inboundCorpusRoots are the corpus folders that the module zip leaves out.
+var inboundCorpusRoots = []string{"testdata/bench", ".agents/skills/verify-schema-bump"}
 
 // An inboundMessage is one message of the corpus, as the side that receives
 // it reads it.
@@ -68,7 +69,7 @@ func loadInboundCorpus(tb testing.TB) []inboundMessage {
 		}
 	}
 	if zip {
-		tb.Skip("no corpus: this is the module zip, which leaves out testdata/bench and .agents")
+		tb.Skip("no corpus: this is the module zip, which leaves out testdata/bench and .agents/skills/verify-schema-bump")
 	}
 	for _, g := range inboundCorpusGlobs {
 		matches, err := filepath.Glob(g)

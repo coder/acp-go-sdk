@@ -104,20 +104,29 @@ has() { grep -Fq -- "$2" <<<"$1"; }
 line_of() { { grep -Fn -- "$2" <<<"$1" || true; } | head -n 1 | cut -d: -f1; }
 count() { grep -Fc -- "$2" <<<"$1" || true; }
 
+# fingerprint: one sha256 per covered function and constant. A lookup that
+# fails exits 2: inside $(...) its DRIFT exit ends only the subshell, so each
+# lookup checks its own status (pipefail carries need_*'s through sha256sum).
 fingerprint() {
-	local sig
+	local sig h
 	for sig in "${COVERED[@]}"; do
-		printf '%s  %s\n' "$(need_body "$sig" | sha256sum | cut -d' ' -f1)" "$sig"
+		h=$(need_body "$sig" | sha256sum | cut -d' ' -f1) || exit 2
+		printf '%s  %s\n' "$h" "$sig"
 	done
 	for sig in "${COVERED_CONSTS[@]}"; do
-		printf '%s  %s\n' "$(need_const "$sig" | sha256sum | cut -d' ' -f1)" "$sig"
+		h=$(need_const "$sig" | sha256sum | cut -d' ' -f1) || exit 2
+		printf '%s  %s\n' "$h" "$sig"
 	done
 }
 
 [ -f "$SRC" ] || die "missing $SRC"
 
+# Read every covered function and constant before anything else, so that a
+# missing one exits 2 here, before the file is written and before TLC runs.
+FINGERPRINT=$(fingerprint)
+
 if [ "${1:-}" = "--update-fingerprint" ]; then
-	fingerprint >"$SKILL_DIR/fingerprint.txt"
+	printf '%s\n' "$FINGERPRINT" >"$SKILL_DIR/fingerprint.txt"
 	echo "wrote $SKILL_DIR/fingerprint.txt"
 	echo "Commit it with the model change. That commit becomes the sync commit."
 	exit 0
@@ -372,8 +381,11 @@ peer_call_fact() {
 	if [ -n "$done_l" ] && [ "$done_l" -gt "$wfr_l" ]; then ends=TRUE; fi
 	echo "$starts $ends"
 }
-read -r s1 e1 <<<"$(peer_call_fact "$B_send" SendRequest)"
-read -r s2 e2 <<<"$(peer_call_fact "$B_sendnr" SendRequestNoResult)"
+# Assign first: a DRIFT exit inside the $(...) of a here-string is lost.
+pc1=$(peer_call_fact "$B_send" SendRequest)
+pc2=$(peer_call_fact "$B_sendnr" SendRequestNoResult)
+read -r s1 e1 <<<"$pc1"
+read -r s2 e2 <<<"$pc2"
 l_inc=$(line_of "$B_peer" "c.peerWaits[seq]++")
 l_pbc=$(line_of "$B_peer" "c.notifyCond.Broadcast()")
 if [ -n "$l_inc" ] && [ "$s1" = TRUE ] && [ "$s2" = TRUE ]; then PeerWaitCounts=TRUE; else PeerWaitCounts=FALSE; fi
@@ -517,7 +529,7 @@ echo
 if [ ! -f "$SKILL_DIR/fingerprint.txt" ]; then
 	echo "No fingerprint.txt. Run check.sh --update-fingerprint after you review the mapping."
 	stale=1
-elif ! diff <(fingerprint) "$SKILL_DIR/fingerprint.txt" >"$OUT/fingerprint.diff"; then
+elif ! diff <(printf '%s\n' "$FINGERPRINT") "$SKILL_DIR/fingerprint.txt" >"$OUT/fingerprint.diff"; then
 	echo "STALE: this covered code changed since the sync commit:"
 	grep '^<' "$OUT/fingerprint.diff" | sed 's/^< [0-9a-f]*  /  /'
 	echo "Review the mapping in SKILL.md before you trust a pass."

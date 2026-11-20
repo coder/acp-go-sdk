@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -20,7 +21,7 @@ import (
 // connection goes on reading.
 func TestConnection_SendRequest_FailsOnAnErrorObjectThatDoesNotDecode(t *testing.T) {
 	t.Parallel()
-	for _, tt := range []struct{ name, errJSON string }{
+	cases := []struct{ name, errJSON string }{
 		{"fractional code", `{"code":1.5,"message":"m"}`},
 		{"string code", `{"code":"x","message":"m"}`},
 		{"exponent code", `{"code":1e20,"message":"m"}`},
@@ -28,7 +29,12 @@ func TestConnection_SendRequest_FailsOnAnErrorObjectThatDoesNotDecode(t *testing
 		{"code below int64", `{"code":-9223372036854775809,"message":"m"}`},
 		{"message not a string", `{"code":1,"message":5}`},
 		{"error not an object", `"oops"`},
-	} {
+	}
+	if strconv.IntSize == 32 {
+		// An int is 32 bits wide on 386, so 2^31 does not fit RequestError.Code.
+		cases = append(cases, struct{ name, errJSON string }{"code above int32", `{"code":2147483648,"message":"m"}`})
+	}
+	for _, tt := range cases {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

@@ -1,13 +1,13 @@
 package acp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -401,6 +401,9 @@ func FuzzFastDecode_Leaves(f *testing.F) {
 	})
 }
 
+// objectKey matches the end of an object key and its colon.
+var objectKey = regexp.MustCompile(`"\s*:`)
+
 // compareLeaf requires that dec, on true, reads data as json.Unmarshal does
 // into a zero T, and that it declines only where json.Unmarshal fails, for
 // the leaves whose decoders decline nothing else.
@@ -411,7 +414,9 @@ func compareLeaf[T any](t *testing.T, data []byte, dec func(*T, []byte) bool) {
 	if ok && (err != nil || !reflect.DeepEqual(fast, exact)) {
 		t.Errorf("%T of %q: the fast decoder reads %#v, json.Unmarshal %#v (error %v)", fast, data, fast, exact, err)
 	}
-	if !ok && err == nil && !bytes.Contains(data, []byte(`":`)) {
+	// A map decoder declines a key that repeats, so any value with a key may
+	// decline; whitespace can come between a key and its colon.
+	if !ok && err == nil && !objectKey.Match(data) {
 		t.Errorf("%T of %q: the fast decoder declines what json.Unmarshal reads as %#v", fast, data, exact)
 	}
 }

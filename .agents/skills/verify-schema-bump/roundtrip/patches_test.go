@@ -14,15 +14,26 @@ import (
 // a value replaces it, so [] clears an array. The schema says so only in its
 // descriptions. These patterns read them, as cmd/generate/internal/ir does:
 // an object whose description says that its optional properties are all
-// patch fields, an object description that names its patch fields in a
-// "have patch semantics" sentence, and a property whose description says
-// that omitted means unchanged or that null clears it.
+// patch fields (changedOnly or patchedObject), an object description that
+// names its patch fields in a "have patch semantics" sentence, and a property
+// whose description says that omitted means unchanged or that null clears it.
+// Null clears only where the text says so (nullClears): in an object that
+// says only that it carries the changed fields, as ToolCallUpdate does, ACP
+// v1 reads null as absent, as the Rust SDK does.
 var (
-	patchType      = regexp.MustCompile(`(?i)only changed fields|partial updates?\b|omitted patch fields`)
+	changedOnly    = regexp.MustCompile(`(?i)only changed fields|partial updates?\b`)
+	patchedObject  = regexp.MustCompile(`(?i)omitted patch fields`)
 	patchSemantics = regexp.MustCompile("(?i)[^.]*\\bhave patch semantics")
 	backticked     = regexp.MustCompile("`([^`]+)`")
 	patchProperty  = regexp.MustCompile("(?i)omitt(?:ed|ing)[^.]*\\bunchanged\\b|\\bnull`? (?:clears|removes)\\b|set to null to clear")
+	nullClears     = regexp.MustCompile("(?i)\\bnull`? (?:clears|removes)\\b|set to null to clear")
 )
+
+// patchField is the schema of a patch field, and whether null clears it.
+type patchField struct {
+	schema map[string]any
+	clears bool
+}
 
 // patchSite is a patch field in a value that the SDK reads as def: in the
 // def itself, or in one of its top-level alternatives (variant >= 0).
@@ -31,7 +42,7 @@ type patchSite struct {
 	def     string
 	variant int
 	prop    string
-	schema  map[string]any
+	patchField
 }
 
 func (site patchSite) path() string {
@@ -43,8 +54,8 @@ func (site patchSite) path() string {
 
 // patchFieldsOf returns the patch fields of the object that node describes,
 // following $ref and allOf, each with its schema.
-func patchFieldsOf(defs map[string]any, node any) map[string]map[string]any {
-	fields := map[string]map[string]any{}
+func patchFieldsOf(defs map[string]any, node any) map[string]patchField {
+	fields := map[string]patchField{}
 	seen := map[string]bool{}
 	var walk func(node any)
 	walk = func(node any) {
@@ -70,9 +81,10 @@ func patchFieldsOf(defs map[string]any, node any) map[string]map[string]any {
 			if slices.Contains(required, name) {
 				continue
 			}
-			if patchType.MatchString(desc) || named[name] || patchProperty.MatchString(pdesc) {
+			patched := patchedObject.MatchString(desc) || patchSemantics.MatchString(desc)
+			if changedOnly.MatchString(desc) || patched || named[name] || patchProperty.MatchString(pdesc) {
 				if _, ok := fields[name]; !ok {
-					fields[name] = ps
+					fields[name] = patchField{ps, patched || !changedOnly.MatchString(desc) || nullClears.MatchString(pdesc)}
 				}
 			}
 		}
@@ -117,6 +129,8 @@ func findPatches(s *suite) []patchSite {
 // TestPatches checks that the SDK keeps the three forms of each patch field
 // apart: an absent member stays absent, null stays null, and an empty array
 // stays an empty array, so that a receiver can tell "unchanged" from "clear".
+// Where null does not clear, it means "unchanged" too, so null must come back
+// absent, as the Rust SDK writes it.
 func TestPatches(t *testing.T) {
 	s := load(t)
 	sites := findPatches(s)
@@ -145,7 +159,8 @@ func TestPatches(t *testing.T) {
 
 // checkPatch decodes and encodes the def's value with the patch field
 // absent, null, and, for an array, empty, and returns a problem for each form
-// that the SDK does not write back.
+// that the SDK does not write back: null as null where it clears, and as
+// absent where it does not.
 func checkPatch(site patchSite) (string, []hintProblem) {
 	if _, ok := registry[site.def]; !ok {
 		return "no SDK type", nil
@@ -160,6 +175,9 @@ func checkPatch(site patchSite) (string, []hintProblem) {
 		value any
 		want  string // the member in the output; "" for none
 	}{{"absent", nil, ""}, {"null", nil, "null"}}
+	if !site.clears {
+		forms[1].want = ""
+	}
 	if strings.Contains(fmt.Sprint(site.schema["type"]), "array") {
 		forms = append(forms, struct {
 			probe string
@@ -195,7 +213,7 @@ func checkPatch(site patchSite) (string, []hintProblem) {
 		got, present := members[site.prop]
 		switch {
 		case form.want == "" && present:
-			problems = append(problems, hintProblem{form.probe, fmt.Sprintf("an absent %s comes back as %s", site.prop, got)})
+			problems = append(problems, hintProblem{form.probe, fmt.Sprintf("%s %s comes back as %s, want it absent", form.probe, site.prop, got)})
 		case form.want != "" && string(got) != form.want:
 			if !present {
 				got = json.RawMessage("absent")
@@ -218,13 +236,24 @@ func TestPatchFieldsOf_ReadsTheDescriptions(t *testing.T) {
 			"cwd": {"type": ["string", "null"], "description": "Omitted means unchanged. `+"`null`"+` clears it."},
 			"title": {"type": ["string", "null"], "description": "Set to null to clear."},
 			"name": {"type": ["string", "null"], "description": "The name."}}},
-		"Variant": {"allOf": [{"$ref": "#/$defs/Update"}], "properties": {"kind": {"const": "update"}}}
+		"Variant": {"allOf": [{"$ref": "#/$defs/Update"}], "properties": {"kind": {"const": "update"}}},
+		"Info": {"description": "All fields are optional to support partial updates.", "type": "object",
+			"properties": {"title": {"type": ["string", "null"], "description": "Set to null to clear."}, "_meta": {"type": ["object", "null"]}}}
 	}`), &defs); err != nil {
 		t.Fatal(err)
 	}
-	for def, want := range map[string]string{"Update": "title", "Named": "_meta summary", "Own": "cwd title", "Variant": "title"} {
-		if got := strings.Join(sortedKeys(patchFieldsOf(defs, defs[def])), " "); got != want {
-			t.Errorf("patch fields of %s = %q, want %q", def, got, want)
+	// A field marked + is one where null clears.
+	for def, want := range map[string]string{"Update": "title", "Named": "_meta+ summary+", "Own": "cwd+ title+", "Variant": "title", "Info": "_meta title+"} {
+		fields := patchFieldsOf(defs, defs[def])
+		var got []string
+		for _, name := range sortedKeys(fields) {
+			if fields[name].clears {
+				name += "+"
+			}
+			got = append(got, name)
+		}
+		if strings.Join(got, " ") != want {
+			t.Errorf("patch fields of %s = %q, want %q", def, strings.Join(got, " "), want)
 		}
 	}
 }

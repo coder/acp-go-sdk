@@ -33,7 +33,7 @@ out=${BENCH_OUT:-${TMPDIR:-/tmp}/acp-bench/$(date +%Y%m%d-%H%M%S)}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 # The files that make up the benchmark, copied from the checkout to BASE.
-harness=(inbound_bench_test.go testdata/bench .agents/skills/verify-schema-bump/roundtrip/testdata/transcripts)
+harness=(inbound_bench_test.go inbound_bench_cpu_unix_test.go inbound_bench_cpu_other_test.go testdata/bench .agents/skills/verify-schema-bump/roundtrip/testdata/transcripts)
 
 if [ -z "${BENCHSTAT:-}" ]; then
 	if command -v benchstat >/dev/null; then

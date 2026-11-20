@@ -5,14 +5,13 @@
 #   check.sh --update-fingerprint   record the covered code as synced
 #
 # Exit codes:
-#   0  every config gave its expected result and the covered code matches
+#   0  every config passed and the covered code matches
 #      fingerprint.txt
-#   1  a property failed that should hold, or a config that should fail
-#      passed: read the TLC output named in the summary
+#   1  a property failed: read the TLC output named in the summary
 #   2  setup or drift error: a tool is missing, or check.sh cannot find a
 #      line of connection.go that the model depends on
-#   3  every result was as expected, but covered functions changed since
-#      the sync commit: review the mapping in SKILL.md
+#   3  every config passed, but covered code changed since the sync
+#      commit: review the mapping in SKILL.md
 set -euo pipefail
 # shellcheck disable=SC2329 # called by the ERR trap
 on_err() {
@@ -32,11 +31,11 @@ TLA_VERSION=1.7.4
 TLA_SHA256=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 TLA_URL=https://github.com/tlaplus/tlaplus/releases/download/v$TLA_VERSION/tla2tools.jar
 
-# config:expected TLC exit code. 0 = pass, 13 = liveness violation.
-CONFIGS=(barrier.cfg:0 slow-handler.cfg:0 drain-timeout.cfg:0 nested-handler.cfg:0
-	inbound-request.cfg:0 inbound-slow-handler.cfg:0 inbound-nested.cfg:0 inbound-nested-peer.cfg:0
-	inbound-call.cfg:0 inbound-call-peer.cfg:0)
-DEEP_CONFIGS=(deep-two-callers.cfg:0)
+# Every config must pass.
+CONFIGS=(barrier.cfg slow-handler.cfg drain-timeout.cfg nested-handler.cfg
+	inbound-request.cfg inbound-slow-handler.cfg inbound-nested.cfg inbound-nested-peer.cfg
+	inbound-call.cfg inbound-call-peer.cfg)
+DEEP_CONFIGS=(deep-two-callers.cfg)
 
 COVERED=(
 	"func NewConnection("
@@ -61,6 +60,12 @@ COVERED=(
 	"func (c *Connection) Done("
 	"func (c *Connection) waitForNotificationDrain("
 )
+# Constants that no covered function holds: the default notification queue
+# capacity, which the model bounds at QueueCap, the drain timeout, and the
+# capacity of the rejection queue that receive sends to without blocking.
+COVERED_CONSTS=(defaultMaxQueuedNotifications notificationQueueDrainTimeout maxQueuedRejections)
+# Files that declare them.
+CONST_SRCS=("$SRC" "$REPO/limits.go")
 
 die() {
 	echo "check.sh: $*" >&2
@@ -86,6 +91,15 @@ need_body() {
 	printf '%s\n' "$b"
 }
 
+# need_const NAME: print the declaration of the constant NAME as "NAME = value",
+# alone or in a const block, with gofmt's alignment squeezed out.
+need_const() {
+	local l
+	l=$(NAME="$1" awk '{ sub(/^[ \t]*const[ \t]+/, ""); $1 = $1 } $1 == ENVIRON["NAME"] && $2 == "="' "${CONST_SRCS[@]}")
+	[ "$(grep -c . <<<"$l")" = 1 ] || drift "constant not found once: $1"
+	printf '%s\n' "$l"
+}
+
 has() { grep -Fq -- "$2" <<<"$1"; }
 line_of() { { grep -Fn -- "$2" <<<"$1" || true; } | head -n 1 | cut -d: -f1; }
 count() { grep -Fc -- "$2" <<<"$1" || true; }
@@ -94,6 +108,9 @@ fingerprint() {
 	local sig
 	for sig in "${COVERED[@]}"; do
 		printf '%s  %s\n' "$(need_body "$sig" | sha256sum | cut -d' ' -f1)" "$sig"
+	done
+	for sig in "${COVERED_CONSTS[@]}"; do
+		printf '%s  %s\n' "$(need_const "$sig" | sha256sum | cut -d' ' -f1)" "$sig"
 	done
 }
 
@@ -290,14 +307,10 @@ if has "$B_recv" "$IN_BARRIER"; then
 		drift "waitInboundBarrier calls waitNotifications in a new form"
 	fi
 	l_cause=$(line_of "$B_inb" "$INB_CAUSE")
-	if [ -n "$l_cause" ] && [ "$l_cause" -gt "$l_iw" ]; then PostWaitChecksCtx=TRUE; fi
-elif has "$B_recv" "if err := c.waitNotifications(reqCtx, watermark, true); err != nil {"; then
-	InboundWaits=TRUE
-	in_stop=TRUE
-elif has "$B_recv" "if err := c.waitNotifications(reqCtx, watermark, false); err != nil {" ||
-	has "$B_recv" "if err := c.waitNotificationsUpTo(reqCtx, watermark); err != nil {"; then
-	InboundWaits=TRUE
-	in_stop=FALSE
+	l_ret=$(line_of "$B_inb" "return toReqErr(cause)")
+	if [ -n "$l_cause" ] && [ "$l_cause" -gt "$l_iw" ] && [ "$l_ret" = $((l_cause + 1)) ]; then
+		PostWaitChecksCtx=TRUE
+	fi
 elif has "$B_recv" "waitNotifications" || has "$B_recv" "waitInboundBarrier"; then
 	drift "receive() waits for earlier notifications in a new form"
 else
@@ -308,6 +321,8 @@ if [ "$InboundWaits" = TRUE ]; then
 	has "$B_recv" "watermark := c.lastEnqueuedNotificationSeq" ||
 		drift "receive() waits for a watermark that it no longer reads from lastEnqueuedNotificationSeq"
 fi
+# While connected, a wait error gets the error reply, not the handler.
+if has "$B_recv" "c.sendInboundRequestError(m, toReqErr(err))"; then WaitErrorReplies=TRUE; else WaitErrorReplies=FALSE; fi
 if [ "$in_stop" = TRUE ] && [ "$LoopStopsAtPeerWait" = TRUE ]; then
 	InboundStopsAtPeerWait=TRUE
 else
@@ -420,6 +435,7 @@ FACTS="CONSTANTS
     PeerWaitBroadcasts = $PeerWaitBroadcasts
     PeerWaitEnds = $PeerWaitEnds
     PostWaitChecksCtx = $PostWaitChecksCtx
+    WaitErrorReplies = $WaitErrorReplies
     RequestCtxStopsAtPeerWait = $RequestCtxStopsAtPeerWait"
 printf '%s\n' "$FACTS" >"$OUT/facts.cfg"
 echo "Facts read from connection.go:"
@@ -437,8 +453,18 @@ if [ -z "$JAR" ]; then
 	if [ ! -f "$JAR" ]; then
 		mkdir -p "$CACHE"
 		echo "Downloading $TLA_URL"
-		curl -fsSL -o "$JAR.tmp" "$TLA_URL" || die "download failed: $TLA_URL"
-		mv "$JAR.tmp" "$JAR"
+		tmp=$(mktemp "$CACHE/tla2tools.XXXXXX")
+		curl -fsSL -o "$tmp" "$TLA_URL" || {
+			rm -f "$tmp"
+			die "download failed: $TLA_URL"
+		}
+		# Check the download before it enters the cache, so that a bad file
+		# never stays there.
+		if ! echo "$TLA_SHA256  $tmp" | sha256sum -c --quiet - >/dev/null 2>&1; then
+			rm -f "$tmp"
+			die "the download from $TLA_URL is not tla2tools $TLA_VERSION (sha256 mismatch)"
+		fi
+		mv "$tmp" "$JAR"
 	fi
 fi
 echo "$TLA_SHA256  $JAR" | sha256sum -c --quiet - || die "$JAR is not tla2tools $TLA_VERSION (sha256 mismatch)"
@@ -450,10 +476,8 @@ failed=0
 broken=0
 stale=0
 echo
-printf '%-24s %-10s %-9s %s\n' CONFIG EXPECTED RESULT "TLC OUTPUT"
-for entry in "${run_list[@]}"; do
-	cfg=${entry%%:*}
-	want=${entry##*:}
+printf '%-24s %-9s %s\n' CONFIG RESULT "TLC OUTPUT"
+for cfg in "${run_list[@]}"; do
 	work=$(mktemp -d "${TMPDIR:-/tmp}/acp-barrier-run.XXXXXX")
 	cp "$SKILL_DIR/$SPEC.tla" "$work/"
 	cat "$SKILL_DIR/$cfg" "$OUT/facts.cfg" >"$work/$cfg"
@@ -471,29 +495,20 @@ for entry in "${run_list[@]}"; do
 	13) res=liveness ;;
 	*) res="error($got)" ;;
 	esac
-	case $want in
-	0) exp=pass ;;
-	13) exp=liveness ;;
-	esac
-	printf '%-24s %-10s %-9s %s\n' "$cfg" "$exp" "$res" "$OUT/${cfg%.cfg}.out"
+	printf '%-24s %-9s %s\n' "$cfg" "$res" "$OUT/${cfg%.cfg}.out"
 	case $got in
 	11) echo "  rule: NoDeadlock" ;;
 	12) sed -n 's/^Error: Invariant \(.*\) is violated.*/  rule: \1/p' "$OUT/${cfg%.cfg}.out" | head -n 1 ;;
 	13) echo "  rule: one of the PROPERTIES in $cfg (TLC does not say which; /statechart names it)" ;;
 	esac
-	if [ "$got" != "$want" ]; then
-		case $got in
-		0)
-			echo "  $cfg passed, but it should fail. Update SKILL.md and its expected result." >&2
-			failed=1
-			;;
-		11 | 12 | 13) failed=1 ;;
-		*)
-			echo "  TLC did not finish. Read the output: this is a model or setup error." >&2
-			broken=1
-			;;
-		esac
-	fi
+	case $got in
+	0) ;;
+	11 | 12 | 13) failed=1 ;;
+	*)
+		echo "  TLC did not finish. Read the output: this is a model or setup error." >&2
+		broken=1
+		;;
+	esac
 done
 
 # ---- Is the covered code still the code that was synced? -------------------
@@ -503,7 +518,7 @@ if [ ! -f "$SKILL_DIR/fingerprint.txt" ]; then
 	echo "No fingerprint.txt. Run check.sh --update-fingerprint after you review the mapping."
 	stale=1
 elif ! diff <(fingerprint) "$SKILL_DIR/fingerprint.txt" >"$OUT/fingerprint.diff"; then
-	echo "STALE: these covered functions changed since the sync commit:"
+	echo "STALE: this covered code changed since the sync commit:"
 	grep '^<' "$OUT/fingerprint.diff" | sed 's/^< [0-9a-f]*  /  /'
 	echo "Review the mapping in SKILL.md before you trust a pass."
 	stale=1

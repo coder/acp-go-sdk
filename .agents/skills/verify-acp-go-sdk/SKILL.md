@@ -107,4 +107,4 @@ After cleanup, confirm that the proof is still there, for example with `ls "$ACP
 
 The map reports no known defects now. When a journey finds one, list it here with a link to its feature file, and say in that file how the journey shows it. Do not weaken a journey to hide one.
 
-To keep the map true as the app changes, use the pstack plugin's `maintain-verification-skill` skill. It is hidden from the default skill list, so load it by name.
+To keep the map true as the app changes, use the pstack plugin's `maintain-verification-skill` skill. It is hidden from the default skill list, so load it by name. If it is not available, rerun every journey and fix each row of the map that a run contradicts.

@@ -28,20 +28,21 @@ CONSTANTS
     WatermarkSource,          \* "enqueued" or "completed": the counter handleResponse records
     CompletesAfterHandler,    \* processNotifications counts a notification after handleInbound returns
     WorkerBroadcasts,         \* processNotifications calls notifyCond.Broadcast after counting
-    CtxWakerSpawned,          \* waitNotificationsUpTo starts the ctx.Done broadcaster
+    CtxWakerSpawned,          \* waitNotifications starts the ctx.Done broadcaster
     ConnDoneWaker,            \* NewConnection starts the c.ctx.Done broadcaster
     DrainBeforeInboundCancel, \* shutdownReceive drains before inboundCancel
     DrainTimerWaker,          \* waitForNotificationDrain starts the timeout broadcaster
     RollsBackOnOverflow,      \* receive decrements lastEnqueuedNotificationSeq on overflow
-    WaitChecksDisconnect,     \* the waitNotificationsUpTo loop checks c.Done() first
+    WaitChecksDisconnect,     \* the waitNotifications loop checks c.Done() first
     DrainChecksTimeout,       \* the waitForNotificationDrain loop checks ctx.Err()
-    HandlerCtxCapsWait,       \* waitNotificationsUpTo caps the target for a running handler's ctx
-    InboundWaits,             \* an inbound request goroutine calls waitNotifications(reqCtx, watermark, ...)
-    InboundStopsAtPeerWait,   \* ... with stopAtPeerWait, and the wait loop checks peerWaits[completed+1]
+    HandlerCtxCapsWait,       \* waitNotifications caps the target for a running handler's ctx
+    InboundWaits,             \* an inbound request goroutine calls waitInboundBarrier(reqCtx, watermark)
+    InboundStopsAtPeerWait,   \* ... which calls waitNotifications with stopAtPeerWait, and the loop checks peerWaits[completed+1]
     PeerWaitCounts,           \* startPeerWait increments peerWaits[seq] for the running handler's ctx
     PeerWaitBroadcasts,       \* startPeerWait broadcasts on notifyCond after the increment
     PeerWaitEnds,             \* donePeerWait decrements peerWaits[seq] after waitForResponse
     PostWaitChecksCtx,        \* waitInboundBarrier returns the cancel error when ctx ended as the wait cleared
+    WaitErrorReplies,         \* receive answers a wait error with sendInboundRequestError while connected
     RequestCtxStopsAtPeerWait \* waitNotificationsUpTo stops at a peer wait for a request handler's ctx
 
 ASSUME WatermarkSource \in {"enqueued", "completed"}
@@ -479,7 +480,7 @@ CleansUp(r) ==
 
 Min(a, b) == IF a < b THEN a ELSE b
 
-\* The target after the cap in waitNotificationsUpTo. Only the request from
+\* The target after the cap in waitNotifications. Only the request from
 \* the nested handler carries the ctx of a running handler, the one of
 \* notification cur.seq.
 CappedTarget(r) ==
@@ -487,12 +488,14 @@ CappedTarget(r) ==
     THEN Min(resp[r], cur.seq - 1)
     ELSE resp[r]
 
-\* waitNotificationsUpTo(ctx, watermark): target 0 returns at once.
+\* waitNotifications(ctx, target, stopAtPeerWait): target 0 returns at once.
 \* Otherwise take notifyMu, cap the target, and start the ctx.Done
-\* broadcaster. From here on resp[r] is the target.
+\* broadcaster. From here on resp[r] is the target. A request from the peer
+\* always gets here: InboundWaits sets its target, and WaitsForBarrier is
+\* about SendRequest and SendRequestNoResult only.
 EntersBarrier(r) ==
     /\ callerPc[r] = "barrier"
-    /\ IF ~WaitsForBarrier \/ resp[r] = 0
+    /\ IF (~WaitsForBarrier /\ r \notin InReqs) \/ resp[r] = 0
        THEN /\ SetResult(r, "ok") /\ SetPc(r, "done")
             /\ UNCHANGED <<lock, waker, resp>>
             /\ RecordExit(r)
@@ -576,7 +579,7 @@ BroadcasterVars ==
                 final, connDone, inboundDone, lock, workerPc, cur, pending, ch, resp,
                 ctxCanceled, timerFired, historyVars, inVars>>
 
-\* waitNotificationsUpTo's goroutine: case <-ctx.Done(), then Broadcast
+\* waitNotifications's goroutine: case <-ctx.Done(), then Broadcast
 \* under notifyMu.
 CtxWakerFires(r) ==
     /\ waker[r] = "armed" /\ CtxDone(r) /\ lock = None
@@ -585,7 +588,7 @@ CtxWakerFires(r) ==
     /\ UNCHANGED <<connWatcher, drainWaker>>
     /\ BroadcasterVars
 
-\* The same goroutine: case <-stopWake after waitNotificationsUpTo returns.
+\* The same goroutine: case <-stopWake after waitNotifications returns.
 CtxWakerStops(r) ==
     /\ waker[r] = "armed" /\ callerPc[r] = "done"
     /\ waker' = [waker EXCEPT ![r] = "off"]
@@ -677,7 +680,7 @@ DrainTimerFires ==
 
 -----------------------------------------------------------------------------
 (* Requests from the peer. receive() snapshots the watermark and starts one *)
-(* goroutine per request. The goroutine waits with waitNotificationsUpTo, *)
+(* goroutine per request. The goroutine waits with waitInboundBarrier,   *)
 (* modeled by the caller barrier actions above with q as the caller.      *)
 
 \* The peer writes a request. No fairness.
@@ -764,7 +767,8 @@ InHandlerStarts(q) ==
     /\ InVarsBut(q)
 
 \* select { case <-c.Done(): c.handleInbound(reqCtx, m); default: }, else
-\* c.sendInboundRequestError(m, toReqErr(err)). The deferred delete from
+\* c.sendInboundRequestError(m, toReqErr(err)) (WaitErrorReplies). Without
+\* it, the handler starts with the ended ctx. The deferred delete from
 \* c.inflight follows the reply; the model folds it into the reply step.
 InChecksDone(q) ==
     /\ inPc[q] = "checkDone"
@@ -772,9 +776,13 @@ InChecksDone(q) ==
        THEN /\ inPc' = [inPc EXCEPT ![q] = "handler"]
             /\ inStart' = [inStart EXCEPT ![q] = "disconnected"]
             /\ UNCHANGED inflight
-       ELSE /\ inPc' = [inPc EXCEPT ![q] = "errReplied"]
+       ELSE IF WaitErrorReplies
+       THEN /\ inPc' = [inPc EXCEPT ![q] = "errReplied"]
             /\ inflight' = inflight \ {q}
             /\ UNCHANGED inStart
+       ELSE /\ inPc' = [inPc EXCEPT ![q] = "handler"]
+            /\ inStart' = [inStart EXCEPT ![q] = "cancelled"]
+            /\ UNCHANGED inflight
     /\ UNCHANGED inCheckSaw
     /\ InVarsBut(q)
 
@@ -934,13 +942,7 @@ ShutdownCompletes == [](connDone => <>inboundDone)
 InboundHandlerAfterNotes ==
     \A q \in InReqs : result[q] = "ok" => inOkAtExit[q]
 
-\* The same for every handler start, also after a disconnect. It fails by
-\* design: after a disconnect the handler starts with a canceled ctx, while
-\* an earlier handler can still run.
-InboundHandlerAfterNotesEvenOnDisconnect ==
-    \A q \in InReqs : inStart[q] # "none" => inOkAtExit[q]
-
-\* waitNotificationsUpTo panics when its target exceeds
+\* waitNotifications panics when its target exceeds
 \* lastEnqueuedNotificationSeq, or when completed exceeds it.
 NoWatermarkPanic ==
     /\ completed <= lastEnq

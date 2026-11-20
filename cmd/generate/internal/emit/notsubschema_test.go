@@ -20,8 +20,9 @@ import (
 // itself through a property, and the shapes can say all of it, so a not of
 // Chain still rejects a Chain. Partial loses one alternative of its anyOf
 // and keeps the other. The first alternative of foldedConst fits no value,
-// since its type rejects its const. A subschema with only annotations fits every value
-// (section 4.3.2), as {} does, so not rejects every value.
+// since its type rejects its const, and no value fits an empty enum. A
+// subschema with only annotations fits every value (section 4.3.2), as {}
+// does, so not rejects every value.
 const notSubschemaSchema = `{"$defs": {
   "Tagged": {"type": "object", "required": ["tag"], "properties": {"tag": {"type": "string", "const": "t"}}},
   "Chain": {"type": "object", "required": ["tag"], "properties": {
@@ -46,6 +47,7 @@ const notSubschemaSchema = `{"$defs": {
     "pair": {"anyOf": [{"$ref": "#/$defs/Pair"}, {"type": "null"}], "x-deserialize-default-on-error": true},
     "notChain": {"type": "object", "not": {"$ref": "#/$defs/Chain"}, "x-deserialize-default-on-error": true},
     "partial": {"type": "string", "not": {"anyOf": [{"const": "a"}, {"type": "string", "maxLength": 3}]}, "x-deserialize-default-on-error": true},
+    "emptyEnum": {"type": "string", "not": {"enum": []}, "x-deserialize-default-on-error": true},
     "foldedConst": {"type": "string", "not": {"anyOf": [{"type": "integer", "const": "a"}, {"const": "b"}]}, "x-deserialize-default-on-error": true},
     "annotated": {"type": "string", "not": {"description": "d", "$comment": "c"}, "x-deserialize-default-on-error": true}}}
 }}`
@@ -74,6 +76,7 @@ func TestHolder_UnmarshalJSON_KeepsWhatTheNotSubschemaDoesNotMatch(t *testing.T)
 		{` + "`" + `{"notChain":{"tag":"x","next":{"tag":"z"}}}` + "`" + `, ` + "`" + `{"notChain":{"next":{"tag":"z"},"tag":"x"}}` + "`" + `},
 		{` + "`" + `{"partial":"hello"}` + "`" + `, ` + "`" + `{"partial":"hello"}` + "`" + `},
 		{` + "`" + `{"foldedConst":"a"}` + "`" + `, ` + "`" + `{"foldedConst":"a"}` + "`" + `},
+		{` + "`" + `{"emptyEnum":"x"}` + "`" + `, ` + "`" + `{"emptyEnum":"x"}` + "`" + `},
 		// The subschema matches these values, so the shapes reject them.
 		{` + "`" + `{"notChain":{"tag":"x","next":{"tag":"y"}}}` + "`" + `, ` + "`" + `{}` + "`" + `},
 		{` + "`" + `{"partial":"a"}` + "`" + `, ` + "`" + `{}` + "`" + `},

@@ -259,9 +259,10 @@ func (t *shapeTable) scalarRules(n *shapeNode, d *load.Definition, a approx) boo
 	switch {
 	case d.Const != nil:
 		n.values = scalars([]any{d.Const})
-	case len(d.Enum) > 0 && (a == under || !hasOtherMember(d)):
+	case d.Enum != nil && (a == under || !hasOtherMember(d)):
 		// An over-approximation reads a value that the enum does not list
-		// as its member "other", as the Rust types do.
+		// as its member "other", as the Rust types do. No value fits an
+		// empty enum.
 		n.values = scalars(d.Enum)
 	default:
 		n.ints = ownRange(t.schema, d)

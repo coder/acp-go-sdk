@@ -546,7 +546,12 @@ done
 # ---- Is the covered code still the code that was synced? -------------------
 
 echo
-if [ ! -f "$SKILL_DIR/fingerprint.txt" ]; then
+# Read the code again: an edit while TLC ran means TLC checked other code.
+FINGERPRINT_END=$(fingerprint)
+if [ "$FINGERPRINT_END" != "$FINGERPRINT" ]; then
+	echo "STALE: covered code changed while check.sh ran. Run it again."
+	stale=1
+elif [ ! -f "$SKILL_DIR/fingerprint.txt" ]; then
 	echo "No fingerprint.txt. Run check.sh --update-fingerprint after you review the mapping."
 	stale=1
 elif ! diff <(printf '%s\n' "$FINGERPRINT") "$SKILL_DIR/fingerprint.txt" >"$OUT/fingerprint.diff"; then

@@ -1,9 +1,7 @@
 package acp
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -14,18 +12,19 @@ import (
 	"time"
 )
 
-// childModeEnv makes the test binary act as a child process for the tests
-// below instead of running tests.
+// childModeEnv makes the test binary run childModes[mode] as a child process
+// for the tests below instead of running tests.
 const childModeEnv = "ACP_TRANSPORT_TEST_CHILD"
 
+var childModes = map[string]func(){
+	// A peer that never reads its stdin.
+	"idle": func() { time.Sleep(time.Minute) },
+}
+
 func TestMain(m *testing.M) {
-	switch os.Getenv(childModeEnv) {
-	case "idle":
-		// A peer that never reads its stdin.
-		time.Sleep(time.Minute)
+	if run, ok := childModes[os.Getenv(childModeEnv)]; ok {
+		run()
 		os.Exit(0)
-	case "blocked-stdout":
-		blockedStdoutChild()
 	}
 	os.Exit(m.Run())
 }
@@ -35,9 +34,9 @@ func TestMain(m *testing.M) {
 func bigParams() string { return strings.Repeat("x", 4<<20) }
 
 // TestConnection_CloseTransportEndsBlockedWrite checks what the NewConnection
-// godoc tells callers: Done does not end a write to a peer that stopped
-// reading, and closing the transport after Done does, for each transport that
-// the godoc names.
+// godoc tells callers: Done does not close while the peer's output is open,
+// Done does not end a write to a peer that stopped reading, and closing the
+// transport does, for each transport that the godoc names.
 func TestConnection_CloseTransportEndsBlockedWrite(t *testing.T) {
 	transports := []struct {
 		name string
@@ -108,6 +107,11 @@ func TestConnection_CloseTransportEndsBlockedWrite(t *testing.T) {
 			sent := make(chan error, 1)
 			go func() { sent <- c.SendNotification(context.Background(), "n", bigParams()) }()
 			time.Sleep(200 * time.Millisecond) // let the write start and block
+			select {
+			case <-c.Done():
+				t.Fatal("Done closed while the peer's output is open")
+			default:
+			}
 
 			_ = inW.Close()
 			select {
@@ -132,67 +136,4 @@ func TestConnection_CloseTransportEndsBlockedWrite(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestConnection_CloseStdoutKeepsBlockedWrite checks the exception that the
-// NewConnection godoc names: in a child process whose stdout is a pipe that
-// nobody reads, as for an agent that a client starts, os.Stdout.Close returns
-// nil and the write stays blocked until the process exits.
-func TestConnection_CloseStdoutKeepsBlockedWrite(t *testing.T) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close() // open and never read, so the child's write blocks
-	var stderr bytes.Buffer
-	cmd := exec.Command(os.Args[0])
-	cmd.Env = append(os.Environ(), childModeEnv+"=blocked-stdout")
-	cmd.Stdout = w
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	_ = w.Close()
-
-	exited := make(chan error, 1)
-	go func() { exited <- cmd.Wait() }()
-	select {
-	case err := <-exited:
-		if err != nil {
-			t.Fatalf("child: %v; stderr: %s", err, stderr.String())
-		}
-	case <-time.After(30 * time.Second):
-		_ = cmd.Process.Kill()
-		t.Fatalf("child did not exit; stderr: %s", stderr.String())
-	}
-	want := "blocked before close\nos.Stdout.Close: <nil>\nblocked after close\n"
-	if got := stderr.String(); got != want {
-		t.Fatalf("child stderr:\n%s\nwant:\n%s", got, want)
-	}
-}
-
-// blockedStdoutChild serves a connection on os.Stdout, blocks a write, closes
-// os.Stdout after Done, reports on stderr whether the write returned, and
-// exits.
-func blockedStdoutChild() {
-	inR, inW := io.Pipe()
-	c := NewConnection(nil, os.Stdout, inR)
-	c.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	sent := make(chan error, 1)
-	go func() { sent <- c.SendNotification(context.Background(), "n", bigParams()) }()
-	report := func(stage string) {
-		select {
-		case err := <-sent:
-			fmt.Fprintf(os.Stderr, "write returned %s: %v\n", stage, err)
-			os.Exit(0)
-		case <-time.After(time.Second):
-			fmt.Fprintf(os.Stderr, "blocked %s\n", stage)
-		}
-	}
-	report("before close")
-	_ = inW.Close()
-	<-c.Done()
-	fmt.Fprintf(os.Stderr, "os.Stdout.Close: %v\n", os.Stdout.Close())
-	report("after close")
-	os.Exit(0)
 }

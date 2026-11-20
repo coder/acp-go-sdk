@@ -199,12 +199,20 @@ type Connection struct {
 // The connection never closes peerInput or peerOutput. A write to a peer that
 // stopped reading blocks, and every later write waits behind it: a handler's
 // reply, SendRequest and SendNotification. Nothing in the connection ends
-// that write, not even Done or a ctx. Once Done closes, close the transport
-// so that the writes return. Closing an io.Pipe, an os.Pipe, a net.Conn or a
-// child's stdin (exec.Cmd.StdinPipe) ends a blocked write. Closing os.Stdout
-// does not: when stdout is a pipe in blocking mode, as for an agent that a
-// client starts, Close returns nil and the write stays blocked until the
-// process exits. Such an agent must exit once Done closes.
+// that write, not even Done or a ctx, and Done closes only when the peer's
+// output ends, which a peer that hangs may never do. The owner of the
+// transport ends the write by closing it, or by ending the process behind it.
+// Closing an io.Pipe, an os.Pipe, a net.Conn or a child's stdin
+// (exec.Cmd.StdinPipe) ends a blocked write. Close it when you are done with
+// the connection, for example when Done has closed and the handlers that
+// still reply have returned, or when a call outlives a deadline of your own.
+// Do not close it at once when Done closes: a peer that closed only its
+// output still reads, and it would lose the replies of the running handlers.
+//
+// Closing os.Stdout ends a blocked write only when stdout is in non-blocking
+// mode. A child's stdout pipe from os/exec, Node or Python is in blocking
+// mode: there Close returns nil and the write stays blocked until the process
+// exits, so an agent on os.Stdout must exit to end it.
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
 	limits := connectionLimits{
 		byteBudget:             defaultByteBudget,
@@ -1359,8 +1367,9 @@ func (c *Connection) prepareNotification(method string, params any) (anyMessage,
 
 // Done returns a channel that is closed when the underlying reader loop exits
 // (typically when the peer disconnects or the input stream is closed). It does
-// not end a write that blocks on a peer that stopped reading: close the
-// transport after Done closes (see NewConnection).
+// not close while a peer that stopped reading keeps its output open, and it
+// does not end a write that blocks on such a peer: NewConnection says how to
+// end that write.
 func (c *Connection) Done() <-chan struct{} {
 	return c.ctx.Done()
 }

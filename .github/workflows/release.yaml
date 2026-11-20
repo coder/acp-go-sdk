@@ -449,33 +449,37 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Run outside any module, so no go.mod changes what go list resolves.
+          # Run outside any module, so no go.mod changes what go resolves.
           cd "$RUNNER_TEMP"
           go version
           export GOPROXY=https://proxy.golang.org GOFLAGS=
 
+          # go mod download fetches the .info, .mod and .zip files that a
+          # consumer needs. go list -m can pass on the .info file alone.
           err="$RUNNER_TEMP/go-error"
           attempt=0
           for delay in 0 15 30 60 90 120 180 240; do
             attempt=$((attempt + 1))
             sleep "$delay"
-            if info="$(go list -m -json "$MODULE@$TAG" 2> "$err")"; then
+            if info="$(go mod download -json "$MODULE@$TAG" 2> "$err")"; then
               hash="$(jq -r '.Origin.Hash // empty' <<< "$info")"
               if [[ -n "$hash" && "$hash" != "$COMMIT" ]]; then
                 echo "::error::The proxy serves $MODULE@$TAG at $hash, not at the release commit $COMMIT."
                 exit 1
               fi
-              if [[ "$(jq -r .Version <<< "$info")" == "$TAG" ]]; then
+              if [[ "$(jq -r .Version <<< "$info")" == "$TAG" && -n "$(jq -r '.Zip // empty' <<< "$info")" ]]; then
                 echo "The proxy serves $MODULE@$TAG."
                 exit 0
               fi
-              echo "Attempt $attempt: unexpected answer: $info"
+              last="unexpected answer: $info"
             else
-              echo "Attempt $attempt: $(cat "$err")"
+              # go mod download -json reports a failure in the Error field.
+              last="$(jq -r '.Error // empty' <<< "$info" 2> /dev/null || true) $(cat "$err")"
             fi
+            echo "Attempt $attempt: $last"
           done
 
-          echo "::error::The proxy did not serve $MODULE@$TAG after $attempt attempts. Last error: $(cat "$err"). Use Re-run failed jobs to try again."
+          echo "::error::The proxy did not serve $MODULE@$TAG after $attempt attempts. Last error: $last. Use Re-run failed jobs to try again."
           exit 1
 
   notes:

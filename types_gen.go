@@ -3,11 +3,14 @@
 package acp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"math"
+	"reflect"
 	"strings"
 )
 
@@ -148,6 +151,26 @@ type AgentNotification struct {
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
+func (v *AgentNotification) UnmarshalJSON(b []byte) error {
+	var fresh AgentNotification
+	v.Method = fresh.Method
+	type plain AgentNotification
+	type AgentNotification struct {
+		*plain
+	}
+	raw := AgentNotification{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "AgentNotification", "method")
+		}
+	}
+	return nil
+}
+
 func (v *AgentNotification) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
@@ -165,7 +188,34 @@ type AgentRequest struct {
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
+func (v *AgentRequest) UnmarshalJSON(b []byte) error {
+	var fresh AgentRequest
+	v.Id = fresh.Id
+	v.Method = fresh.Method
+	type plain AgentRequest
+	type AgentRequest struct {
+		*plain
+	}
+	raw := AgentRequest{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Id) || maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Id, "id", true); err != nil {
+			return propertyError(err, "AgentRequest", "id")
+		}
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "AgentRequest", "method")
+		}
+	}
+	return nil
+}
+
 func (v *AgentRequest) Validate() error {
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
 	}
@@ -181,12 +231,77 @@ type AgentResult struct {
 	Result json.RawMessage `json:"result"`
 }
 
+func (v *AgentResult) UnmarshalJSON(b []byte) error {
+	var fresh AgentResult
+	v.Id = fresh.Id
+	v.Result = fresh.Result
+	type plain AgentResult
+	type AgentResult struct {
+		*plain
+	}
+	raw := AgentResult{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Id) || maybeAbsent(&v.Result) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Id, "id", true); err != nil {
+			return propertyError(err, "AgentResult", "id")
+		}
+		if err := requireMember(members, &v.Result, "result", true); err != nil {
+			return propertyError(err, "AgentResult", "result")
+		}
+	}
+	return nil
+}
+
+func (v *AgentResult) Validate() error {
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	return nil
+}
+
 // A failed JSON-RPC response.
 type AgentError struct {
 	// Method-specific error data.
 	Error Error `json:"error"`
 	// The id of the request this response answers.
 	Id RequestId `json:"id"`
+}
+
+func (v *AgentError) UnmarshalJSON(b []byte) error {
+	var fresh AgentError
+	v.Error = fresh.Error
+	v.Id = fresh.Id
+	type plain AgentError
+	type AgentError struct {
+		*plain
+	}
+	raw := AgentError{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Error) || maybeAbsent(&v.Id) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Error, "error", false); err != nil {
+			return propertyError(err, "AgentError", "error")
+		}
+		if err := requireMember(members, &v.Id, "id", true); err != nil {
+			return propertyError(err, "AgentError", "id")
+		}
+	}
+	return nil
+}
+
+func (v *AgentError) Validate() error {
+	if err := v.Error.Validate(); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	return nil
 }
 
 type AgentResponse struct {
@@ -278,6 +393,30 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *AgentResponse) Validate() error {
+	var count int
+	if u.Result != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("AgentResponse has no variant set")
+	}
+	if u.Result != nil {
+		if err := u.Result.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Error != nil {
+		if err := u.Error.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Optional annotations for the client. The client can use annotations to inform how objects are used or displayed
 type Annotations struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -349,6 +488,9 @@ type AudioContent struct {
 }
 
 func (v *AudioContent) UnmarshalJSON(b []byte) error {
+	var fresh AudioContent
+	v.Data = fresh.Data
+	v.MimeType = fresh.MimeType
 	type plain AudioContent
 	type AudioContent struct {
 		*plain
@@ -361,6 +503,15 @@ func (v *AudioContent) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
+	if maybeAbsent(&v.Data) || maybeAbsent(&v.MimeType) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Data, "data", false); err != nil {
+			return propertyError(err, "AudioContent", "data")
+		}
+		if err := requireMember(members, &v.MimeType, "mimeType", false); err != nil {
+			return propertyError(err, "AudioContent", "mimeType")
+		}
+	}
 	return nil
 }
 
@@ -439,18 +590,55 @@ type AuthMethodTerminalInline struct {
 }
 
 func (v *AuthMethodTerminalInline) UnmarshalJSON(b []byte) error {
+	var fresh AuthMethodTerminalInline
+	v.Id = fresh.Id
+	v.Name = fresh.Name
+	v.Type = fresh.Type
 	type plain AuthMethodTerminalInline
 	type AuthMethodTerminalInline struct {
 		*plain
 		Meta        json.RawMessage `json:"_meta"`
+		Args        json.RawMessage `json:"args"`
 		Description json.RawMessage `json:"description"`
+		Env         json.RawMessage `json:"env"`
 	}
 	raw := AuthMethodTerminalInline{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Args); err != nil {
+		return propertyError(err, "AuthMethodTerminalInline", "args")
+	}
+	if _, err := decodeField(raw.Args, &v.Args); err != nil {
+		return propertyError(err, "AuthMethodTerminalInline", "args")
+	}
 	decodeLenient(raw.Description, &v.Description)
+	if err := rejectNullItems[string](raw.Env); err != nil {
+		return propertyError(err, "AuthMethodTerminalInline", "env")
+	}
+	if _, err := decodeField(raw.Env, &v.Env); err != nil {
+		return propertyError(err, "AuthMethodTerminalInline", "env")
+	}
+	if maybeAbsent(&v.Id) || maybeAbsent(&v.Name) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Id, "id", false); err != nil {
+			return propertyError(err, "AuthMethodTerminalInline", "id")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "AuthMethodTerminalInline", "name")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "AuthMethodTerminalInline", "type")
+		}
+	}
+	return nil
+}
+
+func (v *AuthMethodTerminalInline) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -547,6 +735,30 @@ func (u AuthMethod) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *AuthMethod) Validate() error {
+	var count int
+	if u.Terminal != nil {
+		count++
+	}
+	if u.Agent != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("AuthMethod has no variant set")
+	}
+	if u.Terminal != nil {
+		if err := u.Terminal.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Agent != nil {
+		if err := u.Agent.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Agent handles authentication itself through 'authenticate'.
 //
 // This is the default authentication method type.
@@ -566,6 +778,9 @@ type AuthMethodAgent struct {
 }
 
 func (v *AuthMethodAgent) UnmarshalJSON(b []byte) error {
+	var fresh AuthMethodAgent
+	v.Id = fresh.Id
+	v.Name = fresh.Name
 	type plain AuthMethodAgent
 	type AuthMethodAgent struct {
 		*plain
@@ -578,6 +793,22 @@ func (v *AuthMethodAgent) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	if maybeAbsent(&v.Id) || maybeAbsent(&v.Name) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Id, "id", false); err != nil {
+			return propertyError(err, "AuthMethodAgent", "id")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "AuthMethodAgent", "name")
+		}
+	}
+	return nil
+}
+
+func (v *AuthMethodAgent) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -612,18 +843,51 @@ type AuthMethodTerminal struct {
 }
 
 func (v *AuthMethodTerminal) UnmarshalJSON(b []byte) error {
+	var fresh AuthMethodTerminal
+	v.Id = fresh.Id
+	v.Name = fresh.Name
 	type plain AuthMethodTerminal
 	type AuthMethodTerminal struct {
 		*plain
 		Meta        json.RawMessage `json:"_meta"`
+		Args        json.RawMessage `json:"args"`
 		Description json.RawMessage `json:"description"`
+		Env         json.RawMessage `json:"env"`
 	}
 	raw := AuthMethodTerminal{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Args); err != nil {
+		return propertyError(err, "AuthMethodTerminal", "args")
+	}
+	if _, err := decodeField(raw.Args, &v.Args); err != nil {
+		return propertyError(err, "AuthMethodTerminal", "args")
+	}
 	decodeLenient(raw.Description, &v.Description)
+	if err := rejectNullItems[string](raw.Env); err != nil {
+		return propertyError(err, "AuthMethodTerminal", "env")
+	}
+	if _, err := decodeField(raw.Env, &v.Env); err != nil {
+		return propertyError(err, "AuthMethodTerminal", "env")
+	}
+	if maybeAbsent(&v.Id) || maybeAbsent(&v.Name) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Id, "id", false); err != nil {
+			return propertyError(err, "AuthMethodTerminal", "id")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "AuthMethodTerminal", "name")
+		}
+	}
+	return nil
+}
+
+func (v *AuthMethodTerminal) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -673,6 +937,8 @@ type AuthenticateRequest struct {
 }
 
 func (v *AuthenticateRequest) UnmarshalJSON(b []byte) error {
+	var fresh AuthenticateRequest
+	v.MethodId = fresh.MethodId
 	type plain AuthenticateRequest
 	type AuthenticateRequest struct {
 		*plain
@@ -683,10 +949,19 @@ func (v *AuthenticateRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.MethodId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.MethodId, "methodId", false); err != nil {
+			return propertyError(err, "AuthenticateRequest", "methodId")
+		}
+	}
 	return nil
 }
 
 func (v *AuthenticateRequest) Validate() error {
+	if v.MethodId == "" {
+		return fmt.Errorf("methodId is required")
+	}
 	return nil
 }
 
@@ -735,6 +1010,9 @@ type AvailableCommand struct {
 }
 
 func (v *AvailableCommand) UnmarshalJSON(b []byte) error {
+	var fresh AvailableCommand
+	v.Description = fresh.Description
+	v.Name = fresh.Name
 	type plain AvailableCommand
 	type AvailableCommand struct {
 		*plain
@@ -747,6 +1025,15 @@ func (v *AvailableCommand) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Input, &v.Input, shapeAvailableCommandInput)
+	if maybeAbsent(&v.Description) || maybeAbsent(&v.Name) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Description, "description", false); err != nil {
+			return propertyError(err, "AvailableCommand", "description")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "AvailableCommand", "name")
+		}
+	}
 	return nil
 }
 
@@ -807,6 +1094,17 @@ func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *AvailableCommandInput) Validate() error {
+	var count int
+	if u.Unstructured != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("AvailableCommandInput has no variant set")
+	}
+	return nil
+}
+
 // Available commands are ready or have changed
 type AvailableCommandsUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -830,6 +1128,8 @@ func (v AvailableCommandsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *AvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
+	var fresh AvailableCommandsUpdate
+	v.AvailableCommands = fresh.AvailableCommands
 	type plain AvailableCommandsUpdate
 	type AvailableCommandsUpdate struct {
 		*plain
@@ -843,6 +1143,19 @@ func (v *AvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands, shapeAvailableCommand) && raw.AvailableCommands != nil {
 		setDefault(&v.AvailableCommands, "[]")
+	}
+	if maybeAbsent(&v.AvailableCommands) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.AvailableCommands, "availableCommands", true); err != nil {
+			return propertyError(err, "AvailableCommandsUpdate", "availableCommands")
+		}
+	}
+	return nil
+}
+
+func (v *AvailableCommandsUpdate) Validate() error {
+	if v.AvailableCommands == nil {
+		return fmt.Errorf("availableCommands is required")
 	}
 	return nil
 }
@@ -864,6 +1177,9 @@ type BlobResourceContents struct {
 }
 
 func (v *BlobResourceContents) UnmarshalJSON(b []byte) error {
+	var fresh BlobResourceContents
+	v.Blob = fresh.Blob
+	v.Uri = fresh.Uri
 	type plain BlobResourceContents
 	type BlobResourceContents struct {
 		*plain
@@ -876,6 +1192,15 @@ func (v *BlobResourceContents) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MimeType, &v.MimeType)
+	if maybeAbsent(&v.Blob) || maybeAbsent(&v.Uri) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Blob, "blob", false); err != nil {
+			return propertyError(err, "BlobResourceContents", "blob")
+		}
+		if err := requireMember(members, &v.Uri, "uri", false); err != nil {
+			return propertyError(err, "BlobResourceContents", "uri")
+		}
+	}
 	return nil
 }
 
@@ -964,6 +1289,8 @@ type CancelNotification struct {
 }
 
 func (v *CancelNotification) UnmarshalJSON(b []byte) error {
+	var fresh CancelNotification
+	v.SessionId = fresh.SessionId
 	type plain CancelNotification
 	type CancelNotification struct {
 		*plain
@@ -974,10 +1301,19 @@ func (v *CancelNotification) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "CancelNotification", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *CancelNotification) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -996,6 +1332,8 @@ type CancelRequestNotification struct {
 }
 
 func (v *CancelRequestNotification) UnmarshalJSON(b []byte) error {
+	var fresh CancelRequestNotification
+	v.RequestId = fresh.RequestId
 	type plain CancelRequestNotification
 	type CancelRequestNotification struct {
 		*plain
@@ -1006,10 +1344,19 @@ func (v *CancelRequestNotification) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.RequestId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.RequestId, "requestId", true); err != nil {
+			return propertyError(err, "CancelRequestNotification", "requestId")
+		}
+	}
 	return nil
 }
 
 func (v *CancelRequestNotification) Validate() error {
+	if err := v.RequestId.Validate(); err != nil {
+		return fmt.Errorf("requestId: %w", err)
+	}
 	return nil
 }
 
@@ -1123,6 +1470,26 @@ type ClientNotification struct {
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
+func (v *ClientNotification) UnmarshalJSON(b []byte) error {
+	var fresh ClientNotification
+	v.Method = fresh.Method
+	type plain ClientNotification
+	type ClientNotification struct {
+		*plain
+	}
+	raw := ClientNotification{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "ClientNotification", "method")
+		}
+	}
+	return nil
+}
+
 func (v *ClientNotification) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
@@ -1140,7 +1507,34 @@ type ClientRequest struct {
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
+func (v *ClientRequest) UnmarshalJSON(b []byte) error {
+	var fresh ClientRequest
+	v.Id = fresh.Id
+	v.Method = fresh.Method
+	type plain ClientRequest
+	type ClientRequest struct {
+		*plain
+	}
+	raw := ClientRequest{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Id) || maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Id, "id", true); err != nil {
+			return propertyError(err, "ClientRequest", "id")
+		}
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "ClientRequest", "method")
+		}
+	}
+	return nil
+}
+
 func (v *ClientRequest) Validate() error {
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
 	}
@@ -1156,12 +1550,77 @@ type ClientResult struct {
 	Result json.RawMessage `json:"result"`
 }
 
+func (v *ClientResult) UnmarshalJSON(b []byte) error {
+	var fresh ClientResult
+	v.Id = fresh.Id
+	v.Result = fresh.Result
+	type plain ClientResult
+	type ClientResult struct {
+		*plain
+	}
+	raw := ClientResult{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Id) || maybeAbsent(&v.Result) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Id, "id", true); err != nil {
+			return propertyError(err, "ClientResult", "id")
+		}
+		if err := requireMember(members, &v.Result, "result", true); err != nil {
+			return propertyError(err, "ClientResult", "result")
+		}
+	}
+	return nil
+}
+
+func (v *ClientResult) Validate() error {
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	return nil
+}
+
 // A failed JSON-RPC response.
 type ClientError struct {
 	// Method-specific error data.
 	Error Error `json:"error"`
 	// The id of the request this response answers.
 	Id RequestId `json:"id"`
+}
+
+func (v *ClientError) UnmarshalJSON(b []byte) error {
+	var fresh ClientError
+	v.Error = fresh.Error
+	v.Id = fresh.Id
+	type plain ClientError
+	type ClientError struct {
+		*plain
+	}
+	raw := ClientError{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Error) || maybeAbsent(&v.Id) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Error, "error", false); err != nil {
+			return propertyError(err, "ClientError", "error")
+		}
+		if err := requireMember(members, &v.Id, "id", true); err != nil {
+			return propertyError(err, "ClientError", "id")
+		}
+	}
+	return nil
+}
+
+func (v *ClientError) Validate() error {
+	if err := v.Error.Validate(); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
+	if err := v.Id.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	return nil
 }
 
 type ClientResponse struct {
@@ -1253,6 +1712,30 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *ClientResponse) Validate() error {
+	var count int
+	if u.Result != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ClientResponse has no variant set")
+	}
+	if u.Result != nil {
+		if err := u.Result.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Error != nil {
+		if err := u.Error.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Session-related capabilities supported by the client.
 type ClientSessionCapabilities struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -1327,6 +1810,8 @@ type CloseSessionRequest struct {
 }
 
 func (v *CloseSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh CloseSessionRequest
+	v.SessionId = fresh.SessionId
 	type plain CloseSessionRequest
 	type CloseSessionRequest struct {
 		*plain
@@ -1337,10 +1822,19 @@ func (v *CloseSessionRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "CloseSessionRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *CloseSessionRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -1406,6 +1900,9 @@ type CompactionSummaryChunk struct {
 }
 
 func (v *CompactionSummaryChunk) UnmarshalJSON(b []byte) error {
+	var fresh CompactionSummaryChunk
+	v.CompactionId = fresh.CompactionId
+	v.Content = fresh.Content
 	type plain CompactionSummaryChunk
 	type CompactionSummaryChunk struct {
 		*plain
@@ -1416,6 +1913,25 @@ func (v *CompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Content) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CompactionId, "compactionId", false); err != nil {
+			return propertyError(err, "CompactionSummaryChunk", "compactionId")
+		}
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "CompactionSummaryChunk", "content")
+		}
+	}
+	return nil
+}
+
+func (v *CompactionSummaryChunk) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -1461,6 +1977,9 @@ func (v CompactionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
+	var fresh CompactionUpdate
+	v.CompactionId = fresh.CompactionId
+	v.Status = fresh.Status
 	type plain CompactionUpdate
 	type CompactionUpdate struct {
 		*plain
@@ -1475,6 +1994,25 @@ func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
 	decodePatch(raw.Meta, &v.Meta)
 	decodePatch(raw.Error, &v.Error)
 	decodePatchItems(raw.Summary, &v.Summary, shapeContentBlock)
+	if maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Status) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CompactionId, "compactionId", false); err != nil {
+			return propertyError(err, "CompactionUpdate", "compactionId")
+		}
+		if err := requireMember(members, &v.Status, "status", false); err != nil {
+			return propertyError(err, "CompactionUpdate", "status")
+		}
+	}
+	return nil
+}
+
+func (v *CompactionUpdate) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if v.Status == "" {
+		return fmt.Errorf("status is required")
+	}
 	return nil
 }
 
@@ -1493,6 +2031,8 @@ type CompleteElicitationNotification struct {
 }
 
 func (v *CompleteElicitationNotification) UnmarshalJSON(b []byte) error {
+	var fresh CompleteElicitationNotification
+	v.ElicitationId = fresh.ElicitationId
 	type plain CompleteElicitationNotification
 	type CompleteElicitationNotification struct {
 		*plain
@@ -1503,10 +2043,19 @@ func (v *CompleteElicitationNotification) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.ElicitationId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ElicitationId, "elicitationId", false); err != nil {
+			return propertyError(err, "CompleteElicitationNotification", "elicitationId")
+		}
+	}
 	return nil
 }
 
 func (v *CompleteElicitationNotification) Validate() error {
+	if v.ElicitationId == "" {
+		return fmt.Errorf("elicitationId is required")
+	}
 	return nil
 }
 
@@ -1533,6 +2082,8 @@ func (v ConfigOptionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ConfigOptionUpdate) UnmarshalJSON(b []byte) error {
+	var fresh ConfigOptionUpdate
+	v.ConfigOptions = fresh.ConfigOptions
 	type plain ConfigOptionUpdate
 	type ConfigOptionUpdate struct {
 		*plain
@@ -1546,6 +2097,19 @@ func (v *ConfigOptionUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
+	}
+	if maybeAbsent(&v.ConfigOptions) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ConfigOptions, "configOptions", true); err != nil {
+			return propertyError(err, "ConfigOptionUpdate", "configOptions")
+		}
+	}
+	return nil
+}
+
+func (v *ConfigOptionUpdate) Validate() error {
+	if v.ConfigOptions == nil {
+		return fmt.Errorf("configOptions is required")
 	}
 	return nil
 }
@@ -1563,6 +2127,8 @@ type Content struct {
 }
 
 func (v *Content) UnmarshalJSON(b []byte) error {
+	var fresh Content
+	v.Content = fresh.Content
 	type plain Content
 	type Content struct {
 		*plain
@@ -1573,6 +2139,19 @@ func (v *Content) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Content) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "Content", "content")
+		}
+	}
+	return nil
+}
+
+func (v *Content) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -1606,6 +2185,9 @@ type ContentBlockText struct {
 }
 
 func (v *ContentBlockText) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockText
+	v.Text = fresh.Text
+	v.Type = fresh.Type
 	type plain ContentBlockText
 	type ContentBlockText struct {
 		*plain
@@ -1618,6 +2200,15 @@ func (v *ContentBlockText) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
+	if maybeAbsent(&v.Text) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Text, "text", false); err != nil {
+			return propertyError(err, "ContentBlockText", "text")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ContentBlockText", "type")
+		}
+	}
 	return nil
 }
 
@@ -1643,6 +2234,10 @@ type ContentBlockImage struct {
 }
 
 func (v *ContentBlockImage) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockImage
+	v.Data = fresh.Data
+	v.MimeType = fresh.MimeType
+	v.Type = fresh.Type
 	type plain ContentBlockImage
 	type ContentBlockImage struct {
 		*plain
@@ -1657,6 +2252,18 @@ func (v *ContentBlockImage) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
 	decodeLenient(raw.Uri, &v.Uri)
+	if maybeAbsent(&v.Data) || maybeAbsent(&v.MimeType) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Data, "data", false); err != nil {
+			return propertyError(err, "ContentBlockImage", "data")
+		}
+		if err := requireMember(members, &v.MimeType, "mimeType", false); err != nil {
+			return propertyError(err, "ContentBlockImage", "mimeType")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ContentBlockImage", "type")
+		}
+	}
 	return nil
 }
 
@@ -1680,6 +2287,10 @@ type ContentBlockAudio struct {
 }
 
 func (v *ContentBlockAudio) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockAudio
+	v.Data = fresh.Data
+	v.MimeType = fresh.MimeType
+	v.Type = fresh.Type
 	type plain ContentBlockAudio
 	type ContentBlockAudio struct {
 		*plain
@@ -1692,6 +2303,18 @@ func (v *ContentBlockAudio) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
+	if maybeAbsent(&v.Data) || maybeAbsent(&v.MimeType) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Data, "data", false); err != nil {
+			return propertyError(err, "ContentBlockAudio", "data")
+		}
+		if err := requireMember(members, &v.MimeType, "mimeType", false); err != nil {
+			return propertyError(err, "ContentBlockAudio", "mimeType")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ContentBlockAudio", "type")
+		}
+	}
 	return nil
 }
 
@@ -1723,6 +2346,10 @@ type ContentBlockResourceLink struct {
 }
 
 func (v *ContentBlockResourceLink) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockResourceLink
+	v.Name = fresh.Name
+	v.Type = fresh.Type
+	v.Uri = fresh.Uri
 	type plain ContentBlockResourceLink
 	type ContentBlockResourceLink struct {
 		*plain
@@ -1743,6 +2370,18 @@ func (v *ContentBlockResourceLink) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.MimeType, &v.MimeType)
 	decodeLenient(raw.Size, &v.Size)
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Name) || maybeAbsent(&v.Type) || maybeAbsent(&v.Uri) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "ContentBlockResourceLink", "name")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ContentBlockResourceLink", "type")
+		}
+		if err := requireMember(members, &v.Uri, "uri", false); err != nil {
+			return propertyError(err, "ContentBlockResourceLink", "uri")
+		}
+	}
 	return nil
 }
 
@@ -1766,6 +2405,9 @@ type ContentBlockResource struct {
 }
 
 func (v *ContentBlockResource) UnmarshalJSON(b []byte) error {
+	var fresh ContentBlockResource
+	v.Resource = fresh.Resource
+	v.Type = fresh.Type
 	type plain ContentBlockResource
 	type ContentBlockResource struct {
 		*plain
@@ -1778,6 +2420,22 @@ func (v *ContentBlockResource) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
+	if maybeAbsent(&v.Resource) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Resource, "resource", false); err != nil {
+			return propertyError(err, "ContentBlockResource", "resource")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ContentBlockResource", "type")
+		}
+	}
+	return nil
+}
+
+func (v *ContentBlockResource) Validate() error {
+	if err := v.Resource.Validate(); err != nil {
+		return fmt.Errorf("resource: %w", err)
+	}
 	return nil
 }
 
@@ -1954,6 +2612,11 @@ func (u *ContentBlock) Validate() error {
 	if count != 1 {
 		return errors.New("ContentBlock must have exactly one variant set")
 	}
+	if u.Resource != nil {
+		if err := u.Resource.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1975,6 +2638,8 @@ type ContentChunk struct {
 }
 
 func (v *ContentChunk) UnmarshalJSON(b []byte) error {
+	var fresh ContentChunk
+	v.Content = fresh.Content
 	type plain ContentChunk
 	type ContentChunk struct {
 		*plain
@@ -1987,6 +2652,19 @@ func (v *ContentChunk) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
+	if maybeAbsent(&v.Content) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "ContentChunk", "content")
+		}
+	}
+	return nil
+}
+
+func (v *ContentChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -2006,6 +2684,9 @@ type Cost struct {
 }
 
 func (v *Cost) UnmarshalJSON(b []byte) error {
+	var fresh Cost
+	v.Amount = fresh.Amount
+	v.Currency = fresh.Currency
 	type plain Cost
 	type Cost struct {
 		*plain
@@ -2016,6 +2697,15 @@ func (v *Cost) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Amount) || maybeAbsent(&v.Currency) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Amount, "amount", false); err != nil {
+			return propertyError(err, "Cost", "amount")
+		}
+		if err := requireMember(members, &v.Currency, "currency", false); err != nil {
+			return propertyError(err, "Cost", "currency")
+		}
+	}
 	return nil
 }
 
@@ -2066,6 +2756,18 @@ func (u *CreateElicitationForm) UnmarshalJSON(b []byte) error {
 				return plainFieldError(err)
 			}
 			decodeLenient(raw.Meta, &u.Meta)
+			if maybeAbsent(&u.Message) || maybeAbsent(&u.Mode) || maybeAbsent(&u.RequestedSchema) {
+				members := jsonMembers(b)
+				if err := requireMember(members, &u.Message, "message", false); err != nil {
+					return propertyError(err, "CreateElicitationForm", "message")
+				}
+				if err := requireMember(members, &u.Mode, "mode", false); err != nil {
+					return propertyError(err, "CreateElicitationForm", "mode")
+				}
+				if err := requireMember(members, &u.RequestedSchema, "requestedSchema", false); err != nil {
+					return propertyError(err, "CreateElicitationForm", "requestedSchema")
+				}
+			}
 		}
 		{
 			var v ElicitationSessionScope
@@ -2146,6 +2848,36 @@ func (u CreateElicitationForm) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("CreateElicitationForm has no variant set")
 }
 
+func (u *CreateElicitationForm) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationForm has no variant set")
+	}
+	if u.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+	if err := u.RequestedSchema.Validate(); err != nil {
+		return fmt.Errorf("requestedSchema: %w", err)
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // URL-based elicitation where the client directs the user to a URL.
 type CreateElicitationUrl struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -2190,6 +2922,21 @@ func (u *CreateElicitationUrl) UnmarshalJSON(b []byte) error {
 				return plainFieldError(err)
 			}
 			decodeLenient(raw.Meta, &u.Meta)
+			if maybeAbsent(&u.ElicitationId) || maybeAbsent(&u.Message) || maybeAbsent(&u.Mode) || maybeAbsent(&u.Url) {
+				members := jsonMembers(b)
+				if err := requireMember(members, &u.ElicitationId, "elicitationId", false); err != nil {
+					return propertyError(err, "CreateElicitationUrl", "elicitationId")
+				}
+				if err := requireMember(members, &u.Message, "message", false); err != nil {
+					return propertyError(err, "CreateElicitationUrl", "message")
+				}
+				if err := requireMember(members, &u.Mode, "mode", false); err != nil {
+					return propertyError(err, "CreateElicitationUrl", "mode")
+				}
+				if err := requireMember(members, &u.Url, "url", false); err != nil {
+					return propertyError(err, "CreateElicitationUrl", "url")
+				}
+			}
 		}
 		{
 			var v ElicitationSessionScope
@@ -2270,6 +3017,36 @@ func (u CreateElicitationUrl) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("CreateElicitationUrl has no variant set")
 }
 
+func (u *CreateElicitationUrl) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationUrl has no variant set")
+	}
+	if u.ElicitationId == "" {
+		return fmt.Errorf("elicitationId is required")
+	}
+	if u.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Custom or future elicitation mode.
 //
 // Values beginning with '_' are reserved for implementation-specific
@@ -2325,6 +3102,15 @@ func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
 				return plainFieldError(err)
 			}
 			decodeLenient(raw.Meta, &u.Meta)
+			if maybeAbsent(&u.Message) || maybeAbsent(&u.Mode) {
+				members := jsonMembers(b)
+				if err := requireMember(members, &u.Message, "message", false); err != nil {
+					return propertyError(err, "CreateElicitationOther", "message")
+				}
+				if err := requireMember(members, &u.Mode, "mode", false); err != nil {
+					return propertyError(err, "CreateElicitationOther", "mode")
+				}
+			}
 		}
 		u.AdditionalProperties = additionalProperties(b, "_meta", "message", "mode", "requestId", "sessionId", "toolCallId")
 		{
@@ -2414,6 +3200,33 @@ func (u CreateElicitationOther) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return nil, errors.New("CreateElicitationOther has no variant set")
+}
+
+func (u *CreateElicitationOther) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationOther has no variant set")
+	}
+	if u.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type CreateElicitationRequest struct {
@@ -2533,19 +3346,32 @@ func (u CreateElicitationRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (u *CreateElicitationRequest) Validate() error {
+	var count int
 	if u.Form != nil {
-		if u.Form.Message == "" {
-			return fmt.Errorf("message is required")
+		count++
+	}
+	if u.Url != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationRequest has no variant set")
+	}
+	if u.Form != nil {
+		if err := u.Form.Validate(); err != nil {
+			return err
 		}
 	}
 	if u.Url != nil {
-		if u.Url.Message == "" {
-			return fmt.Errorf("message is required")
+		if err := u.Url.Validate(); err != nil {
+			return err
 		}
 	}
 	if u.Other != nil {
-		if u.Other.Message == "" {
-			return fmt.Errorf("message is required")
+		if err := u.Other.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -2584,6 +3410,8 @@ func (v CreateElicitationAccept) MarshalJSON() ([]byte, error) {
 }
 
 func (v *CreateElicitationAccept) UnmarshalJSON(b []byte) error {
+	var fresh CreateElicitationAccept
+	v.Action = fresh.Action
 	type plain CreateElicitationAccept
 	type CreateElicitationAccept struct {
 		*plain
@@ -2594,6 +3422,21 @@ func (v *CreateElicitationAccept) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Action) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Action, "action", false); err != nil {
+			return propertyError(err, "CreateElicitationAccept", "action")
+		}
+	}
+	return nil
+}
+
+func (v *CreateElicitationAccept) Validate() error {
+	for k, member := range v.Content {
+		if err := member.Validate(); err != nil {
+			return fmt.Errorf("content[%q]: %w", k, err)
+		}
+	}
 	return nil
 }
 
@@ -2611,6 +3454,8 @@ type CreateElicitationDecline struct {
 }
 
 func (v *CreateElicitationDecline) UnmarshalJSON(b []byte) error {
+	var fresh CreateElicitationDecline
+	v.Action = fresh.Action
 	type plain CreateElicitationDecline
 	type CreateElicitationDecline struct {
 		*plain
@@ -2621,6 +3466,12 @@ func (v *CreateElicitationDecline) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Action) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Action, "action", false); err != nil {
+			return propertyError(err, "CreateElicitationDecline", "action")
+		}
+	}
 	return nil
 }
 
@@ -2638,6 +3489,8 @@ type CreateElicitationCancel struct {
 }
 
 func (v *CreateElicitationCancel) UnmarshalJSON(b []byte) error {
+	var fresh CreateElicitationCancel
+	v.Action = fresh.Action
 	type plain CreateElicitationCancel
 	type CreateElicitationCancel struct {
 		*plain
@@ -2648,6 +3501,12 @@ func (v *CreateElicitationCancel) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Action) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Action, "action", false); err != nil {
+			return propertyError(err, "CreateElicitationCancel", "action")
+		}
+	}
 	return nil
 }
 
@@ -2691,6 +3550,8 @@ func (v CreateElicitationResponseOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *CreateElicitationResponseOther) UnmarshalJSON(b []byte) error {
+	var fresh CreateElicitationResponseOther
+	v.Action = fresh.Action
 	type plain CreateElicitationResponseOther
 	type CreateElicitationResponseOther struct {
 		*plain
@@ -2701,6 +3562,12 @@ func (v *CreateElicitationResponseOther) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Action) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Action, "action", false); err != nil {
+			return propertyError(err, "CreateElicitationResponseOther", "action")
+		}
+	}
 	v.AdditionalProperties = additionalProperties(b, "_meta", "action")
 	return nil
 }
@@ -2843,6 +3710,27 @@ func (u CreateElicitationResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (u *CreateElicitationResponse) Validate() error {
+	var count int
+	if u.Accept != nil {
+		count++
+	}
+	if u.Decline != nil {
+		count++
+	}
+	if u.Cancel != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CreateElicitationResponse has no variant set")
+	}
+	if u.Accept != nil {
+		if err := u.Accept.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -2876,22 +3764,49 @@ type CreateTerminalRequest struct {
 }
 
 func (v *CreateTerminalRequest) UnmarshalJSON(b []byte) error {
+	var fresh CreateTerminalRequest
+	v.Command = fresh.Command
+	v.SessionId = fresh.SessionId
 	type plain CreateTerminalRequest
 	type CreateTerminalRequest struct {
 		*plain
 		Meta json.RawMessage `json:"_meta"`
+		Args json.RawMessage `json:"args"`
 	}
 	raw := CreateTerminalRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Args); err != nil {
+		return propertyError(err, "CreateTerminalRequest", "args")
+	}
+	if _, err := decodeField(raw.Args, &v.Args); err != nil {
+		return propertyError(err, "CreateTerminalRequest", "args")
+	}
+	if maybeAbsent(&v.Command) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Command, "command", false); err != nil {
+			return propertyError(err, "CreateTerminalRequest", "command")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "CreateTerminalRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *CreateTerminalRequest) Validate() error {
 	if v.Command == "" {
 		return fmt.Errorf("command is required")
+	}
+	if v.OutputByteLimit != nil {
+		if *v.OutputByteLimit < 0 {
+			return fmt.Errorf("outputByteLimit must be at least 0")
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
 	}
 	return nil
 }
@@ -2909,6 +3824,8 @@ type CreateTerminalResponse struct {
 }
 
 func (v *CreateTerminalResponse) UnmarshalJSON(b []byte) error {
+	var fresh CreateTerminalResponse
+	v.TerminalId = fresh.TerminalId
 	type plain CreateTerminalResponse
 	type CreateTerminalResponse struct {
 		*plain
@@ -2919,10 +3836,19 @@ func (v *CreateTerminalResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.TerminalId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.TerminalId, "terminalId", false); err != nil {
+			return propertyError(err, "CreateTerminalResponse", "terminalId")
+		}
+	}
 	return nil
 }
 
 func (v *CreateTerminalResponse) Validate() error {
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -2941,6 +3867,8 @@ type CurrentModeUpdate struct {
 }
 
 func (v *CurrentModeUpdate) UnmarshalJSON(b []byte) error {
+	var fresh CurrentModeUpdate
+	v.CurrentModeId = fresh.CurrentModeId
 	type plain CurrentModeUpdate
 	type CurrentModeUpdate struct {
 		*plain
@@ -2951,6 +3879,19 @@ func (v *CurrentModeUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.CurrentModeId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CurrentModeId, "currentModeId", false); err != nil {
+			return propertyError(err, "CurrentModeUpdate", "currentModeId")
+		}
+	}
+	return nil
+}
+
+func (v *CurrentModeUpdate) Validate() error {
+	if v.CurrentModeId == "" {
+		return fmt.Errorf("currentModeId is required")
+	}
 	return nil
 }
 
@@ -2969,6 +3910,8 @@ type DeleteSessionRequest struct {
 }
 
 func (v *DeleteSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh DeleteSessionRequest
+	v.SessionId = fresh.SessionId
 	type plain DeleteSessionRequest
 	type DeleteSessionRequest struct {
 		*plain
@@ -2979,10 +3922,19 @@ func (v *DeleteSessionRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "DeleteSessionRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *DeleteSessionRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -3035,6 +3987,9 @@ type Diff struct {
 }
 
 func (v *Diff) UnmarshalJSON(b []byte) error {
+	var fresh Diff
+	v.NewText = fresh.NewText
+	v.Path = fresh.Path
 	type plain Diff
 	type Diff struct {
 		*plain
@@ -3047,6 +4002,15 @@ func (v *Diff) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.OldText, &v.OldText)
+	if maybeAbsent(&v.NewText) || maybeAbsent(&v.Path) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.NewText, "newText", false); err != nil {
+			return propertyError(err, "Diff", "newText")
+		}
+		if err := requireMember(members, &v.Path, "path", false); err != nil {
+			return propertyError(err, "Diff", "path")
+		}
+	}
 	return nil
 }
 
@@ -3064,6 +4028,15 @@ func (v ElicitationAcceptAction) MarshalJSON() ([]byte, error) {
 		Content *map[string]ElicitationContentValue `json:"content,omitempty"`
 	}
 	return json.Marshal(wire{Content: nilIf(a.Content == nil, &a.Content)})
+}
+
+func (v *ElicitationAcceptAction) Validate() error {
+	for k, member := range v.Content {
+		if err := member.Validate(); err != nil {
+			return fmt.Errorf("content[%q]: %w", k, err)
+		}
+	}
+	return nil
 }
 
 // Elicitation capabilities supported by the client.
@@ -3121,6 +4094,13 @@ type ElicitationContentValueBoolean bool
 
 // String array value accepted in elicitation response content.
 type ElicitationContentValueStringArray []string
+
+func (v *ElicitationContentValueStringArray) UnmarshalJSON(b []byte) error {
+	if err := rejectNullItems[string](b); err != nil {
+		return err
+	}
+	return json.Unmarshal(b, (*[]string)(v))
+}
 
 type ElicitationContentValue struct {
 	// String value accepted in elicitation response content.
@@ -3226,6 +4206,29 @@ func (u ElicitationContentValue) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *ElicitationContentValue) Validate() error {
+	var count int
+	if u.String != nil {
+		count++
+	}
+	if u.Integer != nil {
+		count++
+	}
+	if u.Number != nil {
+		count++
+	}
+	if u.Boolean != nil {
+		count++
+	}
+	if u.StringArray != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ElicitationContentValue has no variant set")
+	}
+	return nil
+}
+
 // Form-based elicitation capabilities.
 //
 // Supplying '{}' means the client supports form-based elicitation.
@@ -3282,6 +4285,12 @@ func (u *ElicitationFormMode) UnmarshalJSON(b []byte) error {
 			raw := ElicitationFormMode{plain: (*plain)(u)}
 			if err := json.Unmarshal(b, &raw); err != nil {
 				return plainFieldError(err)
+			}
+			if maybeAbsent(&u.RequestedSchema) {
+				members := jsonMembers(b)
+				if err := requireMember(members, &u.RequestedSchema, "requestedSchema", false); err != nil {
+					return propertyError(err, "ElicitationFormMode", "requestedSchema")
+				}
 			}
 		}
 		{
@@ -3361,6 +4370,33 @@ func (u ElicitationFormMode) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return nil, errors.New("ElicitationFormMode has no variant set")
+}
+
+func (u *ElicitationFormMode) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ElicitationFormMode has no variant set")
+	}
+	if err := u.RequestedSchema.Validate(); err != nil {
+		return fmt.Errorf("requestedSchema: %w", err)
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Unique identifier for an elicitation.
@@ -3453,12 +4489,15 @@ func (v ElicitationPropertySchemaString) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaString
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaString
 	type ElicitationPropertySchemaString struct {
 		*plain
 		Meta        json.RawMessage `json:"_meta"`
 		Default     json.RawMessage `json:"default"`
 		Description json.RawMessage `json:"description"`
+		Enum        json.RawMessage `json:"enum"`
 		Title       json.RawMessage `json:"title"`
 	}
 	raw := ElicitationPropertySchemaString{plain: (*plain)(v)}
@@ -3468,7 +4507,33 @@ func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
+	if err := rejectNullItems[string](raw.Enum); err != nil {
+		return propertyError(err, "ElicitationPropertySchemaString", "enum")
+	}
+	if _, err := decodeField(raw.Enum, &v.Enum); err != nil {
+		return propertyError(err, "ElicitationPropertySchemaString", "enum")
+	}
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ElicitationPropertySchemaString", "type")
+		}
+	}
+	return nil
+}
+
+func (v *ElicitationPropertySchemaString) Validate() error {
+	if v.MaxLength != nil {
+		if *v.MaxLength < 0 || *v.MaxLength > 4294967295 {
+			return fmt.Errorf("maxLength must be between 0 and 4294967295")
+		}
+	}
+	if v.MinLength != nil {
+		if *v.MinLength < 0 || *v.MinLength > 4294967295 {
+			return fmt.Errorf("minLength must be between 0 and 4294967295")
+		}
+	}
 	return nil
 }
 
@@ -3506,6 +4571,8 @@ type ElicitationPropertySchemaNumber struct {
 }
 
 func (v *ElicitationPropertySchemaNumber) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaNumber
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaNumber
 	type ElicitationPropertySchemaNumber struct {
 		*plain
@@ -3522,6 +4589,12 @@ func (v *ElicitationPropertySchemaNumber) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ElicitationPropertySchemaNumber", "type")
+		}
+	}
 	return nil
 }
 
@@ -3559,6 +4632,8 @@ type ElicitationPropertySchemaInteger struct {
 }
 
 func (v *ElicitationPropertySchemaInteger) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaInteger
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaInteger
 	type ElicitationPropertySchemaInteger struct {
 		*plain
@@ -3575,6 +4650,12 @@ func (v *ElicitationPropertySchemaInteger) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ElicitationPropertySchemaInteger", "type")
+		}
+	}
 	return nil
 }
 
@@ -3604,6 +4685,8 @@ type ElicitationPropertySchemaBoolean struct {
 }
 
 func (v *ElicitationPropertySchemaBoolean) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaBoolean
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaBoolean
 	type ElicitationPropertySchemaBoolean struct {
 		*plain
@@ -3620,6 +4703,12 @@ func (v *ElicitationPropertySchemaBoolean) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ElicitationPropertySchemaBoolean", "type")
+		}
+	}
 	return nil
 }
 
@@ -3685,6 +4774,9 @@ func (v ElicitationPropertySchemaArray) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaArray
+	v.Items = fresh.Items
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaArray
 	type ElicitationPropertySchemaArray struct {
 		*plain
@@ -3701,6 +4793,32 @@ func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
 	decodeLenientItems(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Items) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Items, "items", false); err != nil {
+			return propertyError(err, "ElicitationPropertySchemaArray", "items")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ElicitationPropertySchemaArray", "type")
+		}
+	}
+	return nil
+}
+
+func (v *ElicitationPropertySchemaArray) Validate() error {
+	if err := v.Items.Validate(); err != nil {
+		return fmt.Errorf("items: %w", err)
+	}
+	if v.MaxItems != nil {
+		if *v.MaxItems < 0 {
+			return fmt.Errorf("maxItems must be at least 0")
+		}
+	}
+	if v.MinItems != nil {
+		if *v.MinItems < 0 {
+			return fmt.Errorf("minItems must be at least 0")
+		}
+	}
 	return nil
 }
 
@@ -3736,6 +4854,8 @@ func (v ElicitationPropertySchemaOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ElicitationPropertySchemaOther) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationPropertySchemaOther
+	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaOther
 	type ElicitationPropertySchemaOther struct {
 		*plain
@@ -3743,6 +4863,12 @@ func (v *ElicitationPropertySchemaOther) UnmarshalJSON(b []byte) error {
 	raw := ElicitationPropertySchemaOther{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ElicitationPropertySchemaOther", "type")
+		}
 	}
 	v.AdditionalProperties = additionalProperties(b, "type")
 	return nil
@@ -3927,11 +5053,74 @@ func (u ElicitationPropertySchema) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *ElicitationPropertySchema) Validate() error {
+	var count int
+	if u.String != nil {
+		count++
+	}
+	if u.Number != nil {
+		count++
+	}
+	if u.Integer != nil {
+		count++
+	}
+	if u.Boolean != nil {
+		count++
+	}
+	if u.Array != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ElicitationPropertySchema has no variant set")
+	}
+	if u.String != nil {
+		if err := u.String.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Array != nil {
+		if err := u.Array.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Request-scoped elicitation, tied to a specific JSON-RPC request outside of a session
 // (e.g., during auth/configuration phases before any session is started).
 type ElicitationRequestScope struct {
 	// The request this elicitation is tied to.
 	RequestId RequestId `json:"requestId"`
+}
+
+func (v *ElicitationRequestScope) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationRequestScope
+	v.RequestId = fresh.RequestId
+	type plain ElicitationRequestScope
+	type ElicitationRequestScope struct {
+		*plain
+	}
+	raw := ElicitationRequestScope{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.RequestId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.RequestId, "requestId", true); err != nil {
+			return propertyError(err, "ElicitationRequestScope", "requestId")
+		}
+	}
+	return nil
+}
+
+func (v *ElicitationRequestScope) Validate() error {
+	if err := v.RequestId.Validate(); err != nil {
+		return fmt.Errorf("requestId: %w", err)
+	}
+	return nil
 }
 
 // Type-safe elicitation schema for requesting structured user input.
@@ -4001,6 +5190,7 @@ func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
 		Meta        json.RawMessage `json:"_meta"`
 		Description json.RawMessage `json:"description"`
 		Properties  json.RawMessage `json:"properties"`
+		Required    json.RawMessage `json:"required"`
 		Title       json.RawMessage `json:"title"`
 		Type        json.RawMessage `json:"type"`
 	}
@@ -4015,9 +5205,24 @@ func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
 	} else if !decoded {
 		setDefault(&v.Properties, "{}")
 	}
+	if err := rejectNullItems[string](raw.Required); err != nil {
+		return propertyError(err, "ElicitationSchema", "required")
+	}
+	if _, err := decodeField(raw.Required, &v.Required); err != nil {
+		return propertyError(err, "ElicitationSchema", "required")
+	}
 	decodeLenient(raw.Title, &v.Title)
 	if !decodeLenient(raw.Type, &v.Type, shapeElicitationSchemaType) {
 		setDefault(&v.Type, "\"object\"")
+	}
+	return nil
+}
+
+func (v *ElicitationSchema) Validate() error {
+	for k, member := range v.Properties {
+		if err := member.Validate(); err != nil {
+			return fmt.Errorf("properties[%q]: %w", k, err)
+		}
 	}
 	return nil
 }
@@ -4046,6 +5251,8 @@ type ElicitationSessionScope struct {
 }
 
 func (v *ElicitationSessionScope) UnmarshalJSON(b []byte) error {
+	var fresh ElicitationSessionScope
+	v.SessionId = fresh.SessionId
 	type plain ElicitationSessionScope
 	type ElicitationSessionScope struct {
 		*plain
@@ -4056,6 +5263,19 @@ func (v *ElicitationSessionScope) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.ToolCallId, &v.ToolCallId)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "ElicitationSessionScope", "sessionId")
+		}
+	}
+	return nil
+}
+
+func (v *ElicitationSessionScope) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -4117,6 +5337,15 @@ func (u *ElicitationUrlMode) UnmarshalJSON(b []byte) error {
 			raw := ElicitationUrlMode{plain: (*plain)(u)}
 			if err := json.Unmarshal(b, &raw); err != nil {
 				return plainFieldError(err)
+			}
+			if maybeAbsent(&u.ElicitationId) || maybeAbsent(&u.Url) {
+				members := jsonMembers(b)
+				if err := requireMember(members, &u.ElicitationId, "elicitationId", false); err != nil {
+					return propertyError(err, "ElicitationUrlMode", "elicitationId")
+				}
+				if err := requireMember(members, &u.Url, "url", false); err != nil {
+					return propertyError(err, "ElicitationUrlMode", "url")
+				}
 			}
 		}
 		{
@@ -4198,6 +5427,33 @@ func (u ElicitationUrlMode) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("ElicitationUrlMode has no variant set")
 }
 
+func (u *ElicitationUrlMode) Validate() error {
+	var count int
+	if u.Session != nil {
+		count++
+	}
+	if u.Request != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ElicitationUrlMode has no variant set")
+	}
+	if u.ElicitationId == "" {
+		return fmt.Errorf("elicitationId is required")
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Request != nil {
+		if err := u.Request.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // The contents of a resource, embedded into a prompt or tool call result.
 type EmbeddedResource struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -4213,6 +5469,8 @@ type EmbeddedResource struct {
 }
 
 func (v *EmbeddedResource) UnmarshalJSON(b []byte) error {
+	var fresh EmbeddedResource
+	v.Resource = fresh.Resource
 	type plain EmbeddedResource
 	type EmbeddedResource struct {
 		*plain
@@ -4225,6 +5483,19 @@ func (v *EmbeddedResource) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
+	if maybeAbsent(&v.Resource) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Resource, "resource", false); err != nil {
+			return propertyError(err, "EmbeddedResource", "resource")
+		}
+	}
+	return nil
+}
+
+func (v *EmbeddedResource) Validate() error {
+	if err := v.Resource.Validate(); err != nil {
+		return fmt.Errorf("resource: %w", err)
+	}
 	return nil
 }
 
@@ -4318,6 +5589,20 @@ func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *EmbeddedResourceResource) Validate() error {
+	var count int
+	if u.TextResourceContents != nil {
+		count++
+	}
+	if u.BlobResourceContents != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("EmbeddedResourceResource has no variant set")
+	}
+	return nil
+}
+
 // A titled enum option with a const value, human-readable title, and optional description.
 type EnumOption struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -4339,6 +5624,9 @@ type EnumOption struct {
 }
 
 func (v *EnumOption) UnmarshalJSON(b []byte) error {
+	var fresh EnumOption
+	v.Const = fresh.Const
+	v.Title = fresh.Title
 	type plain EnumOption
 	type EnumOption struct {
 		*plain
@@ -4351,6 +5639,15 @@ func (v *EnumOption) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	if maybeAbsent(&v.Const) || maybeAbsent(&v.Title) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Const, "const", false); err != nil {
+			return propertyError(err, "EnumOption", "const")
+		}
+		if err := requireMember(members, &v.Title, "title", false); err != nil {
+			return propertyError(err, "EnumOption", "title")
+		}
+	}
 	return nil
 }
 
@@ -4369,6 +5666,9 @@ type EnvVariable struct {
 }
 
 func (v *EnvVariable) UnmarshalJSON(b []byte) error {
+	var fresh EnvVariable
+	v.Name = fresh.Name
+	v.Value = fresh.Value
 	type plain EnvVariable
 	type EnvVariable struct {
 		*plain
@@ -4379,6 +5679,15 @@ func (v *EnvVariable) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Name) || maybeAbsent(&v.Value) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "EnvVariable", "name")
+		}
+		if err := requireMember(members, &v.Value, "value", false); err != nil {
+			return propertyError(err, "EnvVariable", "value")
+		}
+	}
 	return nil
 }
 
@@ -4401,6 +5710,9 @@ type Error struct {
 }
 
 func (v *Error) UnmarshalJSON(b []byte) error {
+	var fresh Error
+	v.Code = fresh.Code
+	v.Message = fresh.Message
 	type plain Error
 	type Error struct {
 		*plain
@@ -4411,6 +5723,22 @@ func (v *Error) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Data, &v.Data)
+	if maybeAbsent(&v.Code) || maybeAbsent(&v.Message) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Code, "code", false); err != nil {
+			return propertyError(err, "Error", "code")
+		}
+		if err := requireMember(members, &v.Message, "message", false); err != nil {
+			return propertyError(err, "Error", "message")
+		}
+	}
+	return nil
+}
+
+func (v *Error) Validate() error {
+	if err := v.Code.Validate(); err != nil {
+		return fmt.Errorf("code: %w", err)
+	}
 	return nil
 }
 
@@ -4618,6 +5946,41 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *ErrorCode) Validate() error {
+	var count int
+	if u.ParseError != nil {
+		count++
+	}
+	if u.InvalidRequest != nil {
+		count++
+	}
+	if u.MethodNotFound != nil {
+		count++
+	}
+	if u.InvalidParams != nil {
+		count++
+	}
+	if u.InternalError != nil {
+		count++
+	}
+	if u.RequestCancelled != nil {
+		count++
+	}
+	if u.AuthenticationRequired != nil {
+		count++
+	}
+	if u.ResourceNotFound != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("ErrorCode has no variant set")
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -4733,6 +6096,9 @@ type HttpHeader struct {
 }
 
 func (v *HttpHeader) UnmarshalJSON(b []byte) error {
+	var fresh HttpHeader
+	v.Name = fresh.Name
+	v.Value = fresh.Value
 	type plain HttpHeader
 	type HttpHeader struct {
 		*plain
@@ -4743,6 +6109,15 @@ func (v *HttpHeader) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Name) || maybeAbsent(&v.Value) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "HttpHeader", "name")
+		}
+		if err := requireMember(members, &v.Value, "value", false); err != nil {
+			return propertyError(err, "HttpHeader", "value")
+		}
+	}
 	return nil
 }
 
@@ -4763,6 +6138,8 @@ type IdleStateUpdateEndTurn struct {
 }
 
 func (v *IdleStateUpdateEndTurn) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateEndTurn
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateEndTurn
 	type IdleStateUpdateEndTurn struct {
 		*plain
@@ -4775,6 +6152,12 @@ func (v *IdleStateUpdateEndTurn) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "IdleStateUpdateEndTurn", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -4792,6 +6175,8 @@ type IdleStateUpdateMaxTokens struct {
 }
 
 func (v *IdleStateUpdateMaxTokens) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateMaxTokens
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateMaxTokens
 	type IdleStateUpdateMaxTokens struct {
 		*plain
@@ -4804,6 +6189,12 @@ func (v *IdleStateUpdateMaxTokens) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "IdleStateUpdateMaxTokens", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -4822,6 +6213,8 @@ type IdleStateUpdateMaxTurnRequests struct {
 }
 
 func (v *IdleStateUpdateMaxTurnRequests) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateMaxTurnRequests
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateMaxTurnRequests
 	type IdleStateUpdateMaxTurnRequests struct {
 		*plain
@@ -4834,6 +6227,12 @@ func (v *IdleStateUpdateMaxTurnRequests) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "IdleStateUpdateMaxTurnRequests", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -4851,6 +6250,8 @@ type IdleStateUpdateRefusal struct {
 }
 
 func (v *IdleStateUpdateRefusal) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateRefusal
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateRefusal
 	type IdleStateUpdateRefusal struct {
 		*plain
@@ -4863,6 +6264,12 @@ func (v *IdleStateUpdateRefusal) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "IdleStateUpdateRefusal", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -4880,6 +6287,8 @@ type IdleStateUpdateCancelled struct {
 }
 
 func (v *IdleStateUpdateCancelled) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateCancelled
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateCancelled
 	type IdleStateUpdateCancelled struct {
 		*plain
@@ -4892,6 +6301,12 @@ func (v *IdleStateUpdateCancelled) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "IdleStateUpdateCancelled", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -4914,6 +6329,8 @@ type IdleStateUpdateError struct {
 }
 
 func (v *IdleStateUpdateError) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateError
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateError
 	type IdleStateUpdateError struct {
 		*plain
@@ -4928,6 +6345,12 @@ func (v *IdleStateUpdateError) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Error, &v.Error, shapeError)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "IdleStateUpdateError", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -4962,6 +6385,8 @@ func (v IdleStateUpdateOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *IdleStateUpdateOther) UnmarshalJSON(b []byte) error {
+	var fresh IdleStateUpdateOther
+	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateOther
 	type IdleStateUpdateOther struct {
 		*plain
@@ -4974,6 +6399,12 @@ func (v *IdleStateUpdateOther) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "IdleStateUpdateOther", "stopReason")
+		}
+	}
 	v.AdditionalProperties = additionalProperties(b, "_meta", "stopReason", "usage")
 	return nil
 }
@@ -5232,6 +6663,38 @@ func (u IdleStateUpdate) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *IdleStateUpdate) Validate() error {
+	var count int
+	if u.EndTurn != nil {
+		count++
+	}
+	if u.MaxTokens != nil {
+		count++
+	}
+	if u.MaxTurnRequests != nil {
+		count++
+	}
+	if u.Refusal != nil {
+		count++
+	}
+	if u.Cancelled != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if u.None != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("IdleStateUpdate has no variant set")
+	}
+	return nil
+}
+
 // An image provided to or from an LLM.
 type ImageContent struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -5251,6 +6714,9 @@ type ImageContent struct {
 }
 
 func (v *ImageContent) UnmarshalJSON(b []byte) error {
+	var fresh ImageContent
+	v.Data = fresh.Data
+	v.MimeType = fresh.MimeType
 	type plain ImageContent
 	type ImageContent struct {
 		*plain
@@ -5265,6 +6731,15 @@ func (v *ImageContent) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
 	decodeLenient(raw.Uri, &v.Uri)
+	if maybeAbsent(&v.Data) || maybeAbsent(&v.MimeType) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Data, "data", false); err != nil {
+			return propertyError(err, "ImageContent", "data")
+		}
+		if err := requireMember(members, &v.MimeType, "mimeType", false); err != nil {
+			return propertyError(err, "ImageContent", "mimeType")
+		}
+	}
 	return nil
 }
 
@@ -5292,6 +6767,9 @@ type Implementation struct {
 }
 
 func (v *Implementation) UnmarshalJSON(b []byte) error {
+	var fresh Implementation
+	v.Name = fresh.Name
+	v.Version = fresh.Version
 	type plain Implementation
 	type Implementation struct {
 		*plain
@@ -5304,6 +6782,15 @@ func (v *Implementation) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Name) || maybeAbsent(&v.Version) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "Implementation", "name")
+		}
+		if err := requireMember(members, &v.Version, "version", false); err != nil {
+			return propertyError(err, "Implementation", "version")
+		}
+	}
 	return nil
 }
 
@@ -5335,6 +6822,10 @@ type InitialSessionConfigOptionBoolean struct {
 }
 
 func (v *InitialSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	var fresh InitialSessionConfigOptionBoolean
+	v.ConfigId = fresh.ConfigId
+	v.Type = fresh.Type
+	v.Value = fresh.Value
 	type plain InitialSessionConfigOptionBoolean
 	type InitialSessionConfigOptionBoolean struct {
 		*plain
@@ -5345,6 +6836,25 @@ func (v *InitialSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.ConfigId) || maybeAbsent(&v.Type) || maybeAbsent(&v.Value) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ConfigId, "configId", false); err != nil {
+			return propertyError(err, "InitialSessionConfigOptionBoolean", "configId")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "InitialSessionConfigOptionBoolean", "type")
+		}
+		if err := requireMember(members, &v.Value, "value", false); err != nil {
+			return propertyError(err, "InitialSessionConfigOptionBoolean", "value")
+		}
+	}
+	return nil
+}
+
+func (v *InitialSessionConfigOptionBoolean) Validate() error {
+	if v.ConfigId == "" {
+		return fmt.Errorf("configId is required")
+	}
 	return nil
 }
 
@@ -5367,6 +6877,9 @@ type InitialSessionConfigOptionValueId struct {
 }
 
 func (v *InitialSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
+	var fresh InitialSessionConfigOptionValueId
+	v.ConfigId = fresh.ConfigId
+	v.Value = fresh.Value
 	type plain InitialSessionConfigOptionValueId
 	type InitialSessionConfigOptionValueId struct {
 		*plain
@@ -5377,6 +6890,25 @@ func (v *InitialSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.ConfigId) || maybeAbsent(&v.Value) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ConfigId, "configId", false); err != nil {
+			return propertyError(err, "InitialSessionConfigOptionValueId", "configId")
+		}
+		if err := requireMember(members, &v.Value, "value", false); err != nil {
+			return propertyError(err, "InitialSessionConfigOptionValueId", "value")
+		}
+	}
+	return nil
+}
+
+func (v *InitialSessionConfigOptionValueId) Validate() error {
+	if v.ConfigId == "" {
+		return fmt.Errorf("configId is required")
+	}
+	if v.Value == "" {
+		return fmt.Errorf("value is required")
+	}
 	return nil
 }
 
@@ -5467,6 +6999,30 @@ func (u InitialSessionConfigOption) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *InitialSessionConfigOption) Validate() error {
+	var count int
+	if u.Boolean != nil {
+		count++
+	}
+	if u.ValueId != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("InitialSessionConfigOption has no variant set")
+	}
+	if u.Boolean != nil {
+		if err := u.Boolean.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ValueId != nil {
+		if err := u.ValueId.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Request parameters for the initialize method.
 //
 // Sent by the client to establish connection and negotiate capabilities.
@@ -5499,6 +7055,8 @@ func (v InitializeRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
+	var fresh InitializeRequest
+	v.ProtocolVersion = fresh.ProtocolVersion
 	type plain InitializeRequest
 	type InitializeRequest struct {
 		*plain
@@ -5515,10 +7073,19 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 		setDefault(&v.ClientCapabilities, "{\"auth\":{\"terminal\":false},\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false}")
 	}
 	decodeLenient(raw.ClientInfo, &v.ClientInfo, shapeImplementation)
+	if maybeAbsent(&v.ProtocolVersion) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ProtocolVersion, "protocolVersion", false); err != nil {
+			return propertyError(err, "InitializeRequest", "protocolVersion")
+		}
+	}
 	return nil
 }
 
 func (v *InitializeRequest) Validate() error {
+	if v.ProtocolVersion < 0 || v.ProtocolVersion > 65535 {
+		return fmt.Errorf("protocolVersion must be between 0 and 65535")
+	}
 	return nil
 }
 
@@ -5564,6 +7131,8 @@ func (v InitializeResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
+	var fresh InitializeResponse
+	v.ProtocolVersion = fresh.ProtocolVersion
 	type plain InitializeResponse
 	type InitializeResponse struct {
 		*plain
@@ -5584,10 +7153,19 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 	if !decodeLenientItems(raw.AuthMethods, &v.AuthMethods, shapeAuthMethod) {
 		setDefault(&v.AuthMethods, "[]")
 	}
+	if maybeAbsent(&v.ProtocolVersion) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ProtocolVersion, "protocolVersion", false); err != nil {
+			return propertyError(err, "InitializeResponse", "protocolVersion")
+		}
+	}
 	return nil
 }
 
 func (v *InitializeResponse) Validate() error {
+	if v.ProtocolVersion < 0 || v.ProtocolVersion > 65535 {
+		return fmt.Errorf("protocolVersion must be between 0 and 65535")
+	}
 	return nil
 }
 
@@ -5658,6 +7236,9 @@ type KillTerminalRequest struct {
 }
 
 func (v *KillTerminalRequest) UnmarshalJSON(b []byte) error {
+	var fresh KillTerminalRequest
+	v.SessionId = fresh.SessionId
+	v.TerminalId = fresh.TerminalId
 	type plain KillTerminalRequest
 	type KillTerminalRequest struct {
 		*plain
@@ -5668,10 +7249,25 @@ func (v *KillTerminalRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.TerminalId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "KillTerminalRequest", "sessionId")
+		}
+		if err := requireMember(members, &v.TerminalId, "terminalId", false); err != nil {
+			return propertyError(err, "KillTerminalRequest", "terminalId")
+		}
+	}
 	return nil
 }
 
 func (v *KillTerminalRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -5773,6 +7369,8 @@ func (v ListSessionsResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ListSessionsResponse) UnmarshalJSON(b []byte) error {
+	var fresh ListSessionsResponse
+	v.Sessions = fresh.Sessions
 	type plain ListSessionsResponse
 	type ListSessionsResponse struct {
 		*plain
@@ -5788,6 +7386,12 @@ func (v *ListSessionsResponse) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.NextCursor, &v.NextCursor)
 	if !decodeLenientItems(raw.Sessions, &v.Sessions, shapeSessionInfo) && raw.Sessions != nil {
 		setDefault(&v.Sessions, "[]")
+	}
+	if maybeAbsent(&v.Sessions) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Sessions, "sessions", true); err != nil {
+			return propertyError(err, "ListSessionsResponse", "sessions")
+		}
 	}
 	return nil
 }
@@ -5861,31 +7465,72 @@ func (v LoadSessionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *LoadSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh LoadSessionRequest
+	v.Cwd = fresh.Cwd
+	v.McpServers = fresh.McpServers
+	v.SessionId = fresh.SessionId
 	type plain LoadSessionRequest
 	type LoadSessionRequest struct {
 		*plain
-		Meta       json.RawMessage `json:"_meta"`
-		McpServers json.RawMessage `json:"mcpServers"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		McpServers            json.RawMessage `json:"mcpServers"`
 	}
 	raw := LoadSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "LoadSessionRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "LoadSessionRequest", "additionalDirectories")
+	}
 	if decoded, err := decodeField(raw.McpServers, &v.McpServers); err != nil {
 		return propertyError(err, "LoadSessionRequest", "mcpServers")
 	} else if !decoded && raw.McpServers != nil {
 		setDefault(&v.McpServers, "[]")
 	}
+	if maybeAbsent(&v.Cwd) || maybeAbsent(&v.McpServers) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Cwd, "cwd", false); err != nil {
+			return propertyError(err, "LoadSessionRequest", "cwd")
+		}
+		if err := requireMember(members, &v.McpServers, "mcpServers", true); err != nil {
+			return propertyError(err, "LoadSessionRequest", "mcpServers")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "LoadSessionRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *LoadSessionRequest) Validate() error {
+	for i := range v.ConfigOptions {
+		if err := v.ConfigOptions[i].Validate(); err != nil {
+			return fmt.Errorf("configOptions[%d]: %w", i, err)
+		}
+	}
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
 	}
 	if v.McpServers == nil {
 		return fmt.Errorf("mcpServers is required")
+	}
+	for i := range v.McpServers {
+		if err := v.McpServers[i].Validate(); err != nil {
+			return fmt.Errorf("mcpServers[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.SystemPrompt != nil {
+		if err := v.SystemPrompt.Validate(); err != nil {
+			return fmt.Errorf("systemPrompt: %w", err)
+		}
 	}
 	return nil
 }
@@ -6123,6 +7768,11 @@ func (v McpServerHttpInline) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerHttpInline) UnmarshalJSON(b []byte) error {
+	var fresh McpServerHttpInline
+	v.Headers = fresh.Headers
+	v.Name = fresh.Name
+	v.Type = fresh.Type
+	v.Url = fresh.Url
 	type plain McpServerHttpInline
 	type McpServerHttpInline struct {
 		*plain
@@ -6138,6 +7788,28 @@ func (v *McpServerHttpInline) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "McpServerHttpInline", "headers")
 	} else if !decoded && raw.Headers != nil {
 		setDefault(&v.Headers, "[]")
+	}
+	if maybeAbsent(&v.Headers) || maybeAbsent(&v.Name) || maybeAbsent(&v.Type) || maybeAbsent(&v.Url) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Headers, "headers", true); err != nil {
+			return propertyError(err, "McpServerHttpInline", "headers")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "McpServerHttpInline", "name")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "McpServerHttpInline", "type")
+		}
+		if err := requireMember(members, &v.Url, "url", false); err != nil {
+			return propertyError(err, "McpServerHttpInline", "url")
+		}
+	}
+	return nil
+}
+
+func (v *McpServerHttpInline) Validate() error {
+	if v.Headers == nil {
+		return fmt.Errorf("headers is required")
 	}
 	return nil
 }
@@ -6172,6 +7844,11 @@ func (v McpServerSseInline) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerSseInline) UnmarshalJSON(b []byte) error {
+	var fresh McpServerSseInline
+	v.Headers = fresh.Headers
+	v.Name = fresh.Name
+	v.Type = fresh.Type
+	v.Url = fresh.Url
 	type plain McpServerSseInline
 	type McpServerSseInline struct {
 		*plain
@@ -6187,6 +7864,28 @@ func (v *McpServerSseInline) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "McpServerSseInline", "headers")
 	} else if !decoded && raw.Headers != nil {
 		setDefault(&v.Headers, "[]")
+	}
+	if maybeAbsent(&v.Headers) || maybeAbsent(&v.Name) || maybeAbsent(&v.Type) || maybeAbsent(&v.Url) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Headers, "headers", true); err != nil {
+			return propertyError(err, "McpServerSseInline", "headers")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "McpServerSseInline", "name")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "McpServerSseInline", "type")
+		}
+		if err := requireMember(members, &v.Url, "url", false); err != nil {
+			return propertyError(err, "McpServerSseInline", "url")
+		}
+	}
+	return nil
+}
+
+func (v *McpServerSseInline) Validate() error {
+	if v.Headers == nil {
+		return fmt.Errorf("headers is required")
 	}
 	return nil
 }
@@ -6217,6 +7916,10 @@ type McpServerAcpInline struct {
 }
 
 func (v *McpServerAcpInline) UnmarshalJSON(b []byte) error {
+	var fresh McpServerAcpInline
+	v.Name = fresh.Name
+	v.ServerId = fresh.ServerId
+	v.Type = fresh.Type
 	type plain McpServerAcpInline
 	type McpServerAcpInline struct {
 		*plain
@@ -6227,6 +7930,25 @@ func (v *McpServerAcpInline) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Name) || maybeAbsent(&v.ServerId) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "McpServerAcpInline", "name")
+		}
+		if err := requireMember(members, &v.ServerId, "serverId", false); err != nil {
+			return propertyError(err, "McpServerAcpInline", "serverId")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "McpServerAcpInline", "type")
+		}
+	}
+	return nil
+}
+
+func (v *McpServerAcpInline) Validate() error {
+	if v.ServerId == "" {
+		return fmt.Errorf("serverId is required")
+	}
 	return nil
 }
 
@@ -6377,6 +8099,46 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *McpServer) Validate() error {
+	var count int
+	if u.Http != nil {
+		count++
+	}
+	if u.Sse != nil {
+		count++
+	}
+	if u.Acp != nil {
+		count++
+	}
+	if u.Stdio != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("McpServer has no variant set")
+	}
+	if u.Http != nil {
+		if err := u.Http.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Sse != nil {
+		if err := u.Sse.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Acp != nil {
+		if err := u.Acp.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Stdio != nil {
+		if err := u.Stdio.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -6402,6 +8164,9 @@ type McpServerAcp struct {
 }
 
 func (v *McpServerAcp) UnmarshalJSON(b []byte) error {
+	var fresh McpServerAcp
+	v.Name = fresh.Name
+	v.ServerId = fresh.ServerId
 	type plain McpServerAcp
 	type McpServerAcp struct {
 		*plain
@@ -6412,6 +8177,22 @@ func (v *McpServerAcp) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Name) || maybeAbsent(&v.ServerId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "McpServerAcp", "name")
+		}
+		if err := requireMember(members, &v.ServerId, "serverId", false); err != nil {
+			return propertyError(err, "McpServerAcp", "serverId")
+		}
+	}
+	return nil
+}
+
+func (v *McpServerAcp) Validate() error {
+	if v.ServerId == "" {
+		return fmt.Errorf("serverId is required")
+	}
 	return nil
 }
 
@@ -6452,6 +8233,10 @@ func (v McpServerHttp) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerHttp) UnmarshalJSON(b []byte) error {
+	var fresh McpServerHttp
+	v.Headers = fresh.Headers
+	v.Name = fresh.Name
+	v.Url = fresh.Url
 	type plain McpServerHttp
 	type McpServerHttp struct {
 		*plain
@@ -6467,6 +8252,25 @@ func (v *McpServerHttp) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "McpServerHttp", "headers")
 	} else if !decoded && raw.Headers != nil {
 		setDefault(&v.Headers, "[]")
+	}
+	if maybeAbsent(&v.Headers) || maybeAbsent(&v.Name) || maybeAbsent(&v.Url) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Headers, "headers", true); err != nil {
+			return propertyError(err, "McpServerHttp", "headers")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "McpServerHttp", "name")
+		}
+		if err := requireMember(members, &v.Url, "url", false); err != nil {
+			return propertyError(err, "McpServerHttp", "url")
+		}
+	}
+	return nil
+}
+
+func (v *McpServerHttp) Validate() error {
+	if v.Headers == nil {
+		return fmt.Errorf("headers is required")
 	}
 	return nil
 }
@@ -6498,6 +8302,10 @@ func (v McpServerSse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerSse) UnmarshalJSON(b []byte) error {
+	var fresh McpServerSse
+	v.Headers = fresh.Headers
+	v.Name = fresh.Name
+	v.Url = fresh.Url
 	type plain McpServerSse
 	type McpServerSse struct {
 		*plain
@@ -6513,6 +8321,25 @@ func (v *McpServerSse) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "McpServerSse", "headers")
 	} else if !decoded && raw.Headers != nil {
 		setDefault(&v.Headers, "[]")
+	}
+	if maybeAbsent(&v.Headers) || maybeAbsent(&v.Name) || maybeAbsent(&v.Url) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Headers, "headers", true); err != nil {
+			return propertyError(err, "McpServerSse", "headers")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "McpServerSse", "name")
+		}
+		if err := requireMember(members, &v.Url, "url", false); err != nil {
+			return propertyError(err, "McpServerSse", "url")
+		}
+	}
+	return nil
+}
+
+func (v *McpServerSse) Validate() error {
+	if v.Headers == nil {
+		return fmt.Errorf("headers is required")
 	}
 	return nil
 }
@@ -6549,6 +8376,11 @@ func (v McpServerStdio) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerStdio) UnmarshalJSON(b []byte) error {
+	var fresh McpServerStdio
+	v.Args = fresh.Args
+	v.Command = fresh.Command
+	v.Env = fresh.Env
+	v.Name = fresh.Name
 	type plain McpServerStdio
 	type McpServerStdio struct {
 		*plain
@@ -6561,6 +8393,9 @@ func (v *McpServerStdio) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Args); err != nil {
+		return propertyError(err, "McpServerStdio", "args")
+	}
 	if decoded, err := decodeField(raw.Args, &v.Args); err != nil {
 		return propertyError(err, "McpServerStdio", "args")
 	} else if !decoded && raw.Args != nil {
@@ -6570,6 +8405,31 @@ func (v *McpServerStdio) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "McpServerStdio", "env")
 	} else if !decoded && raw.Env != nil {
 		setDefault(&v.Env, "[]")
+	}
+	if maybeAbsent(&v.Args) || maybeAbsent(&v.Command) || maybeAbsent(&v.Env) || maybeAbsent(&v.Name) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Args, "args", true); err != nil {
+			return propertyError(err, "McpServerStdio", "args")
+		}
+		if err := requireMember(members, &v.Command, "command", false); err != nil {
+			return propertyError(err, "McpServerStdio", "command")
+		}
+		if err := requireMember(members, &v.Env, "env", true); err != nil {
+			return propertyError(err, "McpServerStdio", "env")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "McpServerStdio", "name")
+		}
+	}
+	return nil
+}
+
+func (v *McpServerStdio) Validate() error {
+	if v.Args == nil {
+		return fmt.Errorf("args is required")
+	}
+	if v.Env == nil {
+		return fmt.Errorf("env is required")
 	}
 	return nil
 }
@@ -6604,16 +8464,42 @@ func (v MultiSelectItemsString) MarshalJSON() ([]byte, error) {
 }
 
 func (v *MultiSelectItemsString) UnmarshalJSON(b []byte) error {
+	var fresh MultiSelectItemsString
+	v.Enum = fresh.Enum
+	v.Type = fresh.Type
 	type plain MultiSelectItemsString
 	type MultiSelectItemsString struct {
 		*plain
 		Meta json.RawMessage `json:"_meta"`
+		Enum json.RawMessage `json:"enum"`
 	}
 	raw := MultiSelectItemsString{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Enum); err != nil {
+		return propertyError(err, "MultiSelectItemsString", "enum")
+	}
+	if _, err := decodeField(raw.Enum, &v.Enum); err != nil {
+		return propertyError(err, "MultiSelectItemsString", "enum")
+	}
+	if maybeAbsent(&v.Enum) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Enum, "enum", false); err != nil {
+			return propertyError(err, "MultiSelectItemsString", "enum")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "MultiSelectItemsString", "type")
+		}
+	}
+	return nil
+}
+
+func (v *MultiSelectItemsString) Validate() error {
+	if v.Enum == nil {
+		return fmt.Errorf("enum is required")
+	}
 	return nil
 }
 
@@ -6641,6 +8527,8 @@ func (v MultiSelectItemsOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *MultiSelectItemsOther) UnmarshalJSON(b []byte) error {
+	var fresh MultiSelectItemsOther
+	v.Type = fresh.Type
 	type plain MultiSelectItemsOther
 	type MultiSelectItemsOther struct {
 		*plain
@@ -6648,6 +8536,12 @@ func (v *MultiSelectItemsOther) UnmarshalJSON(b []byte) error {
 	raw := MultiSelectItemsOther{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "MultiSelectItemsOther", "type")
+		}
 	}
 	v.AdditionalProperties = additionalProperties(b, "type")
 	return nil
@@ -6769,6 +8663,33 @@ func (u MultiSelectItems) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *MultiSelectItems) Validate() error {
+	var count int
+	if u.String != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if u.Titled != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("MultiSelectItems has no variant set")
+	}
+	if u.String != nil {
+		if err := u.String.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Titled != nil {
+		if err := u.Titled.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Schema for multi-select (array) properties in an elicitation form.
 type MultiSelectPropertySchema struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -6828,6 +8749,8 @@ func (v MultiSelectPropertySchema) MarshalJSON() ([]byte, error) {
 }
 
 func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
+	var fresh MultiSelectPropertySchema
+	v.Items = fresh.Items
 	type plain MultiSelectPropertySchema
 	type MultiSelectPropertySchema struct {
 		*plain
@@ -6844,6 +8767,29 @@ func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
 	decodeLenientItems(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Items) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Items, "items", false); err != nil {
+			return propertyError(err, "MultiSelectPropertySchema", "items")
+		}
+	}
+	return nil
+}
+
+func (v *MultiSelectPropertySchema) Validate() error {
+	if err := v.Items.Validate(); err != nil {
+		return fmt.Errorf("items: %w", err)
+	}
+	if v.MaxItems != nil {
+		if *v.MaxItems < 0 {
+			return fmt.Errorf("maxItems must be at least 0")
+		}
+	}
+	if v.MinItems != nil {
+		if *v.MinItems < 0 {
+			return fmt.Errorf("minItems must be at least 0")
+		}
+	}
 	return nil
 }
 
@@ -6904,31 +8850,65 @@ func (v NewSessionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *NewSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh NewSessionRequest
+	v.Cwd = fresh.Cwd
+	v.McpServers = fresh.McpServers
 	type plain NewSessionRequest
 	type NewSessionRequest struct {
 		*plain
-		Meta       json.RawMessage `json:"_meta"`
-		McpServers json.RawMessage `json:"mcpServers"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		McpServers            json.RawMessage `json:"mcpServers"`
 	}
 	raw := NewSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "NewSessionRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "NewSessionRequest", "additionalDirectories")
+	}
 	if decoded, err := decodeField(raw.McpServers, &v.McpServers); err != nil {
 		return propertyError(err, "NewSessionRequest", "mcpServers")
 	} else if !decoded && raw.McpServers != nil {
 		setDefault(&v.McpServers, "[]")
 	}
+	if maybeAbsent(&v.Cwd) || maybeAbsent(&v.McpServers) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Cwd, "cwd", false); err != nil {
+			return propertyError(err, "NewSessionRequest", "cwd")
+		}
+		if err := requireMember(members, &v.McpServers, "mcpServers", true); err != nil {
+			return propertyError(err, "NewSessionRequest", "mcpServers")
+		}
+	}
 	return nil
 }
 
 func (v *NewSessionRequest) Validate() error {
+	for i := range v.ConfigOptions {
+		if err := v.ConfigOptions[i].Validate(); err != nil {
+			return fmt.Errorf("configOptions[%d]: %w", i, err)
+		}
+	}
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
 	}
 	if v.McpServers == nil {
 		return fmt.Errorf("mcpServers is required")
+	}
+	for i := range v.McpServers {
+		if err := v.McpServers[i].Validate(); err != nil {
+			return fmt.Errorf("mcpServers[%d]: %w", i, err)
+		}
+	}
+	if v.SystemPrompt != nil {
+		if err := v.SystemPrompt.Validate(); err != nil {
+			return fmt.Errorf("systemPrompt: %w", err)
+		}
 	}
 	return nil
 }
@@ -6974,6 +8954,8 @@ func (v NewSessionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
+	var fresh NewSessionResponse
+	v.SessionId = fresh.SessionId
 	type plain NewSessionResponse
 	type NewSessionResponse struct {
 		*plain
@@ -6988,10 +8970,19 @@ func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "NewSessionResponse", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *NewSessionResponse) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -7020,6 +9011,9 @@ type Notice struct {
 }
 
 func (v *Notice) UnmarshalJSON(b []byte) error {
+	var fresh Notice
+	v.Severity = fresh.Severity
+	v.Title = fresh.Title
 	type plain Notice
 	type Notice struct {
 		*plain
@@ -7032,6 +9026,22 @@ func (v *Notice) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	if maybeAbsent(&v.Severity) || maybeAbsent(&v.Title) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Severity, "severity", false); err != nil {
+			return propertyError(err, "Notice", "severity")
+		}
+		if err := requireMember(members, &v.Title, "title", false); err != nil {
+			return propertyError(err, "Notice", "title")
+		}
+	}
+	return nil
+}
+
+func (v *Notice) Validate() error {
+	if v.Severity == "" {
+		return fmt.Errorf("severity is required")
+	}
 	return nil
 }
 
@@ -7119,6 +9129,10 @@ type PermissionOption struct {
 }
 
 func (v *PermissionOption) UnmarshalJSON(b []byte) error {
+	var fresh PermissionOption
+	v.Kind = fresh.Kind
+	v.Name = fresh.Name
+	v.OptionId = fresh.OptionId
 	type plain PermissionOption
 	type PermissionOption struct {
 		*plain
@@ -7129,6 +9143,28 @@ func (v *PermissionOption) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Kind) || maybeAbsent(&v.Name) || maybeAbsent(&v.OptionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Kind, "kind", false); err != nil {
+			return propertyError(err, "PermissionOption", "kind")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "PermissionOption", "name")
+		}
+		if err := requireMember(members, &v.OptionId, "optionId", false); err != nil {
+			return propertyError(err, "PermissionOption", "optionId")
+		}
+	}
+	return nil
+}
+
+func (v *PermissionOption) Validate() error {
+	if v.Kind == "" {
+		return fmt.Errorf("kind is required")
+	}
+	if v.OptionId == "" {
+		return fmt.Errorf("optionId is required")
+	}
 	return nil
 }
 
@@ -7183,6 +9219,8 @@ func (v Plan) MarshalJSON() ([]byte, error) {
 }
 
 func (v *Plan) UnmarshalJSON(b []byte) error {
+	var fresh Plan
+	v.Entries = fresh.Entries
 	type plain Plan
 	type Plan struct {
 		*plain
@@ -7196,6 +9234,19 @@ func (v *Plan) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
+	}
+	if maybeAbsent(&v.Entries) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Entries, "entries", true); err != nil {
+			return propertyError(err, "Plan", "entries")
+		}
+	}
+	return nil
+}
+
+func (v *Plan) Validate() error {
+	if v.Entries == nil {
+		return fmt.Errorf("entries is required")
 	}
 	return nil
 }
@@ -7250,6 +9301,10 @@ type PlanEntry struct {
 }
 
 func (v *PlanEntry) UnmarshalJSON(b []byte) error {
+	var fresh PlanEntry
+	v.Content = fresh.Content
+	v.Priority = fresh.Priority
+	v.Status = fresh.Status
 	type plain PlanEntry
 	type PlanEntry struct {
 		*plain
@@ -7260,6 +9315,28 @@ func (v *PlanEntry) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.Priority) || maybeAbsent(&v.Status) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "PlanEntry", "content")
+		}
+		if err := requireMember(members, &v.Priority, "priority", false); err != nil {
+			return propertyError(err, "PlanEntry", "priority")
+		}
+		if err := requireMember(members, &v.Status, "status", false); err != nil {
+			return propertyError(err, "PlanEntry", "status")
+		}
+	}
+	return nil
+}
+
+func (v *PlanEntry) Validate() error {
+	if v.Priority == "" {
+		return fmt.Errorf("priority is required")
+	}
+	if v.Status == "" {
+		return fmt.Errorf("status is required")
+	}
 	return nil
 }
 
@@ -7333,6 +9410,9 @@ func (v PlanItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PlanItems) UnmarshalJSON(b []byte) error {
+	var fresh PlanItems
+	v.Entries = fresh.Entries
+	v.PlanId = fresh.PlanId
 	type plain PlanItems
 	type PlanItems struct {
 		*plain
@@ -7346,6 +9426,25 @@ func (v *PlanItems) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
+	}
+	if maybeAbsent(&v.Entries) || maybeAbsent(&v.PlanId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Entries, "entries", true); err != nil {
+			return propertyError(err, "PlanItems", "entries")
+		}
+		if err := requireMember(members, &v.PlanId, "planId", false); err != nil {
+			return propertyError(err, "PlanItems", "planId")
+		}
+	}
+	return nil
+}
+
+func (v *PlanItems) Validate() error {
+	if v.Entries == nil {
+		return fmt.Errorf("entries is required")
+	}
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
 	}
 	return nil
 }
@@ -7375,6 +9474,9 @@ type PlanMarkdown struct {
 }
 
 func (v *PlanMarkdown) UnmarshalJSON(b []byte) error {
+	var fresh PlanMarkdown
+	v.Content = fresh.Content
+	v.PlanId = fresh.PlanId
 	type plain PlanMarkdown
 	type PlanMarkdown struct {
 		*plain
@@ -7387,6 +9489,22 @@ func (v *PlanMarkdown) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Path, &v.Path)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.PlanId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "PlanMarkdown", "content")
+		}
+		if err := requireMember(members, &v.PlanId, "planId", false); err != nil {
+			return propertyError(err, "PlanMarkdown", "planId")
+		}
+	}
+	return nil
+}
+
+func (v *PlanMarkdown) Validate() error {
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
 	return nil
 }
 
@@ -7407,6 +9525,8 @@ type PlanRemoved struct {
 }
 
 func (v *PlanRemoved) UnmarshalJSON(b []byte) error {
+	var fresh PlanRemoved
+	v.PlanId = fresh.PlanId
 	type plain PlanRemoved
 	type PlanRemoved struct {
 		*plain
@@ -7417,6 +9537,19 @@ func (v *PlanRemoved) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.PlanId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.PlanId, "planId", false); err != nil {
+			return propertyError(err, "PlanRemoved", "planId")
+		}
+	}
+	return nil
+}
+
+func (v *PlanRemoved) Validate() error {
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
 	return nil
 }
 
@@ -7437,6 +9570,8 @@ type PlanUpdate struct {
 }
 
 func (v *PlanUpdate) UnmarshalJSON(b []byte) error {
+	var fresh PlanUpdate
+	v.Plan = fresh.Plan
 	type plain PlanUpdate
 	type PlanUpdate struct {
 		*plain
@@ -7447,6 +9582,19 @@ func (v *PlanUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Plan) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Plan, "plan", false); err != nil {
+			return propertyError(err, "PlanUpdate", "plan")
+		}
+	}
+	return nil
+}
+
+func (v *PlanUpdate) Validate() error {
+	if err := v.Plan.Validate(); err != nil {
+		return fmt.Errorf("plan: %w", err)
+	}
 	return nil
 }
 
@@ -7484,6 +9632,10 @@ func (v PlanUpdateContentItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PlanUpdateContentItems) UnmarshalJSON(b []byte) error {
+	var fresh PlanUpdateContentItems
+	v.Entries = fresh.Entries
+	v.PlanId = fresh.PlanId
+	v.Type = fresh.Type
 	type plain PlanUpdateContentItems
 	type PlanUpdateContentItems struct {
 		*plain
@@ -7497,6 +9649,28 @@ func (v *PlanUpdateContentItems) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
+	}
+	if maybeAbsent(&v.Entries) || maybeAbsent(&v.PlanId) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Entries, "entries", true); err != nil {
+			return propertyError(err, "PlanUpdateContentItems", "entries")
+		}
+		if err := requireMember(members, &v.PlanId, "planId", false); err != nil {
+			return propertyError(err, "PlanUpdateContentItems", "planId")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "PlanUpdateContentItems", "type")
+		}
+	}
+	return nil
+}
+
+func (v *PlanUpdateContentItems) Validate() error {
+	if v.Entries == nil {
+		return fmt.Errorf("entries is required")
+	}
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
 	}
 	return nil
 }
@@ -7523,6 +9697,10 @@ type PlanUpdateContentMarkdown struct {
 }
 
 func (v *PlanUpdateContentMarkdown) UnmarshalJSON(b []byte) error {
+	var fresh PlanUpdateContentMarkdown
+	v.Content = fresh.Content
+	v.PlanId = fresh.PlanId
+	v.Type = fresh.Type
 	type plain PlanUpdateContentMarkdown
 	type PlanUpdateContentMarkdown struct {
 		*plain
@@ -7535,6 +9713,25 @@ func (v *PlanUpdateContentMarkdown) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Path, &v.Path)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.PlanId) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "PlanUpdateContentMarkdown", "content")
+		}
+		if err := requireMember(members, &v.PlanId, "planId", false); err != nil {
+			return propertyError(err, "PlanUpdateContentMarkdown", "planId")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "PlanUpdateContentMarkdown", "type")
+		}
+	}
+	return nil
+}
+
+func (v *PlanUpdateContentMarkdown) Validate() error {
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
 	return nil
 }
 
@@ -7625,6 +9822,16 @@ func (u *PlanUpdateContent) Validate() error {
 	}
 	if count != 1 {
 		return errors.New("PlanUpdateContent must have exactly one variant set")
+	}
+	if u.Items != nil {
+		if err := u.Items.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Markdown != nil {
+		if err := u.Markdown.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -7739,6 +9946,9 @@ func (v PromptRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptRequest) UnmarshalJSON(b []byte) error {
+	var fresh PromptRequest
+	v.Prompt = fresh.Prompt
+	v.SessionId = fresh.SessionId
 	type plain PromptRequest
 	type PromptRequest struct {
 		*plain
@@ -7749,12 +9959,29 @@ func (v *PromptRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Prompt) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Prompt, "prompt", false); err != nil {
+			return propertyError(err, "PromptRequest", "prompt")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "PromptRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *PromptRequest) Validate() error {
 	if v.Prompt == nil {
 		return fmt.Errorf("prompt is required")
+	}
+	for i := range v.Prompt {
+		if err := v.Prompt[i].Validate(); err != nil {
+			return fmt.Errorf("prompt[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
 	}
 	return nil
 }
@@ -7780,6 +10007,8 @@ type PromptResponse struct {
 }
 
 func (v *PromptResponse) UnmarshalJSON(b []byte) error {
+	var fresh PromptResponse
+	v.StopReason = fresh.StopReason
 	type plain PromptResponse
 	type PromptResponse struct {
 		*plain
@@ -7792,10 +10021,19 @@ func (v *PromptResponse) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "PromptResponse", "stopReason")
+		}
+	}
 	return nil
 }
 
 func (v *PromptResponse) Validate() error {
+	if v.StopReason == "" {
+		return fmt.Errorf("stopReason is required")
+	}
 	return nil
 }
 
@@ -7836,6 +10074,8 @@ func (v PromptSuggestion) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptSuggestion) UnmarshalJSON(b []byte) error {
+	var fresh PromptSuggestion
+	v.Prompt = fresh.Prompt
 	type plain PromptSuggestion
 	type PromptSuggestion struct {
 		*plain
@@ -7846,6 +10086,24 @@ func (v *PromptSuggestion) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Prompt) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Prompt, "prompt", false); err != nil {
+			return propertyError(err, "PromptSuggestion", "prompt")
+		}
+	}
+	return nil
+}
+
+func (v *PromptSuggestion) Validate() error {
+	if v.Prompt == nil {
+		return fmt.Errorf("prompt is required")
+	}
+	for i := range v.Prompt {
+		if err := v.Prompt[i].Validate(); err != nil {
+			return fmt.Errorf("prompt[%d]: %w", i, err)
+		}
+	}
 	return nil
 }
 
@@ -8037,6 +10295,8 @@ func (v PromptSuggestionsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
+	var fresh PromptSuggestionsUpdate
+	v.Suggestions = fresh.Suggestions
 	type plain PromptSuggestionsUpdate
 	type PromptSuggestionsUpdate struct {
 		*plain
@@ -8050,6 +10310,19 @@ func (v *PromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if _, err := decodeItems(raw.Suggestions, &v.Suggestions, shapePromptSuggestion); err != nil {
 		return propertyError(err, "PromptSuggestionsUpdate", "suggestions")
+	}
+	if maybeAbsent(&v.Suggestions) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Suggestions, "suggestions", false); err != nil {
+			return propertyError(err, "PromptSuggestionsUpdate", "suggestions")
+		}
+	}
+	return nil
+}
+
+func (v *PromptSuggestionsUpdate) Validate() error {
+	if v.Suggestions == nil {
+		return fmt.Errorf("suggestions is required")
 	}
 	return nil
 }
@@ -8111,6 +10384,9 @@ type ReadTextFileRequest struct {
 }
 
 func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
+	var fresh ReadTextFileRequest
+	v.Path = fresh.Path
+	v.SessionId = fresh.SessionId
 	type plain ReadTextFileRequest
 	type ReadTextFileRequest struct {
 		*plain
@@ -8121,12 +10397,34 @@ func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Path) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Path, "path", false); err != nil {
+			return propertyError(err, "ReadTextFileRequest", "path")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "ReadTextFileRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *ReadTextFileRequest) Validate() error {
+	if v.Limit != nil {
+		if *v.Limit < 0 || *v.Limit > 4294967295 {
+			return fmt.Errorf("limit must be between 0 and 4294967295")
+		}
+	}
+	if v.Line != nil {
+		if *v.Line < 0 || *v.Line > 4294967295 {
+			return fmt.Errorf("line must be between 0 and 4294967295")
+		}
+	}
 	if v.Path == "" {
 		return fmt.Errorf("path is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
 	}
 	return nil
 }
@@ -8144,6 +10442,8 @@ type ReadTextFileResponse struct {
 }
 
 func (v *ReadTextFileResponse) UnmarshalJSON(b []byte) error {
+	var fresh ReadTextFileResponse
+	v.Content = fresh.Content
 	type plain ReadTextFileResponse
 	type ReadTextFileResponse struct {
 		*plain
@@ -8154,6 +10454,12 @@ func (v *ReadTextFileResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Content) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "ReadTextFileResponse", "content")
+		}
+	}
 	return nil
 }
 
@@ -8179,6 +10485,9 @@ type ReleaseTerminalRequest struct {
 }
 
 func (v *ReleaseTerminalRequest) UnmarshalJSON(b []byte) error {
+	var fresh ReleaseTerminalRequest
+	v.SessionId = fresh.SessionId
+	v.TerminalId = fresh.TerminalId
 	type plain ReleaseTerminalRequest
 	type ReleaseTerminalRequest struct {
 		*plain
@@ -8189,10 +10498,25 @@ func (v *ReleaseTerminalRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.TerminalId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "ReleaseTerminalRequest", "sessionId")
+		}
+		if err := requireMember(members, &v.TerminalId, "terminalId", false); err != nil {
+			return propertyError(err, "ReleaseTerminalRequest", "terminalId")
+		}
+	}
 	return nil
 }
 
 func (v *ReleaseTerminalRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -8304,6 +10628,23 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *RequestId) Validate() error {
+	var count int
+	if u.Null != nil {
+		count++
+	}
+	if u.Number != nil {
+		count++
+	}
+	if u.Str != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("RequestId has no variant set")
+	}
+	return nil
+}
+
 // The outcome of a permission request.
 // The prompt turn was cancelled before the user responded.
 //
@@ -8314,6 +10655,26 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 // See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/v1/prompt-turn#cancellation)
 type RequestPermissionOutcomeCancelled struct {
 	Outcome string `json:"outcome"`
+}
+
+func (v *RequestPermissionOutcomeCancelled) UnmarshalJSON(b []byte) error {
+	var fresh RequestPermissionOutcomeCancelled
+	v.Outcome = fresh.Outcome
+	type plain RequestPermissionOutcomeCancelled
+	type RequestPermissionOutcomeCancelled struct {
+		*plain
+	}
+	raw := RequestPermissionOutcomeCancelled{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.Outcome) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Outcome, "outcome", false); err != nil {
+			return propertyError(err, "RequestPermissionOutcomeCancelled", "outcome")
+		}
+	}
+	return nil
 }
 
 // The user selected one of the provided options.
@@ -8330,6 +10691,9 @@ type RequestPermissionOutcomeSelected struct {
 }
 
 func (v *RequestPermissionOutcomeSelected) UnmarshalJSON(b []byte) error {
+	var fresh RequestPermissionOutcomeSelected
+	v.OptionId = fresh.OptionId
+	v.Outcome = fresh.Outcome
 	type plain RequestPermissionOutcomeSelected
 	type RequestPermissionOutcomeSelected struct {
 		*plain
@@ -8340,6 +10704,22 @@ func (v *RequestPermissionOutcomeSelected) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.OptionId) || maybeAbsent(&v.Outcome) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.OptionId, "optionId", false); err != nil {
+			return propertyError(err, "RequestPermissionOutcomeSelected", "optionId")
+		}
+		if err := requireMember(members, &v.Outcome, "outcome", false); err != nil {
+			return propertyError(err, "RequestPermissionOutcomeSelected", "outcome")
+		}
+	}
+	return nil
+}
+
+func (v *RequestPermissionOutcomeSelected) Validate() error {
+	if v.OptionId == "" {
+		return fmt.Errorf("optionId is required")
+	}
 	return nil
 }
 
@@ -8437,6 +10817,11 @@ func (u *RequestPermissionOutcome) Validate() error {
 	if count != 1 {
 		return errors.New("RequestPermissionOutcome must have exactly one variant set")
 	}
+	if u.Selected != nil {
+		if err := u.Selected.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -8471,6 +10856,10 @@ func (v RequestPermissionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *RequestPermissionRequest) UnmarshalJSON(b []byte) error {
+	var fresh RequestPermissionRequest
+	v.Options = fresh.Options
+	v.SessionId = fresh.SessionId
+	v.ToolCall = fresh.ToolCall
 	type plain RequestPermissionRequest
 	type RequestPermissionRequest struct {
 		*plain
@@ -8481,12 +10870,35 @@ func (v *RequestPermissionRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Options) || maybeAbsent(&v.SessionId) || maybeAbsent(&v.ToolCall) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Options, "options", false); err != nil {
+			return propertyError(err, "RequestPermissionRequest", "options")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "RequestPermissionRequest", "sessionId")
+		}
+		if err := requireMember(members, &v.ToolCall, "toolCall", false); err != nil {
+			return propertyError(err, "RequestPermissionRequest", "toolCall")
+		}
+	}
 	return nil
 }
 
 func (v *RequestPermissionRequest) Validate() error {
 	if v.Options == nil {
 		return fmt.Errorf("options is required")
+	}
+	for i := range v.Options {
+		if err := v.Options[i].Validate(); err != nil {
+			return fmt.Errorf("options[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if err := v.ToolCall.Validate(); err != nil {
+		return fmt.Errorf("toolCall: %w", err)
 	}
 	return nil
 }
@@ -8504,6 +10916,8 @@ type RequestPermissionResponse struct {
 }
 
 func (v *RequestPermissionResponse) UnmarshalJSON(b []byte) error {
+	var fresh RequestPermissionResponse
+	v.Outcome = fresh.Outcome
 	type plain RequestPermissionResponse
 	type RequestPermissionResponse struct {
 		*plain
@@ -8514,10 +10928,19 @@ func (v *RequestPermissionResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Outcome) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Outcome, "outcome", false); err != nil {
+			return propertyError(err, "RequestPermissionResponse", "outcome")
+		}
+	}
 	return nil
 }
 
 func (v *RequestPermissionResponse) Validate() error {
+	if err := v.Outcome.Validate(); err != nil {
+		return fmt.Errorf("outcome: %w", err)
+	}
 	return nil
 }
 
@@ -8568,6 +10991,9 @@ type ResourceLink struct {
 }
 
 func (v *ResourceLink) UnmarshalJSON(b []byte) error {
+	var fresh ResourceLink
+	v.Name = fresh.Name
+	v.Uri = fresh.Uri
 	type plain ResourceLink
 	type ResourceLink struct {
 		*plain
@@ -8588,6 +11014,15 @@ func (v *ResourceLink) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.MimeType, &v.MimeType)
 	decodeLenient(raw.Size, &v.Size)
 	decodeLenient(raw.Title, &v.Title)
+	if maybeAbsent(&v.Name) || maybeAbsent(&v.Uri) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "ResourceLink", "name")
+		}
+		if err := requireMember(members, &v.Uri, "uri", false); err != nil {
+			return propertyError(err, "ResourceLink", "uri")
+		}
+	}
 	return nil
 }
 
@@ -8644,22 +11079,59 @@ type ResumeSessionRequest struct {
 }
 
 func (v *ResumeSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh ResumeSessionRequest
+	v.Cwd = fresh.Cwd
+	v.SessionId = fresh.SessionId
 	type plain ResumeSessionRequest
 	type ResumeSessionRequest struct {
 		*plain
-		Meta json.RawMessage `json:"_meta"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
 	}
 	raw := ResumeSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "ResumeSessionRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "ResumeSessionRequest", "additionalDirectories")
+	}
+	if maybeAbsent(&v.Cwd) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Cwd, "cwd", false); err != nil {
+			return propertyError(err, "ResumeSessionRequest", "cwd")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "ResumeSessionRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *ResumeSessionRequest) Validate() error {
+	for i := range v.ConfigOptions {
+		if err := v.ConfigOptions[i].Validate(); err != nil {
+			return fmt.Errorf("configOptions[%d]: %w", i, err)
+		}
+	}
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
+	}
+	for i := range v.McpServers {
+		if err := v.McpServers[i].Validate(); err != nil {
+			return fmt.Errorf("mcpServers[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.SystemPrompt != nil {
+		if err := v.SystemPrompt.Validate(); err != nil {
+			return fmt.Errorf("systemPrompt: %w", err)
+		}
 	}
 	return nil
 }
@@ -8763,6 +11235,8 @@ type SelectedPermissionOutcome struct {
 }
 
 func (v *SelectedPermissionOutcome) UnmarshalJSON(b []byte) error {
+	var fresh SelectedPermissionOutcome
+	v.OptionId = fresh.OptionId
 	type plain SelectedPermissionOutcome
 	type SelectedPermissionOutcome struct {
 		*plain
@@ -8773,6 +11247,19 @@ func (v *SelectedPermissionOutcome) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.OptionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.OptionId, "optionId", false); err != nil {
+			return propertyError(err, "SelectedPermissionOutcome", "optionId")
+		}
+	}
+	return nil
+}
+
+func (v *SelectedPermissionOutcome) Validate() error {
+	if v.OptionId == "" {
+		return fmt.Errorf("optionId is required")
+	}
 	return nil
 }
 
@@ -9056,6 +11543,26 @@ type SessionConfigBoolean struct {
 	CurrentValue bool `json:"currentValue"`
 }
 
+func (v *SessionConfigBoolean) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigBoolean
+	v.CurrentValue = fresh.CurrentValue
+	type plain SessionConfigBoolean
+	type SessionConfigBoolean struct {
+		*plain
+	}
+	raw := SessionConfigBoolean{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.CurrentValue) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CurrentValue, "currentValue", false); err != nil {
+			return propertyError(err, "SessionConfigBoolean", "currentValue")
+		}
+	}
+	return nil
+}
+
 // Unique identifier for a session configuration option value group.
 type SessionConfigGroupId string
 
@@ -9087,6 +11594,12 @@ type SessionConfigOptionSelect struct {
 }
 
 func (v *SessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigOptionSelect
+	v.CurrentValue = fresh.CurrentValue
+	v.Id = fresh.Id
+	v.Name = fresh.Name
+	v.Options = fresh.Options
+	v.Type = fresh.Type
 	type plain SessionConfigOptionSelect
 	type SessionConfigOptionSelect struct {
 		*plain
@@ -9101,6 +11614,37 @@ func (v *SessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Category, &v.Category)
 	decodeLenient(raw.Description, &v.Description)
+	if maybeAbsent(&v.CurrentValue) || maybeAbsent(&v.Id) || maybeAbsent(&v.Name) || maybeAbsent(&v.Options) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CurrentValue, "currentValue", false); err != nil {
+			return propertyError(err, "SessionConfigOptionSelect", "currentValue")
+		}
+		if err := requireMember(members, &v.Id, "id", false); err != nil {
+			return propertyError(err, "SessionConfigOptionSelect", "id")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "SessionConfigOptionSelect", "name")
+		}
+		if err := requireMember(members, &v.Options, "options", false); err != nil {
+			return propertyError(err, "SessionConfigOptionSelect", "options")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "SessionConfigOptionSelect", "type")
+		}
+	}
+	return nil
+}
+
+func (v *SessionConfigOptionSelect) Validate() error {
+	if v.CurrentValue == "" {
+		return fmt.Errorf("currentValue is required")
+	}
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
+	if err := v.Options.Validate(); err != nil {
+		return fmt.Errorf("options: %w", err)
+	}
 	return nil
 }
 
@@ -9126,6 +11670,11 @@ type SessionConfigOptionBoolean struct {
 }
 
 func (v *SessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigOptionBoolean
+	v.CurrentValue = fresh.CurrentValue
+	v.Id = fresh.Id
+	v.Name = fresh.Name
+	v.Type = fresh.Type
 	type plain SessionConfigOptionBoolean
 	type SessionConfigOptionBoolean struct {
 		*plain
@@ -9140,6 +11689,28 @@ func (v *SessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Category, &v.Category)
 	decodeLenient(raw.Description, &v.Description)
+	if maybeAbsent(&v.CurrentValue) || maybeAbsent(&v.Id) || maybeAbsent(&v.Name) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CurrentValue, "currentValue", false); err != nil {
+			return propertyError(err, "SessionConfigOptionBoolean", "currentValue")
+		}
+		if err := requireMember(members, &v.Id, "id", false); err != nil {
+			return propertyError(err, "SessionConfigOptionBoolean", "id")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "SessionConfigOptionBoolean", "name")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "SessionConfigOptionBoolean", "type")
+		}
+	}
+	return nil
+}
+
+func (v *SessionConfigOptionBoolean) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -9232,13 +11803,13 @@ func (u *SessionConfigOption) Validate() error {
 		return errors.New("SessionConfigOption must have exactly one variant set")
 	}
 	if u.Select != nil {
-		if u.Select.Name == "" {
-			return fmt.Errorf("name is required")
+		if err := u.Select.Validate(); err != nil {
+			return err
 		}
 	}
 	if u.Boolean != nil {
-		if u.Boolean.Name == "" {
-			return fmt.Errorf("name is required")
+		if err := u.Boolean.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -9313,6 +11884,40 @@ type SessionConfigSelect struct {
 	Options SessionConfigSelectOptions `json:"options"`
 }
 
+func (v *SessionConfigSelect) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigSelect
+	v.CurrentValue = fresh.CurrentValue
+	v.Options = fresh.Options
+	type plain SessionConfigSelect
+	type SessionConfigSelect struct {
+		*plain
+	}
+	raw := SessionConfigSelect{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.CurrentValue) || maybeAbsent(&v.Options) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CurrentValue, "currentValue", false); err != nil {
+			return propertyError(err, "SessionConfigSelect", "currentValue")
+		}
+		if err := requireMember(members, &v.Options, "options", false); err != nil {
+			return propertyError(err, "SessionConfigSelect", "options")
+		}
+	}
+	return nil
+}
+
+func (v *SessionConfigSelect) Validate() error {
+	if v.CurrentValue == "" {
+		return fmt.Errorf("currentValue is required")
+	}
+	if err := v.Options.Validate(); err != nil {
+		return fmt.Errorf("options: %w", err)
+	}
+	return nil
+}
+
 // A group of possible values for a session configuration option.
 type SessionConfigSelectGroup struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -9340,6 +11945,10 @@ func (v SessionConfigSelectGroup) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionConfigSelectGroup) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigSelectGroup
+	v.Group = fresh.Group
+	v.Name = fresh.Name
+	v.Options = fresh.Options
 	type plain SessionConfigSelectGroup
 	type SessionConfigSelectGroup struct {
 		*plain
@@ -9353,6 +11962,28 @@ func (v *SessionConfigSelectGroup) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Options, &v.Options, shapeSessionConfigSelectOption) && raw.Options != nil {
 		setDefault(&v.Options, "[]")
+	}
+	if maybeAbsent(&v.Group) || maybeAbsent(&v.Name) || maybeAbsent(&v.Options) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Group, "group", false); err != nil {
+			return propertyError(err, "SessionConfigSelectGroup", "group")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "SessionConfigSelectGroup", "name")
+		}
+		if err := requireMember(members, &v.Options, "options", true); err != nil {
+			return propertyError(err, "SessionConfigSelectGroup", "options")
+		}
+	}
+	return nil
+}
+
+func (v *SessionConfigSelectGroup) Validate() error {
+	if v.Group == "" {
+		return fmt.Errorf("group is required")
+	}
+	if v.Options == nil {
+		return fmt.Errorf("options is required")
 	}
 	return nil
 }
@@ -9374,6 +12005,9 @@ type SessionConfigSelectOption struct {
 }
 
 func (v *SessionConfigSelectOption) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigSelectOption
+	v.Name = fresh.Name
+	v.Value = fresh.Value
 	type plain SessionConfigSelectOption
 	type SessionConfigSelectOption struct {
 		*plain
@@ -9386,6 +12020,22 @@ func (v *SessionConfigSelectOption) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	if maybeAbsent(&v.Name) || maybeAbsent(&v.Value) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "SessionConfigSelectOption", "name")
+		}
+		if err := requireMember(members, &v.Value, "value", false); err != nil {
+			return propertyError(err, "SessionConfigSelectOption", "value")
+		}
+	}
+	return nil
+}
+
+func (v *SessionConfigSelectOption) Validate() error {
+	if v.Value == "" {
+		return fmt.Errorf("value is required")
+	}
 	return nil
 }
 
@@ -9482,6 +12132,34 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 		return _b, nil
 	}
 	return []byte{}, nil
+}
+
+func (u *SessionConfigSelectOptions) Validate() error {
+	var count int
+	if u.Ungrouped != nil {
+		count++
+	}
+	if u.Grouped != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("SessionConfigSelectOptions has no variant set")
+	}
+	if u.Ungrouped != nil {
+		for i := range *u.Ungrouped {
+			if err := (*u.Ungrouped)[i].Validate(); err != nil {
+				return fmt.Errorf("[%d]: %w", i, err)
+			}
+		}
+	}
+	if u.Grouped != nil {
+		for i := range *u.Grouped {
+			if err := (*u.Grouped)[i].Validate(); err != nil {
+				return fmt.Errorf("[%d]: %w", i, err)
+			}
+		}
+	}
+	return nil
 }
 
 // Unique identifier for a session configuration option value.
@@ -9585,6 +12263,9 @@ type SessionInfo struct {
 }
 
 func (v *SessionInfo) UnmarshalJSON(b []byte) error {
+	var fresh SessionInfo
+	v.Cwd = fresh.Cwd
+	v.SessionId = fresh.SessionId
 	type plain SessionInfo
 	type SessionInfo struct {
 		*plain
@@ -9603,6 +12284,22 @@ func (v *SessionInfo) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Archived, &v.Archived)
 	decodeLenient(raw.Title, &v.Title)
 	decodeLenient(raw.UpdatedAt, &v.UpdatedAt)
+	if maybeAbsent(&v.Cwd) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Cwd, "cwd", false); err != nil {
+			return propertyError(err, "SessionInfo", "cwd")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "SessionInfo", "sessionId")
+		}
+	}
+	return nil
+}
+
+func (v *SessionInfo) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -9748,6 +12445,8 @@ func (v SessionMessage) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionMessage) UnmarshalJSON(b []byte) error {
+	var fresh SessionMessage
+	v.MessageId = fresh.MessageId
 	type plain SessionMessage
 	type SessionMessage struct {
 		*plain
@@ -9768,6 +12467,19 @@ func (v *SessionMessage) UnmarshalJSON(b []byte) error {
 	decodePatch(raw.RecipientSessionId, &v.RecipientSessionId)
 	decodePatch(raw.SenderMessageId, &v.SenderMessageId)
 	decodePatch(raw.SenderSessionId, &v.SenderSessionId)
+	if maybeAbsent(&v.MessageId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "SessionMessage", "messageId")
+		}
+	}
+	return nil
+}
+
+func (v *SessionMessage) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
 	return nil
 }
 
@@ -9791,6 +12503,9 @@ type SessionMessageChunk struct {
 }
 
 func (v *SessionMessageChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionMessageChunk
+	v.Content = fresh.Content
+	v.MessageId = fresh.MessageId
 	type plain SessionMessageChunk
 	type SessionMessageChunk struct {
 		*plain
@@ -9801,6 +12516,25 @@ func (v *SessionMessageChunk) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.MessageId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "SessionMessageChunk", "content")
+		}
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "SessionMessageChunk", "messageId")
+		}
+	}
+	return nil
+}
+
+func (v *SessionMessageChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
 	return nil
 }
 
@@ -9823,6 +12557,9 @@ type SessionMode struct {
 }
 
 func (v *SessionMode) UnmarshalJSON(b []byte) error {
+	var fresh SessionMode
+	v.Id = fresh.Id
+	v.Name = fresh.Name
 	type plain SessionMode
 	type SessionMode struct {
 		*plain
@@ -9835,6 +12572,22 @@ func (v *SessionMode) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	if maybeAbsent(&v.Id) || maybeAbsent(&v.Name) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Id, "id", false); err != nil {
+			return propertyError(err, "SessionMode", "id")
+		}
+		if err := requireMember(members, &v.Name, "name", false); err != nil {
+			return propertyError(err, "SessionMode", "name")
+		}
+	}
+	return nil
+}
+
+func (v *SessionMode) Validate() error {
+	if v.Id == "" {
+		return fmt.Errorf("id is required")
+	}
 	return nil
 }
 
@@ -9866,6 +12619,9 @@ func (v SessionModeState) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionModeState) UnmarshalJSON(b []byte) error {
+	var fresh SessionModeState
+	v.AvailableModes = fresh.AvailableModes
+	v.CurrentModeId = fresh.CurrentModeId
 	type plain SessionModeState
 	type SessionModeState struct {
 		*plain
@@ -9879,6 +12635,25 @@ func (v *SessionModeState) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.AvailableModes, &v.AvailableModes, shapeSessionMode) && raw.AvailableModes != nil {
 		setDefault(&v.AvailableModes, "[]")
+	}
+	if maybeAbsent(&v.AvailableModes) || maybeAbsent(&v.CurrentModeId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.AvailableModes, "availableModes", true); err != nil {
+			return propertyError(err, "SessionModeState", "availableModes")
+		}
+		if err := requireMember(members, &v.CurrentModeId, "currentModeId", false); err != nil {
+			return propertyError(err, "SessionModeState", "currentModeId")
+		}
+	}
+	return nil
+}
+
+func (v *SessionModeState) Validate() error {
+	if v.AvailableModes == nil {
+		return fmt.Errorf("availableModes is required")
+	}
+	if v.CurrentModeId == "" {
+		return fmt.Errorf("currentModeId is required")
 	}
 	return nil
 }
@@ -9902,6 +12677,9 @@ type SessionNotification struct {
 }
 
 func (v *SessionNotification) UnmarshalJSON(b []byte) error {
+	var fresh SessionNotification
+	v.SessionId = fresh.SessionId
+	v.Update = fresh.Update
 	type plain SessionNotification
 	type SessionNotification struct {
 		*plain
@@ -9912,10 +12690,25 @@ func (v *SessionNotification) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.Update) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "SessionNotification", "sessionId")
+		}
+		if err := requireMember(members, &v.Update, "update", false); err != nil {
+			return propertyError(err, "SessionNotification", "update")
+		}
+	}
 	return nil
 }
 
 func (v *SessionNotification) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if err := v.Update.Validate(); err != nil {
+		return fmt.Errorf("update: %w", err)
+	}
 	return nil
 }
 
@@ -9973,6 +12766,8 @@ type SessionReference struct {
 }
 
 func (v *SessionReference) UnmarshalJSON(b []byte) error {
+	var fresh SessionReference
+	v.SessionId = fresh.SessionId
 	type plain SessionReference
 	type SessionReference struct {
 		*plain
@@ -9983,6 +12778,19 @@ func (v *SessionReference) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "SessionReference", "sessionId")
+		}
+	}
+	return nil
+}
+
+func (v *SessionReference) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -10192,6 +13000,9 @@ type SessionUpdateUserMessageChunk struct {
 }
 
 func (v *SessionUpdateUserMessageChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateUserMessageChunk
+	v.Content = fresh.Content
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateUserMessageChunk
 	type SessionUpdateUserMessageChunk struct {
 		*plain
@@ -10204,6 +13015,22 @@ func (v *SessionUpdateUserMessageChunk) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "SessionUpdateUserMessageChunk", "content")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdateUserMessageChunk", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdateUserMessageChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -10226,6 +13053,9 @@ type SessionUpdateAgentMessageChunk struct {
 }
 
 func (v *SessionUpdateAgentMessageChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateAgentMessageChunk
+	v.Content = fresh.Content
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateAgentMessageChunk
 	type SessionUpdateAgentMessageChunk struct {
 		*plain
@@ -10238,6 +13068,22 @@ func (v *SessionUpdateAgentMessageChunk) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "SessionUpdateAgentMessageChunk", "content")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdateAgentMessageChunk", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdateAgentMessageChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -10260,6 +13106,9 @@ type SessionUpdateAgentThoughtChunk struct {
 }
 
 func (v *SessionUpdateAgentThoughtChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateAgentThoughtChunk
+	v.Content = fresh.Content
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateAgentThoughtChunk
 	type SessionUpdateAgentThoughtChunk struct {
 		*plain
@@ -10272,6 +13121,22 @@ func (v *SessionUpdateAgentThoughtChunk) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "SessionUpdateAgentThoughtChunk", "content")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdateAgentThoughtChunk", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdateAgentThoughtChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -10310,6 +13175,10 @@ type SessionUpdateToolCall struct {
 }
 
 func (v *SessionUpdateToolCall) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateToolCall
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Title = fresh.Title
+	v.ToolCallId = fresh.ToolCallId
 	type plain SessionUpdateToolCall
 	type SessionUpdateToolCall struct {
 		*plain
@@ -10334,6 +13203,25 @@ func (v *SessionUpdateToolCall) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.RawInput, &v.RawInput)
 	decodeLenient(raw.RawOutput, &v.RawOutput)
 	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
+	if maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.Title) || maybeAbsent(&v.ToolCallId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdateToolCall", "sessionUpdate")
+		}
+		if err := requireMember(members, &v.Title, "title", false); err != nil {
+			return propertyError(err, "SessionUpdateToolCall", "title")
+		}
+		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
+			return propertyError(err, "SessionUpdateToolCall", "toolCallId")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdateToolCall) Validate() error {
+	if v.ToolCallId == "" {
+		return fmt.Errorf("toolCallId is required")
+	}
 	return nil
 }
 
@@ -10426,6 +13314,9 @@ func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionToolCallUpdate
+	v.SessionUpdate = fresh.SessionUpdate
+	v.ToolCallId = fresh.ToolCallId
 	type plain SessionToolCallUpdate
 	type SessionToolCallUpdate struct {
 		*plain
@@ -10452,6 +13343,22 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 	decodePatch(raw.RawOutput, &v.RawOutput)
 	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
 	decodePatch(raw.Title, &v.Title)
+	if maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.ToolCallId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionToolCallUpdate", "sessionUpdate")
+		}
+		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
+			return propertyError(err, "SessionToolCallUpdate", "toolCallId")
+		}
+	}
+	return nil
+}
+
+func (v *SessionToolCallUpdate) Validate() error {
+	if v.ToolCallId == "" {
+		return fmt.Errorf("toolCallId is required")
+	}
 	return nil
 }
 
@@ -10483,6 +13390,9 @@ func (v SessionUpdatePlan) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionUpdatePlan) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdatePlan
+	v.Entries = fresh.Entries
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdatePlan
 	type SessionUpdatePlan struct {
 		*plain
@@ -10496,6 +13406,22 @@ func (v *SessionUpdatePlan) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
+	}
+	if maybeAbsent(&v.Entries) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Entries, "entries", true); err != nil {
+			return propertyError(err, "SessionUpdatePlan", "entries")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdatePlan", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdatePlan) Validate() error {
+	if v.Entries == nil {
+		return fmt.Errorf("entries is required")
 	}
 	return nil
 }
@@ -10518,6 +13444,9 @@ type SessionPlanUpdate struct {
 }
 
 func (v *SessionPlanUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionPlanUpdate
+	v.Plan = fresh.Plan
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionPlanUpdate
 	type SessionPlanUpdate struct {
 		*plain
@@ -10528,6 +13457,22 @@ func (v *SessionPlanUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Plan) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Plan, "plan", false); err != nil {
+			return propertyError(err, "SessionPlanUpdate", "plan")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionPlanUpdate", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionPlanUpdate) Validate() error {
+	if err := v.Plan.Validate(); err != nil {
+		return fmt.Errorf("plan: %w", err)
+	}
 	return nil
 }
 
@@ -10549,6 +13494,9 @@ type SessionUpdatePlanRemoved struct {
 }
 
 func (v *SessionUpdatePlanRemoved) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdatePlanRemoved
+	v.PlanId = fresh.PlanId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdatePlanRemoved
 	type SessionUpdatePlanRemoved struct {
 		*plain
@@ -10559,6 +13507,22 @@ func (v *SessionUpdatePlanRemoved) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.PlanId) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.PlanId, "planId", false); err != nil {
+			return propertyError(err, "SessionUpdatePlanRemoved", "planId")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdatePlanRemoved", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdatePlanRemoved) Validate() error {
+	if v.PlanId == "" {
+		return fmt.Errorf("planId is required")
+	}
 	return nil
 }
 
@@ -10586,6 +13550,9 @@ func (v SessionAvailableCommandsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionAvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionAvailableCommandsUpdate
+	v.AvailableCommands = fresh.AvailableCommands
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionAvailableCommandsUpdate
 	type SessionAvailableCommandsUpdate struct {
 		*plain
@@ -10599,6 +13566,22 @@ func (v *SessionAvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands, shapeAvailableCommand) && raw.AvailableCommands != nil {
 		setDefault(&v.AvailableCommands, "[]")
+	}
+	if maybeAbsent(&v.AvailableCommands) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.AvailableCommands, "availableCommands", true); err != nil {
+			return propertyError(err, "SessionAvailableCommandsUpdate", "availableCommands")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionAvailableCommandsUpdate", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionAvailableCommandsUpdate) Validate() error {
+	if v.AvailableCommands == nil {
+		return fmt.Errorf("availableCommands is required")
 	}
 	return nil
 }
@@ -10619,6 +13602,9 @@ type SessionCurrentModeUpdate struct {
 }
 
 func (v *SessionCurrentModeUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionCurrentModeUpdate
+	v.CurrentModeId = fresh.CurrentModeId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionCurrentModeUpdate
 	type SessionCurrentModeUpdate struct {
 		*plain
@@ -10629,6 +13615,22 @@ func (v *SessionCurrentModeUpdate) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.CurrentModeId) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CurrentModeId, "currentModeId", false); err != nil {
+			return propertyError(err, "SessionCurrentModeUpdate", "currentModeId")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionCurrentModeUpdate", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionCurrentModeUpdate) Validate() error {
+	if v.CurrentModeId == "" {
+		return fmt.Errorf("currentModeId is required")
+	}
 	return nil
 }
 
@@ -10656,6 +13658,9 @@ func (v SessionConfigOptionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionConfigOptionUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionConfigOptionUpdate
+	v.ConfigOptions = fresh.ConfigOptions
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionConfigOptionUpdate
 	type SessionConfigOptionUpdate struct {
 		*plain
@@ -10669,6 +13674,22 @@ func (v *SessionConfigOptionUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
+	}
+	if maybeAbsent(&v.ConfigOptions) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ConfigOptions, "configOptions", true); err != nil {
+			return propertyError(err, "SessionConfigOptionUpdate", "configOptions")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionConfigOptionUpdate", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionConfigOptionUpdate) Validate() error {
+	if v.ConfigOptions == nil {
+		return fmt.Errorf("configOptions is required")
 	}
 	return nil
 }
@@ -10710,6 +13731,8 @@ func (v SessionSessionInfoUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionSessionInfoUpdate
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionSessionInfoUpdate
 	type SessionSessionInfoUpdate struct {
 		*plain
@@ -10724,6 +13747,12 @@ func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	decodePatch(raw.Meta, &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
+	if maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionSessionInfoUpdate", "sessionUpdate")
+		}
+	}
 	return nil
 }
 
@@ -10745,6 +13774,10 @@ type SessionUsageUpdate struct {
 }
 
 func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionUsageUpdate
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Size = fresh.Size
+	v.Used = fresh.Used
 	type plain SessionUsageUpdate
 	type SessionUsageUpdate struct {
 		*plain
@@ -10757,6 +13790,28 @@ func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Cost, &v.Cost, shapeCost)
+	if maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.Size) || maybeAbsent(&v.Used) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUsageUpdate", "sessionUpdate")
+		}
+		if err := requireMember(members, &v.Size, "size", false); err != nil {
+			return propertyError(err, "SessionUsageUpdate", "size")
+		}
+		if err := requireMember(members, &v.Used, "used", false); err != nil {
+			return propertyError(err, "SessionUsageUpdate", "used")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUsageUpdate) Validate() error {
+	if v.Size < 0 {
+		return fmt.Errorf("size must be at least 0")
+	}
+	if v.Used < 0 {
+		return fmt.Errorf("used must be at least 0")
+	}
 	return nil
 }
 
@@ -10781,6 +13836,10 @@ type SessionUpdateNotice struct {
 }
 
 func (v *SessionUpdateNotice) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateNotice
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Severity = fresh.Severity
+	v.Title = fresh.Title
 	type plain SessionUpdateNotice
 	type SessionUpdateNotice struct {
 		*plain
@@ -10793,6 +13852,25 @@ func (v *SessionUpdateNotice) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
+	if maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.Severity) || maybeAbsent(&v.Title) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdateNotice", "sessionUpdate")
+		}
+		if err := requireMember(members, &v.Severity, "severity", false); err != nil {
+			return propertyError(err, "SessionUpdateNotice", "severity")
+		}
+		if err := requireMember(members, &v.Title, "title", false); err != nil {
+			return propertyError(err, "SessionUpdateNotice", "title")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdateNotice) Validate() error {
+	if v.Severity == "" {
+		return fmt.Errorf("severity is required")
+	}
 	return nil
 }
 
@@ -10837,6 +13915,10 @@ func (v SessionCompactionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionCompactionUpdate
+	v.CompactionId = fresh.CompactionId
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Status = fresh.Status
 	type plain SessionCompactionUpdate
 	type SessionCompactionUpdate struct {
 		*plain
@@ -10851,6 +13933,28 @@ func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
 	decodePatch(raw.Meta, &v.Meta)
 	decodePatch(raw.Error, &v.Error)
 	decodePatchItems(raw.Summary, &v.Summary, shapeContentBlock)
+	if maybeAbsent(&v.CompactionId) || maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.Status) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CompactionId, "compactionId", false); err != nil {
+			return propertyError(err, "SessionCompactionUpdate", "compactionId")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionCompactionUpdate", "sessionUpdate")
+		}
+		if err := requireMember(members, &v.Status, "status", false); err != nil {
+			return propertyError(err, "SessionCompactionUpdate", "status")
+		}
+	}
+	return nil
+}
+
+func (v *SessionCompactionUpdate) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if v.Status == "" {
+		return fmt.Errorf("status is required")
+	}
 	return nil
 }
 
@@ -10869,6 +13973,10 @@ type SessionUpdateCompactionSummaryChunk struct {
 }
 
 func (v *SessionUpdateCompactionSummaryChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateCompactionSummaryChunk
+	v.CompactionId = fresh.CompactionId
+	v.Content = fresh.Content
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateCompactionSummaryChunk
 	type SessionUpdateCompactionSummaryChunk struct {
 		*plain
@@ -10879,6 +13987,28 @@ func (v *SessionUpdateCompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Content) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CompactionId, "compactionId", false); err != nil {
+			return propertyError(err, "SessionUpdateCompactionSummaryChunk", "compactionId")
+		}
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "SessionUpdateCompactionSummaryChunk", "content")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdateCompactionSummaryChunk", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdateCompactionSummaryChunk) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -10917,6 +14047,9 @@ func (v SessionPromptSuggestionsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionPromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionPromptSuggestionsUpdate
+	v.SessionUpdate = fresh.SessionUpdate
+	v.Suggestions = fresh.Suggestions
 	type plain SessionPromptSuggestionsUpdate
 	type SessionPromptSuggestionsUpdate struct {
 		*plain
@@ -10930,6 +14063,22 @@ func (v *SessionPromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if _, err := decodeItems(raw.Suggestions, &v.Suggestions, shapePromptSuggestion); err != nil {
 		return propertyError(err, "SessionPromptSuggestionsUpdate", "suggestions")
+	}
+	if maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.Suggestions) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionPromptSuggestionsUpdate", "sessionUpdate")
+		}
+		if err := requireMember(members, &v.Suggestions, "suggestions", false); err != nil {
+			return propertyError(err, "SessionPromptSuggestionsUpdate", "suggestions")
+		}
+	}
+	return nil
+}
+
+func (v *SessionPromptSuggestionsUpdate) Validate() error {
+	if v.Suggestions == nil {
+		return fmt.Errorf("suggestions is required")
 	}
 	return nil
 }
@@ -11022,24 +14171,52 @@ func (v SessionSubagentUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SessionSubagentUpdate
+	v.SessionId = fresh.SessionId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionSubagentUpdate
 	type SessionSubagentUpdate struct {
 		*plain
-		Meta         json.RawMessage `json:"_meta"`
-		Capabilities json.RawMessage `json:"capabilities"`
-		Description  json.RawMessage `json:"description"`
-		State        json.RawMessage `json:"state"`
-		Title        json.RawMessage `json:"title"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		Capabilities          json.RawMessage `json:"capabilities"`
+		Description           json.RawMessage `json:"description"`
+		State                 json.RawMessage `json:"state"`
+		Title                 json.RawMessage `json:"title"`
 	}
 	raw := SessionSubagentUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodePatch(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "SessionSubagentUpdate", "additionalDirectories")
+	}
+	if raw.AdditionalDirectories != nil {
+		if err := json.Unmarshal(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+			return propertyError(err, "SessionSubagentUpdate", "additionalDirectories")
+		}
+	}
 	decodePatch(raw.Capabilities, &v.Capabilities)
 	decodePatch(raw.Description, &v.Description)
 	decodePatch(raw.State, &v.State, shapeStateUpdate)
 	decodePatch(raw.Title, &v.Title)
+	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "SessionSubagentUpdate", "sessionId")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionSubagentUpdate", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionSubagentUpdate) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -11109,6 +14286,9 @@ func (v SessionUpdateSessionMessage) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateSessionMessage
+	v.MessageId = fresh.MessageId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateSessionMessage
 	type SessionUpdateSessionMessage struct {
 		*plain
@@ -11129,6 +14309,22 @@ func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
 	decodePatch(raw.RecipientSessionId, &v.RecipientSessionId)
 	decodePatch(raw.SenderMessageId, &v.SenderMessageId)
 	decodePatch(raw.SenderSessionId, &v.SenderSessionId)
+	if maybeAbsent(&v.MessageId) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "SessionUpdateSessionMessage", "messageId")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdateSessionMessage", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdateSessionMessage) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
 	return nil
 }
 
@@ -11150,6 +14346,10 @@ type SessionUpdateSessionMessageChunk struct {
 }
 
 func (v *SessionUpdateSessionMessageChunk) UnmarshalJSON(b []byte) error {
+	var fresh SessionUpdateSessionMessageChunk
+	v.Content = fresh.Content
+	v.MessageId = fresh.MessageId
+	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionUpdateSessionMessageChunk
 	type SessionUpdateSessionMessageChunk struct {
 		*plain
@@ -11160,6 +14360,28 @@ func (v *SessionUpdateSessionMessageChunk) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.MessageId) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "SessionUpdateSessionMessageChunk", "content")
+		}
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "SessionUpdateSessionMessageChunk", "messageId")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionUpdateSessionMessageChunk", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionUpdateSessionMessageChunk) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
 	return nil
 }
 
@@ -11724,6 +14946,101 @@ func (u *SessionUpdate) Validate() error {
 	if count != 1 {
 		return errors.New("SessionUpdate must have exactly one variant set")
 	}
+	if u.UserMessageChunk != nil {
+		if err := u.UserMessageChunk.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.AgentMessageChunk != nil {
+		if err := u.AgentMessageChunk.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.AgentThoughtChunk != nil {
+		if err := u.AgentThoughtChunk.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ToolCall != nil {
+		if err := u.ToolCall.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ToolCallUpdate != nil {
+		if err := u.ToolCallUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Plan != nil {
+		if err := u.Plan.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.PlanUpdate != nil {
+		if err := u.PlanUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.PlanRemoved != nil {
+		if err := u.PlanRemoved.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.AvailableCommandsUpdate != nil {
+		if err := u.AvailableCommandsUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.CurrentModeUpdate != nil {
+		if err := u.CurrentModeUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ConfigOptionUpdate != nil {
+		if err := u.ConfigOptionUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.UsageUpdate != nil {
+		if err := u.UsageUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Notice != nil {
+		if err := u.Notice.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.CompactionUpdate != nil {
+		if err := u.CompactionUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.CompactionSummaryChunk != nil {
+		if err := u.CompactionSummaryChunk.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.PromptSuggestionsUpdate != nil {
+		if err := u.PromptSuggestionsUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.SubagentUpdate != nil {
+		if err := u.SubagentUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.SessionMessage != nil {
+		if err := u.SessionMessage.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.SessionMessageChunk != nil {
+		if err := u.SessionMessageChunk.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -11746,6 +15063,11 @@ type SetSessionConfigOptionBoolean struct {
 }
 
 func (v *SetSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	var fresh SetSessionConfigOptionBoolean
+	v.ConfigId = fresh.ConfigId
+	v.SessionId = fresh.SessionId
+	v.Type = fresh.Type
+	v.Value = fresh.Value
 	type plain SetSessionConfigOptionBoolean
 	type SetSessionConfigOptionBoolean struct {
 		*plain
@@ -11756,6 +15078,31 @@ func (v *SetSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.ConfigId) || maybeAbsent(&v.SessionId) || maybeAbsent(&v.Type) || maybeAbsent(&v.Value) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ConfigId, "configId", false); err != nil {
+			return propertyError(err, "SetSessionConfigOptionBoolean", "configId")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "SetSessionConfigOptionBoolean", "sessionId")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "SetSessionConfigOptionBoolean", "type")
+		}
+		if err := requireMember(members, &v.Value, "value", false); err != nil {
+			return propertyError(err, "SetSessionConfigOptionBoolean", "value")
+		}
+	}
+	return nil
+}
+
+func (v *SetSessionConfigOptionBoolean) Validate() error {
+	if v.ConfigId == "" {
+		return fmt.Errorf("configId is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -11780,6 +15127,10 @@ type SetSessionConfigOptionValueId struct {
 }
 
 func (v *SetSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
+	var fresh SetSessionConfigOptionValueId
+	v.ConfigId = fresh.ConfigId
+	v.SessionId = fresh.SessionId
+	v.Value = fresh.Value
 	type plain SetSessionConfigOptionValueId
 	type SetSessionConfigOptionValueId struct {
 		*plain
@@ -11790,6 +15141,31 @@ func (v *SetSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.ConfigId) || maybeAbsent(&v.SessionId) || maybeAbsent(&v.Value) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ConfigId, "configId", false); err != nil {
+			return propertyError(err, "SetSessionConfigOptionValueId", "configId")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "SetSessionConfigOptionValueId", "sessionId")
+		}
+		if err := requireMember(members, &v.Value, "value", false); err != nil {
+			return propertyError(err, "SetSessionConfigOptionValueId", "value")
+		}
+	}
+	return nil
+}
+
+func (v *SetSessionConfigOptionValueId) Validate() error {
+	if v.ConfigId == "" {
+		return fmt.Errorf("configId is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.Value == "" {
+		return fmt.Errorf("value is required")
+	}
 	return nil
 }
 
@@ -11881,6 +15257,26 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (u *SetSessionConfigOptionRequest) Validate() error {
+	var count int
+	if u.Boolean != nil {
+		count++
+	}
+	if u.ValueId != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("SetSessionConfigOptionRequest has no variant set")
+	}
+	if u.Boolean != nil {
+		if err := u.Boolean.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ValueId != nil {
+		if err := u.ValueId.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -11907,6 +15303,8 @@ func (v SetSessionConfigOptionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SetSessionConfigOptionResponse) UnmarshalJSON(b []byte) error {
+	var fresh SetSessionConfigOptionResponse
+	v.ConfigOptions = fresh.ConfigOptions
 	type plain SetSessionConfigOptionResponse
 	type SetSessionConfigOptionResponse struct {
 		*plain
@@ -11920,6 +15318,12 @@ func (v *SetSessionConfigOptionResponse) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
+	}
+	if maybeAbsent(&v.ConfigOptions) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ConfigOptions, "configOptions", true); err != nil {
+			return propertyError(err, "SetSessionConfigOptionResponse", "configOptions")
+		}
 	}
 	return nil
 }
@@ -11946,6 +15350,9 @@ type SetSessionModeRequest struct {
 }
 
 func (v *SetSessionModeRequest) UnmarshalJSON(b []byte) error {
+	var fresh SetSessionModeRequest
+	v.ModeId = fresh.ModeId
+	v.SessionId = fresh.SessionId
 	type plain SetSessionModeRequest
 	type SetSessionModeRequest struct {
 		*plain
@@ -11956,10 +15363,25 @@ func (v *SetSessionModeRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.ModeId) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ModeId, "modeId", false); err != nil {
+			return propertyError(err, "SetSessionModeRequest", "modeId")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "SetSessionModeRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *SetSessionModeRequest) Validate() error {
+	if v.ModeId == "" {
+		return fmt.Errorf("modeId is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -12010,6 +15432,8 @@ type StateUpdateRunning struct {
 }
 
 func (v *StateUpdateRunning) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateRunning
+	v.State = fresh.State
 	type plain StateUpdateRunning
 	type StateUpdateRunning struct {
 		*plain
@@ -12020,6 +15444,12 @@ func (v *StateUpdateRunning) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.State) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateRunning", "state")
+		}
+	}
 	return nil
 }
 
@@ -12039,6 +15469,9 @@ type StateUpdateIdleEndTurn struct {
 }
 
 func (v *StateUpdateIdleEndTurn) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleEndTurn
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleEndTurn
 	type StateUpdateIdleEndTurn struct {
 		*plain
@@ -12051,6 +15484,15 @@ func (v *StateUpdateIdleEndTurn) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateIdleEndTurn", "state")
+		}
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "StateUpdateIdleEndTurn", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -12069,6 +15511,9 @@ type StateUpdateIdleMaxTokens struct {
 }
 
 func (v *StateUpdateIdleMaxTokens) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleMaxTokens
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleMaxTokens
 	type StateUpdateIdleMaxTokens struct {
 		*plain
@@ -12081,6 +15526,15 @@ func (v *StateUpdateIdleMaxTokens) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateIdleMaxTokens", "state")
+		}
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "StateUpdateIdleMaxTokens", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -12100,6 +15554,9 @@ type StateUpdateIdleMaxTurnRequests struct {
 }
 
 func (v *StateUpdateIdleMaxTurnRequests) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleMaxTurnRequests
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleMaxTurnRequests
 	type StateUpdateIdleMaxTurnRequests struct {
 		*plain
@@ -12112,6 +15569,15 @@ func (v *StateUpdateIdleMaxTurnRequests) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateIdleMaxTurnRequests", "state")
+		}
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "StateUpdateIdleMaxTurnRequests", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -12130,6 +15596,9 @@ type StateUpdateIdleRefusal struct {
 }
 
 func (v *StateUpdateIdleRefusal) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleRefusal
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleRefusal
 	type StateUpdateIdleRefusal struct {
 		*plain
@@ -12142,6 +15611,15 @@ func (v *StateUpdateIdleRefusal) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateIdleRefusal", "state")
+		}
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "StateUpdateIdleRefusal", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -12160,6 +15638,9 @@ type StateUpdateIdleCancelled struct {
 }
 
 func (v *StateUpdateIdleCancelled) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleCancelled
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleCancelled
 	type StateUpdateIdleCancelled struct {
 		*plain
@@ -12172,6 +15653,15 @@ func (v *StateUpdateIdleCancelled) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateIdleCancelled", "state")
+		}
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "StateUpdateIdleCancelled", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -12195,6 +15685,9 @@ type StateUpdateIdleError struct {
 }
 
 func (v *StateUpdateIdleError) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleError
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleError
 	type StateUpdateIdleError struct {
 		*plain
@@ -12209,6 +15702,15 @@ func (v *StateUpdateIdleError) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Error, &v.Error, shapeError)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateIdleError", "state")
+		}
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "StateUpdateIdleError", "stopReason")
+		}
+	}
 	return nil
 }
 
@@ -12244,6 +15746,9 @@ func (v StateUpdateIdleOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StateUpdateIdleOther) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleOther
+	v.State = fresh.State
+	v.StopReason = fresh.StopReason
 	type plain StateUpdateIdleOther
 	type StateUpdateIdleOther struct {
 		*plain
@@ -12256,6 +15761,15 @@ func (v *StateUpdateIdleOther) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateIdleOther", "state")
+		}
+		if err := requireMember(members, &v.StopReason, "stopReason", false); err != nil {
+			return propertyError(err, "StateUpdateIdleOther", "stopReason")
+		}
+	}
 	v.AdditionalProperties = additionalProperties(b, "_meta", "state", "stopReason", "usage")
 	return nil
 }
@@ -12274,6 +15788,8 @@ type StateUpdateIdleNone struct {
 }
 
 func (v *StateUpdateIdleNone) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateIdleNone
+	v.State = fresh.State
 	type plain StateUpdateIdleNone
 	type StateUpdateIdleNone struct {
 		*plain
@@ -12286,6 +15802,12 @@ func (v *StateUpdateIdleNone) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
+	if maybeAbsent(&v.State) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateIdleNone", "state")
+		}
+	}
 	return nil
 }
 
@@ -12515,6 +16037,38 @@ func (u StateUpdateIdle) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *StateUpdateIdle) Validate() error {
+	var count int
+	if u.EndTurn != nil {
+		count++
+	}
+	if u.MaxTokens != nil {
+		count++
+	}
+	if u.MaxTurnRequests != nil {
+		count++
+	}
+	if u.Refusal != nil {
+		count++
+	}
+	if u.Cancelled != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if u.None != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("StateUpdateIdle has no variant set")
+	}
+	return nil
+}
+
 // Foreground work is blocked on user action.
 type StateUpdateRequiresAction struct {
 	// The _meta property is reserved by ACP for additional metadata.
@@ -12525,6 +16079,8 @@ type StateUpdateRequiresAction struct {
 }
 
 func (v *StateUpdateRequiresAction) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateRequiresAction
+	v.State = fresh.State
 	type plain StateUpdateRequiresAction
 	type StateUpdateRequiresAction struct {
 		*plain
@@ -12535,6 +16091,12 @@ func (v *StateUpdateRequiresAction) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.State) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateRequiresAction", "state")
+		}
+	}
 	return nil
 }
 
@@ -12550,6 +16112,8 @@ type StateUpdateUnknown struct {
 }
 
 func (v *StateUpdateUnknown) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateUnknown
+	v.State = fresh.State
 	type plain StateUpdateUnknown
 	type StateUpdateUnknown struct {
 		*plain
@@ -12560,6 +16124,12 @@ func (v *StateUpdateUnknown) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.State) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateUnknown", "state")
+		}
+	}
 	return nil
 }
 
@@ -12586,6 +16156,8 @@ func (v StateUpdateOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StateUpdateOther) UnmarshalJSON(b []byte) error {
+	var fresh StateUpdateOther
+	v.State = fresh.State
 	type plain StateUpdateOther
 	type StateUpdateOther struct {
 		*plain
@@ -12593,6 +16165,12 @@ func (v *StateUpdateOther) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateOther{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if maybeAbsent(&v.State) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "StateUpdateOther", "state")
+		}
 	}
 	v.AdditionalProperties = additionalProperties(b, "state")
 	return nil
@@ -12753,6 +16331,34 @@ func (u StateUpdate) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *StateUpdate) Validate() error {
+	var count int
+	if u.Running != nil {
+		count++
+	}
+	if u.Idle != nil {
+		count++
+	}
+	if u.RequiresAction != nil {
+		count++
+	}
+	if u.Unknown != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("StateUpdate has no variant set")
+	}
+	if u.Idle != nil {
+		if err := u.Idle.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Reasons why an agent stops processing a prompt turn.
 //
 // See protocol docs: [Stop Reasons](https://agentclientprotocol.com/protocol/v1/prompt-turn#stop-reasons)
@@ -12818,16 +16424,38 @@ func (v StringMultiSelectItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StringMultiSelectItems) UnmarshalJSON(b []byte) error {
+	var fresh StringMultiSelectItems
+	v.Enum = fresh.Enum
 	type plain StringMultiSelectItems
 	type StringMultiSelectItems struct {
 		*plain
 		Meta json.RawMessage `json:"_meta"`
+		Enum json.RawMessage `json:"enum"`
 	}
 	raw := StringMultiSelectItems{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Enum); err != nil {
+		return propertyError(err, "StringMultiSelectItems", "enum")
+	}
+	if _, err := decodeField(raw.Enum, &v.Enum); err != nil {
+		return propertyError(err, "StringMultiSelectItems", "enum")
+	}
+	if maybeAbsent(&v.Enum) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Enum, "enum", false); err != nil {
+			return propertyError(err, "StringMultiSelectItems", "enum")
+		}
+	}
+	return nil
+}
+
+func (v *StringMultiSelectItems) Validate() error {
+	if v.Enum == nil {
+		return fmt.Errorf("enum is required")
+	}
 	return nil
 }
 
@@ -12919,6 +16547,7 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 		Meta        json.RawMessage `json:"_meta"`
 		Default     json.RawMessage `json:"default"`
 		Description json.RawMessage `json:"description"`
+		Enum        json.RawMessage `json:"enum"`
 		Title       json.RawMessage `json:"title"`
 	}
 	raw := StringPropertySchema{plain: (*plain)(v)}
@@ -12928,7 +16557,27 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
+	if err := rejectNullItems[string](raw.Enum); err != nil {
+		return propertyError(err, "StringPropertySchema", "enum")
+	}
+	if _, err := decodeField(raw.Enum, &v.Enum); err != nil {
+		return propertyError(err, "StringPropertySchema", "enum")
+	}
 	decodeLenient(raw.Title, &v.Title)
+	return nil
+}
+
+func (v *StringPropertySchema) Validate() error {
+	if v.MaxLength != nil {
+		if *v.MaxLength < 0 || *v.MaxLength > 4294967295 {
+			return fmt.Errorf("maxLength must be between 0 and 4294967295")
+		}
+	}
+	if v.MinLength != nil {
+		if *v.MinLength < 0 || *v.MinLength > 4294967295 {
+			return fmt.Errorf("minLength must be between 0 and 4294967295")
+		}
+	}
 	return nil
 }
 
@@ -13102,24 +16751,48 @@ func (v SubagentUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
+	var fresh SubagentUpdate
+	v.SessionId = fresh.SessionId
 	type plain SubagentUpdate
 	type SubagentUpdate struct {
 		*plain
-		Meta         json.RawMessage `json:"_meta"`
-		Capabilities json.RawMessage `json:"capabilities"`
-		Description  json.RawMessage `json:"description"`
-		State        json.RawMessage `json:"state"`
-		Title        json.RawMessage `json:"title"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
+		Capabilities          json.RawMessage `json:"capabilities"`
+		Description           json.RawMessage `json:"description"`
+		State                 json.RawMessage `json:"state"`
+		Title                 json.RawMessage `json:"title"`
 	}
 	raw := SubagentUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodePatch(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "SubagentUpdate", "additionalDirectories")
+	}
+	if raw.AdditionalDirectories != nil {
+		if err := json.Unmarshal(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+			return propertyError(err, "SubagentUpdate", "additionalDirectories")
+		}
+	}
 	decodePatch(raw.Capabilities, &v.Capabilities)
 	decodePatch(raw.Description, &v.Description)
 	decodePatch(raw.State, &v.State, shapeStateUpdate)
 	decodePatch(raw.Title, &v.Title)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "SubagentUpdate", "sessionId")
+		}
+	}
+	return nil
+}
+
+func (v *SubagentUpdate) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -13164,6 +16837,9 @@ func (v SystemPrompt) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SystemPrompt) UnmarshalJSON(b []byte) error {
+	var fresh SystemPrompt
+	v.Content = fresh.Content
+	v.Mode = fresh.Mode
 	type plain SystemPrompt
 	type SystemPrompt struct {
 		*plain
@@ -13174,6 +16850,30 @@ func (v *SystemPrompt) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.Mode) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "SystemPrompt", "content")
+		}
+		if err := requireMember(members, &v.Mode, "mode", false); err != nil {
+			return propertyError(err, "SystemPrompt", "mode")
+		}
+	}
+	return nil
+}
+
+func (v *SystemPrompt) Validate() error {
+	if v.Content == nil {
+		return fmt.Errorf("content is required")
+	}
+	for i := range v.Content {
+		if err := v.Content[i].Validate(); err != nil {
+			return fmt.Errorf("content[%d]: %w", i, err)
+		}
+	}
+	if v.Mode == "" {
+		return fmt.Errorf("mode is required")
+	}
 	return nil
 }
 
@@ -13220,6 +16920,8 @@ type Terminal struct {
 }
 
 func (v *Terminal) UnmarshalJSON(b []byte) error {
+	var fresh Terminal
+	v.TerminalId = fresh.TerminalId
 	type plain Terminal
 	type Terminal struct {
 		*plain
@@ -13230,6 +16932,19 @@ func (v *Terminal) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.TerminalId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.TerminalId, "terminalId", false); err != nil {
+			return propertyError(err, "Terminal", "terminalId")
+		}
+	}
+	return nil
+}
+
+func (v *Terminal) Validate() error {
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -13260,7 +16975,7 @@ func (v *TerminalExitStatus) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.ExitCode, &v.ExitCode)
+	decodeLenient(raw.ExitCode, &v.ExitCode, shapeTerminalExitStatusExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
 	return nil
 }
@@ -13283,6 +16998,9 @@ type TerminalOutputRequest struct {
 }
 
 func (v *TerminalOutputRequest) UnmarshalJSON(b []byte) error {
+	var fresh TerminalOutputRequest
+	v.SessionId = fresh.SessionId
+	v.TerminalId = fresh.TerminalId
 	type plain TerminalOutputRequest
 	type TerminalOutputRequest struct {
 		*plain
@@ -13293,10 +17011,25 @@ func (v *TerminalOutputRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.TerminalId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "TerminalOutputRequest", "sessionId")
+		}
+		if err := requireMember(members, &v.TerminalId, "terminalId", false); err != nil {
+			return propertyError(err, "TerminalOutputRequest", "terminalId")
+		}
+	}
 	return nil
 }
 
 func (v *TerminalOutputRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -13317,6 +17050,9 @@ type TerminalOutputResponse struct {
 }
 
 func (v *TerminalOutputResponse) UnmarshalJSON(b []byte) error {
+	var fresh TerminalOutputResponse
+	v.Output = fresh.Output
+	v.Truncated = fresh.Truncated
 	type plain TerminalOutputResponse
 	type TerminalOutputResponse struct {
 		*plain
@@ -13329,6 +17065,15 @@ func (v *TerminalOutputResponse) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.ExitStatus, &v.ExitStatus)
+	if maybeAbsent(&v.Output) || maybeAbsent(&v.Truncated) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Output, "output", false); err != nil {
+			return propertyError(err, "TerminalOutputResponse", "output")
+		}
+		if err := requireMember(members, &v.Truncated, "truncated", false); err != nil {
+			return propertyError(err, "TerminalOutputResponse", "truncated")
+		}
+	}
 	return nil
 }
 
@@ -13354,6 +17099,8 @@ type TextContent struct {
 }
 
 func (v *TextContent) UnmarshalJSON(b []byte) error {
+	var fresh TextContent
+	v.Text = fresh.Text
 	type plain TextContent
 	type TextContent struct {
 		*plain
@@ -13366,6 +17113,12 @@ func (v *TextContent) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
+	if maybeAbsent(&v.Text) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Text, "text", false); err != nil {
+			return propertyError(err, "TextContent", "text")
+		}
+	}
 	return nil
 }
 
@@ -13386,6 +17139,9 @@ type TextResourceContents struct {
 }
 
 func (v *TextResourceContents) UnmarshalJSON(b []byte) error {
+	var fresh TextResourceContents
+	v.Text = fresh.Text
+	v.Uri = fresh.Uri
 	type plain TextResourceContents
 	type TextResourceContents struct {
 		*plain
@@ -13398,6 +17154,15 @@ func (v *TextResourceContents) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MimeType, &v.MimeType)
+	if maybeAbsent(&v.Text) || maybeAbsent(&v.Uri) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Text, "text", false); err != nil {
+			return propertyError(err, "TextResourceContents", "text")
+		}
+		if err := requireMember(members, &v.Uri, "uri", false); err != nil {
+			return propertyError(err, "TextResourceContents", "uri")
+		}
+	}
 	return nil
 }
 
@@ -13426,6 +17191,8 @@ func (v TitledMultiSelectItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *TitledMultiSelectItems) UnmarshalJSON(b []byte) error {
+	var fresh TitledMultiSelectItems
+	v.AnyOf = fresh.AnyOf
 	type plain TitledMultiSelectItems
 	type TitledMultiSelectItems struct {
 		*plain
@@ -13436,6 +17203,19 @@ func (v *TitledMultiSelectItems) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.AnyOf) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.AnyOf, "anyOf", false); err != nil {
+			return propertyError(err, "TitledMultiSelectItems", "anyOf")
+		}
+	}
+	return nil
+}
+
+func (v *TitledMultiSelectItems) Validate() error {
+	if v.AnyOf == nil {
+		return fmt.Errorf("anyOf is required")
+	}
 	return nil
 }
 
@@ -13478,6 +17258,9 @@ type ToolCall struct {
 }
 
 func (v *ToolCall) UnmarshalJSON(b []byte) error {
+	var fresh ToolCall
+	v.Title = fresh.Title
+	v.ToolCallId = fresh.ToolCallId
 	type plain ToolCall
 	type ToolCall struct {
 		*plain
@@ -13502,6 +17285,22 @@ func (v *ToolCall) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.RawInput, &v.RawInput)
 	decodeLenient(raw.RawOutput, &v.RawOutput)
 	decodeLenient(raw.Status, &v.Status, shapeToolCallStatus)
+	if maybeAbsent(&v.Title) || maybeAbsent(&v.ToolCallId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Title, "title", false); err != nil {
+			return propertyError(err, "ToolCall", "title")
+		}
+		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
+			return propertyError(err, "ToolCall", "toolCallId")
+		}
+	}
+	return nil
+}
+
+func (v *ToolCall) Validate() error {
+	if v.ToolCallId == "" {
+		return fmt.Errorf("toolCallId is required")
+	}
 	return nil
 }
 
@@ -13525,6 +17324,9 @@ type ToolCallContentContent struct {
 }
 
 func (v *ToolCallContentContent) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallContentContent
+	v.Content = fresh.Content
+	v.Type = fresh.Type
 	type plain ToolCallContentContent
 	type ToolCallContentContent struct {
 		*plain
@@ -13535,6 +17337,22 @@ func (v *ToolCallContentContent) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "ToolCallContentContent", "content")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ToolCallContentContent", "type")
+		}
+	}
+	return nil
+}
+
+func (v *ToolCallContentContent) Validate() error {
+	if err := v.Content.Validate(); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
 	return nil
 }
 
@@ -13556,6 +17374,10 @@ type ToolCallContentDiff struct {
 }
 
 func (v *ToolCallContentDiff) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallContentDiff
+	v.NewText = fresh.NewText
+	v.Path = fresh.Path
+	v.Type = fresh.Type
 	type plain ToolCallContentDiff
 	type ToolCallContentDiff struct {
 		*plain
@@ -13568,6 +17390,18 @@ func (v *ToolCallContentDiff) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.OldText, &v.OldText)
+	if maybeAbsent(&v.NewText) || maybeAbsent(&v.Path) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.NewText, "newText", false); err != nil {
+			return propertyError(err, "ToolCallContentDiff", "newText")
+		}
+		if err := requireMember(members, &v.Path, "path", false); err != nil {
+			return propertyError(err, "ToolCallContentDiff", "path")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ToolCallContentDiff", "type")
+		}
+	}
 	return nil
 }
 
@@ -13589,6 +17423,9 @@ type ToolCallContentTerminal struct {
 }
 
 func (v *ToolCallContentTerminal) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallContentTerminal
+	v.TerminalId = fresh.TerminalId
+	v.Type = fresh.Type
 	type plain ToolCallContentTerminal
 	type ToolCallContentTerminal struct {
 		*plain
@@ -13599,6 +17436,22 @@ func (v *ToolCallContentTerminal) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.TerminalId) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.TerminalId, "terminalId", false); err != nil {
+			return propertyError(err, "ToolCallContentTerminal", "terminalId")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ToolCallContentTerminal", "type")
+		}
+	}
+	return nil
+}
+
+func (v *ToolCallContentTerminal) Validate() error {
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -13620,6 +17473,9 @@ type ToolCallContentSession struct {
 }
 
 func (v *ToolCallContentSession) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallContentSession
+	v.SessionId = fresh.SessionId
+	v.Type = fresh.Type
 	type plain ToolCallContentSession
 	type ToolCallContentSession struct {
 		*plain
@@ -13630,6 +17486,22 @@ func (v *ToolCallContentSession) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "ToolCallContentSession", "sessionId")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "ToolCallContentSession", "type")
+		}
+	}
+	return nil
+}
+
+func (v *ToolCallContentSession) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -13777,6 +17649,21 @@ func (u *ToolCallContent) Validate() error {
 	if count != 1 {
 		return errors.New("ToolCallContent must have exactly one variant set")
 	}
+	if u.Content != nil {
+		if err := u.Content.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Terminal != nil {
+		if err := u.Terminal.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Session != nil {
+		if err := u.Session.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -13803,6 +17690,8 @@ type ToolCallLocation struct {
 }
 
 func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallLocation
+	v.Path = fresh.Path
 	type plain ToolCallLocation
 	type ToolCallLocation struct {
 		*plain
@@ -13814,7 +17703,13 @@ func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Line, &v.Line)
+	decodeLenient(raw.Line, &v.Line, shapeToolCallLocationLine)
+	if maybeAbsent(&v.Path) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Path, "path", false); err != nil {
+			return propertyError(err, "ToolCallLocation", "path")
+		}
+	}
 	return nil
 }
 
@@ -13928,6 +17823,8 @@ func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
+	var fresh ToolCallUpdate
+	v.ToolCallId = fresh.ToolCallId
 	type plain ToolCallUpdate
 	type ToolCallUpdate struct {
 		*plain
@@ -13954,11 +17851,17 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 	decodePatch(raw.RawOutput, &v.RawOutput)
 	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
 	decodePatch(raw.Title, &v.Title)
+	if maybeAbsent(&v.ToolCallId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
+			return propertyError(err, "ToolCallUpdate", "toolCallId")
+		}
+	}
 	return nil
 }
 
-func (t *ToolCallUpdate) Validate() error {
-	if t.ToolCallId == "" {
+func (v *ToolCallUpdate) Validate() error {
+	if v.ToolCallId == "" {
 		return fmt.Errorf("toolCallId is required")
 	}
 	return nil
@@ -14074,6 +17977,8 @@ type UnstableArchiveSessionRequest struct {
 }
 
 func (v *UnstableArchiveSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableArchiveSessionRequest
+	v.SessionId = fresh.SessionId
 	type plain UnstableArchiveSessionRequest
 	type UnstableArchiveSessionRequest struct {
 		*plain
@@ -14084,10 +17989,19 @@ func (v *UnstableArchiveSessionRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "UnstableArchiveSessionRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableArchiveSessionRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -14169,6 +18083,8 @@ type UnstableAuthAccount struct {
 }
 
 func (v *UnstableAuthAccount) UnmarshalJSON(b []byte) error {
+	var fresh UnstableAuthAccount
+	v.Label = fresh.Label
 	type plain UnstableAuthAccount
 	type UnstableAuthAccount struct {
 		*plain
@@ -14189,6 +18105,12 @@ func (v *UnstableAuthAccount) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Email, &v.Email)
 	decodeLenient(raw.Name, &v.Name)
 	decodeLenient(raw.Organization, &v.Organization)
+	if maybeAbsent(&v.Label) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Label, "label", false); err != nil {
+			return propertyError(err, "UnstableAuthAccount", "label")
+		}
+	}
 	return nil
 }
 
@@ -14274,6 +18196,8 @@ type UnstableAuthStatusResponse struct {
 }
 
 func (v *UnstableAuthStatusResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableAuthStatusResponse
+	v.State = fresh.State
 	type plain UnstableAuthStatusResponse
 	type UnstableAuthStatusResponse struct {
 		*plain
@@ -14286,10 +18210,19 @@ func (v *UnstableAuthStatusResponse) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Accounts, &v.Accounts, shapeUnstableAuthAccount)
+	if maybeAbsent(&v.State) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "UnstableAuthStatusResponse", "state")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableAuthStatusResponse) Validate() error {
+	if v.State == "" {
+		return fmt.Errorf("state is required")
+	}
 	return nil
 }
 
@@ -14323,6 +18256,8 @@ type UnstableAuthStatusUpdateNotification struct {
 }
 
 func (v *UnstableAuthStatusUpdateNotification) UnmarshalJSON(b []byte) error {
+	var fresh UnstableAuthStatusUpdateNotification
+	v.State = fresh.State
 	type plain UnstableAuthStatusUpdateNotification
 	type UnstableAuthStatusUpdateNotification struct {
 		*plain
@@ -14335,10 +18270,19 @@ func (v *UnstableAuthStatusUpdateNotification) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Accounts, &v.Accounts, shapeUnstableAuthAccount)
+	if maybeAbsent(&v.State) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.State, "state", false); err != nil {
+			return propertyError(err, "UnstableAuthStatusUpdateNotification", "state")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableAuthStatusUpdateNotification) Validate() error {
+	if v.State == "" {
+		return fmt.Errorf("state is required")
+	}
 	return nil
 }
 
@@ -14359,6 +18303,8 @@ type UnstableDisableProviderRequest struct {
 }
 
 func (v *UnstableDisableProviderRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableDisableProviderRequest
+	v.ProviderId = fresh.ProviderId
 	type plain UnstableDisableProviderRequest
 	type UnstableDisableProviderRequest struct {
 		*plain
@@ -14369,10 +18315,19 @@ func (v *UnstableDisableProviderRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.ProviderId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ProviderId, "providerId", false); err != nil {
+			return propertyError(err, "UnstableDisableProviderRequest", "providerId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableDisableProviderRequest) Validate() error {
+	if v.ProviderId == "" {
+		return fmt.Errorf("providerId is required")
+	}
 	return nil
 }
 
@@ -14467,22 +18422,59 @@ type UnstableForkSessionRequest struct {
 }
 
 func (v *UnstableForkSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableForkSessionRequest
+	v.Cwd = fresh.Cwd
+	v.SessionId = fresh.SessionId
 	type plain UnstableForkSessionRequest
 	type UnstableForkSessionRequest struct {
 		*plain
-		Meta json.RawMessage `json:"_meta"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
 	}
 	raw := UnstableForkSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "UnstableForkSessionRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "UnstableForkSessionRequest", "additionalDirectories")
+	}
+	if maybeAbsent(&v.Cwd) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Cwd, "cwd", false); err != nil {
+			return propertyError(err, "UnstableForkSessionRequest", "cwd")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "UnstableForkSessionRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableForkSessionRequest) Validate() error {
+	for i := range v.ConfigOptions {
+		if err := v.ConfigOptions[i].Validate(); err != nil {
+			return fmt.Errorf("configOptions[%d]: %w", i, err)
+		}
+	}
 	if v.Cwd == "" {
 		return fmt.Errorf("cwd is required")
+	}
+	for i := range v.McpServers {
+		if err := v.McpServers[i].Validate(); err != nil {
+			return fmt.Errorf("mcpServers[%d]: %w", i, err)
+		}
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.SystemPrompt != nil {
+		if err := v.SystemPrompt.Validate(); err != nil {
+			return fmt.Errorf("systemPrompt: %w", err)
+		}
 	}
 	return nil
 }
@@ -14528,6 +18520,8 @@ func (v UnstableForkSessionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableForkSessionResponse
+	v.SessionId = fresh.SessionId
 	type plain UnstableForkSessionResponse
 	type UnstableForkSessionResponse struct {
 		*plain
@@ -14542,10 +18536,19 @@ func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "UnstableForkSessionResponse", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableForkSessionResponse) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -14608,6 +18611,8 @@ func (v UnstableListProvidersResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableListProvidersResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableListProvidersResponse
+	v.Providers = fresh.Providers
 	type plain UnstableListProvidersResponse
 	type UnstableListProvidersResponse struct {
 		*plain
@@ -14618,12 +18623,23 @@ func (v *UnstableListProvidersResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Providers) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Providers, "providers", false); err != nil {
+			return propertyError(err, "UnstableListProvidersResponse", "providers")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableListProvidersResponse) Validate() error {
 	if v.Providers == nil {
 		return fmt.Errorf("providers is required")
+	}
+	for i := range v.Providers {
+		if err := v.Providers[i].Validate(); err != nil {
+			return fmt.Errorf("providers[%d]: %w", i, err)
+		}
 	}
 	return nil
 }
@@ -14682,6 +18698,9 @@ func (v UnstableMcpError) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMcpError
+	v.Code = fresh.Code
+	v.Message = fresh.Message
 	type plain UnstableMcpError
 	type UnstableMcpError struct {
 		*plain
@@ -14690,7 +18709,23 @@ func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if maybeAbsent(&v.Code) || maybeAbsent(&v.Message) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Code, "code", false); err != nil {
+			return propertyError(err, "UnstableMcpError", "code")
+		}
+		if err := requireMember(members, &v.Message, "message", false); err != nil {
+			return propertyError(err, "UnstableMcpError", "message")
+		}
+	}
 	v.AdditionalProperties = additionalProperties(b, "code", "data", "message")
+	return nil
+}
+
+func (v *UnstableMcpError) Validate() error {
+	if v.Code < -2147483648 || v.Code > 2147483647 {
+		return fmt.Errorf("code must be between -2147483648 and 2147483647")
+	}
 	return nil
 }
 
@@ -14752,6 +18787,10 @@ func (v UnstableMessageMcpNotification) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableMessageMcpNotification) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMessageMcpNotification
+	v.Method = fresh.Method
+	v.RequestId = fresh.RequestId
+	v.ServerId = fresh.ServerId
 	type plain UnstableMessageMcpNotification
 	type UnstableMessageMcpNotification struct {
 		*plain
@@ -14762,12 +18801,30 @@ func (v *UnstableMessageMcpNotification) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Method) || maybeAbsent(&v.RequestId) || maybeAbsent(&v.ServerId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "UnstableMessageMcpNotification", "method")
+		}
+		if err := requireMember(members, &v.RequestId, "requestId", false); err != nil {
+			return propertyError(err, "UnstableMessageMcpNotification", "requestId")
+		}
+		if err := requireMember(members, &v.ServerId, "serverId", false); err != nil {
+			return propertyError(err, "UnstableMessageMcpNotification", "serverId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableMessageMcpNotification) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
+	}
+	if v.RequestId == "" {
+		return fmt.Errorf("requestId is required")
+	}
+	if v.ServerId == "" {
+		return fmt.Errorf("serverId is required")
 	}
 	return nil
 }
@@ -14817,6 +18874,10 @@ func (v UnstableMessageMcpRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMessageMcpRequest
+	v.Method = fresh.Method
+	v.RequestId = fresh.RequestId
+	v.ServerId = fresh.ServerId
 	type plain UnstableMessageMcpRequest
 	type UnstableMessageMcpRequest struct {
 		*plain
@@ -14827,12 +18888,30 @@ func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Method) || maybeAbsent(&v.RequestId) || maybeAbsent(&v.ServerId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "UnstableMessageMcpRequest", "method")
+		}
+		if err := requireMember(members, &v.RequestId, "requestId", false); err != nil {
+			return propertyError(err, "UnstableMessageMcpRequest", "requestId")
+		}
+		if err := requireMember(members, &v.ServerId, "serverId", false); err != nil {
+			return propertyError(err, "UnstableMessageMcpRequest", "serverId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableMessageMcpRequest) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method is required")
+	}
+	if v.RequestId == "" {
+		return fmt.Errorf("requestId is required")
+	}
+	if v.ServerId == "" {
+		return fmt.Errorf("serverId is required")
 	}
 	return nil
 }
@@ -14856,6 +18935,8 @@ type UnstableMessageMcpResult struct {
 }
 
 func (v *UnstableMessageMcpResult) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMessageMcpResult
+	v.Result = fresh.Result
 	type plain UnstableMessageMcpResult
 	type UnstableMessageMcpResult struct {
 		*plain
@@ -14866,6 +18947,12 @@ func (v *UnstableMessageMcpResult) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Result) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Result, "result", true); err != nil {
+			return propertyError(err, "UnstableMessageMcpResult", "result")
+		}
+	}
 	return nil
 }
 
@@ -14878,6 +18965,8 @@ type UnstableMessageMcpError struct {
 }
 
 func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
+	var fresh UnstableMessageMcpError
+	v.Error = fresh.Error
 	type plain UnstableMessageMcpError
 	type UnstableMessageMcpError struct {
 		*plain
@@ -14888,6 +18977,19 @@ func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Error) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Error, "error", false); err != nil {
+			return propertyError(err, "UnstableMessageMcpError", "error")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableMessageMcpError) Validate() error {
+	if err := v.Error.Validate(); err != nil {
+		return fmt.Errorf("error: %w", err)
+	}
 	return nil
 }
 
@@ -14974,6 +19076,25 @@ func (u UnstableMessageMcpResponse) MarshalJSON() ([]byte, error) {
 	return []byte{}, nil
 }
 
+func (u *UnstableMessageMcpResponse) Validate() error {
+	var count int
+	if u.Result != nil {
+		count++
+	}
+	if u.Error != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("UnstableMessageMcpResponse has no variant set")
+	}
+	if u.Error != nil {
+		if err := u.Error.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // **UNSTABLE**
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -14993,6 +19114,9 @@ type UnstableProviderCurrentConfig struct {
 }
 
 func (v *UnstableProviderCurrentConfig) UnmarshalJSON(b []byte) error {
+	var fresh UnstableProviderCurrentConfig
+	v.ApiType = fresh.ApiType
+	v.BaseUrl = fresh.BaseUrl
 	type plain UnstableProviderCurrentConfig
 	type UnstableProviderCurrentConfig struct {
 		*plain
@@ -15003,6 +19127,22 @@ func (v *UnstableProviderCurrentConfig) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.ApiType) || maybeAbsent(&v.BaseUrl) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ApiType, "apiType", false); err != nil {
+			return propertyError(err, "UnstableProviderCurrentConfig", "apiType")
+		}
+		if err := requireMember(members, &v.BaseUrl, "baseUrl", false); err != nil {
+			return propertyError(err, "UnstableProviderCurrentConfig", "baseUrl")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableProviderCurrentConfig) Validate() error {
+	if v.ApiType == "" {
+		return fmt.Errorf("apiType is required")
+	}
 	return nil
 }
 
@@ -15048,6 +19188,10 @@ func (v UnstableProviderInfo) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableProviderInfo) UnmarshalJSON(b []byte) error {
+	var fresh UnstableProviderInfo
+	v.ProviderId = fresh.ProviderId
+	v.Required = fresh.Required
+	v.Supported = fresh.Supported
 	type plain UnstableProviderInfo
 	type UnstableProviderInfo struct {
 		*plain
@@ -15061,6 +19205,33 @@ func (v *UnstableProviderInfo) UnmarshalJSON(b []byte) error {
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Supported, &v.Supported) && raw.Supported != nil {
 		setDefault(&v.Supported, "[]")
+	}
+	if maybeAbsent(&v.ProviderId) || maybeAbsent(&v.Required) || maybeAbsent(&v.Supported) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ProviderId, "providerId", false); err != nil {
+			return propertyError(err, "UnstableProviderInfo", "providerId")
+		}
+		if err := requireMember(members, &v.Required, "required", false); err != nil {
+			return propertyError(err, "UnstableProviderInfo", "required")
+		}
+		if err := requireMember(members, &v.Supported, "supported", true); err != nil {
+			return propertyError(err, "UnstableProviderInfo", "supported")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableProviderInfo) Validate() error {
+	if v.Current != nil {
+		if err := v.Current.Validate(); err != nil {
+			return fmt.Errorf("current: %w", err)
+		}
+	}
+	if v.ProviderId == "" {
+		return fmt.Errorf("providerId is required")
+	}
+	if v.Supported == nil {
+		return fmt.Errorf("supported is required")
 	}
 	return nil
 }
@@ -15103,16 +19274,31 @@ type UnstableSessionOptionsRequest struct {
 }
 
 func (v *UnstableSessionOptionsRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSessionOptionsRequest
+	v.Cwd = fresh.Cwd
 	type plain UnstableSessionOptionsRequest
 	type UnstableSessionOptionsRequest struct {
 		*plain
-		Meta json.RawMessage `json:"_meta"`
+		Meta                  json.RawMessage `json:"_meta"`
+		AdditionalDirectories json.RawMessage `json:"additionalDirectories"`
 	}
 	raw := UnstableSessionOptionsRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
+		return propertyError(err, "UnstableSessionOptionsRequest", "additionalDirectories")
+	}
+	if _, err := decodeField(raw.AdditionalDirectories, &v.AdditionalDirectories); err != nil {
+		return propertyError(err, "UnstableSessionOptionsRequest", "additionalDirectories")
+	}
+	if maybeAbsent(&v.Cwd) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Cwd, "cwd", false); err != nil {
+			return propertyError(err, "UnstableSessionOptionsRequest", "cwd")
+		}
+	}
 	return nil
 }
 
@@ -15234,6 +19420,8 @@ type UnstableSessionStatusRequest struct {
 }
 
 func (v *UnstableSessionStatusRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSessionStatusRequest
+	v.SessionId = fresh.SessionId
 	type plain UnstableSessionStatusRequest
 	type UnstableSessionStatusRequest struct {
 		*plain
@@ -15244,10 +19432,19 @@ func (v *UnstableSessionStatusRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "UnstableSessionStatusRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableSessionStatusRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -15273,6 +19470,8 @@ type UnstableSessionStatusResponse struct {
 }
 
 func (v *UnstableSessionStatusResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSessionStatusResponse
+	v.Status = fresh.Status
 	type plain UnstableSessionStatusResponse
 	type UnstableSessionStatusResponse struct {
 		*plain
@@ -15283,10 +19482,19 @@ func (v *UnstableSessionStatusResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Status) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Status, "status", false); err != nil {
+			return propertyError(err, "UnstableSessionStatusResponse", "status")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableSessionStatusResponse) Validate() error {
+	if v.Status == "" {
+		return fmt.Errorf("status is required")
+	}
 	return nil
 }
 
@@ -15316,22 +19524,51 @@ type UnstableSetProviderRequest struct {
 }
 
 func (v *UnstableSetProviderRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSetProviderRequest
+	v.ApiType = fresh.ApiType
+	v.BaseUrl = fresh.BaseUrl
+	v.ProviderId = fresh.ProviderId
 	type plain UnstableSetProviderRequest
 	type UnstableSetProviderRequest struct {
 		*plain
-		Meta json.RawMessage `json:"_meta"`
+		Meta    json.RawMessage `json:"_meta"`
+		Headers json.RawMessage `json:"headers"`
 	}
 	raw := UnstableSetProviderRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if err := rejectNullItems[string](raw.Headers); err != nil {
+		return propertyError(err, "UnstableSetProviderRequest", "headers")
+	}
+	if _, err := decodeField(raw.Headers, &v.Headers); err != nil {
+		return propertyError(err, "UnstableSetProviderRequest", "headers")
+	}
+	if maybeAbsent(&v.ApiType) || maybeAbsent(&v.BaseUrl) || maybeAbsent(&v.ProviderId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.ApiType, "apiType", false); err != nil {
+			return propertyError(err, "UnstableSetProviderRequest", "apiType")
+		}
+		if err := requireMember(members, &v.BaseUrl, "baseUrl", false); err != nil {
+			return propertyError(err, "UnstableSetProviderRequest", "baseUrl")
+		}
+		if err := requireMember(members, &v.ProviderId, "providerId", false); err != nil {
+			return propertyError(err, "UnstableSetProviderRequest", "providerId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableSetProviderRequest) Validate() error {
+	if v.ApiType == "" {
+		return fmt.Errorf("apiType is required")
+	}
 	if v.BaseUrl == "" {
 		return fmt.Errorf("baseUrl is required")
+	}
+	if v.ProviderId == "" {
+		return fmt.Errorf("providerId is required")
 	}
 	return nil
 }
@@ -15400,6 +19637,9 @@ type UnstableSetSessionTitleRequest struct {
 }
 
 func (v *UnstableSetSessionTitleRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSetSessionTitleRequest
+	v.SessionId = fresh.SessionId
+	v.Title = fresh.Title
 	type plain UnstableSetSessionTitleRequest
 	type UnstableSetSessionTitleRequest struct {
 		*plain
@@ -15410,10 +19650,22 @@ func (v *UnstableSetSessionTitleRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.Title) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "UnstableSetSessionTitleRequest", "sessionId")
+		}
+		if err := requireMember(members, &v.Title, "title", false); err != nil {
+			return propertyError(err, "UnstableSetSessionTitleRequest", "title")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableSetSessionTitleRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	if v.Title == "" {
 		return fmt.Errorf("title is required")
 	}
@@ -15440,6 +19692,8 @@ type UnstableSetSessionTitleResponse struct {
 }
 
 func (v *UnstableSetSessionTitleResponse) UnmarshalJSON(b []byte) error {
+	var fresh UnstableSetSessionTitleResponse
+	v.Title = fresh.Title
 	type plain UnstableSetSessionTitleResponse
 	type UnstableSetSessionTitleResponse struct {
 		*plain
@@ -15450,6 +19704,12 @@ func (v *UnstableSetSessionTitleResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Title) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Title, "title", false); err != nil {
+			return propertyError(err, "UnstableSetSessionTitleResponse", "title")
+		}
+	}
 	return nil
 }
 
@@ -15485,6 +19745,8 @@ type UnstableUnarchiveSessionRequest struct {
 }
 
 func (v *UnstableUnarchiveSessionRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableUnarchiveSessionRequest
+	v.SessionId = fresh.SessionId
 	type plain UnstableUnarchiveSessionRequest
 	type UnstableUnarchiveSessionRequest struct {
 		*plain
@@ -15495,10 +19757,19 @@ func (v *UnstableUnarchiveSessionRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "UnstableUnarchiveSessionRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
 func (v *UnstableUnarchiveSessionRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
 	return nil
 }
 
@@ -15547,6 +19818,8 @@ type UnstructuredCommandInput struct {
 }
 
 func (v *UnstructuredCommandInput) UnmarshalJSON(b []byte) error {
+	var fresh UnstructuredCommandInput
+	v.Hint = fresh.Hint
 	type plain UnstructuredCommandInput
 	type UnstructuredCommandInput struct {
 		*plain
@@ -15557,6 +19830,12 @@ func (v *UnstructuredCommandInput) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Hint) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Hint, "hint", false); err != nil {
+			return propertyError(err, "UnstructuredCommandInput", "hint")
+		}
+	}
 	return nil
 }
 
@@ -15587,6 +19866,10 @@ type Usage struct {
 }
 
 func (v *Usage) UnmarshalJSON(b []byte) error {
+	var fresh Usage
+	v.InputTokens = fresh.InputTokens
+	v.OutputTokens = fresh.OutputTokens
+	v.TotalTokens = fresh.TotalTokens
 	type plain Usage
 	type Usage struct {
 		*plain
@@ -15600,9 +19883,34 @@ func (v *Usage) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens)
-	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens)
-	decodeLenient(raw.ThoughtTokens, &v.ThoughtTokens)
+	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens, shapeUsageCachedReadTokens)
+	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens, shapeUsageCachedWriteTokens)
+	decodeLenient(raw.ThoughtTokens, &v.ThoughtTokens, shapeUsageThoughtTokens)
+	if maybeAbsent(&v.InputTokens) || maybeAbsent(&v.OutputTokens) || maybeAbsent(&v.TotalTokens) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.InputTokens, "inputTokens", false); err != nil {
+			return propertyError(err, "Usage", "inputTokens")
+		}
+		if err := requireMember(members, &v.OutputTokens, "outputTokens", false); err != nil {
+			return propertyError(err, "Usage", "outputTokens")
+		}
+		if err := requireMember(members, &v.TotalTokens, "totalTokens", false); err != nil {
+			return propertyError(err, "Usage", "totalTokens")
+		}
+	}
+	return nil
+}
+
+func (v *Usage) Validate() error {
+	if v.InputTokens < 0 {
+		return fmt.Errorf("inputTokens must be at least 0")
+	}
+	if v.OutputTokens < 0 {
+		return fmt.Errorf("outputTokens must be at least 0")
+	}
+	if v.TotalTokens < 0 {
+		return fmt.Errorf("totalTokens must be at least 0")
+	}
 	return nil
 }
 
@@ -15623,6 +19931,9 @@ type UsageUpdate struct {
 }
 
 func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
+	var fresh UsageUpdate
+	v.Size = fresh.Size
+	v.Used = fresh.Used
 	type plain UsageUpdate
 	type UsageUpdate struct {
 		*plain
@@ -15635,6 +19946,25 @@ func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Cost, &v.Cost, shapeCost)
+	if maybeAbsent(&v.Size) || maybeAbsent(&v.Used) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Size, "size", false); err != nil {
+			return propertyError(err, "UsageUpdate", "size")
+		}
+		if err := requireMember(members, &v.Used, "used", false); err != nil {
+			return propertyError(err, "UsageUpdate", "used")
+		}
+	}
+	return nil
+}
+
+func (v *UsageUpdate) Validate() error {
+	if v.Size < 0 {
+		return fmt.Errorf("size must be at least 0")
+	}
+	if v.Used < 0 {
+		return fmt.Errorf("used must be at least 0")
+	}
 	return nil
 }
 
@@ -15653,6 +19983,9 @@ type WaitForTerminalExitRequest struct {
 }
 
 func (v *WaitForTerminalExitRequest) UnmarshalJSON(b []byte) error {
+	var fresh WaitForTerminalExitRequest
+	v.SessionId = fresh.SessionId
+	v.TerminalId = fresh.TerminalId
 	type plain WaitForTerminalExitRequest
 	type WaitForTerminalExitRequest struct {
 		*plain
@@ -15663,10 +19996,25 @@ func (v *WaitForTerminalExitRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.TerminalId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "WaitForTerminalExitRequest", "sessionId")
+		}
+		if err := requireMember(members, &v.TerminalId, "terminalId", false); err != nil {
+			return propertyError(err, "WaitForTerminalExitRequest", "terminalId")
+		}
+	}
 	return nil
 }
 
 func (v *WaitForTerminalExitRequest) Validate() error {
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
+	}
+	if v.TerminalId == "" {
+		return fmt.Errorf("terminalId is required")
+	}
 	return nil
 }
 
@@ -15697,7 +20045,7 @@ func (v *WaitForTerminalExitResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.ExitCode, &v.ExitCode)
+	decodeLenient(raw.ExitCode, &v.ExitCode, shapeWaitForTerminalExitResponseExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
 	return nil
 }
@@ -15725,6 +20073,10 @@ type WriteTextFileRequest struct {
 }
 
 func (v *WriteTextFileRequest) UnmarshalJSON(b []byte) error {
+	var fresh WriteTextFileRequest
+	v.Content = fresh.Content
+	v.Path = fresh.Path
+	v.SessionId = fresh.SessionId
 	type plain WriteTextFileRequest
 	type WriteTextFileRequest struct {
 		*plain
@@ -15735,6 +20087,18 @@ func (v *WriteTextFileRequest) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Content) || maybeAbsent(&v.Path) || maybeAbsent(&v.SessionId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Content, "content", false); err != nil {
+			return propertyError(err, "WriteTextFileRequest", "content")
+		}
+		if err := requireMember(members, &v.Path, "path", false); err != nil {
+			return propertyError(err, "WriteTextFileRequest", "path")
+		}
+		if err := requireMember(members, &v.SessionId, "sessionId", false); err != nil {
+			return propertyError(err, "WriteTextFileRequest", "sessionId")
+		}
+	}
 	return nil
 }
 
@@ -15744,6 +20108,9 @@ func (v *WriteTextFileRequest) Validate() error {
 	}
 	if v.Path == "" {
 		return fmt.Errorf("path is required")
+	}
+	if v.SessionId == "" {
+		return fmt.Errorf("sessionId is required")
 	}
 	return nil
 }
@@ -16139,16 +20506,22 @@ const (
 	shapeSessionReference
 	shapeStateUpdate
 	shapeTerminal
+	shapeTerminalExitStatusExitCode
 	shapeTerminalId
 	shapeTextContent
 	shapeTextResourceContents
 	shapeToolCallContent
 	shapeToolCallLocation
+	shapeToolCallLocationLine
 	shapeToolCallStatus
 	shapeUnknownStateUpdate
 	shapeUnstableAuthAccount
 	shapeUnstructuredCommandInput
 	shapeUsage
+	shapeUsageCachedReadTokens
+	shapeUsageCachedWriteTokens
+	shapeUsageThoughtTokens
+	shapeWaitForTerminalExitResponseExitCode
 )
 
 var shapes = [...]shape{
@@ -16288,7 +20661,34 @@ var shapes = [...]shape{
 		},
 		required: []string{"code", "message"},
 	},
-	shapeErrorCode:       {kinds: kindInteger},
+	shapeErrorCode: {anyOf: []*shape{{
+		kinds:  kindInteger,
+		values: []any{json.Number("-32700")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32600")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32601")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32602")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32603")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32800")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32000")},
+	}, {
+		kinds:  kindInteger,
+		values: []any{json.Number("-32002")},
+	}, {
+		ints:  &intRange{-2147483648, 2147483647},
+		kinds: kindInteger,
+	}}},
 	shapeErrorStopReason: {kinds: kindObject},
 	shapeIdleStateUpdate: {
 		anyOf: []*shape{{
@@ -16596,6 +20996,10 @@ var shapes = [...]shape{
 		props:    map[string]*shape{"terminalId": {ref: shapeTerminalId}},
 		required: []string{"terminalId"},
 	},
+	shapeTerminalExitStatusExitCode: {
+		ints:  &intRange{0, 4294967295},
+		kinds: kindInteger | kindNull,
+	},
 	shapeTerminalId: {kinds: kindString},
 	shapeTextContent: {
 		kinds:    kindObject,
@@ -16648,6 +21052,10 @@ var shapes = [...]shape{
 		props:    map[string]*shape{"path": {kinds: kindString}},
 		required: []string{"path"},
 	},
+	shapeToolCallLocationLine: {
+		ints:  &intRange{0, 4294967295},
+		kinds: kindInteger | kindNull,
+	},
 	shapeToolCallStatus:     {values: []any{"pending", "in_progress", "completed", "failed"}},
 	shapeUnknownStateUpdate: {kinds: kindObject},
 	shapeUnstableAuthAccount: {
@@ -16663,11 +21071,36 @@ var shapes = [...]shape{
 	shapeUsage: {
 		kinds: kindObject,
 		props: map[string]*shape{
-			"inputTokens":  {kinds: kindInteger},
-			"outputTokens": {kinds: kindInteger},
-			"totalTokens":  {kinds: kindInteger},
+			"inputTokens": {
+				ints:  &intRange{0, math.MaxInt64},
+				kinds: kindInteger,
+			},
+			"outputTokens": {
+				ints:  &intRange{0, math.MaxInt64},
+				kinds: kindInteger,
+			},
+			"totalTokens": {
+				ints:  &intRange{0, math.MaxInt64},
+				kinds: kindInteger,
+			},
 		},
 		required: []string{"totalTokens", "inputTokens", "outputTokens"},
+	},
+	shapeUsageCachedReadTokens: {
+		ints:  &intRange{0, math.MaxInt64},
+		kinds: kindInteger | kindNull,
+	},
+	shapeUsageCachedWriteTokens: {
+		ints:  &intRange{0, math.MaxInt64},
+		kinds: kindInteger | kindNull,
+	},
+	shapeUsageThoughtTokens: {
+		ints:  &intRange{0, math.MaxInt64},
+		kinds: kindInteger | kindNull,
+	},
+	shapeWaitForTerminalExitResponseExitCode: {
+		ints:  &intRange{0, 4294967295},
+		kinds: kindInteger | kindNull,
 	},
 }
 
@@ -16763,6 +21196,70 @@ func propertyError(err error, structName, prop string) error {
 		}
 	}
 	return err
+}
+
+// rejectNullItems returns an error when raw is an array with a null item or
+// an object with a null member value. encoding/json reads one as the zero value
+// of T, the type of the items or values, and the schema does not allow it there.
+func rejectNullItems[T any](raw json.RawMessage) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	open, _ := dec.Token()
+	for dec.More() {
+		if open == json.Delim('{') {
+			dec.Token()
+		}
+		var item json.RawMessage
+		if dec.Decode(&item) == nil && string(item) == "null" {
+			return &json.UnmarshalTypeError{
+				Type:  reflect.TypeOf((*T)(nil)).Elem(),
+				Value: "null",
+			}
+		}
+	}
+	return nil
+}
+
+// maybeAbsent reports whether *v holds what a required member that the JSON
+// object lacks, or that is null, leaves in a fresh value: the zero value of T,
+// or, for raw JSON, which keeps a null as the bytes null, also null.
+func maybeAbsent[T any](v *T) bool {
+	if raw, ok := any(v).(*json.RawMessage); ok {
+		return len(*raw) == 0 || string(*raw) == "null"
+	}
+	return reflect.ValueOf(v).Elem().IsZero()
+}
+
+// jsonMembers returns the members of the JSON object b, and nil when b is null.
+func jsonMembers(b []byte) map[string]json.RawMessage {
+	var members map[string]json.RawMessage
+	json.Unmarshal(b, &members)
+	return members
+}
+
+// requireMember returns an error when members has no member prop, or when it
+// is null and takesNull is false. A key matches prop in any case, as it matches
+// a struct field in encoding/json. dst is the field, whose type the error names.
+func requireMember[T any](members map[string]json.RawMessage, dst *T, prop string, takesNull bool) error {
+	value, ok := members[prop]
+	for key, v := range members {
+		if !ok && strings.EqualFold(key, prop) {
+			value, ok = v, true
+		}
+	}
+	typ := reflect.TypeOf(dst).Elem()
+	switch {
+	case !ok:
+		return &json.UnmarshalTypeError{
+			Type:  typ,
+			Value: "missing member",
+		}
+	case !takesNull && string(value) == "null":
+		return &json.UnmarshalTypeError{
+			Type:  typ,
+			Value: "null",
+		}
+	}
+	return nil
 }
 
 // decodePatch decodes a patch field that has x-deserialize-default-on-error.

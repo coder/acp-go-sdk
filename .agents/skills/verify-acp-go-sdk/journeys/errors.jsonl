@@ -9,7 +9,7 @@
 {"step":"notification with invalid params","notify":"session/cancel","params":{"sessionId":5}}
 {"stderrHas":"failed to handle notification method=session/cancel","timeout":"2s"}
 {"stderrLacks":"foo/notify"}
-{"step":"invalid params","send":"session/new","params":{"mcpServers":[]},"expect":{"error.code":-32602,"error.data.error":"cwd is required"}}
+{"step":"invalid params","send":"session/new","params":{"mcpServers":[]},"expect":{"error.code":-32602,"error.data.error":"json: cannot unmarshal missing member into Go struct field NewSessionRequest.cwd of type string"}}
 {"step":"malformed line","raw":"{not json"}
 {"stderrHas":"failed to parse incoming message","timeout":"2s"}
 {"step":"connection still works","send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new"}

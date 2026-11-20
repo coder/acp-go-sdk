@@ -10,10 +10,15 @@ func decodeFallback(p fieldPlan, target Code) Code {
 	return Qual("encoding/json", "Unmarshal").Call(Index().Byte().Parens(Lit(p.fallbackJSON)), Op("&").Add(target).Dot(p.field.Name))
 }
 
+// emitDecodeFields decodes the JSON object b into recv, a struct name with the
+// fields of plans. A field that customDecode keeps raw decodes on its own, and
+// the others in place. Then it checks the required members
+// (emitRequireMembers).
 func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fieldPlan) {
 	b.usesDecodeHelpers = true
+	rawPlans := customDecoded(plans)
 	shadow := []Code{Op("*").Id("plain")}
-	for _, p := range plans {
+	for _, p := range rawPlans {
 		shadow = append(shadow, Id(p.field.Name).Qual("encoding/json", "RawMessage").Tag(map[string]string{"json": p.field.Prop}))
 	}
 	g.Type().Id("plain").Id(name)
@@ -23,9 +28,50 @@ func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fie
 	g.If(Id("err").Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("raw")), Id("err").Op("!=").Nil()).Block(
 		Return(Id("plainFieldError").Call(Id("err"))),
 	)
-	for _, p := range plans {
+	for _, p := range rawPlans {
+		if p.nonNullItem != nil {
+			check := Id("rejectNullItems").Types(p.nonNullItem).Call(Id("raw").Dot(p.field.Name))
+			g.If(Id("err").Op(":=").Add(check), Id("err").Op("!=").Nil()).Block(propertyFail(name, p.field.Prop))
+		}
 		g.Add(decodeStmt(p, name, recv))
 	}
+	emitRequireMembers(g, name, recv, plans)
+}
+
+// emitRequireMembers fails the decode of the struct name when the JSON object
+// b lacks a required member of plans, or holds null for one that does not
+// take null. A member that is absent or null holds its Go zero value in a
+// fresh value, so the members of b are read only when a required one may be
+// absent (maybeAbsent).
+// A struct's UnmarshalJSON sets each required field to zero first
+// (emitStruct), and a union's starts from an empty wrapper, so a field that a
+// reused value held cannot hide an absent member.
+func emitRequireMembers(g *Group, name, recv string, plans []fieldPlan) {
+	var anyAbsent *Statement
+	var checks []Code
+	for _, p := range plans {
+		if !p.required {
+			continue
+		}
+		field := Op("&").Id(recv).Dot(p.field.Name)
+		if anyAbsent == nil {
+			anyAbsent = Id("maybeAbsent").Call(field)
+		} else {
+			anyAbsent = anyAbsent.Op("||").Id("maybeAbsent").Call(field)
+		}
+		check := Id("requireMember").Call(Id("members"), field, Lit(p.field.Prop), Lit(p.takesNull))
+		checks = append(checks, If(Id("err").Op(":=").Add(check), Id("err").Op("!=").Nil()).Block(propertyFail(name, p.field.Prop)))
+	}
+	if anyAbsent == nil {
+		return
+	}
+	g.If(anyAbsent).Block(append([]Code{Id("members").Op(":=").Id("jsonMembers").Call(Id("b"))}, checks...)...)
+}
+
+// propertyFail returns the error err of decoding the raw property prop of
+// structName.
+func propertyFail(structName, prop string) Code {
+	return Return(Id("propertyError").Call(Id("err"), Lit(structName), Lit(prop)))
 }
 
 func decodeStmt(p fieldPlan, structName, recv string) Code {
@@ -46,10 +92,16 @@ func decodeStmt(p fieldPlan, structName, recv string) Code {
 		return notDecoded
 	}
 	fallback := Id("setDefault").Call(Op("&").Id(recv).Dot(p.field.Name), Lit(p.fallbackJSON))
+	fail := propertyFail(structName, p.field.Prop)
 
+	if p.patch && !p.field.Lenient.DefaultOnError {
+		// A patch field without hints is raw only for its null item check
+		// (nonNullItem). Patch.UnmarshalJSON reads it as it would in place.
+		decode := Qual("encoding/json", "Unmarshal").Call(raw(), Op("&").Id(recv).Dot(p.field.Name))
+		return If(raw().Op("!=").Nil()).Block(If(Id("err").Op(":=").Add(decode), Id("err").Op("!=").Nil()).Block(fail))
+	}
 	if p.patch {
-		// planFor allows only default-on-error on a patch field that
-		// decodes here.
+		// planFor allows only default-on-error on a lenient patch field.
 		helper := "decodePatch"
 		if p.field.Lenient.SkipInvalidItems {
 			helper = "decodePatchItems"
@@ -73,7 +125,6 @@ func decodeStmt(p fieldPlan, structName, recv string) Code {
 	if p.field.Lenient.SkipInvalidItems {
 		helper = "decodeItems"
 	}
-	fail := Return(Id("propertyError").Call(Id("err"), Lit(structName), Lit(p.field.Prop)))
 	if !p.fallbackOnAbsent && !p.fallbackOnNull {
 		return If(List(Id("_"), Id("err")).Op(":=").Id(helper).Call(args...), Id("err").Op("!=").Nil()).Block(fail)
 	}
@@ -188,6 +239,72 @@ func (b *typesBuilder) emitSupport() {
 			),
 		),
 		Return(Id("err")),
+	)
+	f.Line()
+
+	f.Comment("rejectNullItems returns an error when raw is an array with a null item or")
+	f.Comment("an object with a null member value. encoding/json reads one as the zero value")
+	f.Comment("of T, the type of the items or values, and the schema does not allow it there.")
+	f.Func().Id("rejectNullItems").Types(Id("T").Any()).Params(rawParam()).Error().Block(
+		Id("dec").Op(":=").Qual("encoding/json", "NewDecoder").Call(Qual("bytes", "NewReader").Call(Id("raw"))),
+		List(Id("open"), Id("_")).Op(":=").Id("dec").Dot("Token").Call(),
+		For(Id("dec").Dot("More").Call()).Block(
+			If(Id("open").Op("==").Qual("encoding/json", "Delim").Call(LitRune('{'))).Block(
+				Id("dec").Dot("Token").Call(),
+			),
+			Var().Id("item").Qual("encoding/json", "RawMessage"),
+			If(Id("dec").Dot("Decode").Call(Op("&").Id("item")).Op("==").Nil().Op("&&").Id("string").Call(Id("item")).Op("==").Lit("null")).Block(
+				Return(Op("&").Qual("encoding/json", "UnmarshalTypeError").Values(Dict{
+					Id("Value"): Lit("null"),
+					Id("Type"):  Qual("reflect", "TypeOf").Call(Parens(Op("*").Id("T")).Call(Nil())).Dot("Elem").Call(),
+				})),
+			),
+		),
+		Return(Nil()),
+	)
+	f.Line()
+
+	f.Comment("maybeAbsent reports whether *v holds what a required member that the JSON")
+	f.Comment("object lacks, or that is null, leaves in a fresh value: the zero value of T,")
+	f.Comment("or, for raw JSON, which keeps a null as the bytes null, also null.")
+	f.Func().Id("maybeAbsent").Types(Id("T").Any()).Params(Id("v").Op("*").Id("T")).Bool().Block(
+		If(List(Id("raw"), Id("ok")).Op(":=").Id("any").Call(Id("v")).Assert(Op("*").Qual("encoding/json", "RawMessage")), Id("ok")).Block(
+			Return(Id("len").Call(Op("*").Id("raw")).Op("==").Lit(0).Op("||").Id("string").Call(Op("*").Id("raw")).Op("==").Lit("null")),
+		),
+		Return(Qual("reflect", "ValueOf").Call(Id("v")).Dot("Elem").Call().Dot("IsZero").Call()),
+	)
+	f.Line()
+
+	f.Comment("jsonMembers returns the members of the JSON object b, and nil when b is null.")
+	f.Func().Id("jsonMembers").Params(Id("b").Index().Byte()).Map(String()).Qual("encoding/json", "RawMessage").Block(
+		Var().Id("members").Map(String()).Qual("encoding/json", "RawMessage"),
+		Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("members")),
+		Return(Id("members")),
+	)
+	f.Line()
+
+	f.Comment("requireMember returns an error when members has no member prop, or when it")
+	f.Comment("is null and takesNull is false. A key matches prop in any case, as it matches")
+	f.Comment("a struct field in encoding/json. dst is the field, whose type the error names.")
+	f.Func().Id("requireMember").Types(Id("T").Any()).Params(
+		Id("members").Map(String()).Qual("encoding/json", "RawMessage"), Id("dst").Op("*").Id("T"), Id("prop").String(), Id("takesNull").Bool(),
+	).Error().Block(
+		List(Id("value"), Id("ok")).Op(":=").Id("members").Index(Id("prop")),
+		For(List(Id("key"), Id("v")).Op(":=").Range().Id("members")).Block(
+			If(Op("!").Id("ok").Op("&&").Qual("strings", "EqualFold").Call(Id("key"), Id("prop"))).Block(
+				List(Id("value"), Id("ok")).Op("=").List(Id("v"), Lit(true)),
+			),
+		),
+		Id("typ").Op(":=").Qual("reflect", "TypeOf").Call(Id("dst")).Dot("Elem").Call(),
+		Switch().Block(
+			Case(Op("!").Id("ok")).Block(
+				Return(Op("&").Qual("encoding/json", "UnmarshalTypeError").Values(Dict{Id("Value"): Lit("missing member"), Id("Type"): Id("typ")})),
+			),
+			Case(Op("!").Id("takesNull").Op("&&").Id("string").Call(Id("value")).Op("==").Lit("null")).Block(
+				Return(Op("&").Qual("encoding/json", "UnmarshalTypeError").Values(Dict{Id("Value"): Lit("null"), Id("Type"): Id("typ")})),
+			),
+		),
+		Return(Nil()),
 	)
 	f.Line()
 

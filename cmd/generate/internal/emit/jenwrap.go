@@ -15,6 +15,7 @@ var (
 	NewFile       = jen.NewFile
 	Id            = jen.Id
 	Lit           = jen.Lit
+	LitRune       = jen.LitRune
 	Line          = jen.Line
 	Func          = jen.Func
 	For           = jen.For

@@ -19,6 +19,7 @@ type shapeNode struct {
 	ref      string // a $defs entry
 	kinds    []string
 	values   []any
+	ints     *intRange
 	required []string
 	props    map[string]*shapeNode
 	rest     *shapeNode
@@ -71,6 +72,15 @@ func (t *shapeTable) site(owner string, field ir.Field, goType Code) Code {
 		return nil
 	}
 	n := t.node(withoutNull(def))
+	if withoutNull(def) != def {
+		// A bound next to the null alternative holds for the value too.
+		if r := ownRange(t.schema, def); r != nil {
+			if n == nil {
+				n = &shapeNode{}
+			}
+			n.ints = intersect(n.ints, r)
+		}
+	}
 	if !t.strict(n) && !n.untypedRules(fmt.Sprintf("%#v", goType)) {
 		return nil
 	}
@@ -158,6 +168,9 @@ func (t *shapeTable) node(d *load.Definition) *shapeNode {
 		n.values = scalars([]any{d.Const})
 	case len(d.Enum) > 0 && !hasOtherMember(d):
 		n.values = scalars(d.Enum)
+	default:
+		// The values of an enum or a const decide alone.
+		n.ints = ownRange(t.schema, d)
 	}
 	n.required = d.Required
 	n.rest = t.node(d.AdditionalProperties.Schema)
@@ -314,7 +327,7 @@ func (t *shapeTable) def(name string) string {
 }
 
 func (n *shapeNode) empty() bool {
-	return n.ref == "" && len(n.kinds) == 0 && n.values == nil && n.required == nil && n.props == nil &&
+	return n.ref == "" && len(n.kinds) == 0 && n.values == nil && n.ints == nil && n.required == nil && n.props == nil &&
 		n.rest == nil && n.items == nil && n.anyOf == nil && n.not == nil
 }
 
@@ -334,9 +347,11 @@ func (n *shapeNode) onlyScalar() bool {
 
 // strict reports whether a value that n describes and that its Go type
 // decodes can still miss n: a required member is absent, a value is not one
-// of the listed values, a member or item is null where n rejects null, or
-// the value fits none of several alternatives other than null. A value of
-// the wrong kind does not count: its Go type does not decode it.
+// of the listed values, an integer is out of range, a member or item is null
+// where n rejects null, or the value fits none of several alternatives other
+// than null. A value of the wrong kind does not count: its Go type does not
+// decode it. An integer out of ints counts, because an int64 or an int
+// (integerType) decodes it.
 func (t *shapeTable) strict(n *shapeNode) bool {
 	t.settleStrictDefs()
 	return t.strictNode(n)
@@ -368,7 +383,7 @@ func (t *shapeTable) strictNode(n *shapeNode) bool {
 	alts := slices.DeleteFunc(slices.Clone(n.anyOf), func(alt *shapeNode) bool {
 		return slices.Equal(alt.kinds, []string{"kindNull"}) && alt.onlyScalar() && alt.values == nil
 	})
-	if n.values != nil || n.required != nil || n.not != nil || len(alts) > 1 {
+	if n.values != nil || n.ints != nil || n.required != nil || n.not != nil || len(alts) > 1 {
 		return true
 	}
 	members := []*shapeNode{n.rest, n.items}
@@ -509,6 +524,9 @@ func (t *shapeTable) render(n *shapeNode) Code {
 			values = append(values, literal(v))
 		}
 		d[Id("values")] = Index().Any().Values(values...)
+	}
+	if n.ints != nil {
+		d[Id("ints")] = Op("&").Id("intRange").Values(intLit(n.ints.min), intLit(n.ints.max))
 	}
 	if n.required != nil {
 		required := []Code{}

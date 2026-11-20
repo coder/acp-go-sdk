@@ -186,7 +186,9 @@ repository settings: the next apply reverts a change made by hand.
 - The `Release tags (App only)` ruleset targets `refs/tags/v*`. It restricts
   creations, updates, and deletions to its one bypass actor, the
   `coder-release-publisher` GitHub App. Nobody else can create, move, or delete
-  a release tag, repository admins included.
+  a release tag, repository admins included. `preflight` checks the rules but
+  cannot see the bypass list, so only review of this Terraform entry keeps the
+  App the sole bypass actor.
 
 The `publish` job signs as `coder-release-publisher` through
 [coder/github-app-token-action](https://github.com/coder/github-app-token-action):

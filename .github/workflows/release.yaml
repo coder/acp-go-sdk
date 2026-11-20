@@ -546,6 +546,11 @@ jobs:
                   echo "::error::The proxy serves $MODULE@$TAG with hash ${sum:-unknown}, but the tag in git hashes to ${direct:-unknown}."
                   exit 1
                 fi
+                gitcommit="$(jq -r '.Origin.Hash // empty' <<< "$fromgit")"
+                if [[ "$gitcommit" != "$COMMIT" ]]; then
+                  echo "::error::The tag $TAG in git points at ${gitcommit:-an unknown commit}, not at the release commit $COMMIT."
+                  exit 1
+                fi
                 echo "The proxy serves $MODULE@$TAG at $COMMIT ($sum)."
                 exit 0
               fi

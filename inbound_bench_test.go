@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // The benchmarks in this file read recorded ACP traffic the way a Connection
@@ -328,6 +329,7 @@ func benchmarkDecode(b *testing.B, msgs []inboundMessage) {
 	b.SetBytes(size)
 	b.ReportAllocs()
 	b.ResetTimer()
+	cpu := processCPU()
 	var errs int
 	for i := 0; i < b.N; i++ {
 		errs = 0
@@ -338,6 +340,7 @@ func benchmarkDecode(b *testing.B, msgs []inboundMessage) {
 		}
 	}
 	b.StopTimer()
+	reportCPU(b, cpu)
 	b.ReportMetric(float64(len(msgs)), "msgs/op")
 	b.ReportMetric(float64(errs), "errors/op")
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(len(msgs)), "ns/msg")
@@ -395,6 +398,14 @@ func BenchmarkConnectionPipe(b *testing.B) {
 	})
 }
 
+// reportCPU reports the CPU time per op that the process used since start,
+// in every goroutine and the garbage collector, where processCPU can tell.
+func reportCPU(b *testing.B, start time.Duration) {
+	if used := processCPU() - start; start > 0 {
+		b.ReportMetric(float64(used.Nanoseconds())/float64(b.N), "cpu-ns/op")
+	}
+}
+
 // quietLogger drops the connections' logs, such as "connection closed".
 var quietLogger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -414,6 +425,7 @@ func benchmarkPipe(b *testing.B, n int, start func(clientIn io.Writer) (send fun
 	send, stop := start(clientInW)
 	b.ReportAllocs()
 	b.ResetTimer()
+	cpu := processCPU()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < n; j++ {
 			client.window <- struct{}{}
@@ -428,6 +440,7 @@ func benchmarkPipe(b *testing.B, n int, start func(clientIn io.Writer) (send fun
 		}
 	}
 	b.StopTimer()
+	reportCPU(b, cpu)
 	stop()
 	clientInW.Close()
 	<-conn.Done()

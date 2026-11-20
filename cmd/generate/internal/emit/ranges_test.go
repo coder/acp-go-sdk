@@ -378,6 +378,8 @@ func TestWriteTypesJen_PanicsOnADefaultOutsideItsBounds(t *testing.T) {
 		{"not an integer", `{"type": "integer", "format": "int32", "default": 1.5}`},
 		{"lenient, above the maximum", `{"type": "integer", "format": "int32", "maximum": 10, "default": 20, "x-deserialize-default-on-error": true}`},
 		{"const, below the format", `{"type": "integer", "format": "uint32", "const": 1, "default": -1}`},
+		{"a string", `{"type": "integer", "format": "int32", "default": "5"}`},
+		{"a bool", `{"type": ["integer", "null"], "format": "int32", "default": true}`},
 		{"beyond 2^53", `{"type": "integer", "format": "int64", "default": 9007199254740993}`},
 		{"lenient, below the format", `{"type": "integer", "format": "uint32", "default": -1, "x-deserialize-default-on-error": true}`},
 	} {

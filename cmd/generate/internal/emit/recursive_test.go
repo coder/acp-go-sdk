@@ -10,10 +10,14 @@ import (
 
 // recursiveSchema has types that hold themselves: Tree through a $ref, an
 // allOf of one $ref and a lenient $ref; A and B each other, A through a
-// required allOf; Dir through the struct of an inline property; and the
+// required allOf; P, P2, P3 and Q in a ring, where only Q, which sorts last,
+// has a check of its own; Dir through the struct of an inline property; and the
 // union Shape through its own property. Go rejects a struct that holds
 // itself in place, so each such member must hold its value through a
-// pointer.
+// pointer. Update holds Change through a patch field, a Patch that holds
+// its value in place, so the member of Change gets the pointer. The variant
+// of Pick copies the members of A, so its constructor takes the required b
+// as A declares it.
 const recursiveSchema = `{"$defs": {
   "Tree": {"type": "object", "required": ["value"], "properties": {
     "value": {"type": "integer", "format": "int32", "minimum": 0},
@@ -22,6 +26,16 @@ const recursiveSchema = `{"$defs": {
     "middle": {"$ref": "#/$defs/Tree", "x-deserialize-default-on-error": true}}},
   "A": {"type": "object", "required": ["b"], "properties": {"b": {"allOf": [{"$ref": "#/$defs/B"}]}}},
   "B": {"type": "object", "properties": {"a": {"$ref": "#/$defs/A"}}},
+  "Update": {"type": "object", "description": "Only changed fields need to be included.",
+    "properties": {"next": {"anyOf": [{"$ref": "#/$defs/Change"}, {"type": "null"}]}}},
+  "Change": {"type": "object", "properties": {"update": {"$ref": "#/$defs/Update"}}},
+  "Pick": {"oneOf": [
+    {"type": "object", "allOf": [{"$ref": "#/$defs/A"}], "required": ["kind"], "properties": {"kind": {"type": "string", "const": "a"}}},
+    {"type": "string"}]},
+  "P": {"type": "object", "properties": {"next": {"$ref": "#/$defs/P2"}}},
+  "P2": {"type": "object", "properties": {"next": {"$ref": "#/$defs/P3"}}},
+  "P3": {"type": "object", "properties": {"q": {"$ref": "#/$defs/Q"}}},
+  "Q": {"type": "object", "required": ["p"], "properties": {"p": {"$ref": "#/$defs/P"}}},
   "Dir": {"type": "object", "properties": {
     "meta": {"type": "object", "properties": {"parent": {"$ref": "#/$defs/Dir"}}}}},
   "Shape": {"properties": {"next": {"$ref": "#/$defs/Shape"}},
@@ -96,6 +110,41 @@ func TestA_RequiresBThroughAPointer(t *testing.T) {
 		t.Error("Validate takes an inner A without b")
 	}
 	if err := (&A{B: &B{}}).Validate(); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+}
+
+func TestUpdate_HoldsChangeThroughAPatchAndChangeHoldsUpdateThroughAPointer(t *testing.T) {
+	var update Update
+	roundTrips(t, &update, ` + "`" + `{"next":{"update":{"next":null}}}` + "`" + `)
+	change, ok := update.Next.Value()
+	if !ok || change.Update == nil || !change.Update.Next.IsNull() {
+		t.Fatalf("decoded %+v", update)
+	}
+}
+
+func TestNewPickA_TakesTheRequiredBAsADeclaresIt(t *testing.T) {
+	pick := NewPickA(&B{})
+	out, err := json.Marshal(pick)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back Pick
+	roundTrips(t, &back, string(out))
+	if back.A == nil || back.A.B == nil || back.A.Kind != "a" {
+		t.Errorf("NewPickA(&B{}) encodes as %s", out)
+	}
+}
+
+func TestQ_ValidatesTheQAtTheEndOfItsRing(t *testing.T) {
+	ring := func(inner *Q) *Q { return &Q{P: &P{Next: &P2{Next: &P3{Q: inner}}}} }
+	if err := ring(&Q{}).Validate(); err == nil {
+		t.Error("Validate takes an inner Q without p")
+	}
+	if err := (&P{Next: &P2{Next: &P3{Q: &Q{}}}}).Validate(); err == nil {
+		t.Error("Validate takes a Q without p")
+	}
+	if err := ring(&Q{P: &P{}}).Validate(); err != nil {
 		t.Errorf("Validate: %v", err)
 	}
 }

@@ -51,13 +51,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check the version input
+      - name: Check the inputs
         id: version
         env:
           DRY_RUN: ${{ inputs.dry_run }}
+          SCHEMA_INPUT: ${{ inputs.schema }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+
+          # Refuse control characters before any step prints an input: a
+          # newline would let the value start its own workflow command line.
+          if [[ "$VERSION" == *[[:cntrl:]]* ]]; then
+            echo "::error::The version input holds a control character, such as a newline. Run again with the plain version."
+            exit 1
+          fi
+          if [[ "$SCHEMA_INPUT" == *[[:cntrl:]]* ]]; then
+            echo "::error::The schema input holds a control character, such as a newline. Run again with the plain schema version."
+            exit 1
+          fi
 
           # SemVer 2.0.0 without build metadata, which Go rejects in a module
           # version: no leading zeros, no empty prerelease identifiers.
@@ -127,7 +139,8 @@ jobs:
             echo "module=$module"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Check that the tag is new
+      - name: Check that the version is new
+        id: tag
         if: ${{ !cancelled() && steps.version.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -154,7 +167,30 @@ jobs:
             exit 1
           fi
 
+          # The version must be newer, in SemVer order, than every v* tag that
+          # is a SemVer. key sorts as SemVer 2.0.0 does: the numbers, then a
+          # release above its prereleases, then the prerelease identifiers,
+          # numeric ones below alphanumeric ones.
+          num='(0|[1-9][0-9]*)'
+          pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          key='def key: capture("^(?<core>[^-]+)(-(?<pre>.+))?$")
+            | (.core | split(".") | map(tonumber))
+              + [if .pre then 0 else 1 end]
+              + [.pre // "" | split(".") | map(if test("^[0-9]+$") then [0, tonumber] else [1, .] end)];'
+          if ! refs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --jq '.[].ref' 2> "$err")"; then
+            cat "$err" >&2
+            echo "::error::Could not list the v* tags. Fix the error above, then run again."
+            exit 1
+          fi
+          latest="$(jq -Rrn --arg re "^refs/tags/v$num\\.$num\\.$num(-$pre(\\.$pre)*)?\$" "$key"'
+            [inputs | select(test($re)) | ltrimstr("refs/tags/v")] | max_by(key) // empty' <<< "$refs")"
+          if [[ -n "$latest" ]] && ! jq -en --arg new "${TAG#v}" --arg latest "$latest" "$key"'($new | key) > ($latest | key)' > /dev/null; then
+            echo "::error::Version ${TAG#v} is not newer than v$latest, the newest release tag. Pick a version above it."
+            exit 1
+          fi
+
       - name: Check CI on the release commit
+        id: ci
         if: ${{ !cancelled() && steps.commit.outcome == 'success' }}
         env:
           COMMIT: ${{ steps.commit.outputs.commit }}
@@ -167,11 +203,17 @@ jobs:
           status="$(jq -r '.status // empty' <<< "$run")"
           conclusion="$(jq -r '.conclusion // empty' <<< "$run")"
 
+          # Only a push run on this exact commit counts: a run on a later
+          # commit tested other code. A push of several commits at once runs CI
+          # on the newest only, so the release PR must land on its own.
           if [[ -z "$url" ]]; then
-            echo "::error::CI has no push run on $COMMIT. Check the Actions tab for the CI workflow on main, then run again."
+            echo "::error::CI has no push run on $COMMIT. It probably reached main in one push with later commits. Land the release PR on its own, as RELEASING.md describes."
             exit 1
           elif [[ "$status" != completed ]]; then
             echo "::error::CI on $COMMIT is still running ($status): $url. Run again after it passes."
+            exit 1
+          elif [[ "$conclusion" == cancelled ]]; then
+            echo "::error::CI on $COMMIT was cancelled: $url. A newer push to main cancels a CI run that still waits for the one before it. Re-run it there, then run again."
             exit 1
           elif [[ "$conclusion" != success ]]; then
             echo "::error::CI on $COMMIT ended with $conclusion: $url. Fix main or re-run CI, then run again."
@@ -180,53 +222,111 @@ jobs:
 
           echo "CI passed on $COMMIT: $url"
 
-      - name: Find the release environment
+      - name: Check the release environment
         id: environment
         if: ${{ !cancelled() }}
         env:
+          DRY_RUN: ${{ inputs.dry_run }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          # GitHub creates an unprotected environment when a job names one that
-          # does not exist, so publish names release only when it exists.
+          # A real run needs the environment with a required reviewer: it is
+          # the approval gate, and it holds the App's secrets. GitHub would
+          # create a missing environment without protection, so publish names
+          # it only when this check passes.
           err="$RUNNER_TEMP/gh-error"
           if environment="$(gh api "repos/$GITHUB_REPOSITORY/environments/release" 2> "$err")"; then
-            if ! jq -e 'any(.protection_rules[]?; .type == "required_reviewers")' <<< "$environment" > /dev/null; then
-              echo "::warning::The release environment has no required reviewers, so publish is not gated. Add one as RELEASING.md describes."
+            if jq -e 'any(.protection_rules[]?; .type == "required_reviewers")' <<< "$environment" > /dev/null; then
+              echo "environment=release" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
-            echo "environment=release" >> "$GITHUB_OUTPUT"
+            state="no required reviewers"
+            problem="The release environment has no required reviewers"
           elif grep -q 'HTTP 404' "$err"; then
-            echo "::warning::No release environment: publish runs without an approval gate. Set it up as RELEASING.md describes."
-            echo "environment=" >> "$GITHUB_OUTPUT"
+            state="missing"
+            problem="There is no release environment"
           else
             cat "$err" >&2
             echo "::error::Could not look up the release environment. Fix the error above, then run again."
             exit 1
           fi
 
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          if [[ "$DRY_RUN" == true ]]; then
+            echo "::warning::$problem, so a real run refuses to start. Set it up as RELEASING.md describes."
+            exit 0
+          fi
+          echo "::error::$problem, so nothing would hold publish for approval. Set it up as RELEASING.md describes, then run again."
+          exit 1
+
+      # The plan lists every check, so it is written when one fails too.
       - name: Write the release plan
+        if: ${{ !cancelled() }}
         env:
+          CHECK_CI: ${{ steps.ci.outcome }}
+          CHECK_COMMIT: ${{ steps.commit.outcome }}
+          CHECK_ENVIRONMENT: ${{ steps.environment.outcome }}
+          CHECK_TAG: ${{ steps.tag.outcome }}
+          CHECK_VERSION: ${{ steps.version.outcome }}
           COMMIT: ${{ steps.commit.outputs.commit }}
           DRY_RUN: ${{ inputs.dry_run }}
           ENVIRONMENT: ${{ steps.environment.outputs.environment }}
+          ENVIRONMENT_STATE: ${{ steps.environment.outputs.state }}
           MODULE: ${{ steps.commit.outputs.module }}
           SCHEMA: ${{ steps.commit.outputs.schema }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
 
+          result() {
+            case "$1" in
+              success) echo passed ;;
+              failure) echo "**failed** (see its error)" ;;
+              *) echo "skipped (an earlier check failed)" ;;
+            esac
+          }
+          value() {
+            if [[ -n "$1" ]]; then echo "\`$1\`"; else echo unknown; fi
+          }
+          environment="$(result "$CHECK_ENVIRONMENT")"
+          if [[ "$CHECK_ENVIRONMENT" == success && -z "$ENVIRONMENT" ]]; then
+            environment="**warned**: $ENVIRONMENT_STATE, so a real run refuses to start"
+          fi
+          failed=0
+          for outcome in "$CHECK_VERSION" "$CHECK_COMMIT" "$CHECK_TAG" "$CHECK_CI" "$CHECK_ENVIRONMENT"; do
+            if [[ "$outcome" == failure ]]; then
+              failed=$((failed + 1))
+            fi
+          done
+
           {
             echo "## Release plan"
             echo
             echo "| Field | Value |"
             echo "| --- | --- |"
-            echo "| Tag | \`$TAG\` |"
-            echo "| Commit | \`$COMMIT\` |"
-            echo "| ACP schema | \`$SCHEMA\` |"
-            echo "| Module | \`$MODULE\` |"
-            echo "| Environment | ${ENVIRONMENT:-none (not gated)} |"
+            echo "| Tag | $(value "$TAG") |"
+            echo "| Commit | $(value "$COMMIT") |"
+            echo "| ACP schema | $(value "$SCHEMA") |"
+            echo "| Module | $(value "$MODULE") |"
             echo "| Dry run | $DRY_RUN |"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Inputs: plain text, SemVer, a real run from main | $(result "$CHECK_VERSION") |"
+            echo "| Release commit: version, schema, module path | $(result "$CHECK_COMMIT") |"
+            echo "| New version: no tag, no release, newer than every v* tag | $(result "$CHECK_TAG") |"
+            echo "| CI passed on the release commit | $(result "$CHECK_CI") |"
+            echo "| release environment with required reviewers | $environment |"
+            echo "| coder-release-publisher secrets | checked by publish after approval |"
+            echo
+            if [[ "$failed" -gt 0 ]]; then
+              echo "Failed checks: $failed. Nothing was published."
+            elif [[ "$DRY_RUN" == true ]]; then
+              echo "Dry run: nothing was published."
+            else
+              echo "All checks passed. publish waits for approval in the release environment."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Every step below reads the current state first, so "Re-run failed jobs"
@@ -238,7 +338,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ needs.preflight.outputs.environment }}
     permissions:
-      contents: write # create the GitHub release, and the tag when the App is not set up
+      contents: write # create the GitHub release
       id-token: write # Cloud KMS signs the coder-release-publisher App's JWT
     env:
       COMMIT: ${{ needs.preflight.outputs.commit }}
@@ -246,26 +346,30 @@ jobs:
       SCHEMA: ${{ needs.preflight.outputs.schema }}
       TAG: ${{ needs.preflight.outputs.tag }}
     steps:
-      # The "Release tags (App only)" ruleset lets only coder-release-publisher create v* tags.
-      # The release environment holds the App's key settings as secrets, so only this job, after
-      # approval, can sign as the App.
-      - name: Check for the release App
-        id: app
+      # Only coder-release-publisher creates the tag, never GITHUB_TOKEN: the "Release tags (App
+      # only)" ruleset lets only the App create v* tags. The release environment holds the App's
+      # key settings as secrets, so only this job, after approval, can sign as the App.
+      - name: Check the coder-release-publisher secrets
         env:
           APP_ID: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_ID }}
+          APP_KMS_KEY: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_KMS_KEY }}
+          WORKLOAD_ID_PROVIDER: ${{ secrets.APP_KEYS_WORKLOAD_ID_PROVIDER }}
         run: |
           set -euo pipefail
 
-          if [[ -n "$APP_ID" ]]; then
-            echo "use=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::No coder-release-publisher settings in this job, so the tag is created with GITHUB_TOKEN. The Release tags (App only) ruleset refuses that. Set up the App as RELEASING.md describes."
-            echo "use=false" >> "$GITHUB_OUTPUT"
+          # Only the App may create the tag, so publish stops here, before it
+          # writes anything, when a secret is missing.
+          missing=()
+          [[ -n "$APP_ID" ]] || missing+=(CODER_RELEASE_PUBLISHER_APP_ID)
+          [[ -n "$APP_KMS_KEY" ]] || missing+=(CODER_RELEASE_PUBLISHER_APP_KMS_KEY)
+          [[ -n "$WORKLOAD_ID_PROVIDER" ]] || missing+=(APP_KEYS_WORKLOAD_ID_PROVIDER)
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::The release environment lacks ${missing[*]}, so publish cannot sign as coder-release-publisher. Store them as RELEASING.md describes, then use Re-run failed jobs."
+            exit 1
           fi
 
       - name: Mint a coder-release-publisher token
         id: app_token
-        if: ${{ steps.app.outputs.use == 'true' }}
         uses: coder/github-app-token-action@6e522647a301a860cee724d573b03a59754f84b2 # main 2026-11-17
         with:
           client-id: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_ID }}
@@ -278,7 +382,7 @@ jobs:
 
       - name: Tag the release commit
         env:
-          GH_TOKEN: ${{ steps.app_token.outputs.token || github.token }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -306,7 +410,7 @@ jobs:
           if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
             -f ref="refs/tags/$TAG" \
             -f sha="$tag_object" > /dev/null; then
-            echo "::error::GitHub refused to create refs/tags/$TAG. When the Release tags (App only) ruleset exists, only coder-release-publisher may create it: check the App settings in the release environment (RELEASING.md)."
+            echo "::error::GitHub refused to create refs/tags/$TAG for coder-release-publisher. Check that the App is installed and is the bypass actor of the Release tags (App only) ruleset (RELEASING.md)."
             exit 1
           fi
           echo "Created tag $TAG on $COMMIT."

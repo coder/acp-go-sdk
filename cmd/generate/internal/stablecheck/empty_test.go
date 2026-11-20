@@ -48,11 +48,11 @@ func TestEmptyAdded(t *testing.T) {
 			want:  []string{"named, err := json.Marshal(a)", "if err != nil {", "return nil, err", "}", "return withExtra(named, v.Extra)"},
 		},
 		{
-			// encode returns bytes beside an error.
+			// Encode returns bytes beside an error.
 			name:  "the bytes come from another call",
 			guard: "if len(extra) == 0 {\n\t\treturn named, nil\n\t}",
-			body:  "named, err := encode(a)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn withExtra(named, v.Extra)",
-			want:  []string{"named, err := encode(a)", "if err != nil {", "return nil, err", "}", "return named, nil"},
+			body:  "named, err := codec.Encode(a)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn withExtra(named, v.Extra)",
+			want:  []string{"named, err := codec.Encode(a)", "if err != nil {", "return nil, err", "}", "return named, nil"},
 		},
 		{
 			name:  "a stable field goes to the helper",
@@ -74,7 +74,8 @@ func TestEmptyAdded(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			src := "package acp\n\nimport (\n\t\"encoding/json\"\n\t\"errors\"\n)\n\n" +
-				"func encode(any) ([]byte, error) { return []byte(\"{}\"), errors.New(\"no\") }\n\n" +
+				"type coder struct{}\n\nvar codec coder\n\n" +
+				"func (coder) Encode(any) ([]byte, error) { return []byte(\"{}\"), errors.New(\"no\") }\n\n" +
 				"type T struct {\n\tA     string\n\tTags  map[string]json.RawMessage\n\tExtra map[string]json.RawMessage\n}\n\n" +
 				"func withExtra(named []byte, extra map[string]json.RawMessage) ([]byte, error) {\n\t" + tc.guard + "\n\treturn json.Marshal(extra)\n}\n\n" +
 				"func (v T) MarshalJSON() ([]byte, error) {\n\ttype Alias T\n\ta := Alias(v)\n\t" + tc.body + "\n}\n"

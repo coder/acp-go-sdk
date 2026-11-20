@@ -40,6 +40,7 @@ You can run them from your terminal or connect to external ACP agents.
 - `go run ./example/claude-code` demonstrates bridging to Claude Code.
 - `go run ./example/client` connects to a running agent and streams a sample turn.
 - `go run ./example/gemini` bridges to the Gemini CLI in ACP mode (flags: -model, -sandbox, -yolo, -debug, -gemini /path/to/gemini).
+- `go run ./example/proxy` is a proxy for a conductor to run between a client and an agent (see [Proxy role (unstable)](#proxy-role-unstable)).
 
 You can watch the interaction by running `go run ./example/client` locally.
 
@@ -170,6 +171,61 @@ The [ACP spec](https://agentclientprotocol.com/protocol/extensibility#the-_meta-
 reserves the root-level `_meta` keys `traceparent`, `tracestate`, and `baggage` for W3C
 trace context/OpenTelemetry compatibility. This SDK does not read or set these keys.
 
+### Proxy role (unstable)
+
+In an [ACP proxy chain](https://agentclientprotocol.com/rfds/proxy-chains), a
+conductor stands between a client and a chain of components: proxies, then the
+agent. Each proxy can read and change the messages that pass it. The RFD is a
+draft, so this API is unstable.
+
+A proxy talks only to its conductor. Messages from the client side arrive as
+they are, and messages to and from the proxy's successor travel wrapped in
+`proxy/successor`. `acp.NewUnstableProxySideConnection` speaks both, so a
+handler sees plain typed messages:
+
+```go
+conn := acp.NewUnstableProxySideConnection(func(c *acp.UnstableProxySideConnection) acp.UnstableProxyHandlers {
+	return acp.UnstableProxyHandlers{FromSuccessor: acp.UnstableProxyFromSuccessor{
+		SessionUpdate: func(ctx context.Context, n acp.SessionNotification) error {
+			// Change n, then send it on to the client.
+			return c.Client().SessionUpdate(ctx, n)
+		},
+	}}
+}, os.Stdout, os.Stdin)
+<-conn.Done()
+```
+
+- `FromClient` handles the messages from the client side, `FromSuccessor`
+  those from the successor. Each field is named and typed as the `Agent` or
+  `Client` method, so `FromClient.Prompt = c.Successor().Prompt` compiles.
+- A nil handler forwards its message unchanged, so the zero handlers pass
+  everything through. Messages of unknown and extension methods are forwarded
+  too, and the result or error of a forwarded request comes back unchanged.
+- `c.Client()` sends to the client side as it is. `c.Successor()` sends to the
+  successor, wrapped in `proxy/successor`.
+- The conductor initializes a proxy with `proxy/initialize`. Without an
+  `UnstableInitializeProxy` handler, the proxy sends it on as `initialize`. A
+  handler must send `initialize` with `c.Successor().Initialize` before it
+  answers, and must not change `protocolVersion`. A plain `initialize` gets
+  `-32600`.
+- A handler gets its message decoded into this SDK's Go types, so members that
+  those types do not know are lost. A message that does not decode gets
+  `-32602`, or an error log for a notification. A nil handler keeps the bytes.
+- `$/cancel_request` is per hop: cancelling a request that the proxy forwarded
+  cancels the proxy's own `proxy/successor` request. `session/cancel` is
+  forwarded like any notification.
+- Each request runs on its own goroutine, so a notification that arrives right
+  after a request, such as a `session/cancel` sent at once after its
+  `session/prompt`, can reach the other side first.
+
+[`example/proxy`](./example/proxy) adds `[proxy] ` in front of each agent
+message chunk. Run it in a chain with the Rust conductor
+(`cargo install agent-client-protocol-conductor`):
+
+```sh
+agent-client-protocol-conductor agent "go run ./example/proxy" "go run ./example/agent"
+```
+
 ### Study a Production Implementation
 
 For a complete, production‑ready integration, see the
@@ -195,19 +251,20 @@ The hand-written files add errors, extension methods, and builder helpers.
 - Interfaces you implement: `Agent` and `Client`, whose methods are the stable methods of ACP schema 1.25.0, and one optional interface for each other method, named after the side and the Go method, such as `AgentUnstableForkSession` and `ClientUnstableMessageMcp`. The optional interface of `LoadSession` keeps its name `AgentLoader`. A schema release never adds a method to `Agent` or `Client`: a method that it adds or makes stable gets its own optional interface [types_gen.go:Agent, AgentLoader, Client] [cmd/generate/internal/ir/baseline.go:requiredMethods]. Optionally `ExtensionMethodHandler` for `_`-prefixed methods [extensions.go:ExtensionMethodHandler]
 - Outbound calls: `ClientSideConnection` has one method per agent method, for example `Initialize`, `NewSession`, `Prompt`, and `Cancel` [client_gen.go:Initialize, NewSession, Prompt, Cancel]. `AgentSideConnection` has one method per client method, for example `SessionUpdate`, `RequestPermission`, `ReadTextFile`, and `CreateTerminal` [agent_gen.go:SessionUpdate, RequestPermission, ReadTextFile, CreateTerminal]. Both types have `CallExtension` and `NotifyExtension` [extensions.go:CallExtension, NotifyExtension]
 - `mcp/message` (unstable) has two forms. An agent sends the request with `(*AgentSideConnection).UnstableMessageMcp`, and a client answers it in `ClientUnstableMessageMcp`. A client sends the notification with `(*ClientSideConnection).UnstableMessageMcp`, and an agent receives it in `AgentUnstableMessageMcp` [agent_gen.go:handle, UnstableMessageMcp] [client_gen.go:handle, UnstableMessageMcp]
+- Proxy role (unstable): `NewUnstableProxySideConnection(handlers func(*UnstableProxySideConnection) UnstableProxyHandlers, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption)`. `UnstableProxyHandlers` holds `FromClient` (`proxy/initialize` and every agent method but `initialize`) and `FromSuccessor` (every client method), structs of func fields where nil forwards the message unchanged. `Client()` has one method per client method, and `Successor()` one per agent method, `initialize` included, each wrapped in `proxy/successor` [proxy.go] [proxy_gen.go]
 - Low-level transport: `Connection`, `NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption)`, `MethodHandler`, `SendRequest[T]` (a generic function that takes the `*Connection`), `(*Connection).SendRequestNoResult`, `(*Connection).SendNotification`, `(*Connection).SetLogger`, and `(*Connection).Done` [connection.go:NewConnection, MethodHandler, SendRequest, SendRequestNoResult, SendNotification, SetLogger, Done]
 - Wire types: one struct per request, response, and notification, union wrappers with one pointer field per variant, and named `string` enums with constants such as `StopReason`, `ToolKind`, `ToolCallStatus`, and `PermissionOptionKind` [types_gen.go:StopReason, ToolKind, ToolCallStatus, PermissionOptionKind]. `ExtNotification`, `ExtRequest`, and `ExtResponse` are aliases of `json.RawMessage`, so they have no generated fields and no `Validate` [types_gen.go:ExtNotification, ExtRequest, ExtResponse]
 - Free-form values: a value that the schema leaves free holds the JSON as it was read, so a number keeps every digit. `_meta` is a `Meta`, a `map[string]json.RawMessage` with `NewMeta`, `Get`, and `Set`, and an empty one is left out of the message. `Get` of a missing key returns an error that wraps `ErrMetaKeyNotFound`. `rawInput`, `rawOutput`, the `data` of an error (`RequestError.Data` included), and the result of `mcp/message` are `json.RawMessage`, and the params of `mcp/message` are a `map[string]json.RawMessage` [meta.go:Meta, NewMeta, Get, Set] [types_gen.go:ToolCall, UnstableMcpError] [errors.go:RequestError]. `RequestError.Data` keeps `"data": null`, while the generated `Error` reads it as no data, as its schema asks with `x-deserialize-default-on-error` [errors_test.go:TestRequestError_KeepsNullDataThatErrorDrops]
 - Typed maps: a map whose members have a schema takes their Go type. `ElicitationSchema.Properties` is a `map[string]ElicitationPropertySchema`, the `Content` of an accepted elicitation is a `map[string]ElicitationContentValue`, and `env` and `headers` are `map[string]string`. `NewElicitationContentValueString`, `...Integer` (an `int64`, as the schema's `format: int64` asks), `...Number`, `...Boolean`, and `...StringArray` build a content value [types_gen.go:ElicitationSchema, ElicitationAcceptAction] [helpers.go:NewElicitationContentValueString]
 - Patch fields: the optional fields of an update that changes a stored value, such as `ToolCallUpdate`, `SessionInfoUpdate`, `CompactionUpdate`, and the unstable `SubagentUpdate` and `SessionMessage`, are `Patch[T]`. Its zero value is unset (the member is absent: unchanged), `PatchNull[T]()` writes `null` (clear), `PatchSet(v)` writes `v`, a nil slice or map as `[]` or `{}` (but a nil `json.RawMessage` as `null`), and `PatchFromPtr(p)` sets `*p`, or leaves the field unset for a nil `p`. Read one with `Value() (T, bool)`, `Ptr()` (nil unless set), `IsNull()`, and `IsUnset()`. In ACP v1 a `null` in a `ToolCallUpdate` does not clear: the protocol docs say that it leaves `name`, `rawInput` and `rawOutput` unchanged, and the Rust SDK reads `null` in every `ToolCallUpdate` field as absent. Treat `IsNull()` there like `IsUnset()`. A set `Patch` whose value encodes as JSON `null`, such as a nil `json.RawMessage`, is `null` on the wire and reads back as `IsNull()`. The generated structs leave an unset field out; in a struct of your own, tag a `Patch` field `omitzero` (Go 1.24 or later), since `omitempty` writes an unset one as `null`. The `WithUpdate*` options set their field with `PatchSet`, except that a nil slice to `WithUpdateContent` or `WithUpdateLocations`, or a nil value to `WithUpdateRawInput` or `WithUpdateRawOutput`, leaves it unset. A value that `json.Marshal` cannot encode, such as a channel or a NaN, makes an update from `WithUpdateRawInput` or `WithUpdateRawOutput` fail to encode, so sending it returns the error, while `WithStartRawInput` and `WithStartRawOutput` leave it out, because their field is a plain `json.RawMessage` [patch.go:Patch, PatchFromPtr] [helpers.go:WithUpdateContent, WithUpdateRawInput, WithStartRawInput]
 - Unstable types: one Go type per shape. The Request, Response, and Notification types of unstable-only methods, and the definitions that only they reach, get the `Unstable` prefix, such as `UnstableForkSessionRequest` and `UnstableProviderInfo`. A type that stable and unstable methods share keeps its name and carries the unstable additions, each with a doc comment that starts with `**UNSTABLE**`, as the Rust SDK gates them behind a feature: `SessionConfigOption`, `McpServer` with its `Acp` variant, and the constant `SessionConfigOptionCategorySpeed`. Definitions that exist only in `schema/schema.unstable.json` and that stable methods reach keep their names too, for example `SubagentUpdate` and `ErrorStopReason` [cmd/generate/internal/load/merge.go:buildUnstableDuplicateSet, promoteChangedSharedDefs, markUnstableAdditions, ensureRefsAvailable]
-- Constants: `ProtocolVersionNumber` (`1`), `SchemaVersion` (the ACP schema release in `schema/version`), plus 24 `AgentMethod*`, 13 `ClientMethod*`, and 1 `ProtocolMethod*` wire-name constants, for example `AgentMethodSessionPrompt` (`session/prompt`) and `ProtocolMethodCancelRequest` (`$/cancel_request`) [constants_gen.go:ProtocolVersionNumber, AgentMethodSessionPrompt]
+- Constants: `ProtocolVersionNumber` (`1`), `SchemaVersion` (the ACP schema release in `schema/version`), plus 24 `AgentMethod*`, 13 `ClientMethod*`, 1 `ProtocolMethod*`, and 2 `ProxyMethod*` wire-name constants, for example `AgentMethodSessionPrompt` (`session/prompt`) and `ProtocolMethodCancelRequest` (`$/cancel_request`) [constants_gen.go:ProtocolVersionNumber, AgentMethodSessionPrompt]
 - Errors: `RequestError` (`Code`, `Message`, and `Data`, the raw JSON of the error's data) and its constructors `NewRequestError(code, message, data)`, `NewParseError` (-32700), `NewInvalidRequest` (-32600), `NewMethodNotFound` (-32601), `NewInvalidParams` (-32602), `NewInternalError` (-32603), `NewRequestCancelled` (-32800), and `NewAuthRequired` (-32000) [errors.go:RequestError]. Each constructor encodes its `data` argument as JSON; a nil one, or one that does not encode, gives no `Data`. `NewMethodNotFound` sets `Data` to `{"method": method}` [errors.go:NewRequestError, NewMethodNotFound]. `(*RequestError).Error` returns the JSON of code, message, and data, `<nil>` for a nil receiver, and the text `code %d: %s` (with ` (data: %s)` appended when `Data` is set) when `Data` is not valid JSON [errors.go:Error]
 - Builders: content blocks (`TextBlock`, `ImageBlock`, `AudioBlock`, `ResourceLinkBlock`, `ResourceBlock`), tool content (`ToolContent`, `ToolDiffContent`, `ToolTerminalRef`), session updates (`UpdateUserMessage`, `UpdateAgentMessage`, `UpdateAgentThought`, their `*Text` forms, and `UpdatePlan`), tool calls (`StartToolCall`, `StartReadToolCall`, and `StartEditToolCall` with `WithStart*` options, `UpdateToolCall` with `WithUpdate*` options), and `Ptr[T]` [helpers.go]. Generated `New<Union><Variant>` constructors, for example `NewRequestPermissionOutcomeSelected` [helpers_gen.go:NewRequestPermissionOutcomeSelected]
 
 ### Invariants
 
-- The `*_gen.go` files start with `Code generated by acp-go-generator; DO NOT EDIT.` Change `cmd/generate` instead of editing them, then run `make generate` [Makefile:generate] [constants_gen.go] [types_gen.go] [agent_gen.go] [client_gen.go] [helpers_gen.go]
+- The `*_gen.go` files start with `Code generated by acp-go-generator; DO NOT EDIT.` Change `cmd/generate` instead of editing them, then run `make generate` [Makefile:generate] [constants_gen.go] [types_gen.go] [agent_gen.go] [client_gen.go] [proxy_gen.go] [helpers_gen.go]
 - Notifications from the peer run one at a time, in arrival order, on one goroutine [connection.go:processNotifications]
 - A request from the peer starts its handler only after the handlers of all notifications that arrived before it have finished, so a slow notification handler delays every later request. Notifications that arrive after the request do not delay it. There are two exceptions. First, it also starts while the running notification handler waits for a peer response, because the peer can need this answer first. Second, when the peer disconnects during the wait, the handler starts at once with a cancelled ctx, so it can clean up while earlier notification handlers still run [connection.go:receive, waitInboundBarrier, waitNotifications, startPeerWait] [connection_inbound_request_barrier_test.go:TestConnection_SlowNotificationDelaysLaterMessages]
 - After a response arrives, `SendRequest` and `SendRequestNoResult` return only after the handlers of all notifications that arrived before the response have finished, or when the ctx ends or the peer disconnects. Before a response, they return at once when the params do not marshal (`-32602`) or the write fails (`-32603`). In a notification handler, a request made with the handler's ctx (or a ctx derived from it) waits only for the earlier notifications. While the handler of a request from the peer runs, a request made with the handler's ctx (or a ctx derived from it) also returns while the running notification handler waits for a peer response, as the handler's start does [connection.go:SendRequest, SendRequestNoResult, prepareRequest, waitNotificationsUpTo, runningRequestHandler]
@@ -238,17 +295,17 @@ The hand-written files add errors, extension methods, and builder helpers.
 ## Subdirectories & System Boundaries
 
 - cmd: [./cmd/README.md](./cmd/README.md) - Command-line programs. `cmd/generate` is a separate Go module that reads `schema/` and writes the root `*_gen.go` files.
-- example: [./example/README.md](./example/README.md) - Four `package main` programs on the public `acp` API: a scripted agent, a demo client, and REPL clients for Claude Code and the Gemini CLI.
+- example: [./example/README.md](./example/README.md) - Five `package main` programs on the public `acp` API: a scripted agent, a demo client, REPL clients for Claude Code and the Gemini CLI, and a proxy.
 - schema (no contract file): the ACP JSON schemas (`meta.json`, `schema.json`, `meta.unstable.json`, `schema.unstable.json`) and the `version` pin. Input of `cmd/generate`.
 - testdata (no contract file): golden JSON payloads in `testdata/json_golden`, used by `json_parity_test.go`.
 
 ## Global Invariants
 
 - `version` holds the SDK's own semver, and `schema/version` pins the ACP schema release. They move apart: a release can change the SDK without a new schema. `make generate` and `make release` never derive one from the other. `cmd/generate` writes `schema/version` into the `SchemaVersion` constant, and the `mdsh` block in this README prints the `go get` line from `version`. A schema bump commits the schemas, the generated Go, and `schema/version` together [Makefile:generate, release] [cmd/generate/main.go:main]
-- The generated `handle` switches use unexported names from the hand-written root files: `registerPrompt`, `cancelPrompt`, `sessionCancels`, and `mu` [agent.go], and `toReqErr` [errors.go]. Rename them only together with `cmd/generate/internal/emit` [cmd/generate/internal/emit/dispatch.go] [cmd/generate/internal/emit/dispatch_helpers.go]
+- The generated `handle` switches use unexported names from the hand-written root files: `registerPrompt`, `cancelPrompt`, `sessionCancels`, and `mu` [agent.go], `handlers`, `isNotification`, `forwardToSuccessor`, `forwardToClient`, `successorRequest`, and `notify` [proxy.go], and `toReqErr` [errors.go]. Rename them only together with `cmd/generate/internal/emit` [cmd/generate/internal/emit/dispatch.go] [cmd/generate/internal/emit/dispatch_helpers.go] [cmd/generate/internal/emit/proxy.go]
 - `cmd/generate` emits no constructors for `ContentBlock`, `ToolCallContent`, and `SessionUpdate`. Their builders are hand-written in `helpers.go` [cmd/generate/internal/emit/helpers.go:WriteHelpersJen]
 - The root module uses only the standard library. Only `cmd/generate` depends on `github.com/dave/jennifer` [go.mod] [cmd/generate/go.mod]
-- The examples import only `github.com/coder/acp-go-sdk` from this module, so they exercise the public API only [example/agent/main.go] [example/client/main.go] [example/claude-code/main.go] [example/gemini/main.go]
+- The examples import only `github.com/coder/acp-go-sdk` from this module, so they exercise the public API only [example/agent/main.go] [example/client/main.go] [example/claude-code/main.go] [example/gemini/main.go] [example/proxy/main.go]
 
 ## Global Side Effects
 

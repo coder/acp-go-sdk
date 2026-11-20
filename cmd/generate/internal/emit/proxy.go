@@ -101,17 +101,32 @@ func (p *proxyEmitter) handlerStruct(name string, methods []*ir.MethodInfo, doc 
 
 // typedCall decodes params as the message of mi, calls its handler h.<Name>,
 // and returns the result, when the handler is set and the message is of
-// mi's kind.
-func (p *proxyEmitter) typedCall(mi *ir.MethodInfo) Code {
+// mi's kind. A message that does not decode goes to c.undecodable, which can
+// forward it to the side to as method.
+func (p *proxyEmitter) typedCall(mi *ir.MethodInfo, to string, method Code) Code {
 	handles := Id("h").Dot(mi.Name).Op("!=").Nil().Op("&&")
+	decode := func(typeName string) []Code {
+		return []Code{
+			Var().Id("p").Id(typeName),
+			If(List(Id("err")).Op(":=").Id("decodeParams").Call(Id("params"), Op("&").Id("p")), Id("err").Op("!=").Nil()).Block(
+				Return(Id("c").Dot("undecodable").Call(Id("ctx"), Id(to), method, Id("params"), Id("notification"), Id("err"))),
+			),
+		}
+	}
 	if mi.Notif != "" {
-		return If(handles.Id("notification")).Block(append(jUnmarshalValidate(mi.Notif), jCallNotification("h", mi.Name)...)...)
+		return If(handles.Id("notification")).Block(append(decode(mi.Notif), jCallNotification("h", mi.Name)...)...)
 	}
 	call := jCallRequestNoResp("h", mi.Name)
 	if _, ok := responseType(p.schema, mi); ok {
 		call = jCallRequestWithResp("h", mi.Name)
 	}
-	return If(handles.Op("!").Id("notification")).Block(append(jUnmarshalValidate(mi.Req), call...)...)
+	return If(handles.Op("!").Id("notification")).Block(append(decode(mi.Req), call...)...)
+}
+
+// forward returns the call that forwards the message to the side to as
+// method.
+func forward(to string, method Code) Code {
+	return Return(Id("c").Dot("forward").Call(Id("ctx"), Id(to), method, Id("params"), Id("notification")))
 }
 
 // unwrap returns the call of handleFromSuccessor with the decoded envelope p.
@@ -128,8 +143,8 @@ func (p *proxyEmitter) handle() {
 	rejection := fmt.Sprintf("proxies must be initialized with %s", role.Initialize.Method)
 	cases := []Code{
 		Case(p.constOf(role.Initialize)).Block(
-			p.typedCall(role.Initialize),
-			Return(Id("c").Dot("forwardToSuccessor").Call(Id("ctx"), p.constOf(role.Replaces), Id("params"), Id("notification"))),
+			p.typedCall(role.Initialize, "successorSide", p.constOf(role.Replaces)),
+			forward("successorSide", p.constOf(role.Replaces)),
 		),
 		Case(p.constOf(role.Successor)).Block(successor...),
 		Case(p.constOf(role.Replaces)).Block(
@@ -137,7 +152,7 @@ func (p *proxyEmitter) handle() {
 		),
 	}
 	for _, mi := range role.FromClient[1:] {
-		cases = append(cases, Case(p.constOf(mi)).Block(p.typedCall(mi)))
+		cases = append(cases, Case(p.constOf(mi)).Block(p.typedCall(mi, "successorSide", Id("method"))))
 	}
 	p.f.Comment("handle dispatches a message from the conductor. A message from the client side")
 	p.f.Comment("without a handler of its kind goes to the successor unchanged.")
@@ -148,7 +163,7 @@ func (p *proxyEmitter) handle() {
 			Id("h").Op(":=").Id("c").Dot("handlers").Dot("FromClient"),
 			Id("notification").Op(":=").Id("c").Dot("isNotification").Call(Id("ctx")),
 			Switch(Id("method")).Block(cases...),
-			Return(Id("c").Dot("forwardToSuccessor").Call(Id("ctx"), Id("method"), Id("params"), Id("notification"))),
+			forward("successorSide", Id("method")),
 		)
 }
 
@@ -156,7 +171,7 @@ func (p *proxyEmitter) handle() {
 func (p *proxyEmitter) handleFromSuccessor() {
 	var cases []Code
 	for _, mi := range p.role.Client {
-		cases = append(cases, Case(p.constOf(mi)).Block(p.typedCall(mi)))
+		cases = append(cases, Case(p.constOf(mi)).Block(p.typedCall(mi, "clientSide", Id("method"))))
 	}
 	p.f.Comment("handleFromSuccessor dispatches the message that a proxy/successor envelope from the")
 	p.f.Comment("conductor carries. A message without a handler of its kind goes to the client unchanged.")
@@ -166,7 +181,7 @@ func (p *proxyEmitter) handleFromSuccessor() {
 		Block(
 			Id("h").Op(":=").Id("c").Dot("handlers").Dot("FromSuccessor"),
 			Switch(Id("method")).Block(cases...),
-			Return(Id("c").Dot("forwardToClient").Call(Id("ctx"), Id("method"), Id("params"), Id("notification"))),
+			forward("clientSide", Id("method")),
 		)
 }
 
@@ -174,18 +189,8 @@ func (p *proxyEmitter) handleFromSuccessor() {
 // which sends it to the client as it is.
 func (p *proxyEmitter) clientMethods() {
 	for _, mi := range p.role.Client {
-		args := []Code{Id("ctx"), p.constOf(mi), Id("params")}
-		var body Code
-		switch resp, hasResp := responseType(p.schema, mi); {
-		case mi.Notif != "":
-			body = Return(Id("c").Dot("conn").Dot("SendNotification").Call(args...))
-		case hasResp:
-			body = Return(Id("SendRequest").Types(Id(resp)).Call(append([]Code{Id("c").Dot("conn")}, args...)...))
-		default:
-			body = Return(Id("c").Dot("conn").Dot("SendRequestNoResult").Call(args...))
-		}
 		p.f.Comment(fmt.Sprintf("%s sends %s to the client.", mi.Name, mi.Method))
-		methodSignature(p.schema, mi, p.f.Func().Params(Id("c").Op("*").Id("UnstableProxyClient")).Id(mi.Name)).Block(body)
+		methodSignature(p.schema, mi, p.f.Func().Params(Id("c").Op("*").Id("UnstableProxyClient")).Id(mi.Name)).Block(p.send(mi, "c", "clientSide")...)
 	}
 }
 
@@ -193,20 +198,25 @@ func (p *proxyEmitter) clientMethods() {
 // method, which sends it to the successor in a proxy/successor envelope.
 func (p *proxyEmitter) successorMethods() {
 	for _, mi := range p.role.Agent {
-		args := []Code{Id("s"), Id("ctx"), p.constOf(mi), Id("params")}
-		var body []Code
-		switch resp, hasResp := responseType(p.schema, mi); {
-		case mi.Notif != "":
-			body = []Code{Return(Id("s").Dot("notify").Call(args[1:]...))}
-		case hasResp:
-			body = []Code{Return(Id("successorRequest").Types(Id(resp)).Call(args...))}
-		default:
-			body = []Code{
-				List(Id("_"), Id("err")).Op(":=").Id("successorRequest").Types(rawJSON()).Call(args...),
-				Return(Id("err")),
-			}
-		}
 		p.f.Comment(fmt.Sprintf("%s sends %s to the successor, wrapped in %s.", mi.Name, mi.Method, p.role.Successor.Method))
-		methodSignature(p.schema, mi, p.f.Func().Params(Id("s").Op("*").Id("UnstableProxySuccessor")).Id(mi.Name)).Block(body...)
+		methodSignature(p.schema, mi, p.f.Func().Params(Id("s").Op("*").Id("UnstableProxySuccessor")).Id(mi.Name)).Block(p.send(mi, "s", "successorSide")...)
+	}
+}
+
+// send returns the body of the method of a send handle recv that sends mi to
+// the side to, with the proxy's notify or proxyRequest.
+func (p *proxyEmitter) send(mi *ir.MethodInfo, recv, to string) []Code {
+	proxy := Id(recv).Dot("p")
+	args := []Code{Id("ctx"), Id(to), p.constOf(mi), Id("params")}
+	switch resp, hasResp := responseType(p.schema, mi); {
+	case mi.Notif != "":
+		return []Code{Return(proxy.Dot("notify").Call(args...))}
+	case hasResp:
+		return []Code{Return(Id("proxyRequest").Types(Id(resp)).Call(append([]Code{proxy}, args...)...))}
+	default:
+		return []Code{
+			List(Id("_"), Id("err")).Op(":=").Id("proxyRequest").Types(rawJSON()).Call(append([]Code{proxy}, args...)...),
+			Return(Id("err")),
+		}
 	}
 }

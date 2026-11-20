@@ -13,7 +13,7 @@
 
 ## Invariants
 
-- Every `session/update` from the successor goes through the typed handler, so it is decoded and encoded again: members that the SDK's Go types do not know are lost, and an update that does not decode, such as a kind newer than the SDK's schema, is dropped with an error log. An update that is not an agent message chunk with text content reaches the client otherwise unchanged [main.go:main].
+- Every `session/update` from the successor goes through the typed handler, so it is decoded and encoded again: members that the SDK's Go types do not know are lost. An update that does not decode, such as a kind newer than the SDK's schema, reaches the client unchanged, with a Debug log. An update that is not an agent message chunk with text content reaches the client otherwise unchanged [main.go:main].
 - The prefix is the literal `[proxy] ` [main.go:main].
 
 ## Side Effects

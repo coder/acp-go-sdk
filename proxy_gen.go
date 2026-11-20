@@ -281,11 +281,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case ProxyMethodProxyInitialize:
 		if h.UnstableInitializeProxy != nil && !notification {
 			var p UnstableInitializeProxyRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, AgentMethodInitialize, params, notification, err)
 			}
 			resp, err := h.UnstableInitializeProxy(ctx, p)
 			if err != nil {
@@ -293,7 +290,7 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 			}
 			return resp, nil
 		}
-		return c.forwardToSuccessor(ctx, AgentMethodInitialize, params, notification)
+		return c.forward(ctx, successorSide, AgentMethodInitialize, params, notification)
 	case ProxyMethodProxySuccessor:
 		if notification {
 			var p UnstableProxySuccessorNotification
@@ -318,11 +315,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodAuthStatus:
 		if h.UnstableAuthStatus != nil && !notification {
 			var p UnstableAuthStatusRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableAuthStatus(ctx, p)
 			if err != nil {
@@ -333,11 +327,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodAuthenticate:
 		if h.Authenticate != nil && !notification {
 			var p AuthenticateRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.Authenticate(ctx, p)
 			if err != nil {
@@ -348,11 +339,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodLogout:
 		if h.Logout != nil && !notification {
 			var p LogoutRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.Logout(ctx, p)
 			if err != nil {
@@ -363,11 +351,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodMcpMessage:
 		if h.UnstableMessageMcp != nil && notification {
 			var p UnstableMessageMcpNotification
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			if err := h.UnstableMessageMcp(ctx, p); err != nil {
 				return nil, toReqErr(err)
@@ -377,11 +362,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodProvidersDisable:
 		if h.UnstableDisableProvider != nil && !notification {
 			var p UnstableDisableProviderRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableDisableProvider(ctx, p)
 			if err != nil {
@@ -392,11 +374,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodProvidersList:
 		if h.UnstableListProviders != nil && !notification {
 			var p UnstableListProvidersRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableListProviders(ctx, p)
 			if err != nil {
@@ -407,11 +386,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodProvidersSet:
 		if h.UnstableSetProvider != nil && !notification {
 			var p UnstableSetProviderRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableSetProvider(ctx, p)
 			if err != nil {
@@ -422,11 +398,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionArchive:
 		if h.UnstableArchiveSession != nil && !notification {
 			var p UnstableArchiveSessionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableArchiveSession(ctx, p)
 			if err != nil {
@@ -437,11 +410,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionCancel:
 		if h.Cancel != nil && notification {
 			var p CancelNotification
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			if err := h.Cancel(ctx, p); err != nil {
 				return nil, toReqErr(err)
@@ -451,11 +421,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionClose:
 		if h.CloseSession != nil && !notification {
 			var p CloseSessionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.CloseSession(ctx, p)
 			if err != nil {
@@ -466,11 +433,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionDelete:
 		if h.DeleteSession != nil && !notification {
 			var p DeleteSessionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.DeleteSession(ctx, p)
 			if err != nil {
@@ -481,11 +445,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionFork:
 		if h.UnstableForkSession != nil && !notification {
 			var p UnstableForkSessionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableForkSession(ctx, p)
 			if err != nil {
@@ -496,11 +457,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionList:
 		if h.ListSessions != nil && !notification {
 			var p ListSessionsRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.ListSessions(ctx, p)
 			if err != nil {
@@ -511,11 +469,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionLoad:
 		if h.LoadSession != nil && !notification {
 			var p LoadSessionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.LoadSession(ctx, p)
 			if err != nil {
@@ -526,11 +481,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionNew:
 		if h.NewSession != nil && !notification {
 			var p NewSessionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.NewSession(ctx, p)
 			if err != nil {
@@ -541,11 +493,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionOptions:
 		if h.UnstableSessionOptions != nil && !notification {
 			var p UnstableSessionOptionsRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableSessionOptions(ctx, p)
 			if err != nil {
@@ -556,11 +505,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionPrompt:
 		if h.Prompt != nil && !notification {
 			var p PromptRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.Prompt(ctx, p)
 			if err != nil {
@@ -571,11 +517,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionResume:
 		if h.ResumeSession != nil && !notification {
 			var p ResumeSessionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.ResumeSession(ctx, p)
 			if err != nil {
@@ -586,11 +529,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionSetConfigOption:
 		if h.SetSessionConfigOption != nil && !notification {
 			var p SetSessionConfigOptionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.SetSessionConfigOption(ctx, p)
 			if err != nil {
@@ -601,11 +541,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionSetMode:
 		if h.SetSessionMode != nil && !notification {
 			var p SetSessionModeRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.SetSessionMode(ctx, p)
 			if err != nil {
@@ -616,11 +553,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionSetTitle:
 		if h.UnstableSetSessionTitle != nil && !notification {
 			var p UnstableSetSessionTitleRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableSetSessionTitle(ctx, p)
 			if err != nil {
@@ -631,11 +565,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionStatus:
 		if h.UnstableSessionStatus != nil && !notification {
 			var p UnstableSessionStatusRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableSessionStatus(ctx, p)
 			if err != nil {
@@ -646,11 +577,8 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case AgentMethodSessionUnarchive:
 		if h.UnstableUnarchiveSession != nil && !notification {
 			var p UnstableUnarchiveSessionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, successorSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableUnarchiveSession(ctx, p)
 			if err != nil {
@@ -659,7 +587,7 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 			return resp, nil
 		}
 	}
-	return c.forwardToSuccessor(ctx, method, params, notification)
+	return c.forward(ctx, successorSide, method, params, notification)
 }
 
 // handleFromSuccessor dispatches the message that a proxy/successor envelope from the
@@ -670,11 +598,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodAuthStatusUpdate:
 		if h.UnstableAuthStatusUpdate != nil && notification {
 			var p UnstableAuthStatusUpdateNotification
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			if err := h.UnstableAuthStatusUpdate(ctx, p); err != nil {
 				return nil, toReqErr(err)
@@ -684,11 +609,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodElicitationComplete:
 		if h.CompleteElicitation != nil && notification {
 			var p CompleteElicitationNotification
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			if err := h.CompleteElicitation(ctx, p); err != nil {
 				return nil, toReqErr(err)
@@ -698,11 +620,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodElicitationCreate:
 		if h.CreateElicitation != nil && !notification {
 			var p CreateElicitationRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.CreateElicitation(ctx, p)
 			if err != nil {
@@ -713,11 +632,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodFsReadTextFile:
 		if h.ReadTextFile != nil && !notification {
 			var p ReadTextFileRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.ReadTextFile(ctx, p)
 			if err != nil {
@@ -728,11 +644,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodFsWriteTextFile:
 		if h.WriteTextFile != nil && !notification {
 			var p WriteTextFileRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.WriteTextFile(ctx, p)
 			if err != nil {
@@ -743,11 +656,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodMcpMessage:
 		if h.UnstableMessageMcp != nil && !notification {
 			var p UnstableMessageMcpRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.UnstableMessageMcp(ctx, p)
 			if err != nil {
@@ -758,11 +668,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodSessionRequestPermission:
 		if h.RequestPermission != nil && !notification {
 			var p RequestPermissionRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.RequestPermission(ctx, p)
 			if err != nil {
@@ -773,11 +680,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodSessionUpdate:
 		if h.SessionUpdate != nil && notification {
 			var p SessionNotification
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			if err := h.SessionUpdate(ctx, p); err != nil {
 				return nil, toReqErr(err)
@@ -787,11 +691,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodTerminalCreate:
 		if h.CreateTerminal != nil && !notification {
 			var p CreateTerminalRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.CreateTerminal(ctx, p)
 			if err != nil {
@@ -802,11 +703,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodTerminalKill:
 		if h.KillTerminal != nil && !notification {
 			var p KillTerminalRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.KillTerminal(ctx, p)
 			if err != nil {
@@ -817,11 +715,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodTerminalOutput:
 		if h.TerminalOutput != nil && !notification {
 			var p TerminalOutputRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.TerminalOutput(ctx, p)
 			if err != nil {
@@ -832,11 +727,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodTerminalRelease:
 		if h.ReleaseTerminal != nil && !notification {
 			var p ReleaseTerminalRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.ReleaseTerminal(ctx, p)
 			if err != nil {
@@ -847,11 +739,8 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 	case ClientMethodTerminalWaitForExit:
 		if h.WaitForTerminalExit != nil && !notification {
 			var p WaitForTerminalExitRequest
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
-			}
-			if err := p.Validate(); err != nil {
-				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+			if err := decodeParams(params, &p); err != nil {
+				return c.undecodable(ctx, clientSide, method, params, notification, err)
 			}
 			resp, err := h.WaitForTerminalExit(ctx, p)
 			if err != nil {
@@ -860,190 +749,190 @@ func (c *UnstableProxySideConnection) handleFromSuccessor(ctx context.Context, m
 			return resp, nil
 		}
 	}
-	return c.forwardToClient(ctx, method, params, notification)
+	return c.forward(ctx, clientSide, method, params, notification)
 }
 
 // UnstableAuthStatusUpdate sends auth/status_update to the client.
 func (c *UnstableProxyClient) UnstableAuthStatusUpdate(ctx context.Context, params UnstableAuthStatusUpdateNotification) error {
-	return c.conn.SendNotification(ctx, ClientMethodAuthStatusUpdate, params)
+	return c.p.notify(ctx, clientSide, ClientMethodAuthStatusUpdate, params)
 }
 
 // CompleteElicitation sends elicitation/complete to the client.
 func (c *UnstableProxyClient) CompleteElicitation(ctx context.Context, params CompleteElicitationNotification) error {
-	return c.conn.SendNotification(ctx, ClientMethodElicitationComplete, params)
+	return c.p.notify(ctx, clientSide, ClientMethodElicitationComplete, params)
 }
 
 // CreateElicitation sends elicitation/create to the client.
 func (c *UnstableProxyClient) CreateElicitation(ctx context.Context, params CreateElicitationRequest) (CreateElicitationResponse, error) {
-	return SendRequest[CreateElicitationResponse](c.conn, ctx, ClientMethodElicitationCreate, params)
+	return proxyRequest[CreateElicitationResponse](c.p, ctx, clientSide, ClientMethodElicitationCreate, params)
 }
 
 // ReadTextFile sends fs/read_text_file to the client.
 func (c *UnstableProxyClient) ReadTextFile(ctx context.Context, params ReadTextFileRequest) (ReadTextFileResponse, error) {
-	return SendRequest[ReadTextFileResponse](c.conn, ctx, ClientMethodFsReadTextFile, params)
+	return proxyRequest[ReadTextFileResponse](c.p, ctx, clientSide, ClientMethodFsReadTextFile, params)
 }
 
 // WriteTextFile sends fs/write_text_file to the client.
 func (c *UnstableProxyClient) WriteTextFile(ctx context.Context, params WriteTextFileRequest) (WriteTextFileResponse, error) {
-	return SendRequest[WriteTextFileResponse](c.conn, ctx, ClientMethodFsWriteTextFile, params)
+	return proxyRequest[WriteTextFileResponse](c.p, ctx, clientSide, ClientMethodFsWriteTextFile, params)
 }
 
 // UnstableMessageMcp sends mcp/message to the client.
 func (c *UnstableProxyClient) UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpRequest) (UnstableMessageMcpResponse, error) {
-	return SendRequest[UnstableMessageMcpResponse](c.conn, ctx, ClientMethodMcpMessage, params)
+	return proxyRequest[UnstableMessageMcpResponse](c.p, ctx, clientSide, ClientMethodMcpMessage, params)
 }
 
 // RequestPermission sends session/request_permission to the client.
 func (c *UnstableProxyClient) RequestPermission(ctx context.Context, params RequestPermissionRequest) (RequestPermissionResponse, error) {
-	return SendRequest[RequestPermissionResponse](c.conn, ctx, ClientMethodSessionRequestPermission, params)
+	return proxyRequest[RequestPermissionResponse](c.p, ctx, clientSide, ClientMethodSessionRequestPermission, params)
 }
 
 // SessionUpdate sends session/update to the client.
 func (c *UnstableProxyClient) SessionUpdate(ctx context.Context, params SessionNotification) error {
-	return c.conn.SendNotification(ctx, ClientMethodSessionUpdate, params)
+	return c.p.notify(ctx, clientSide, ClientMethodSessionUpdate, params)
 }
 
 // CreateTerminal sends terminal/create to the client.
 func (c *UnstableProxyClient) CreateTerminal(ctx context.Context, params CreateTerminalRequest) (CreateTerminalResponse, error) {
-	return SendRequest[CreateTerminalResponse](c.conn, ctx, ClientMethodTerminalCreate, params)
+	return proxyRequest[CreateTerminalResponse](c.p, ctx, clientSide, ClientMethodTerminalCreate, params)
 }
 
 // KillTerminal sends terminal/kill to the client.
 func (c *UnstableProxyClient) KillTerminal(ctx context.Context, params KillTerminalRequest) (KillTerminalResponse, error) {
-	return SendRequest[KillTerminalResponse](c.conn, ctx, ClientMethodTerminalKill, params)
+	return proxyRequest[KillTerminalResponse](c.p, ctx, clientSide, ClientMethodTerminalKill, params)
 }
 
 // TerminalOutput sends terminal/output to the client.
 func (c *UnstableProxyClient) TerminalOutput(ctx context.Context, params TerminalOutputRequest) (TerminalOutputResponse, error) {
-	return SendRequest[TerminalOutputResponse](c.conn, ctx, ClientMethodTerminalOutput, params)
+	return proxyRequest[TerminalOutputResponse](c.p, ctx, clientSide, ClientMethodTerminalOutput, params)
 }
 
 // ReleaseTerminal sends terminal/release to the client.
 func (c *UnstableProxyClient) ReleaseTerminal(ctx context.Context, params ReleaseTerminalRequest) (ReleaseTerminalResponse, error) {
-	return SendRequest[ReleaseTerminalResponse](c.conn, ctx, ClientMethodTerminalRelease, params)
+	return proxyRequest[ReleaseTerminalResponse](c.p, ctx, clientSide, ClientMethodTerminalRelease, params)
 }
 
 // WaitForTerminalExit sends terminal/wait_for_exit to the client.
 func (c *UnstableProxyClient) WaitForTerminalExit(ctx context.Context, params WaitForTerminalExitRequest) (WaitForTerminalExitResponse, error) {
-	return SendRequest[WaitForTerminalExitResponse](c.conn, ctx, ClientMethodTerminalWaitForExit, params)
+	return proxyRequest[WaitForTerminalExitResponse](c.p, ctx, clientSide, ClientMethodTerminalWaitForExit, params)
 }
 
 // UnstableAuthStatus sends auth/status to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableAuthStatus(ctx context.Context, params UnstableAuthStatusRequest) (UnstableAuthStatusResponse, error) {
-	return successorRequest[UnstableAuthStatusResponse](s, ctx, AgentMethodAuthStatus, params)
+	return proxyRequest[UnstableAuthStatusResponse](s.p, ctx, successorSide, AgentMethodAuthStatus, params)
 }
 
 // Authenticate sends authenticate to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) Authenticate(ctx context.Context, params AuthenticateRequest) (AuthenticateResponse, error) {
-	return successorRequest[AuthenticateResponse](s, ctx, AgentMethodAuthenticate, params)
+	return proxyRequest[AuthenticateResponse](s.p, ctx, successorSide, AgentMethodAuthenticate, params)
 }
 
 // Initialize sends initialize to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) Initialize(ctx context.Context, params InitializeRequest) (InitializeResponse, error) {
-	return successorRequest[InitializeResponse](s, ctx, AgentMethodInitialize, params)
+	return proxyRequest[InitializeResponse](s.p, ctx, successorSide, AgentMethodInitialize, params)
 }
 
 // Logout sends logout to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) Logout(ctx context.Context, params LogoutRequest) (LogoutResponse, error) {
-	return successorRequest[LogoutResponse](s, ctx, AgentMethodLogout, params)
+	return proxyRequest[LogoutResponse](s.p, ctx, successorSide, AgentMethodLogout, params)
 }
 
 // UnstableMessageMcp sends mcp/message to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableMessageMcp(ctx context.Context, params UnstableMessageMcpNotification) error {
-	return s.notify(ctx, AgentMethodMcpMessage, params)
+	return s.p.notify(ctx, successorSide, AgentMethodMcpMessage, params)
 }
 
 // UnstableDisableProvider sends providers/disable to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableDisableProvider(ctx context.Context, params UnstableDisableProviderRequest) (UnstableDisableProviderResponse, error) {
-	return successorRequest[UnstableDisableProviderResponse](s, ctx, AgentMethodProvidersDisable, params)
+	return proxyRequest[UnstableDisableProviderResponse](s.p, ctx, successorSide, AgentMethodProvidersDisable, params)
 }
 
 // UnstableListProviders sends providers/list to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableListProviders(ctx context.Context, params UnstableListProvidersRequest) (UnstableListProvidersResponse, error) {
-	return successorRequest[UnstableListProvidersResponse](s, ctx, AgentMethodProvidersList, params)
+	return proxyRequest[UnstableListProvidersResponse](s.p, ctx, successorSide, AgentMethodProvidersList, params)
 }
 
 // UnstableSetProvider sends providers/set to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableSetProvider(ctx context.Context, params UnstableSetProviderRequest) (UnstableSetProviderResponse, error) {
-	return successorRequest[UnstableSetProviderResponse](s, ctx, AgentMethodProvidersSet, params)
+	return proxyRequest[UnstableSetProviderResponse](s.p, ctx, successorSide, AgentMethodProvidersSet, params)
 }
 
 // UnstableArchiveSession sends session/archive to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableArchiveSession(ctx context.Context, params UnstableArchiveSessionRequest) (UnstableArchiveSessionResponse, error) {
-	return successorRequest[UnstableArchiveSessionResponse](s, ctx, AgentMethodSessionArchive, params)
+	return proxyRequest[UnstableArchiveSessionResponse](s.p, ctx, successorSide, AgentMethodSessionArchive, params)
 }
 
 // Cancel sends session/cancel to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) Cancel(ctx context.Context, params CancelNotification) error {
-	return s.notify(ctx, AgentMethodSessionCancel, params)
+	return s.p.notify(ctx, successorSide, AgentMethodSessionCancel, params)
 }
 
 // CloseSession sends session/close to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) CloseSession(ctx context.Context, params CloseSessionRequest) (CloseSessionResponse, error) {
-	return successorRequest[CloseSessionResponse](s, ctx, AgentMethodSessionClose, params)
+	return proxyRequest[CloseSessionResponse](s.p, ctx, successorSide, AgentMethodSessionClose, params)
 }
 
 // DeleteSession sends session/delete to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) DeleteSession(ctx context.Context, params DeleteSessionRequest) (DeleteSessionResponse, error) {
-	return successorRequest[DeleteSessionResponse](s, ctx, AgentMethodSessionDelete, params)
+	return proxyRequest[DeleteSessionResponse](s.p, ctx, successorSide, AgentMethodSessionDelete, params)
 }
 
 // UnstableForkSession sends session/fork to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableForkSession(ctx context.Context, params UnstableForkSessionRequest) (UnstableForkSessionResponse, error) {
-	return successorRequest[UnstableForkSessionResponse](s, ctx, AgentMethodSessionFork, params)
+	return proxyRequest[UnstableForkSessionResponse](s.p, ctx, successorSide, AgentMethodSessionFork, params)
 }
 
 // ListSessions sends session/list to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) ListSessions(ctx context.Context, params ListSessionsRequest) (ListSessionsResponse, error) {
-	return successorRequest[ListSessionsResponse](s, ctx, AgentMethodSessionList, params)
+	return proxyRequest[ListSessionsResponse](s.p, ctx, successorSide, AgentMethodSessionList, params)
 }
 
 // LoadSession sends session/load to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) LoadSession(ctx context.Context, params LoadSessionRequest) (LoadSessionResponse, error) {
-	return successorRequest[LoadSessionResponse](s, ctx, AgentMethodSessionLoad, params)
+	return proxyRequest[LoadSessionResponse](s.p, ctx, successorSide, AgentMethodSessionLoad, params)
 }
 
 // NewSession sends session/new to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) NewSession(ctx context.Context, params NewSessionRequest) (NewSessionResponse, error) {
-	return successorRequest[NewSessionResponse](s, ctx, AgentMethodSessionNew, params)
+	return proxyRequest[NewSessionResponse](s.p, ctx, successorSide, AgentMethodSessionNew, params)
 }
 
 // UnstableSessionOptions sends session/options to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableSessionOptions(ctx context.Context, params UnstableSessionOptionsRequest) (UnstableSessionOptionsResponse, error) {
-	return successorRequest[UnstableSessionOptionsResponse](s, ctx, AgentMethodSessionOptions, params)
+	return proxyRequest[UnstableSessionOptionsResponse](s.p, ctx, successorSide, AgentMethodSessionOptions, params)
 }
 
 // Prompt sends session/prompt to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) Prompt(ctx context.Context, params PromptRequest) (PromptResponse, error) {
-	return successorRequest[PromptResponse](s, ctx, AgentMethodSessionPrompt, params)
+	return proxyRequest[PromptResponse](s.p, ctx, successorSide, AgentMethodSessionPrompt, params)
 }
 
 // ResumeSession sends session/resume to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) ResumeSession(ctx context.Context, params ResumeSessionRequest) (ResumeSessionResponse, error) {
-	return successorRequest[ResumeSessionResponse](s, ctx, AgentMethodSessionResume, params)
+	return proxyRequest[ResumeSessionResponse](s.p, ctx, successorSide, AgentMethodSessionResume, params)
 }
 
 // SetSessionConfigOption sends session/set_config_option to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) SetSessionConfigOption(ctx context.Context, params SetSessionConfigOptionRequest) (SetSessionConfigOptionResponse, error) {
-	return successorRequest[SetSessionConfigOptionResponse](s, ctx, AgentMethodSessionSetConfigOption, params)
+	return proxyRequest[SetSessionConfigOptionResponse](s.p, ctx, successorSide, AgentMethodSessionSetConfigOption, params)
 }
 
 // SetSessionMode sends session/set_mode to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) SetSessionMode(ctx context.Context, params SetSessionModeRequest) (SetSessionModeResponse, error) {
-	return successorRequest[SetSessionModeResponse](s, ctx, AgentMethodSessionSetMode, params)
+	return proxyRequest[SetSessionModeResponse](s.p, ctx, successorSide, AgentMethodSessionSetMode, params)
 }
 
 // UnstableSetSessionTitle sends session/set_title to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableSetSessionTitle(ctx context.Context, params UnstableSetSessionTitleRequest) (UnstableSetSessionTitleResponse, error) {
-	return successorRequest[UnstableSetSessionTitleResponse](s, ctx, AgentMethodSessionSetTitle, params)
+	return proxyRequest[UnstableSetSessionTitleResponse](s.p, ctx, successorSide, AgentMethodSessionSetTitle, params)
 }
 
 // UnstableSessionStatus sends session/status to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableSessionStatus(ctx context.Context, params UnstableSessionStatusRequest) (UnstableSessionStatusResponse, error) {
-	return successorRequest[UnstableSessionStatusResponse](s, ctx, AgentMethodSessionStatus, params)
+	return proxyRequest[UnstableSessionStatusResponse](s.p, ctx, successorSide, AgentMethodSessionStatus, params)
 }
 
 // UnstableUnarchiveSession sends session/unarchive to the successor, wrapped in proxy/successor.
 func (s *UnstableProxySuccessor) UnstableUnarchiveSession(ctx context.Context, params UnstableUnarchiveSessionRequest) (UnstableUnarchiveSessionResponse, error) {
-	return successorRequest[UnstableUnarchiveSessionResponse](s, ctx, AgentMethodSessionUnarchive, params)
+	return proxyRequest[UnstableUnarchiveSessionResponse](s.p, ctx, successorSide, AgentMethodSessionUnarchive, params)
 }

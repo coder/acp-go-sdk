@@ -209,14 +209,23 @@ conn := acp.NewUnstableProxySideConnection(func(c *acp.UnstableProxySideConnecti
   answers, and must not change `protocolVersion`. A plain `initialize` gets
   `-32600`.
 - A handler gets its message decoded into this SDK's Go types, so members that
-  those types do not know are lost. A message that does not decode gets
-  `-32602`, or an error log for a notification. A nil handler keeps the bytes.
-- `$/cancel_request` is per hop: cancelling a request that the proxy forwarded
-  cancels the proxy's own `proxy/successor` request. `session/cancel` is
-  forwarded like any notification.
-- Each request runs on its own goroutine, so a notification that arrives right
-  after a request, such as a `session/cancel` sent at once after its
-  `session/prompt`, can reach the other side first.
+  those types do not know are lost. A nil handler keeps the bytes. A message
+  that does not decode for its handler, such as a `session/update` of a kind
+  from a newer schema, goes on unchanged as with a nil handler, with a Debug
+  log. With `RejectUndecodable`, such a request gets `-32602` and such a
+  notification is dropped instead.
+- `$/cancel_request` is per hop and never forwarded. A plain one or one
+  wrapped in `proxy/successor` cancels the handler of the request it names,
+  and a request that the handler sent with its ctx gets the proxy's own
+  `$/cancel_request`. `session/cancel` is forwarded like any notification.
+- Each side keeps its order: what the proxy sends on for the messages of one
+  side, including what a handler sends with its ctx in place of its message,
+  goes out in the order those messages arrived. So a `session/cancel` sent
+  right after its `session/prompt` reaches the agent second. A handler holds
+  back the later messages of its side until it sends a request and waits for
+  the answer, or returns, so one that answers a request itself or works long
+  before it sends delays them, and notifications queued behind them count
+  against `WithMaxQueuedNotifications`.
 
 [`example/proxy`](./example/proxy) adds `[proxy] ` in front of each agent
 message chunk. Run it in a chain with the Rust conductor
@@ -251,7 +260,7 @@ The hand-written files add errors, extension methods, and builder helpers.
 - Interfaces you implement: `Agent` and `Client`, whose methods are the stable methods of ACP schema 1.25.0, and one optional interface for each other method, named after the side and the Go method, such as `AgentUnstableForkSession` and `ClientUnstableMessageMcp`. The optional interface of `LoadSession` keeps its name `AgentLoader`. A schema release never adds a method to `Agent` or `Client`: a method that it adds or makes stable gets its own optional interface [types_gen.go:Agent, AgentLoader, Client] [cmd/generate/internal/ir/baseline.go:requiredMethods]. Optionally `ExtensionMethodHandler` for `_`-prefixed methods [extensions.go:ExtensionMethodHandler]
 - Outbound calls: `ClientSideConnection` has one method per agent method, for example `Initialize`, `NewSession`, `Prompt`, and `Cancel` [client_gen.go:Initialize, NewSession, Prompt, Cancel]. `AgentSideConnection` has one method per client method, for example `SessionUpdate`, `RequestPermission`, `ReadTextFile`, and `CreateTerminal` [agent_gen.go:SessionUpdate, RequestPermission, ReadTextFile, CreateTerminal]. Both types have `CallExtension` and `NotifyExtension` [extensions.go:CallExtension, NotifyExtension]
 - `mcp/message` (unstable) has two forms. An agent sends the request with `(*AgentSideConnection).UnstableMessageMcp`, and a client answers it in `ClientUnstableMessageMcp`. A client sends the notification with `(*ClientSideConnection).UnstableMessageMcp`, and an agent receives it in `AgentUnstableMessageMcp` [agent_gen.go:handle, UnstableMessageMcp] [client_gen.go:handle, UnstableMessageMcp]
-- Proxy role (unstable): `NewUnstableProxySideConnection(handlers func(*UnstableProxySideConnection) UnstableProxyHandlers, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption)`. `UnstableProxyHandlers` holds `FromClient` (`proxy/initialize` and every agent method but `initialize`) and `FromSuccessor` (every client method), structs of func fields where nil forwards the message unchanged. `Client()` has one method per client method, and `Successor()` one per agent method, `initialize` included, each wrapped in `proxy/successor` [proxy.go] [proxy_gen.go]
+- Proxy role (unstable): `NewUnstableProxySideConnection(handlers func(*UnstableProxySideConnection) UnstableProxyHandlers, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption)`. `UnstableProxyHandlers` holds `FromClient` (`proxy/initialize` and every agent method but `initialize`) and `FromSuccessor` (every client method), structs of func fields where nil forwards the message unchanged, and `RejectUndecodable`. `Client()` has one method per client method, and `Successor()` one per agent method, `initialize` included, each wrapped in `proxy/successor` [proxy.go] [proxy_gen.go]
 - Low-level transport: `Connection`, `NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption)`, `MethodHandler`, `SendRequest[T]` (a generic function that takes the `*Connection`), `(*Connection).SendRequestNoResult`, `(*Connection).SendNotification`, `(*Connection).SetLogger`, and `(*Connection).Done` [connection.go:NewConnection, MethodHandler, SendRequest, SendRequestNoResult, SendNotification, SetLogger, Done]
 - Wire types: one struct per request, response, and notification, union wrappers with one pointer field per variant, and named `string` enums with constants such as `StopReason`, `ToolKind`, `ToolCallStatus`, and `PermissionOptionKind` [types_gen.go:StopReason, ToolKind, ToolCallStatus, PermissionOptionKind]. `ExtNotification`, `ExtRequest`, and `ExtResponse` are aliases of `json.RawMessage`, so they have no generated fields and no `Validate` [types_gen.go:ExtNotification, ExtRequest, ExtResponse]
 - Free-form values: a value that the schema leaves free holds the JSON as it was read, so a number keeps every digit. `_meta` is a `Meta`, a `map[string]json.RawMessage` with `NewMeta`, `Get`, and `Set`, and an empty one is left out of the message. `Get` of a missing key returns an error that wraps `ErrMetaKeyNotFound`. `rawInput`, `rawOutput`, the `data` of an error (`RequestError.Data` included), and the result of `mcp/message` are `json.RawMessage`, and the params of `mcp/message` are a `map[string]json.RawMessage` [meta.go:Meta, NewMeta, Get, Set] [types_gen.go:ToolCall, UnstableMcpError] [errors.go:RequestError]. `RequestError.Data` keeps `"data": null`, while the generated `Error` reads it as no data, as its schema asks with `x-deserialize-default-on-error` [errors_test.go:TestRequestError_KeepsNullDataThatErrorDrops]
@@ -302,7 +311,7 @@ The hand-written files add errors, extension methods, and builder helpers.
 ## Global Invariants
 
 - `version` holds the SDK's own semver, and `schema/version` pins the ACP schema release. They move apart: a release can change the SDK without a new schema. `make generate` and `make release` never derive one from the other. `cmd/generate` writes `schema/version` into the `SchemaVersion` constant, and the `mdsh` block in this README prints the `go get` line from `version`. A schema bump commits the schemas, the generated Go, and `schema/version` together [Makefile:generate, release] [cmd/generate/main.go:main]
-- The generated `handle` switches use unexported names from the hand-written root files: `registerPrompt`, `cancelPrompt`, `sessionCancels`, and `mu` [agent.go], `handlers`, `isNotification`, `forwardToSuccessor`, `forwardToClient`, `successorRequest`, and `notify` [proxy.go], and `toReqErr` [errors.go]. Rename them only together with `cmd/generate/internal/emit` [cmd/generate/internal/emit/dispatch.go] [cmd/generate/internal/emit/dispatch_helpers.go] [cmd/generate/internal/emit/proxy.go]
+- The generated `handle` switches use unexported names from the hand-written root files: `registerPrompt`, `cancelPrompt`, `sessionCancels`, and `mu` [agent.go], `handlers`, `isNotification`, `forward`, `undecodable`, `decodeParams`, `notify`, `proxyRequest`, `clientSide`, and `successorSide` [proxy.go], and `toReqErr` [errors.go]. Rename them only together with `cmd/generate/internal/emit` [cmd/generate/internal/emit/dispatch.go] [cmd/generate/internal/emit/dispatch_helpers.go] [cmd/generate/internal/emit/proxy.go]
 - `cmd/generate` emits no constructors for `ContentBlock`, `ToolCallContent`, and `SessionUpdate`. Their builders are hand-written in `helpers.go` [cmd/generate/internal/emit/helpers.go:WriteHelpersJen]
 - The root module uses only the standard library. Only `cmd/generate` depends on `github.com/dave/jennifer` [go.mod] [cmd/generate/go.mod]
 - The examples import only `github.com/coder/acp-go-sdk` from this module, so they exercise the public API only [example/agent/main.go] [example/client/main.go] [example/claude-code/main.go] [example/gemini/main.go] [example/proxy/main.go]

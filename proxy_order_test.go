@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -327,4 +328,33 @@ func TestUnstableProxySideConnection_ForwardsWhatATypedHandlerCannotDecode(t *te
 	wantMessage(t, out, true, true, "session/prompt", hologram)
 	p.send(replyLine(out, `{"stopReason":"end_turn"}`))
 	wantAnswer(t, p.next(), "5", `{"stopReason":"end_turn"}`)
+}
+
+// RejectUndecodable refuses such a message: a request gets -32602 and a
+// notification is dropped.
+func TestUnstableProxySideConnection_RejectUndecodableRefusesWhatAHandlerCannotDecode(t *testing.T) {
+	p := newProxyPeer(t, func(c *UnstableProxySideConnection) UnstableProxyHandlers {
+		return UnstableProxyHandlers{
+			FromClient: UnstableProxyFromClient{
+				Prompt: func(context.Context, PromptRequest) (PromptResponse, error) {
+					return PromptResponse{}, fmt.Errorf("the handler got an undecodable prompt")
+				},
+			},
+			FromSuccessor: UnstableProxyFromSuccessor{
+				SessionUpdate: func(ctx context.Context, n SessionNotification) error {
+					return c.Client().SessionUpdate(ctx, n)
+				},
+			},
+			RejectUndecodable: true,
+		}
+	})
+	p.send(`{"jsonrpc":"2.0","method":"proxy/successor","params":{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"cursor_update","cursorId":"c1"}}}}`,
+		wrappedUpdateLine("s", "after"))
+	if m := p.next(); sentKind(t, m) != "plain session/update" || strings.Contains(string(m.Params), "cursor_update") {
+		t.Errorf("the proxy sent %s %s, want the update after the dropped cursor_update", sentKind(t, m), m.Params)
+	}
+	p.send(`{"jsonrpc":"2.0","id":5,"method":"session/prompt","params":{"sessionId":"s","prompt":[{"type":"hologram"}]}}`)
+	if m := p.next(); m.ID == nil || string(*m.ID) != "5" || m.Error == nil || m.Error.Code != -32602 {
+		t.Errorf("the proxy sent %+v, want a -32602 answer to 5", m)
+	}
 }

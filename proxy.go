@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math"
+	"sync"
 )
 
 // UnstableProxySideConnection is a proxy's connection to its conductor in an
@@ -35,26 +37,44 @@ import (
 //
 // A handler gets its message decoded into this SDK's Go types, and the
 // method it sends with encodes it again, so members that those types do not
-// know are lost. A nil handler forwards the bytes as they are. The _meta of a
-// proxy/successor envelope belongs to its hop and is dropped.
+// know are lost. A nil handler forwards the bytes as they are. A message that
+// a handler would get but that does not decode into its type or fails its
+// validation, such as a session/update of a kind from a newer schema, goes on
+// unchanged as if the handler were nil, and the proxy logs it at Debug level.
+// UnstableProxyHandlers.RejectUndecodable refuses such messages instead. The
+// _meta of a proxy/successor envelope belongs to its hop and is dropped.
 //
-// Cancellation is per hop. A $/cancel_request for a request that the proxy
-// handles cancels the handler's ctx, and a request that the handler sent
-// with that ctx then sends a $/cancel_request of its own. session/cancel is
-// a notification like any other: the proxy forwards it.
+// Cancellation is per hop, as the proxy chains RFD says. A $/cancel_request
+// for a request that the proxy handles cancels the handler's ctx, whether it
+// arrives plain or wrapped in proxy/successor, and a request that the handler
+// sent with that ctx then sends a plain $/cancel_request with its own id. The
+// proxy never forwards a $/cancel_request. session/cancel is a notification
+// like any other: the proxy forwards it.
 //
-// Messages keep the order of Connection. Notifications are handled one at a
-// time in arrival order, and the answer to a request that the proxy forwards
-// goes out after the notifications that arrived before the successor's
-// answer, such as the session/update notifications of a prompt. Each request
-// runs on its own goroutine, though, so a notification that arrives right
-// after a request can reach the other side before that request, such as a
-// session/cancel sent at once after its session/prompt.
+// The proxy keeps the order of each side. What it sends to one side for the
+// messages from the other goes out in the order those messages arrived:
+// requests, notifications, the answers to the requests that it forwarded,
+// and whatever a handler sends to the other side with its ctx in place of
+// its message. So a session/cancel that the client sends right after its
+// session/prompt reaches the successor after the prompt. To keep that order,
+// a handler holds back the later messages from its side from the time its
+// message arrives until the handler sends a request and waits for the
+// answer, or returns. A handler that answers a request itself, or does long
+// work before it sends, holds them back for that long, and because
+// notification handlers run one at a time, a notification held back so also
+// holds back the notifications after it from both sides. Two cases give up
+// the order, so that no message waits for an answer that needs it: a
+// handler lets the later messages go while it waits for an answer from
+// either side, and a request that starts while a notification handler waits
+// for an answer (see MethodHandler) goes ahead of the notifications queued
+// behind that handler. A message sent without a handler's ctx, such as with
+// context.Background(), keeps no order.
 type UnstableProxySideConnection struct {
 	conn      *Connection
 	handlers  UnstableProxyHandlers
 	client    *UnstableProxyClient
 	successor *UnstableProxySuccessor
+	order     *forwardOrder
 	// ready closes once the fields above are set. The connection reads
 	// messages before NewUnstableProxySideConnection returns, so its handler
 	// waits for ready.
@@ -70,19 +90,24 @@ type UnstableProxyHandlers struct {
 	FromClient UnstableProxyFromClient
 	// FromSuccessor handles the messages from the successor.
 	FromSuccessor UnstableProxyFromSuccessor
+	// RejectUndecodable refuses a message that a handler would get but that
+	// does not decode into its type or fails its validation: a request gets a
+	// -32602 (invalid params) error and a notification is dropped, with an
+	// Error log. By default the proxy forwards such a message unchanged.
+	RejectUndecodable bool
 }
 
 // UnstableProxyClient sends messages to the client side of a proxy, as they
 // are. It has a method per client method.
 //
 // UNSTABLE: proxy chains are not part of the spec yet.
-type UnstableProxyClient struct{ conn *Connection }
+type UnstableProxyClient struct{ p *UnstableProxySideConnection }
 
 // UnstableProxySuccessor sends messages to a proxy's successor, each wrapped
 // in proxy/successor. It has a method per agent method, initialize included.
 //
 // UNSTABLE: proxy chains are not part of the spec yet.
-type UnstableProxySuccessor struct{ conn *Connection }
+type UnstableProxySuccessor struct{ p *UnstableProxySideConnection }
 
 // NewUnstableProxySideConnection returns a proxy's connection to its
 // conductor, which writes messages to peerInput and reads them from
@@ -94,10 +119,11 @@ type UnstableProxySuccessor struct{ conn *Connection }
 //
 // UNSTABLE: proxy chains are not part of the spec yet.
 func NewUnstableProxySideConnection(handlers func(c *UnstableProxySideConnection) UnstableProxyHandlers, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *UnstableProxySideConnection {
-	c := &UnstableProxySideConnection{ready: make(chan struct{})}
-	c.conn = NewConnection(c.handleWhenReady, peerInput, peerOutput, opts...)
-	c.client = &UnstableProxyClient{conn: c.conn}
-	c.successor = &UnstableProxySuccessor{conn: c.conn}
+	c := &UnstableProxySideConnection{order: newForwardOrder(), ready: make(chan struct{})}
+	c.client = &UnstableProxyClient{p: c}
+	c.successor = &UnstableProxySuccessor{p: c}
+	hooks := withHooks(connectionHooks{requestArrived: c.order.requestArrived, wrappedCancel: wrappedCancel})
+	c.conn = NewConnection(c.handleWhenReady, peerInput, peerOutput, append(opts[:len(opts):len(opts)], hooks)...)
 	if handlers != nil {
 		c.handlers = handlers(c)
 	}
@@ -118,9 +144,59 @@ func (c *UnstableProxySideConnection) Client() *UnstableProxyClient { return c.c
 // proxy/successor.
 func (c *UnstableProxySideConnection) Successor() *UnstableProxySuccessor { return c.successor }
 
+// proxySide is a side of a proxy. A message from one side goes on to the
+// other.
+type proxySide uint8
+
+const (
+	clientSide proxySide = iota
+	successorSide
+)
+
+func (s proxySide) other() proxySide { return 1 - s }
+
+// sideOf returns the side that a message of method from the conductor comes
+// from.
+func sideOf(method string) proxySide {
+	if method == ProxyMethodProxySuccessor {
+		return successorSide
+	}
+	return clientSide
+}
+
+// proxyHandler is the ctx value of a proxy handler that runs: the arrival
+// number of its message (see Connection.messageArrival), and its side.
+type proxyHandler struct {
+	p       *UnstableProxySideConnection
+	from    proxySide
+	arrival uint64
+}
+
+type proxyHandlerKey struct{}
+
+// handlerOf returns the handler of c whose ctx ctx is, or derives from.
+func (c *UnstableProxySideConnection) handlerOf(ctx context.Context) (proxyHandler, bool) {
+	h, ok := ctx.Value(proxyHandlerKey{}).(proxyHandler)
+	return h, ok && h.p == c
+}
+
 func (c *UnstableProxySideConnection) handleWhenReady(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
 	<-c.ready
-	return c.handle(ctx, method, params)
+	arrival, _ := c.conn.messageArrival(ctx)
+	h := proxyHandler{p: c, from: sideOf(method), arrival: arrival}
+	ctx = context.WithValue(ctx, proxyHandlerKey{}, h)
+	if c.isNotification(ctx) {
+		c.order.start(arrival)
+		defer c.order.finish(arrival)
+		return c.handle(ctx, method, params)
+	}
+	result, err := c.handle(ctx, method, params)
+	// The answer goes back to h.from. When it forwards an answer from the
+	// other side, it waits for its turn there. The hooks end h's holds once
+	// the connection has written it.
+	_, _ = c.order.awaitTurn(ctx, h, h.from)
+	c.order.stop(arrival)
+	return result, err
 }
 
 // isNotification reports whether the message whose handler runs with ctx is
@@ -130,75 +206,292 @@ func (c *UnstableProxySideConnection) isNotification(ctx context.Context) bool {
 	return ok
 }
 
-// forwardToSuccessor sends method and params to the successor, as a request
-// or a notification as notification says, and returns the successor's result
-// or error unchanged.
-func (c *UnstableProxySideConnection) forwardToSuccessor(ctx context.Context, method string, params json.RawMessage, notification bool) (any, *RequestError) {
-	if notification {
-		return nil, toReqErr(c.successor.notify(ctx, method, params))
+// forward sends method and params on to side to, as a request or a
+// notification as notification says, and returns the answer unchanged.
+func (c *UnstableProxySideConnection) forward(ctx context.Context, to proxySide, method string, params json.RawMessage, notification bool) (any, *RequestError) {
+	if method == ProtocolMethodCancelRequest {
+		// $/cancel_request is per hop, so no proxy forwards one.
+		return nil, NewInvalidRequest(map[string]string{"error": "$/cancel_request is never forwarded"})
 	}
-	result, err := successorRequest[json.RawMessage](c.successor, ctx, method, params)
-	if err != nil {
-		return nil, toReqErr(err)
-	}
-	return result, nil
-}
-
-// forwardToClient sends method and params to the client side, as a request
-// or a notification as notification says, and returns the client's result or
-// error unchanged.
-func (c *UnstableProxySideConnection) forwardToClient(ctx context.Context, method string, params json.RawMessage, notification bool) (any, *RequestError) {
 	// A nil json.RawMessage in an any encodes as "params":null.
 	var p any
 	if !noParams(params) {
 		p = params
 	}
 	if notification {
-		return nil, toReqErr(c.conn.SendNotification(ctx, method, p))
+		return nil, toReqErr(c.notify(ctx, to, method, p))
 	}
-	result, err := SendRequest[json.RawMessage](c.conn, ctx, method, p)
+	result, err := c.request(ctx, to, method, p)
 	if err != nil {
 		return nil, toReqErr(err)
 	}
 	return result, nil
 }
 
-// successorRequest sends method and params to the successor in a
-// proxy/successor request and returns the result.
-func successorRequest[T any](s *UnstableProxySuccessor, ctx context.Context, method string, params any) (T, error) {
-	wrapped, err := successorParams(params)
-	if err != nil {
-		var zero T
-		return zero, err
+// undecodable handles a message from the conductor for a handler, with err
+// from decoding it. Unless RejectUndecodable, it forwards the message to side
+// to as if the handler were nil.
+func (c *UnstableProxySideConnection) undecodable(ctx context.Context, to proxySide, method string, params json.RawMessage, notification bool, err error) (any, *RequestError) {
+	if c.handlers.RejectUndecodable {
+		return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 	}
-	return SendRequest[T](s.conn, ctx, ProxyMethodProxySuccessor, UnstableProxySuccessorRequest{Method: method, Params: wrapped})
+	c.conn.loggerOrDefault().Debug("forwarding a message that its handler cannot decode", "method", method, "err", err)
+	return c.forward(ctx, to, method, params, notification)
 }
 
-// notify sends method and params to the successor in a proxy/successor
-// notification.
-func (s *UnstableProxySuccessor) notify(ctx context.Context, method string, params any) error {
-	wrapped, err := successorParams(params)
+// decodeParams decodes params into p and validates it.
+func decodeParams(params json.RawMessage, p interface{ Validate() error }) error {
+	if err := json.Unmarshal(params, p); err != nil {
+		return err
+	}
+	return p.Validate()
+}
+
+// notify sends method and params to side to as a notification, in its turn
+// when ctx is a handler's (see forwardOrder.awaitTurn).
+func (c *UnstableProxySideConnection) notify(ctx context.Context, to proxySide, method string, params any) error {
+	method, params, err := onWire(to, method, params, true)
 	if err != nil {
 		return err
 	}
-	return s.conn.SendNotification(ctx, ProxyMethodProxySuccessor, UnstableProxySuccessorNotification{Method: method, Params: wrapped})
+	if h, ok := c.handlerOf(ctx); ok {
+		if _, err := c.order.awaitTurn(ctx, h, to); err != nil {
+			return err
+		}
+	}
+	return c.conn.SendNotification(ctx, method, params)
 }
 
-// successorParams encodes params as the params of a proxy/successor envelope:
-// nil when there are none, so that the envelope leaves them out.
-func successorParams(params any) (json.RawMessage, error) {
+// request sends method and params to side to as a request, in its turn when
+// ctx is a handler's, and returns the result. The handler then waits for the
+// answer, so the later messages that it holds back go on (see forwardOrder).
+func (c *UnstableProxySideConnection) request(ctx context.Context, to proxySide, method string, params any) (json.RawMessage, error) {
+	method, params, err := onWire(to, method, params, false)
+	if err != nil {
+		return nil, err
+	}
+	h, ok := c.handlerOf(ctx)
+	if !ok {
+		sent, err := c.conn.sendRequest(method, params, nil)
+		if err != nil {
+			return nil, err
+		}
+		return sent.wait(ctx)
+	}
+	held, err := c.order.awaitTurn(ctx, h, to)
+	if err != nil {
+		return nil, err
+	}
+	sent, err := c.conn.sendRequest(method, params, func(arrival uint64) { c.order.holdAnswer(to, h.arrival, arrival) })
+	c.order.release(h.arrival, held)
+	if err != nil {
+		return nil, err
+	}
+	return sent.wait(ctx)
+}
+
+// proxyRequest sends a request to side to and decodes its result.
+func proxyRequest[T any](c *UnstableProxySideConnection, ctx context.Context, to proxySide, method string, params any) (T, error) {
+	var result T
+	raw, err := c.request(ctx, to, method, params)
+	if err != nil {
+		return result, err
+	}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &result); err != nil {
+			return result, NewInternalError(map[string]any{"error": err.Error()})
+		}
+	}
+	return result, nil
+}
+
+// onWire returns the method and params of a message to side to as the
+// conductor gets it: as it is to the client side, wrapped in proxy/successor
+// to the successor.
+func onWire(to proxySide, method string, params any, notification bool) (string, any, error) {
+	if to == clientSide {
+		return method, params, nil
+	}
 	b, err := json.Marshal(params)
 	if err != nil {
-		return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+		return "", nil, NewInvalidParams(map[string]any{"error": err.Error()})
 	}
-	if noParams(b) {
-		return nil, nil
+	// No params leave the envelope's params out.
+	var wrapped json.RawMessage
+	if !noParams(b) {
+		wrapped = b
 	}
-	return b, nil
+	if notification {
+		return ProxyMethodProxySuccessor, UnstableProxySuccessorNotification{Method: method, Params: wrapped}, nil
+	}
+	return ProxyMethodProxySuccessor, UnstableProxySuccessorRequest{Method: method, Params: wrapped}, nil
 }
 
 // noParams reports whether params, as a message carries them, means no
 // params: absent or null.
 func noParams(params json.RawMessage) bool {
 	return len(params) == 0 || bytes.Equal(params, []byte("null"))
+}
+
+// wrappedCancel is the connection hook that finds a $/cancel_request in a
+// proxy/successor notification. The RFD has the receiver treat it as a plain
+// one: its requestId names a proxy/successor request on this connection.
+func wrappedCancel(method string, params json.RawMessage) (json.RawMessage, bool) {
+	if method != ProxyMethodProxySuccessor || !bytes.Contains(params, []byte("cancel_request")) {
+		return nil, false
+	}
+	var envelope struct {
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if json.Unmarshal(params, &envelope) != nil || envelope.Method != ProtocolMethodCancelRequest {
+		return nil, false
+	}
+	return envelope.Params, true
+}
+
+// forwardOrder keeps the order of each side of a proxy (see
+// UnstableProxySideConnection). A handler holds back the later messages from
+// a side while it has a message from that side to send on: its own request,
+// from its arrival, or the answer to its request, from the answer's arrival.
+// It holds them until it sends a request, and so waits for an answer, or
+// until it returns and the connection has written its reply. A handler's
+// send to a side waits until no other handler holds back an earlier message
+// from the other side.
+//
+// Notifications take no hold: the connection runs a notification's handler
+// after the handlers of the notifications before it and before the handlers
+// of the requests after it start, except while it waits for an answer. A
+// hold there would make a request that the peer needs answered first wait
+// for a notification that waits for the peer.
+type forwardOrder struct {
+	mu sync.Mutex
+	// holds maps each side to the handlers that hold back the later messages
+	// from it, by the arrival number of the handler's message, each to the
+	// arrival number of the message from that side that it holds.
+	holds [2]map[uint64]uint64
+	// running holds the handlers that can take a hold on an answer: request
+	// handlers from their arrival until they return, notification handlers
+	// while they run.
+	running map[uint64]struct{}
+	// changed closes, and gets a new channel, when a hold ends.
+	changed chan struct{}
+}
+
+func newForwardOrder() *forwardOrder {
+	return &forwardOrder{
+		holds:   [2]map[uint64]uint64{{}, {}},
+		running: map[uint64]struct{}{},
+		changed: make(chan struct{}),
+	}
+}
+
+// requestArrived is the connection hook for each request from the conductor.
+// The request holds back its side until its handler waits for an answer or
+// the request is done.
+func (o *forwardOrder) requestArrived(arrival uint64, method string) (done func()) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.running[arrival] = struct{}{}
+	o.holds[sideOf(method)][arrival] = arrival
+	return func() { o.finish(arrival) }
+}
+
+// start records that the handler of the notification arrival runs.
+func (o *forwardOrder) start(arrival uint64) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.running[arrival] = struct{}{}
+}
+
+// stop records that the handler of arrival has returned. Its holds stay
+// until finish.
+func (o *forwardOrder) stop(arrival uint64) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.running, arrival)
+}
+
+// finish ends the handler of arrival and its holds.
+func (o *forwardOrder) finish(arrival uint64) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.running, arrival)
+	o.releaseLocked(arrival, math.MaxUint64)
+}
+
+// holdAnswer makes the handler owner hold back the side from, where the
+// answer to its request arrived as message arrival, while the handler runs.
+// The answer replaces an older hold on that side: the handler gave that up
+// when it sent the request.
+func (o *forwardOrder) holdAnswer(from proxySide, owner, arrival uint64) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if _, ok := o.running[owner]; ok {
+		o.holds[from][owner] = arrival
+	}
+}
+
+// release ends the holds of the handler owner on messages that arrived up to
+// upTo.
+func (o *forwardOrder) release(owner, upTo uint64) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.releaseLocked(owner, upTo)
+}
+
+func (o *forwardOrder) releaseLocked(owner, upTo uint64) {
+	ended := false
+	for _, held := range o.holds {
+		if a, ok := held[owner]; ok && a <= upTo {
+			delete(held, owner)
+			ended = true
+		}
+	}
+	if ended {
+		close(o.changed)
+		o.changed = make(chan struct{})
+	}
+}
+
+// awaitTurn waits until the handler h may send to side to: until no other
+// handler holds back the side from, the other side, with a message that
+// arrived before h's own. h's own is the message from that side that h holds,
+// or else h's message when it came from that side. A handler with neither
+// sends at once. awaitTurn returns the arrival number of the newest message
+// that h holds, for release. It returns early with ctx's cause when ctx ends.
+func (o *forwardOrder) awaitTurn(ctx context.Context, h proxyHandler, to proxySide) (held uint64, err error) {
+	from := to.other()
+	for {
+		o.mu.Lock()
+		own, ordered := o.holds[from][h.arrival]
+		if !ordered && h.from == from {
+			own, ordered = h.arrival, true
+		}
+		if !ordered || !o.holdsBeforeLocked(from, h.arrival, own) {
+			for _, side := range o.holds {
+				held = max(held, side[h.arrival])
+			}
+			o.mu.Unlock()
+			return held, nil
+		}
+		changed := o.changed
+		o.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return 0, toReqErr(context.Cause(ctx))
+		}
+	}
+}
+
+// holdsBeforeLocked reports whether a handler other than owner holds back the
+// side from with a message that arrived before arrival.
+func (o *forwardOrder) holdsBeforeLocked(from proxySide, owner, arrival uint64) bool {
+	for other, a := range o.holds[from] {
+		if other != owner && a < arrival {
+			return true
+		}
+	}
+	return false
 }

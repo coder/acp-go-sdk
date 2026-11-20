@@ -85,6 +85,9 @@ type responseEnvelope struct {
 
 type pendingResponse struct {
 	ch chan responseEnvelope
+	// arrived, when set, runs in handleResponse with the response's arrival
+	// number, before receive reads the next message.
+	arrived func(arrival uint64)
 }
 
 type cancelRequestParams struct {
@@ -136,7 +139,7 @@ type Connection struct {
 	nextID               atomic.Uint64
 	pending              map[string]*pendingResponse
 	inflight             map[string]context.CancelCauseFunc
-	inboundMessages      uint64              // requests and queued notifications that receive dispatched; only receive touches it
+	inboundMessages      uint64              // requests, queued notifications and responses that receive dispatched; only receive touches it
 	inflightArrivals     map[uint64]struct{} // arrival numbers of the requests in inflight
 	pendingCancelRequest []string
 	cancelRequestSignal  chan struct{}
@@ -179,6 +182,27 @@ type Connection struct {
 	rejections chan []byte
 
 	budget peerBudget
+
+	hooks connectionHooks
+}
+
+// connectionHooks let a role built on Connection see how the messages from
+// the peer arrive. Only the proxy role sets them. receive calls each of them,
+// so they must return at once.
+type connectionHooks struct {
+	// requestArrived runs for each request from the peer that the connection
+	// holds, before receive reads the next message. The func that it returns
+	// runs when the request's goroutine ends, after the reply went out.
+	requestArrived func(arrival uint64, method string) (done func())
+	// wrappedCancel returns the params of the $/cancel_request that a
+	// notification from the peer wraps, if it wraps one. The connection
+	// handles that $/cancel_request as a plain one.
+	wrappedCancel func(method string, params json.RawMessage) (json.RawMessage, bool)
+}
+
+// withHooks sets the hooks of a connection. Only the proxy role passes it.
+func withHooks(h connectionHooks) ConnectionOption {
+	return func(c *connectionConfig) { c.hooks = h }
 }
 
 // NewConnection returns a Connection that writes messages to peerInput and
@@ -193,13 +217,13 @@ type Connection struct {
 // over a limit gets a -32603 reply instead of a handler call, and a
 // notification over a limit closes the connection (see ConnectionOption).
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
-	limits := connectionLimits{
+	cfg := connectionConfig{
 		byteBudget:             defaultByteBudget,
 		maxInboundRequests:     defaultMaxInboundRequests,
 		maxQueuedNotifications: defaultMaxQueuedNotifications,
 	}
 	for _, opt := range opts {
-		opt(&limits)
+		opt(&cfg)
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	inboundCtx, inboundCancel := context.WithCancelCause(context.Background())
@@ -216,9 +240,10 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 		cancel:              cancel,
 		inboundCtx:          inboundCtx,
 		inboundCancel:       inboundCancel,
-		notificationQueue:   make(chan queuedNotification, limits.maxQueuedNotifications),
+		notificationQueue:   make(chan queuedNotification, cfg.maxQueuedNotifications),
 		rejections:          make(chan []byte, maxQueuedRejections),
-		budget:              peerBudget{maxBytes: limits.byteBudget, maxRequests: limits.maxInboundRequests},
+		budget:              peerBudget{maxBytes: cfg.byteBudget, maxRequests: cfg.maxInboundRequests},
+		hooks:               cfg.hooks,
 	}
 	c.notifyCond = sync.NewCond(&c.notifyMu)
 	go func() {
@@ -501,8 +526,8 @@ func (c *Connection) receive() {
 
 		// Handle $/cancel_request notifications synchronously so cancellations take effect
 		// immediately and do not participate in notification ordering.
-		if msg.ID == nil && msg.Method == "$/cancel_request" {
-			c.handleCancelRequest(&msg)
+		if params, ok := c.cancelRequestParams(&msg); ok {
+			c.handleCancelRequest(params)
 			continue
 		}
 
@@ -547,6 +572,10 @@ func (c *Connection) receive() {
 				c.inflight[idKey] = cancel
 				c.inflightArrivals[arrival] = struct{}{}
 				c.mu.Unlock()
+				arrivedDone := func() {}
+				if c.hooks.requestArrived != nil {
+					arrivedDone = c.hooks.requestArrived(arrival, msg.Method)
+				}
 
 				m := msg
 				go func(m *anyMessage, idKey string, reqCtx context.Context, cancel context.CancelCauseFunc, watermark uint64) {
@@ -558,6 +587,7 @@ func (c *Connection) receive() {
 
 						cancel(nil)
 						c.budget.releaseRequest(size)
+						arrivedDone()
 					}()
 					if err := c.waitInboundBarrier(reqCtx, watermark); err != nil {
 						select {
@@ -694,6 +724,10 @@ func (c *Connection) handleResponse(msg *anyMessage) {
 	c.mu.Unlock()
 
 	if pr != nil {
+		c.inboundMessages++
+		if pr.arrived != nil {
+			pr.arrived(c.inboundMessages)
+		}
 		c.notifyMu.Lock()
 		watermark := c.lastEnqueuedNotificationSeq
 		if c.completedNotificationSeq > watermark {
@@ -705,9 +739,23 @@ func (c *Connection) handleResponse(msg *anyMessage) {
 	}
 }
 
-func (c *Connection) handleCancelRequest(msg *anyMessage) {
+// cancelRequestParams returns the params of the $/cancel_request that msg is:
+// a plain one, or one that hooks.wrappedCancel finds in it.
+func (c *Connection) cancelRequestParams(msg *anyMessage) (json.RawMessage, bool) {
+	switch {
+	case msg.ID != nil:
+		return nil, false
+	case msg.Method == "$/cancel_request":
+		return msg.Params, true
+	case c.hooks.wrappedCancel != nil:
+		return c.hooks.wrappedCancel(msg.Method, msg.Params)
+	}
+	return nil, false
+}
+
+func (c *Connection) handleCancelRequest(params json.RawMessage) {
 	var p cancelRequestParams
-	if err := json.Unmarshal(msg.Params, &p); err != nil {
+	if err := json.Unmarshal(params, &p); err != nil {
 		c.loggerOrDefault().Error("failed to parse $/cancel_request params", "err", err)
 		return
 	}
@@ -869,42 +917,69 @@ func (c *Connection) writeLine(line []byte) error {
 // context.WithoutCancel, gets the full wait once the handler has returned.
 func SendRequest[T any](c *Connection, ctx context.Context, method string, params any) (T, error) {
 	var result T
-
-	msg, idKey, err := c.prepareRequest(method, params)
+	sent, err := c.sendRequest(method, params, nil)
 	if err != nil {
 		return result, err
 	}
+	raw, err := sent.wait(ctx)
+	if err != nil {
+		return result, err
+	}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &result); err != nil {
+			return result, NewInternalError(map[string]any{"error": err.Error()})
+		}
+	}
+	return result, nil
+}
 
-	pr := &pendingResponse{ch: make(chan responseEnvelope, 1)}
+// sentRequest is a request that this side has written to the peer. Its wait
+// waits for the response.
+type sentRequest struct {
+	c     *Connection
+	idKey string
+	pr    *pendingResponse
+}
+
+// sendRequest writes a request to the peer, the first step of SendRequest.
+// arrived, when set, runs when the response arrives, with its arrival number
+// (see pendingResponse).
+func (c *Connection) sendRequest(method string, params any, arrived func(arrival uint64)) (*sentRequest, error) {
+	msg, idKey, err := c.prepareRequest(method, params)
+	if err != nil {
+		return nil, err
+	}
+
+	pr := &pendingResponse{ch: make(chan responseEnvelope, 1), arrived: arrived}
 	c.mu.Lock()
 	c.pending[idKey] = pr
 	c.mu.Unlock()
 
 	if err := c.sendMessage(msg); err != nil {
 		c.cleanupPending(idKey)
-		return result, NewInternalError(map[string]any{"error": err.Error()})
+		return nil, NewInternalError(map[string]any{"error": err.Error()})
 	}
+	return &sentRequest{c: c, idKey: idKey, pr: pr}, nil
+}
 
+// wait is the second step of SendRequest: it waits for the response to r, as
+// SendRequest describes, and returns its result or error.
+func (r *sentRequest) wait(ctx context.Context) (json.RawMessage, error) {
+	c, pr, idKey := r.c, r.pr, r.idKey
 	donePeerWait := c.startPeerWait(ctx)
 	resp, err := c.waitForResponse(ctx, pr, idKey)
 	donePeerWait()
 	if err != nil {
-		return result, err
+		return nil, err
 	}
 	if err := c.waitNotificationsUpTo(ctx, resp.notificationWatermark); err != nil {
-		return result, err
+		return nil, err
 	}
 
 	if resp.msg.Error != nil {
-		return result, resp.msg.Error
+		return nil, resp.msg.Error
 	}
-
-	if len(resp.msg.Result) > 0 {
-		if err := json.Unmarshal(resp.msg.Result, &result); err != nil {
-			return result, NewInternalError(map[string]any{"error": err.Error()})
-		}
-	}
-	return result, nil
+	return resp.msg.Result, nil
 }
 
 func (c *Connection) prepareRequest(method string, params any) (anyMessage, string, error) {
@@ -1222,35 +1297,12 @@ func (c *Connection) cleanupPending(idKey string) {
 // SendRequestNoResult sends a JSON-RPC request that returns no result payload.
 // It waits for notification handlers as SendRequest does.
 func (c *Connection) SendRequestNoResult(ctx context.Context, method string, params any) error {
-	msg, idKey, err := c.prepareRequest(method, params)
+	sent, err := c.sendRequest(method, params, nil)
 	if err != nil {
 		return err
 	}
-
-	pr := &pendingResponse{ch: make(chan responseEnvelope, 1)}
-	c.mu.Lock()
-	c.pending[idKey] = pr
-	c.mu.Unlock()
-
-	if err := c.sendMessage(msg); err != nil {
-		c.cleanupPending(idKey)
-		return NewInternalError(map[string]any{"error": err.Error()})
-	}
-
-	donePeerWait := c.startPeerWait(ctx)
-	resp, err := c.waitForResponse(ctx, pr, idKey)
-	donePeerWait()
-	if err != nil {
-		return err
-	}
-	if err := c.waitNotificationsUpTo(ctx, resp.notificationWatermark); err != nil {
-		return err
-	}
-
-	if resp.msg.Error != nil {
-		return resp.msg.Error
-	}
-	return nil
+	_, err = sent.wait(ctx)
+	return err
 }
 
 func (c *Connection) SendNotification(ctx context.Context, method string, params any) error {

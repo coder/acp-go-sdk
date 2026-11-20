@@ -11,7 +11,9 @@ import "encoding/json"
 // syntax error and leaves v as it is.
 func decodeJSON[T any](data []byte, v *T) error {
 	u, ok := any(v).(json.Unmarshaler)
-	if !ok || !json.Valid(data) {
+	// validJSON must stay equal to json.Valid, or decodeJSON would decode
+	// data that json.Unmarshal rejects, or the reverse.
+	if !ok || !validJSON(data) {
 		return json.Unmarshal(data, v)
 	}
 	// Valid data holds one value, which neither starts nor ends with

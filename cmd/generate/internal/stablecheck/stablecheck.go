@@ -49,6 +49,9 @@ type Run struct {
 //     name, such as an UnmarshalJSON for a hint on a stable property;
 //   - a field tag that changes, such as one that gains omitempty;
 //   - an entry of the shapes table that loses a rule (shapeChanges);
+//   - a call in a stable function that checks a stable value against an
+//     entry of the shapes table that only merged declares, and that takes
+//     fewer values than the Go type (siteChanges);
 //   - in an UnmarshalJSON method, such an added statement that can return
 //     with a nil error before code for a stable field, which can then decode
 //     a stable value as the new one. A return in a literal case of a switch
@@ -56,7 +59,9 @@ type Run struct {
 //     takes only its own values.
 //
 // A JSON literal passed with a pointer, such as a default, may gain members
-// for the fields that merged adds to the pointed-to type.
+// for the fields that merged adds to the pointed-to type. Both bodies first
+// lose their statements without effect (pruneInert), and a call of a method
+// that merged adds and that does nothing (noopMethods) counts as added.
 func Compare(pkgDir, schemaVersion string, stable, merged Run) error {
 	dir, err := os.MkdirTemp("", "stablecheck")
 	if err != nil {
@@ -86,8 +91,10 @@ func Compare(pkgDir, schemaVersion string, stable, merged Run) error {
 		}
 	}
 	changes = append(changes, tagChanges(old, new)...)
-	changes = append(changes, bodyChanges(old, new)...)
+	bodies, sites := bodyChanges(old, new)
+	changes = append(changes, bodies...)
 	changes = append(changes, shapeChanges(old, new)...)
+	changes = append(changes, siteChanges(old, new, sites)...)
 	if len(changes) > 0 {
 		return fmt.Errorf("cannot merge unstable schema: the merged schema changes stable Go types:\n\t%s", strings.Join(changes, "\n\t"))
 	}
@@ -96,7 +103,6 @@ func Compare(pkgDir, schemaVersion string, stable, merged Run) error {
 
 // side is the acp package with the generated files of one run.
 type side struct {
-	fset *token.FileSet
 	pkg  *types.Package
 	info *types.Info
 	// funcs holds the functions and methods of the generated files, by
@@ -113,7 +119,7 @@ type side struct {
 // the generated files in genDir. Type errors do not stop it: the
 // hand-written code may refer to what only the merged files declare.
 func typecheck(fset *token.FileSet, imp types.Importer, pkgDir, genDir string) (*side, error) {
-	s := &side{fset: fset, funcs: map[string]*ast.FuncDecl{}, declared: map[string]bool{}, vars: map[string]*ast.ValueSpec{}}
+	s := &side{funcs: map[string]*ast.FuncDecl{}, declared: map[string]bool{}, vars: map[string]*ast.ValueSpec{}}
 	hand, err := filepath.Glob(filepath.Join(pkgDir, "*.go"))
 	if err != nil {
 		return nil, err
@@ -137,9 +143,10 @@ func typecheck(fset *token.FileSet, imp types.Importer, pkgDir, genDir string) (
 		}
 	}
 	s.info = &types.Info{
-		Types: map[ast.Expr]types.TypeAndValue{},
-		Defs:  map[*ast.Ident]types.Object{},
-		Uses:  map[*ast.Ident]types.Object{},
+		Types:     map[ast.Expr]types.TypeAndValue{},
+		Defs:      map[*ast.Ident]types.Object{},
+		Uses:      map[*ast.Ident]types.Object{},
+		Instances: map[*ast.Ident]types.Instance{},
 	}
 	conf := types.Config{Importer: imp, Error: func(error) {}}
 	s.pkg, _ = conf.Check("acp", fset, files, s.info)
@@ -247,9 +254,12 @@ func structOf(s *side, name string) *types.Struct {
 // bodyChanges compares the body of each function and method of old's
 // generated files that is not a method of a hand-written type with its
 // version in new, and checks each method that new adds to a type that old
-// declares (see Compare).
-func bodyChanges(old, new *side) []string {
+// declares (see Compare). It returns the sites where new checks a stable
+// value against a new entry of the shapes table, for siteChanges.
+func bodyChanges(old, new *side) ([]string, []site) {
 	var out []string
+	var sites []site
+	noops := noopMethods(old, new)
 	for _, name := range sortedKeys(old.funcs) {
 		recv, _, isMethod := strings.Cut(name, ".")
 		if isMethod && !old.declared[recv] {
@@ -263,11 +273,18 @@ func bodyChanges(old, new *side) []string {
 			continue
 		}
 		p := newProjection(old, new, recv, isMethod)
+		p.noops = noops
 		body := p.block(nf.Body)
 		p.acceptRejected(of.Body)
 		if strings.HasSuffix(name, ".UnmarshalJSON") {
 			out = append(out, p.earlyReturns(name, body)...)
 		}
+		for _, s := range p.sites {
+			s.fn = name
+			sites = append(sites, s)
+		}
+		old.pruneInert(of.Body)
+		new.pruneInert(body)
 		old.canonicalJSON(of.Body, nil)
 		new.canonicalJSON(body, old.pkg)
 		if s, m, ok := firstDifference(old.text(of.Body), new.text(body)); ok {
@@ -286,7 +303,46 @@ func bodyChanges(old, new *side) []string {
 			out = append(out, fmt.Sprintf("%s: is new and refers to the stable %s", name, stable))
 		}
 	}
+	return out, sites
+}
+
+// noopMethods returns the methods that new adds to the types that old
+// declares and that do nothing once projected: their body is empty or only
+// returns nil, such as a Validate that only checks the members that new
+// adds. A call of one does nothing for a stable value (projection.refers).
+func noopMethods(old, new *side) map[*types.Func]bool {
+	out := map[*types.Func]bool{}
+	for _, name := range sortedKeys(new.funcs) {
+		recv, _, isMethod := strings.Cut(name, ".")
+		if !isMethod || !old.declared[recv] || old.funcs[name] != nil {
+			continue
+		}
+		decl := new.funcs[name]
+		body := newProjection(old, new, recv, true).block(decl.Body)
+		new.pruneInert(body)
+		if f, ok := new.info.Defs[decl.Name].(*types.Func); ok && returnsOnlyNil(body) {
+			out[f] = true
+		}
+	}
 	return out
+}
+
+// returnsOnlyNil reports whether body is empty or is one return of nil
+// values.
+func returnsOnlyNil(body *ast.BlockStmt) bool {
+	if len(body.List) == 0 {
+		return true
+	}
+	ret, ok := body.List[0].(*ast.ReturnStmt)
+	if !ok || len(body.List) > 1 {
+		return false
+	}
+	for _, r := range ret.Results {
+		if id, ok := r.(*ast.Ident); !ok || id.Name != "nil" {
+			return false
+		}
+	}
+	return true
 }
 
 // newProjection returns the projection for a function, or for a method of
@@ -298,7 +354,7 @@ func newProjection(old, new *side, recv string, isMethod bool) *projection {
 	p := &projection{
 		info: new.info, scope: new.pkg.Scope(),
 		stable: old.declared, added: map[string]bool{}, addedFields: map[string]bool{},
-		guards: map[string]*ast.IfStmt{},
+		addedMembers: map[string]bool{}, guards: map[string]*ast.IfStmt{},
 	}
 	if stable, ok := old.fields(recv); isMethod && ok {
 		p.stable, p.stableFields = nil, stable
@@ -308,6 +364,7 @@ func newProjection(old, new *side, recv string, isMethod bool) *projection {
 				p.addedFields[field] = true
 			}
 		}
+		addedMembers(old, new, recv, p.addedMembers, map[string]bool{})
 	}
 	for _, n := range new.pkg.Scope().Names() {
 		if old.pkg.Scope().Lookup(n) == nil {
@@ -315,6 +372,45 @@ func newProjection(old, new *side, recv string, isMethod bool) *projection {
 		}
 	}
 	return p
+}
+
+// addedMembers adds to out the JSON names, quoted, of the fields that new
+// adds to the struct type name and to the stable struct types of its fields,
+// at any depth, such as a member of a scope that a catch-all variant holds.
+func addedMembers(old, new *side, name string, out, seen map[string]bool) {
+	st, stable := structOf(new, name), structOf(old, name)
+	if st == nil || stable == nil || seen[name] {
+		return
+	}
+	seen[name] = true
+	for i := 0; i < st.NumFields(); i++ {
+		field := st.Field(i)
+		if json, _, _ := strings.Cut(reflect.StructTag(st.Tag(i)).Get("json"), ","); !hasField(stable, field.Name()) && json != "" && json != "-" {
+			out[strconv.Quote(json)] = true
+		}
+		if named := heldNamed(field.Type()); named != nil && named.Obj().Pkg() == new.pkg {
+			addedMembers(old, new, named.Obj().Name(), out, seen)
+		}
+	}
+}
+
+// heldNamed returns the named type that t is or holds through pointers,
+// slices, and maps, or nil.
+func heldNamed(t types.Type) *types.Named {
+	for {
+		switch u := types.Unalias(t).(type) {
+		case *types.Pointer:
+			t = u.Elem()
+		case *types.Slice:
+			t = u.Elem()
+		case *types.Map:
+			t = u.Elem()
+		case *types.Named:
+			return u
+		default:
+			return nil
+		}
+	}
 }
 
 func sortedKeys[V any](m map[string]V) []string {
@@ -336,10 +432,30 @@ type projection struct {
 	// addedFields the names of the fields of a struct receiver.
 	stable, added             map[string]bool
 	stableFields, addedFields map[string]bool
-	early                     []ast.Node
+	// addedMembers holds the quoted JSON names of addedMembers, such as the
+	// names that additionalProperties leaves out of a catch-all's map.
+	addedMembers map[string]bool
+	// noops holds the methods of noopMethods.
+	noops map[*types.Func]bool
+	early []ast.Node
 	// guards holds the removed if statements without init or else, by the
 	// text of their condition.
 	guards map[string]*ast.IfStmt
+	// values holds, for each local that a switch with a tag switches on,
+	// the literal values of the cases that refer only to added names, such
+	// as the discriminator value of a new variant.
+	values map[types.Object]map[string]bool
+	// sites holds the calls that lost a new shapes entry.
+	sites []site
+}
+
+// site is a call in a stable function that checks a value of the Go type t
+// against shape, an entry of the shapes table that only new declares, such
+// as decodeLenient(raw.Caps, &v.Caps, shapeCaps) once Caps gains a member
+// that cannot be null.
+type site struct {
+	fn, shape string
+	t         types.Type
 }
 
 // acceptRejected lets a removed if statement take the place of a stable one
@@ -373,9 +489,16 @@ func (p *projection) acceptRejected(old *ast.BlockStmt) {
 	})
 }
 
-// refers reports whether n names something added, and something stable.
+// refers reports whether n names something added, and something stable. A
+// call of a method of noops counts as added, and its receiver as neither.
 func (p *projection) refers(n ast.Node) (added, stable bool) {
 	ast.Inspect(n, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			if f, ok := p.info.Uses[sel.Sel].(*types.Func); ok && p.noops[f] {
+				added = true
+				return false
+			}
+		}
 		if id, ok := n.(*ast.Ident); ok {
 			a, s := p.names(id)
 			added, stable = added || a, stable || s
@@ -412,10 +535,33 @@ func (p *projection) names(id *ast.Ident) (added, stable bool) {
 // statement, a switch case, a field of a local struct type, or an element of
 // a composite literal.
 func (p *projection) block(b *ast.BlockStmt) *ast.BlockStmt {
+	p.values = p.addedValues(b)
 	ast.Inspect(b, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.SwitchStmt:
 			n.Body.List = filter(p, n.Body.List, n.Tag != nil)
+			// Another switch on the same local, such as the one with which a
+			// catch-all variant leaves out the discriminator values of the
+			// other variants, loses the added values too.
+			if values := p.values[p.local(n.Tag)]; values != nil {
+				n.Body.List = slices.DeleteFunc(n.Body.List, func(s ast.Stmt) bool {
+					c := s.(*ast.CaseClause)
+					if !literalCase(c) {
+						return false
+					}
+					c.List = slices.DeleteFunc(c.List, func(e ast.Expr) bool { return values[e.(*ast.BasicLit).Value] })
+					return len(c.List) == 0
+				})
+			}
+		case *ast.CallExpr:
+			if s, ok := p.newCheck(n); ok {
+				n.Args = n.Args[:len(n.Args)-1]
+				p.sites = append(p.sites, s)
+			}
+			n.Args = slices.DeleteFunc(n.Args, func(arg ast.Expr) bool {
+				lit, ok := arg.(*ast.BasicLit)
+				return ok && lit.Kind == token.STRING && p.addedMembers[lit.Value]
+			})
 		case *ast.BlockStmt:
 			n.List = filter(p, n.List, false)
 		case *ast.CaseClause:
@@ -434,11 +580,84 @@ func (p *projection) block(b *ast.BlockStmt) *ast.BlockStmt {
 	return b
 }
 
+// addedValues returns, for each local that a switch with a tag in b switches
+// on, the values of its literal cases that refer only to added names.
+func (p *projection) addedValues(b *ast.BlockStmt) map[types.Object]map[string]bool {
+	out := map[types.Object]map[string]bool{}
+	ast.Inspect(b, func(n ast.Node) bool {
+		sw, ok := n.(*ast.SwitchStmt)
+		if !ok {
+			return true
+		}
+		local := p.local(sw.Tag)
+		if local == nil {
+			return true
+		}
+		for _, c := range sw.Body.List {
+			clause := c.(*ast.CaseClause)
+			if added, stable := p.refers(clause); !added || stable || !literalCase(clause) {
+				continue
+			}
+			if out[local] == nil {
+				out[local] = map[string]bool{}
+			}
+			for _, e := range clause.List {
+				out[local][e.(*ast.BasicLit).Value] = true
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// local returns the local variable that e names, or nil.
+func (p *projection) local(e ast.Expr) types.Object {
+	id, ok := e.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	if v, ok := p.info.Uses[id].(*types.Var); ok && !v.IsField() && v.Parent() != p.scope {
+		return v
+	}
+	return nil
+}
+
+// newCheck reports whether the last argument of call is a constant of the
+// shapes table that only new declares, and returns its site: the value that
+// the call checks has the Go type of the call's one type argument, such as T
+// of decodeLenient[T].
+func (p *projection) newCheck(call *ast.CallExpr) (site, bool) {
+	if len(call.Args) == 0 {
+		return site{}, false
+	}
+	id, ok := call.Args[len(call.Args)-1].(*ast.Ident)
+	if !ok {
+		return site{}, false
+	}
+	c, ok := p.info.Uses[id].(*types.Const)
+	if !ok || c.Parent() != p.scope || !p.added[c.Name()] {
+		return site{}, false
+	}
+	if named, ok := c.Type().(*types.Named); !ok || named.Obj().Name() != "shapeID" {
+		return site{}, false
+	}
+	fn, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return site{}, false
+	}
+	inst, ok := p.info.Instances[fn]
+	if !ok || inst.TypeArgs.Len() != 1 {
+		return site{}, false
+	}
+	return site{shape: c.Name(), t: inst.TypeArgs.At(0)}, true
+}
+
 // filter keeps the elements of list that do not refer only to added names.
 // tagged says that list holds the cases of a switch with a tag.
 func filter[T ast.Node](p *projection, list []T, tagged bool) []T {
 	var out []T
 	for _, n := range list {
+		p.elements(n)
 		if added, stable := p.refers(n); !added || stable {
 			out = append(out, n)
 			continue
@@ -451,6 +670,25 @@ func filter[T ast.Node](p *projection, list []T, tagged bool) []T {
 		}
 	}
 	return out
+}
+
+// elements removes from n the struct fields and composite literal elements
+// that refer only to added names, outside the blocks, cases, and function
+// literals in n, so that a statement that holds them, such as the
+// declaration of a local struct type that mirrors the receiver, is judged by
+// what is left.
+func (p *projection) elements(n ast.Node) {
+	ast.Inspect(n, func(m ast.Node) bool {
+		switch m := m.(type) {
+		case *ast.BlockStmt, *ast.CaseClause, *ast.FuncLit:
+			return false
+		case *ast.StructType:
+			m.Fields.List = filter(p, m.Fields.List, false)
+		case *ast.CompositeLit:
+			m.Elts = filter(p, m.Elts, false)
+		}
+		return true
+	})
 }
 
 // literalCase reports whether c is a case of literal values, which a switch
@@ -655,7 +893,9 @@ func hasField(st *types.Struct, name string) bool {
 // spaces between two tokens.
 func (s *side) text(n ast.Node) []string {
 	var buf bytes.Buffer
-	if err := (&printer.Config{Mode: printer.RawFormat}).Fprint(&buf, s.fset, n); err != nil {
+	// An empty file set leaves out the line breaks of the source, such as
+	// those between the elements of a composite literal that lost some.
+	if err := (&printer.Config{Mode: printer.RawFormat}).Fprint(&buf, token.NewFileSet(), n); err != nil {
 		return []string{err.Error()}
 	}
 	src := buf.Bytes()

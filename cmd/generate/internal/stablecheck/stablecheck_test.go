@@ -59,6 +59,8 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 			"label": {Type: "string", Not: &load.Definition{Const: "none"}, DefaultOnError: true},
 			"event": {AllOf: []*load.Definition{ref("Event")}, DefaultOnError: true},
 			"size":  {AnyOf: []*load.Definition{{Title: "Name", Type: "string"}, {Title: "Count", Type: "integer"}, {Title: "Ratio", Type: "number"}}, DefaultOnError: true},
+			// The decoder checks the range of a hinted integer.
+			"count": {Type: "integer", Format: "uint32", Minimum: "0", DefaultOnError: true},
 			// The rest rule does not apply to note, which takes any value.
 			"labels": {
 				Type: "object", Properties: map[string]*load.Definition{"note": {}},
@@ -70,7 +72,8 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 			variant("start", map[string]*load.Definition{}),
 			{
 				Title: "other", Type: "object", Properties: map[string]*load.Definition{"kind": str()}, Required: []string{"kind"},
-				Not: &load.Definition{AnyOf: []*load.Definition{obj(map[string]*load.Definition{"kind": {Type: "string", Const: "start"}}, "kind")}},
+				Not:                  &load.Definition{AnyOf: []*load.Definition{obj(map[string]*load.Definition{"kind": {Type: "string", Const: "start"}}, "kind")}},
+				AdditionalProperties: load.Members{Open: true},
 			},
 		}},
 		// Value tries its variants in order.
@@ -99,7 +102,17 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 		"Caps": obj(map[string]*load.Definition{
 			"flags": {AllOf: []*load.Definition{ref("Flags")}, Default: map[string]any{"read": false}, DefaultOnError: true},
 			"name":  {Type: "string", Default: "a  b", DefaultOnError: true},
+			"prefs": {AllOf: []*load.Definition{ref("Prefs")}, DefaultOnError: true},
 		}),
+		// The decoder of Caps checks no rule of Prefs: each of its members
+		// may be null.
+		"Prefs": obj(map[string]*load.Definition{"theme": {Type: []any{"string", "null"}}}),
+		// MarshalJSON writes an empty list of Tags.
+		"Tags":   obj(map[string]*load.Definition{"items": {Type: []any{"array", "null"}, Items: str()}}),
+		"Limits": obj(map[string]*load.Definition{"max": {Type: []any{"integer", "null"}, Format: "int64"}}),
+		// The Validate of Body calls the Validate of a variant type that has
+		// one.
+		"Body": {AnyOf: []*load.Definition{{Title: "Note", AllOf: []*load.Definition{ref("Note")}}, {Title: "Limits", AllOf: []*load.Definition{ref("Limits")}}}},
 	}
 	if change != nil {
 		change(defs)
@@ -142,6 +155,18 @@ func TestCompare_AllowsAdditions(t *testing.T) {
 		// type and the receiver type of the stable MarshalJSON of Update.
 		defs["Update"].Properties["alias"] = str()
 		defs["Update"].Properties["update"] = str()
+		// A member that cannot be null makes the decoder of Caps check
+		// Prefs, and the check takes every stable value.
+		defs["Prefs"].Properties["color"] = str()
+		// The catch-all keeps a new member out of its other members.
+		defs["Event"].AnyOf[2].Properties["note"] = str()
+		// The local type that mirrors Note gains a field.
+		defs["Note"].Properties["mood"] = &load.Definition{Type: "string", Default: "calm", DefaultOnError: true}
+		// MarshalJSON writes its fields on more lines.
+		defs["Tags"].Properties["more"] = &load.Definition{Type: []any{"array", "null"}, Items: str()}
+		// The Validate of Body calls a new Validate of Note, which only
+		// checks the new member.
+		defs["Note"].Properties["count"] = &load.Definition{Type: []any{"integer", "null"}, Format: "uint32", Minimum: "0"}
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -251,6 +276,38 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 				defs["Hinted"].Properties["label"].Const = "x"
 			},
 			want: `shapes[shapeHintedLabel]: takes only the values ["x"]`,
+		},
+		{
+			name: "a hinted integer takes fewer values",
+			change: func(defs map[string]*load.Definition) {
+				defs["Hinted"].Properties["count"].Maximum = "100"
+			},
+			want: "shapes[shapeHintedCount]: takes the integers 0..100 instead of 0..4294967295",
+		},
+		{
+			// The new variant takes the values of a kind that the stable
+			// catch-all took.
+			name: "a catch-all leaves out a kind that no variant takes",
+			change: func(defs map[string]*load.Definition) {
+				other := defs["Event"].AnyOf[1]
+				other.Not.AnyOf = append(other.Not.AnyOf, obj(map[string]*load.Definition{"kind": {Type: "string", Const: "stop"}}, "kind"))
+			},
+			want: "shapes[shapeEvent].anyOf[1]: has no merged version",
+		},
+		{
+			name: "a new check of a stable value has a rule for a stable member",
+			change: func(defs map[string]*load.Definition) {
+				defs["Prefs"].Properties["color"] = str()
+				defs["Prefs"].Properties["theme"].Not = &load.Definition{Const: "none"}
+			},
+			want: "Caps.UnmarshalJSON: checks a stable value against the new shapePrefs, which has a rule for the stable member theme",
+		},
+		{
+			name: "a new method that a stable method calls checks a stable member",
+			change: func(defs map[string]*load.Definition) {
+				defs["Limits"].Properties["max"].Maximum = "10"
+			},
+			want: "Limits.Validate: is new and refers to the stable Max",
 		},
 		{
 			name: "a hint on a stable property gives a type a decoder",

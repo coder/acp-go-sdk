@@ -32,8 +32,10 @@ import (
 // Every handler in UnstableProxyHandlers is optional. A nil handler forwards
 // its message unchanged, so the zero UnstableProxyHandlers make a proxy that
 // passes every message through. A message of a method that this SDK does not
-// know, an extension method included, is forwarded too. The result or error
-// of a forwarded request comes back unchanged.
+// know, an extension method included, is forwarded too. The result of a
+// forwarded request comes back unchanged. An error comes back with its code,
+// message and data, the members that the ACP Error schema defines; other
+// members of the error object are dropped.
 //
 // A handler gets its message decoded into this SDK's Go types, and the
 // method it sends with encodes it again, so members that those types do not

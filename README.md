@@ -200,7 +200,9 @@ conn := acp.NewUnstableProxySideConnection(func(c *acp.UnstableProxySideConnecti
   `Client` method, so `FromClient.Prompt = c.Successor().Prompt` compiles.
 - A nil handler forwards its message unchanged, so the zero handlers pass
   everything through. Messages of unknown and extension methods are forwarded
-  too, and the result or error of a forwarded request comes back unchanged.
+  too. The result of a forwarded request comes back unchanged, and an error
+  comes back with its `code`, `message` and `data`; other members of the error
+  object are dropped.
 - `c.Client()` sends to the client side as it is. `c.Successor()` sends to the
   successor, wrapped in `proxy/successor`.
 - The conductor initializes a proxy with `proxy/initialize`. Without an

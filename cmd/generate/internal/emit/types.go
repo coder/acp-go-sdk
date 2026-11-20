@@ -979,13 +979,17 @@ func variantRef(v *load.Definition) string {
 }
 
 // unionAlternative is an alternative of a union that emitUnion emits. value is
-// the schema of the values of a valueAlt, with the type that valueType found.
+// the schema of its Go type: for a valueAlt its values, with the type that
+// valueType found, and for a refAlt the $defs entry. named are the values
+// that it names: the const or enum members of a valueAlt, and the own const
+// of a refAlt, such as {"const": "a", "allOf": [{"$ref": ...}]}.
 type unionAlternative struct {
 	index    int
 	ref      string
 	expanded *load.Definition
 	kind     altKind
 	value    *load.Definition
+	named    []any
 }
 
 // unionAlternatives returns the alternatives defs of a union, without the
@@ -999,11 +1003,18 @@ func unionAlternatives(schema *load.Schema, defs []*load.Definition) []unionAlte
 		ref := variantRef(v)
 		v = expandAllOf(schema, v)
 		alt := unionAlternative{index: index, ref: ref, expanded: v, kind: alternativeKind(v, ref)}
-		if alt.kind == valueAlt {
+		switch alt.kind {
+		case valueAlt:
 			// jenTypeFor reads an enum as a string; the type decides here.
 			value := *v
 			value.Type, value.Enum = valueType(v), nil
-			alt.value = &value
+			alt.value, alt.named = &value, namedValues(v)
+		case refAlt:
+			// expandAllOf copies the enum of the $ref, not its const, so
+			// v.Const is the alternative's own.
+			if v.Const != nil {
+				alt.value, alt.named = schema.Defs[strings.TrimPrefix(ref, "#/$defs/")], []any{v.Const}
+			}
 		}
 		if alt.kind != phantomAlt {
 			alts = append(alts, alt)
@@ -1016,21 +1027,18 @@ func (a unionAlternative) isNull() bool { return a.kind == nullAlt }
 
 func (a unionAlternative) isInlineObject() bool { return a.kind == objectAlt }
 
-// values returns the literals of the values that a valueAlt of the union
-// named union takes: its const or the members of its enum. It returns none
-// when it takes every value of its type. It panics on a value that the Go type
-// of the alternative cannot hold exactly, since without its literal the
-// decoder would take every value of the type or a rounded one: a value of
+// values returns the literals of the values that alternative a of the union
+// named union takes (a.named). It returns none when it takes every value of
+// its type. It panics on a value that the Go type of a cannot hold exactly,
+// since without its literal the decoder would take every value of the type
+// or a rounded one: a value of
 // another JSON type, null, an array or object, a fraction under integer, a
 // number of magnitude 2^53 or more, which may be rounded when it loads, or an
 // int beyond int32, which does not compile on a 32-bit target.
 func (a unionAlternative) values(union string) []Code {
-	if a.kind != valueAlt {
-		return nil
-	}
 	t := ir.PrimaryType(a.value)
 	var lits []Code
-	for _, value := range namedValues(a.expanded) {
+	for _, value := range a.named {
 		var lit Code
 		switch value := value.(type) {
 		case float64:

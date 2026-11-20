@@ -27,6 +27,7 @@ const alternativeKindsSchema = `{"$defs": {
   "PickUntypedEnum": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"enum": ["a", "b"]}]},
   "PickNumber": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "number"}]},
   "PickInteger": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "integer"}]},
+  "PickWideConst": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "integer", "format": "int64", "const": 4294967295}]},
   "PickBoolean": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "boolean"}]},
   "PickArray": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "array", "items": {"type": "string"}}]},
   "PickRef": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"$ref": "#/$defs/Label"}]},
@@ -110,6 +111,7 @@ func TestUnion_KeepsEveryKindOfAlternative(t *testing.T) {
 	roundTrips[PickUntypedEnum](t, []string{named, ` + "`" + `"a"` + "`" + `, ` + "`" + `"b"` + "`" + `}, []string{` + "`" + `"c"` + "`" + `})
 	roundTrips[PickNumber](t, []string{named, ` + "`" + `1.5` + "`" + `}, []string{` + "`" + `"x"` + "`" + `})
 	roundTrips[PickInteger](t, []string{named, ` + "`" + `7` + "`" + `}, []string{` + "`" + `1.5` + "`" + `, ` + "`" + `"x"` + "`" + `})
+	roundTrips[PickWideConst](t, []string{named, ` + "`" + `4294967295` + "`" + `}, []string{` + "`" + `4294967294` + "`" + `, ` + "`" + `-2147483648` + "`" + `})
 	roundTrips[PickBoolean](t, []string{named, ` + "`" + `true` + "`" + `}, []string{` + "`" + `"x"` + "`" + `})
 	roundTrips[PickArray](t, []string{named, ` + "`" + `["a"]` + "`" + `}, []string{` + "`" + `"x"` + "`" + `, ` + "`" + `[1]` + "`" + `})
 	roundTrips[PickRef](t, []string{named, ` + "`" + `"x"` + "`" + `}, []string{` + "`" + `5` + "`" + `})
@@ -154,6 +156,7 @@ func TestNewUnion_BuildsEveryKindOfAlternative(t *testing.T) {
 	builds(t, ptr(NewPickUntypedEnumPickUntypedEnumVariant2("b")), ` + "`" + `"b"` + "`" + `)
 	builds(t, ptr(NewPickNumberPickNumberVariant2(1.5)), ` + "`" + `1.5` + "`" + `)
 	builds(t, ptr(NewPickIntegerPickIntegerVariant2(7)), ` + "`" + `7` + "`" + `)
+	builds(t, ptr(NewPickWideConstPickWideConstVariant2()), ` + "`" + `4294967295` + "`" + `)
 	builds(t, ptr(NewPickBooleanPickBooleanVariant2(true)), ` + "`" + `true` + "`" + `)
 	builds(t, ptr(NewPickArrayPickArrayVariant2([]string{"a"})), ` + "`" + `["a"]` + "`" + `)
 	builds(t, ptr(NewPickRefLabel("x")), ` + "`" + `"x"` + "`" + `)
@@ -351,11 +354,13 @@ func transcriptValues(t *testing.T, pick func(map[string]any) []any) []string {
 // hold exactly stops the generator. Without a literal for it, the decoder
 // would take every value of the type, a rounded value, or not the value
 // itself: it would take values that the schema rejects or reject one that it
-// takes. A number of magnitude 2^53 or more may be rounded when it loads.
+// takes. A number of magnitude 2^53 or more may be rounded when it loads,
+// and an int beyond int32 does not compile on a 32-bit target.
 func TestWriteTypesJen_PanicsOnAValueTheAlternativeCannotHold(t *testing.T) {
 	for _, tc := range []struct{ name, alternative, value string }{
 		{"string const under integer", `{"type": "integer", "const": "a"}`, `"a"`},
 		{"fraction under integer", `{"type": "integer", "const": 1.5}`, `1.5`},
+		{"int above int32", `{"type": "integer", "const": 4294967295}`, `4294967295`},
 		{"null enum member", `{"type": "string", "enum": ["a", null]}`, `null`},
 		{"array const", `{"type": "array", "items": {"type": "integer"}, "const": [1]}`, `[1]`},
 		{"object const", `{"type": "object", "const": {"a": 1}}`, `{"a":1}`},

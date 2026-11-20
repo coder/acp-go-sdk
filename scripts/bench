@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Benchmark how fast the SDK reads recorded ACP traffic, and compare two
+# commits. The benchmarks are in inbound_bench_test.go and the corpus in
+# testdata/bench (see its README.md).
+#
+#   scripts/bench            # the checkout only
+#   scripts/bench BASE       # BASE (a commit, such as origin/main) against the checkout
+#
+# The checkout side includes uncommitted changes. BASE gets the checkout's
+# benchmark file and corpus copied in, so both sides run the same benchmark.
+# The script builds one test binary per side, checks that both decode every
+# corpus message to the same outcome, runs the binaries in turn (A B B A ...)
+# RUNS times, and prints benchstat BASE HEAD.
+#
+# Environment:
+#   RUNS       runs per side (default 10)
+#   BENCH      benchmark regexp (default: the inbound and pipe benchmarks)
+#   BENCHTIME  -test.benchtime (default 1s)
+#   CPU        -test.cpu (default 1)
+#   BENCH_OUT  output folder (default ${TMPDIR:-/tmp}/acp-bench/<time>)
+#   BENCHSTAT  benchstat command (default: benchstat on PATH, else go run of
+#              golang.org/x/perf/cmd/benchstat at a pinned version)
+set -euo pipefail
+
+RUNS=${RUNS:-10}
+BENCH=${BENCH:-'^(BenchmarkInbound|BenchmarkInboundStream|BenchmarkConnectionPipe)$'}
+BENCHTIME=${BENCHTIME:-1s}
+CPU=${CPU:-1}
+BASE=${1:-}
+
+root=$(git rev-parse --show-toplevel)
+out=${BENCH_OUT:-${TMPDIR:-/tmp}/acp-bench/$(date +%Y%m%d-%H%M%S)}
+mkdir -p "$out"
+out=$(cd "$out" && pwd)
+# The files that make up the benchmark, copied from the checkout to BASE.
+harness=(inbound_bench_test.go testdata/bench .agents/skills/verify-schema-bump/roundtrip/testdata/transcripts)
+
+if [ -z "${BENCHSTAT:-}" ]; then
+	if command -v benchstat >/dev/null; then
+		BENCHSTAT=benchstat
+	else
+		BENCHSTAT="go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e"
+	fi
+fi
+
+echo "output: $out"
+{
+	echo "head: $(git -C "$root" rev-parse HEAD) $(git -C "$root" status --porcelain | wc -l) changed files"
+	echo "go: $(go version)"
+	echo "load before: $(uptime)"
+} | tee "$out/info.txt"
+
+(cd "$root" && go test -c -o "$out/head.test" .)
+sides=(head)
+if [ -n "$BASE" ]; then
+	src=$out/base-src
+	git -C "$root" worktree add --quiet --detach "$src" "$BASE"
+	trap 'git -C "$root" worktree remove --force "$src"' EXIT
+	echo "base: $(git -C "$src" rev-parse HEAD) ($BASE)" | tee -a "$out/info.txt"
+	for f in "${harness[@]}"; do
+		rm -rf "${src:?}/$f"
+		mkdir -p "$(dirname "$src/$f")"
+		cp -R "$root/$f" "$src/$f"
+	done
+	(cd "$src" && go test -c -o "$out/base.test" .)
+	sides=(base head)
+fi
+
+dir_of() {
+	if [ "$1" = base ]; then echo "$src"; else echo "$root"; fi
+}
+
+# Every side must read the corpus the same way.
+for side in "${sides[@]}"; do
+	(cd "$(dir_of "$side")" && ACP_BENCH_OUTCOMES="$out/outcomes-$side.txt" \
+		"$out/$side.test" -test.run '^TestInboundCorpus$' >"$out/outcomes-$side.log" 2>&1) || {
+		cat "$out/outcomes-$side.log"
+		exit 1
+	}
+done
+echo "corpus: $(wc -l <"$out/outcomes-head.txt") messages, $(grep -c ' error ' "$out/outcomes-head.txt" || true) rejected"
+if [ -n "$BASE" ]; then
+	if diff "$out/outcomes-base.txt" "$out/outcomes-head.txt" >"$out/outcomes.diff"; then
+		echo "outcomes: every message decodes as on base"
+	else
+		echo "outcomes: $(grep -c '^>' "$out/outcomes.diff") messages decode differently from base (see $out/outcomes.diff)"
+	fi
+fi
+
+run() {
+	(cd "$(dir_of "$1")" && "$out/$1.test" -test.run '^$' -test.bench "$BENCH" -test.benchmem \
+		-test.count 1 -test.cpu "$CPU" -test.benchtime "$BENCHTIME") >>"$out/$1.txt"
+}
+for i in $(seq 1 "$RUNS"); do
+	echo "run $i/$RUNS"
+	# Alternate the order, so that drift favors neither side.
+	if [ $((i % 2)) -eq 1 ]; then
+		for side in "${sides[@]}"; do run "$side"; done
+	else
+		for ((k = ${#sides[@]} - 1; k >= 0; k--)); do run "${sides[k]}"; done
+	fi
+done
+echo "load after: $(uptime)" | tee -a "$out/info.txt"
+
+files=()
+for side in "${sides[@]}"; do files+=("$out/$side.txt"); done
+(cd "$out" && $BENCHSTAT "${files[@]##*/}") | tee "$out/benchstat.txt"

@@ -1,0 +1,30 @@
+{"dir":"client-\u003eagent","msg":{"id":1,"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}}},"t_ms":0}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":1,"result":{"agentCapabilities":{"auth":{},"loadSession":true,"mcpCapabilities":{},"promptCapabilities":{},"sessionCapabilities":{"delete":{},"list":{},"systemPrompt":{}}},"authMethods":[],"protocolVersion":1}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":2,"jsonrpc":"2.0","method":"session/new","params":{"cwd":"/tmp/acp-delete","mcpServers":[]}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":2,"result":{"configOptions":[{"category":"model","currentValue":"demo-fast","id":"model","name":"Model","options":[{"name":"Demo Fast","value":"demo-fast"},{"name":"Demo Deep","value":"demo-deep"}],"type":"select"}],"sessionId":"sess_bea0859e0c1d8542eb687402"}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":3,"jsonrpc":"2.0","method":"session/new","params":{"cwd":"/tmp/acp-delete","mcpServers":[]}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":3,"result":{"configOptions":[{"category":"model","currentValue":"demo-fast","id":"model","name":"Model","options":[{"name":"Demo Fast","value":"demo-fast"},{"name":"Demo Deep","value":"demo-deep"}],"type":"select"}],"sessionId":"sess_7f74472476dde104dd31848b"}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":4,"jsonrpc":"2.0","method":"session/new","params":{"cwd":"/tmp/acp-keep","mcpServers":[]}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":4,"result":{"configOptions":[{"category":"model","currentValue":"demo-fast","id":"model","name":"Model","options":[{"name":"Demo Fast","value":"demo-fast"},{"name":"Demo Deep","value":"demo-deep"}],"type":"select"}],"sessionId":"sess_d8bcc2b175df75738fd2a89b"}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":5,"jsonrpc":"2.0","method":"session/list","params":{"cwd":"/tmp/acp-delete"}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":5,"result":{"sessions":[{"cwd":"/tmp/acp-delete","sessionId":"sess_bea0859e0c1d8542eb687402"},{"cwd":"/tmp/acp-delete","sessionId":"sess_7f74472476dde104dd31848b"}]}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":6,"jsonrpc":"2.0","method":"session/delete","params":{"sessionId":"sess_bea0859e0c1d8542eb687402"}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":6,"result":{}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":7,"jsonrpc":"2.0","method":"session/list","params":{"cwd":"/tmp/acp-delete"}},"t_ms":4}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":7,"result":{"sessions":[{"cwd":"/tmp/acp-delete","sessionId":"sess_7f74472476dde104dd31848b"}]}},"t_ms":4}
+{"dir":"client-\u003eagent","msg":{"id":8,"jsonrpc":"2.0","method":"session/delete","params":{"sessionId":"sess_bea0859e0c1d8542eb687402"}},"t_ms":4}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":8,"result":{}},"t_ms":4}
+{"dir":"client-\u003eagent","msg":{"id":9,"jsonrpc":"2.0","method":"session/prompt","params":{"sessionId":"sess_bea0859e0c1d8542eb687402","prompt":[{"type":"text","text":"Hello, agent!"}]}},"t_ms":4}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":9,"error":{"code":-32603,"message":"Internal error","data":{"error":"session sess_bea0859e0c1d8542eb687402 not found"}}},"t_ms":4}
+{"dir":"client-\u003eagent","msg":{"id":10,"jsonrpc":"2.0","method":"session/prompt","params":{"sessionId":"sess_7f74472476dde104dd31848b","prompt":[{"type":"text","text":"Hello, agent!"}]}},"t_ms":4}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_7f74472476dde104dd31848b","update":{"content":{"text":"ACP Go Example Agent — demo only (no AI model).","type":"text"},"sessionUpdate":"agent_message_chunk"}}},"t_ms":20}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_7f74472476dde104dd31848b","update":{"content":{"text":"I'll help you with that. Let me start by reading some files to understand the current situation.","type":"text"},"sessionUpdate":"agent_message_chunk"}}},"t_ms":256}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_7f74472476dde104dd31848b","update":{"kind":"read","locations":[{"path":"/project/README.md"}],"name":"read_file","rawInput":{"path":"/project/README.md"},"sessionUpdate":"tool_call","status":"pending","title":"Reading project files","toolCallId":"call_1"}}},"t_ms":1260}
+{"dir":"client-\u003eagent","msg":{"id":11,"jsonrpc":"2.0","method":"session/delete","params":{"sessionId":"sess_7f74472476dde104dd31848b"}},"t_ms":1261}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":11,"result":{}},"t_ms":1261}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":10,"result":{"stopReason":"cancelled"}},"t_ms":1261}
+{"dir":"client-\u003eagent","msg":{"id":12,"jsonrpc":"2.0","method":"session/list","params":{"cwd":"/tmp/acp-delete"}},"t_ms":1261}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":12,"result":{"sessions":[]}},"t_ms":1261}
+{"dir":"client-\u003eagent","msg":{"id":13,"jsonrpc":"2.0","method":"session/list","params":{}},"t_ms":1261}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":13,"result":{"sessions":[{"cwd":"/tmp/acp-keep","sessionId":"sess_d8bcc2b175df75738fd2a89b"}]}},"t_ms":1261}
+{"dir":"client-\u003eagent","raw":"\u003cEOF\u003e","t_ms":1261}

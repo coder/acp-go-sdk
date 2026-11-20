@@ -1,0 +1,15 @@
+{"dir":"client-\u003eagent","msg":{"id":1,"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}}},"t_ms":0}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":1,"result":{"agentCapabilities":{"auth":{},"loadSession":true,"mcpCapabilities":{},"promptCapabilities":{},"sessionCapabilities":{"delete":{},"list":{},"systemPrompt":{}}},"authMethods":[],"protocolVersion":1}},"t_ms":2}
+{"dir":"client-\u003eagent","msg":{"id":2,"jsonrpc":"2.0","method":"foo/bar","params":{}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":2,"error":{"code":-32601,"message":"Method not found","data":{"method":"foo/bar"}}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":3,"jsonrpc":"2.0","method":"_example.com/hello","params":{"name":"world"}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"Method not found","data":{"method":"_example.com/hello"}}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"jsonrpc":"2.0","method":"_example.com/progress","params":{"pct":50}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"jsonrpc":"2.0","method":"foo/notify","params":{}},"t_ms":203}
+{"dir":"client-\u003eagent","msg":{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":5}},"t_ms":203}
+{"dir":"client-\u003eagent","msg":{"id":4,"jsonrpc":"2.0","method":"session/new","params":{"mcpServers":[]}},"t_ms":203}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":4,"error":{"code":-32602,"message":"Invalid params","data":{"error":"json: cannot unmarshal missing member into Go struct field NewSessionRequest.cwd of type string"}}},"t_ms":204}
+{"dir":"client-\u003eagent","raw":"{not json","t_ms":204}
+{"dir":"client-\u003eagent","msg":{"id":5,"jsonrpc":"2.0","method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}},"t_ms":204}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":5,"result":{"configOptions":[{"category":"model","currentValue":"demo-fast","id":"model","name":"Model","options":[{"name":"Demo Fast","value":"demo-fast"},{"name":"Demo Deep","value":"demo-deep"}],"type":"select"}],"sessionId":"sess_f2040066e7ccdd97e1cc4753"}},"t_ms":204}
+{"dir":"client-\u003eagent","raw":"\u003cEOF\u003e","t_ms":204}

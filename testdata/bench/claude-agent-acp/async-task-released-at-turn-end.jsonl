@@ -1,0 +1,2 @@
+{"dir":"agent->client","msg":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"<session>","update":{"availableCommands":[],"sessionUpdate":"available_commands_update"}}}}
+{"dir":"agent->client","method":"session/prompt","msg":{"jsonrpc":"2.0","id":1,"result":{"_meta":{"quota":{"model_usage":[],"token_count":{"cachedInputTokens":0,"cachedWriteTokens":0,"inputTokens":0,"outputTokens":0,"reasoningOutputTokens":0,"totalTokens":0}}},"stopReason":"end_turn","usage":{"cachedReadTokens":0,"cachedWriteTokens":0,"inputTokens":0,"outputTokens":0,"totalTokens":0}}}}

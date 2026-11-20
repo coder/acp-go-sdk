@@ -88,6 +88,12 @@ test: $(GO_FILES)
 	cd .agents/skills/verify-schema-bump && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
 	cd .agents/skills/verify-schema-bump && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test -skip '^(TestTranscripts|TestInstances|TestHints)$$' ./...
 
+# Benchmark how fast the SDK reads recorded ACP traffic (testdata/bench). With
+# BASE=<commit>, compare that commit with the checkout. Not part of test.
+.PHONY: bench
+bench:
+	scripts/bench $(BASE)
+
 .PHONY: clean
 clean:
 	rm -f $(SCHEMA_FILES)

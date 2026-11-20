@@ -376,6 +376,8 @@ func TestWriteTypesJen_PanicsOnADefaultOutsideItsBounds(t *testing.T) {
 		{"above the maximum", `{"type": "integer", "format": "int32", "minimum": 1, "maximum": 10, "default": 20}`},
 		{"below the format", `{"type": "integer", "format": "uint32", "default": -1}`},
 		{"not an integer", `{"type": "integer", "format": "int32", "default": 1.5}`},
+		{"lenient, above the maximum", `{"type": "integer", "format": "int32", "maximum": 10, "default": 20, "x-deserialize-default-on-error": true}`},
+		{"lenient, below the format", `{"type": "integer", "format": "uint32", "default": -1, "x-deserialize-default-on-error": true}`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var schema load.Schema

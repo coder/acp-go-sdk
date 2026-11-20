@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 )
 
 // alternativeKindsSchema has one union per kind of alternative that is not
@@ -343,4 +345,39 @@ func transcriptValues(t *testing.T, pick func(map[string]any) []any) []string {
 	}
 	sort.Strings(values)
 	return values
+}
+
+// A const or enum value that the Go type of its union alternative cannot
+// hold exactly stops the generator. Without a literal for it, the decoder
+// would take every value of the type, a rounded value, or not the value
+// itself: it would take values that the schema rejects or reject one that it
+// takes. A number of magnitude 2^53 or more may be rounded when it loads.
+func TestWriteTypesJen_PanicsOnAValueTheAlternativeCannotHold(t *testing.T) {
+	for _, tc := range []struct{ name, alternative, value string }{
+		{"string const under integer", `{"type": "integer", "const": "a"}`, `"a"`},
+		{"fraction under integer", `{"type": "integer", "const": 1.5}`, `1.5`},
+		{"null enum member", `{"type": "string", "enum": ["a", null]}`, `null`},
+		{"array const", `{"type": "array", "items": {"type": "integer"}, "const": [1]}`, `[1]`},
+		{"object const", `{"type": "object", "const": {"a": 1}}`, `{"a":1}`},
+		{"integer above 2^53", `{"type": "integer", "const": 9007199254740993}`, `9007199254740992`},
+		{"untyped integer above 2^53", `{"const": 9007199254740993}`, `9007199254740992`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var schema load.Schema
+			in := `{"$defs": {
+  "Named": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+  "Pick": {"anyOf": [{"$ref": "#/$defs/Named"}, ` + tc.alternative + `]}
+}}`
+			if err := json.Unmarshal([]byte(in), &schema); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				r := recover()
+				if msg, _ := r.(string); !strings.Contains(msg, `"Pick"`) || !strings.Contains(msg, tc.value) {
+					t.Errorf("WriteTypesJen recovered %v, want a panic that names Pick and the value %s", r, tc.value)
+				}
+			}()
+			_ = WriteTypesJen(t.TempDir(), &schema, &load.Meta{})
+		})
+	}
 }

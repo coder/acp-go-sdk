@@ -61,20 +61,30 @@ func formatType(format string) intType {
 // greatest. The Go type is that of d's format, or of the schema that d stands
 // for when d has no type, such as a bound next to a $ref. It returns nil when
 // the Go type enforces every bound, as it does for each one of schema 1.18.0
-// through 1.33.0.
+// through 1.33.0. It panics on a bound that no value of the Go type meets,
+// since a check against it would not compile.
 func ownRange(schema *load.Schema, d *load.Definition) *intRange {
 	if d == nil || !integer(schema, d) {
 		return nil
 	}
 	t := formatType(typed(schema, d).Format)
+	least, greatest := big.NewInt(t.min), new(big.Int).SetUint64(t.max)
 	r := noBounds
 	if d.Minimum != "" {
-		if lo := bound(d.Minimum, true); lo.Cmp(big.NewInt(t.min)) > 0 {
+		lo := bound(d.Minimum, true)
+		if lo.Cmp(greatest) > 0 {
+			panic(fmt.Sprintf("integer minimum %s is above every value of %s", d.Minimum, t.name))
+		}
+		if lo.Cmp(least) > 0 {
 			r.min = boundInt64(lo, d.Minimum)
 		}
 	}
 	if d.Maximum != "" {
-		if hi := bound(d.Maximum, false); hi.Cmp(new(big.Int).SetUint64(t.max)) < 0 {
+		hi := bound(d.Maximum, false)
+		if hi.Cmp(least) < 0 {
+			panic(fmt.Sprintf("integer maximum %s is below every value of %s", d.Maximum, t.name))
+		}
+		if hi.Cmp(greatest) < 0 {
 			r.max = boundInt64(hi, d.Maximum)
 		}
 	}

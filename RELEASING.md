@@ -9,8 +9,9 @@ version.
 The SDK stays on v0. Raise the minor version for a schema bump or an API break,
 and the patch version for fixes only.
 
-Releases are cut by hand: a release PR lands through review and the merge
-queue, and then you tag and publish its merge commit.
+A release goes out in two steps. A release PR lands through review and the
+merge queue. Then the [Release workflow](.github/workflows/release.yaml) tags
+its commit and publishes it.
 
 ## Prerequisites
 
@@ -19,8 +20,8 @@ queue, and then you tag and publish its merge commit.
 - [mise](https://mise.jdx.dev) for the toolchain. Run `mise install` once to
   provision Go, `treefmt`, and the formatters and linters that `make fmt` and
   `make check` invoke.
-- An Actions secret named `ANTHROPIC_API_KEY`, which the release-notes workflow
-  needs.
+- The repository settings in
+  [One-time repository setup](#one-time-repository-setup).
 
 ## Prepare the release PR
 
@@ -55,14 +56,183 @@ queue, and then you tag and publish its merge commit.
    drift.
 
 1. Open a PR. Its CI runs `make check` and `make test`. Merge it through review
-   and the merge queue.
+   and the merge queue. Then [publish](#publish) it.
 
-## Tag and publish
+## Publish
 
-Run these steps on the merge commit of the release PR. The examples use
-`v0.14.0` and ACP schema `1.18.0`.
+The [Release workflow](.github/workflows/release.yaml) tags the release commit,
+creates the GitHub release, and waits until the Go module proxy serves the new
+version. Run it from `main` after the release PR merges. The examples use
+`v0.21.0` and ACP schema `1.32.0`.
 
-1. Find the merge commit, and check that it carries the expected versions:
+1. Start a dry run. In the **Actions** tab, open **Release**, and choose
+   **Run workflow**. Enter the version, and check **dry_run**. Or run:
+
+   ```bash
+   gh workflow run release.yaml --ref main -f version=0.21.0 -f schema=1.32.0 -f dry_run=true
+   ```
+
+   A dry run runs only the `preflight` job and writes nothing. The `schema`
+   input is optional. When you set it, it must equal `schema/version` at the
+   release commit.
+
+1. Read the release plan in the summary of the run. It lists the tag, the
+   release commit, the schema, the module, and the environment.
+
+1. Decide whether to go on. A pushed tag is permanent. The Go module proxy
+   keeps every version that it serves, so you cannot change a tag after
+   `publish` pushes it. You can only retract it in a later release. The dry run
+   and the approval are the last chance to stop.
+
+1. Start the real run with the same inputs and without `dry_run`:
+
+   ```bash
+   gh workflow run release.yaml --ref main -f version=0.21.0 -f schema=1.32.0
+   ```
+
+1. When the `release` environment exists, GitHub holds the `publish` job for a
+   review. Open the run, and choose **Review deployments**. Check `release`,
+   and choose **Approve and deploy**. Without the environment, `publish` starts
+   at once, and `preflight` warns about it.
+
+1. Wait for the `proxy` and `notes` jobs. Announce the release only after
+   `proxy` passes.
+
+### What each job does
+
+The `preflight` job computes the release plan once. The later jobs read the
+plan from its outputs and compute nothing again.
+
+- `preflight` checks the release and changes nothing. It fails unless all of
+  these hold:
+  - The version is a semver. A real run starts from `main`.
+  - The `version` file on `main` holds the version. The release commit is the
+    last commit on `main` that changed `version`.
+  - `schema/version` at the release commit equals the `schema` input, when you
+    set it. `constants_gen.go` sets `SchemaVersion` to the same schema.
+  - The module path in `go.mod` matches the repository, so the Go module proxy
+    can serve the tag.
+  - No tag and no GitHub release exist for the version.
+  - The CI run for the push of the release commit passed.
+- `publish` waits for approval in the `release` environment, when the
+  environment exists. Then it creates the annotated tag `v0.21.0` with the
+  message `v0.21.0 (ACP schema 1.32.0)`. It creates the GitHub release `v0.21.0`
+  with the notes `ACP schema 1.32.0`. A version with a `-`, such as
+  `0.21.0-rc.1`, becomes a prerelease.
+- `proxy` asks `proxy.golang.org` for the new version for about 12 minutes. It
+  passes when the proxy serves the version at the release commit.
+- `notes` calls the
+  [release-notes workflow](.github/workflows/release-notes.yaml). It runs
+  `communique` and replaces the release body with generated notes. GitHub starts
+  no workflow for a release that the Actions `GITHUB_TOKEN` creates, so the
+  Release workflow calls the release-notes workflow directly.
+
+### Resume a failed run
+
+When a job after `preflight` fails, fix the cause. Then open the failed run and
+choose **Re-run failed jobs**. Do not start a new run, because its `preflight`
+refuses a tag that exists.
+
+- `publish` reads the current state first. It keeps a tag that points at the
+  release commit and a release that exists, and creates only what is missing.
+  It fails on a tag that points at another commit. A re-run of `publish` asks
+  for approval again.
+- A re-run of `proxy` or `notes` repeats its work.
+
+To regenerate the notes of an existing release, run:
+
+```bash
+gh workflow run release-notes.yaml --ref main -f tag=v0.21.0
+```
+
+## One-time repository setup
+
+The repository has no `release` environment and no tag ruleset yet. The Release
+workflow runs without them, but then nothing holds `publish` for a review, and
+anyone with write access can move or delete a release tag. A repository admin
+runs each of these steps once.
+
+### Create the release environment
+
+The `release` environment holds the `publish` job until a reviewer approves it.
+
+1. Open **Settings** > **Environments**, and choose **New environment**.
+1. Name it `release`, and choose **Configure environment**.
+1. Under **Deployment protection rules**, check **Required reviewers**, and add
+   `ThomasK33`.
+1. Leave **Prevent self-review** off. With one maintainer, the person who
+   starts the run must also approve it.
+1. Under **Deployment branches and tags**, choose **Selected branches and
+   tags**. Add a branch rule with the name pattern `main`.
+1. Choose **Save protection rules**.
+
+Or run these commands:
+
+```bash
+id=$(gh api users/ThomasK33 --jq .id)
+gh api -X PUT repos/coder/acp-go-sdk/environments/release --input - <<EOF
+{
+  "prevent_self_review": false,
+  "reviewers": [{"type": "User", "id": $id}],
+  "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}
+}
+EOF
+gh api -X POST repos/coder/acp-go-sdk/environments/release/deployment-branch-policies \
+  -f name=main -f type=branch
+```
+
+### Protect release tags
+
+The `release tags` ruleset stops everyone except a repository admin from moving
+or deleting a `v*` tag.
+
+1. Open **Settings** > **Rules** > **Rulesets**, and choose **New ruleset** >
+   **New tag ruleset**.
+1. Name it `release tags`, and set **Enforcement status** to **Active**.
+1. Under **Bypass list**, add the **Repository admin** role with **Always
+   allow**.
+1. Under **Target tags**, choose **Add target** > **Include by pattern**, and
+   enter `v*`.
+1. Under **Rules**, check **Restrict updates**, **Restrict deletions**, and
+   **Block force pushes**.
+1. Choose **Create**.
+
+Or run this command. The `actor_id` 5 is the repository admin role.
+
+```bash
+gh api -X POST repos/coder/acp-go-sdk/rulesets --input - <<'EOF'
+{
+  "name": "release tags",
+  "target": "tag",
+  "enforcement": "active",
+  "bypass_actors": [
+    {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "always"}
+  ],
+  "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
+  "rules": [{"type": "deletion"}, {"type": "update"}, {"type": "non_fast_forward"}]
+}
+EOF
+```
+
+<!-- RULESET-CREATION-NOTE -->
+
+PLACEHOLDER: state here whether **Restrict creations**, with the GitHub Actions
+app in the bypass list, lets the Release workflow create release tags.
+
+### Keep the Anthropic API key
+
+The release-notes workflow reads the Actions secret `ANTHROPIC_API_KEY`. The
+secret exists already. To replace it, open **Settings** > **Secrets and
+variables** > **Actions**, or run
+`gh secret set ANTHROPIC_API_KEY --repo coder/acp-go-sdk`, which prompts for the
+value.
+
+## By hand
+
+Use these steps only when the Release workflow cannot run.
+
+1. Find the merge commit of the release PR, and check that it carries the
+   expected versions:
 
    ```bash
    git fetch origin
@@ -73,30 +243,23 @@ Run these steps on the merge commit of the release PR. The examples use
 1. Create an annotated tag on that commit, and push it:
 
    ```bash
-   git tag -a v0.14.0 -m "v0.14.0 (ACP schema 1.18.0)" "$commit"
-   git push origin v0.14.0
+   git tag -a v0.21.0 -m "v0.21.0 (ACP schema 1.32.0)" "$commit"
+   git push origin v0.21.0
    ```
 
-1. Create the GitHub release from the pushed tag:
+1. Create the GitHub release with your own `gh` login. A release that your
+   user token creates starts the release-notes workflow:
 
    ```bash
-   gh release create v0.14.0 --verify-tag --title v0.14.0 --notes "ACP schema 1.18.0"
+   gh release create v0.21.0 --verify-tag --title v0.21.0 --notes "ACP schema 1.32.0"
    ```
 
-   The `release: published` event starts the
-   [release-notes workflow](.github/workflows/release-notes.yaml). It runs
-   `communique` and replaces the release body with generated notes. GitHub
-   starts no workflow for an event that an Actions `GITHUB_TOKEN` causes, so
-   create the release with a user token, such as your own `gh` login.
-
-1. Check that the Go module proxy serves the new version:
+1. Check that the Go module proxy serves the new version. Announce the release
+   only after this command prints it:
 
    ```bash
-   GOPROXY=https://proxy.golang.org go list -m github.com/coder/acp-go-sdk@v0.14.0
+   GOPROXY=https://proxy.golang.org go list -m github.com/coder/acp-go-sdk@v0.21.0
    ```
-
-   Consumers install the SDK by its `vX.Y.Z` tag through `go get`. Announce the
-   release only after this command prints the version.
 
 ## Additional notes
 

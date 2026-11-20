@@ -114,4 +114,4 @@ release:
 	GOCACHE=$(GOCACHE) $(MAKE) test
 	@echo
 	@echo "Release candidate v$(VERSION) (ACP schema $$(cat schema/version)) is ready."
-	@echo "Commit it, run 'make check', and open a PR. After it merges, tag it as RELEASING.md describes."
+	@echo "Commit it, run 'make check', and open a PR. After it merges, run the Release workflow (see RELEASING.md)."

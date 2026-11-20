@@ -261,3 +261,30 @@ func TestCreateElicitationResponse_UnmarshalJSON_RejectsANullItemOfAStringArray(
 		t.Errorf("an answer with a string array decodes with error %v", err)
 	}
 }
+
+// A direct UnmarshalJSON call skips encoding/json's validation, so the null
+// item check sees malformed JSON first. It used to loop forever on it.
+func TestElicitationContentValueStringArray_UnmarshalJSON_ReportsMalformedJSON(t *testing.T) {
+	for _, in := range []string{`["a" "b"]`, `["a",`, `[null "b"]`, `{"a" 1}`, `"a"`, `5`, ``} {
+		done := make(chan error, 1)
+		go func() {
+			var v ElicitationContentValueStringArray
+			done <- v.UnmarshalJSON([]byte(in))
+		}()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Errorf("UnmarshalJSON(%q) = nil, want an error", in)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("UnmarshalJSON(%q) did not return", in)
+		}
+	}
+	var v ElicitationContentValueStringArray
+	if err := v.UnmarshalJSON([]byte(`["a", null]`)); err == nil {
+		t.Errorf(`UnmarshalJSON(["a", null]) = nil, want the null item error`)
+	}
+	if err := v.UnmarshalJSON([]byte(`["a","b"]`)); err != nil || len(v) != 2 {
+		t.Errorf(`UnmarshalJSON(["a","b"]) = %v, %v; want [a b], nil`, v, err)
+	}
+}

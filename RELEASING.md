@@ -9,9 +9,9 @@ version.
 The SDK stays on v0. Raise the minor version for a schema bump or an API break,
 and the patch version for fixes only.
 
-A release goes out in two steps. A release PR lands through review and the
-merge queue. Then the [Release workflow](.github/workflows/release.yaml) tags
-its commit and publishes it.
+A release goes out in two steps. A release PR lands on its own through review.
+Then the [Release workflow](.github/workflows/release.yaml) tags its commit and
+publishes it.
 
 ## Prerequisites
 
@@ -55,8 +55,16 @@ its commit and publishes it.
 1. Commit the change. Then run `make check`, which fails on any formatting
    drift.
 
-1. Open a PR. Its CI runs `make check` and `make test`. Merge it through review
-   and the merge queue. Then [publish](#publish) it.
+1. Open a PR. Its CI runs `make check` and `make test`. Merge it through review,
+   on its own: not in a merge queue batch with other PRs. The Release workflow
+   accepts only a CI run for the push of the release commit itself. A push that
+   lands several commits runs CI on the newest one only, so a release commit
+   in a batch has no CI run, and the workflow refuses it.
+
+1. Wait for the CI run on `main` for the release commit to pass. A newer push
+   to `main` cancels a CI run that still waits for the one before it. If that
+   happens, open the cancelled run and choose **Re-run all jobs**. Then
+   [publish](#publish) the release.
 
 ## Publish
 
@@ -77,7 +85,8 @@ version. Run it from `main` after the release PR merges. The examples use
    release commit.
 
 1. Read the release plan in the summary of the run. It lists the tag, the
-   release commit, the schema, the module, and the environment.
+   release commit, the schema, and the module, and each check with its result.
+   It is written when a check fails too.
 
 1. Decide whether to go on. A pushed tag is permanent. The Go module proxy
    keeps every version that it serves, so you cannot change a tag after
@@ -90,10 +99,9 @@ version. Run it from `main` after the release PR merges. The examples use
    gh workflow run release.yaml --ref main -f version=0.21.0 -f schema=1.32.0
    ```
 
-1. When the `release` environment exists, GitHub holds the `publish` job until
-   ThomasK33 approves it. Open the run, and choose **Review deployments**. Check `release`,
-   and choose **Approve and deploy**. Without the environment, `publish` starts
-   at once, and `preflight` warns about it.
+1. GitHub holds the `publish` job until ThomasK33 approves it. Open the run,
+   and choose **Review deployments**. Check `release`, and choose **Approve and
+   deploy**.
 
 1. Wait for the `proxy` and `notes` jobs. Announce the release only after
    `proxy` passes.
@@ -105,20 +113,28 @@ plan from its outputs and compute nothing again.
 
 - `preflight` checks the release and changes nothing. It runs every check,
   lists every one that fails, and fails unless all of these hold:
-  - The version is a semver. A real run starts from `main`.
+  - The inputs hold no control characters, such as a newline. The version is a
+    semver. A real run starts from `main`.
   - The `version` file on `main` holds the version. The release commit is the
     last commit on `main` that changed `version`.
   - `schema/version` at the release commit equals the `schema` input, when you
     set it. `constants_gen.go` sets `SchemaVersion` to the same schema.
   - The module path in `go.mod` matches the repository, so the Go module proxy
     can serve the tag.
-  - No tag and no GitHub release exist for the version.
-  - The CI run for the push of the release commit passed.
-- `publish` waits for approval in the `release` environment, when the
-  environment exists. Then it signs as `coder-release-publisher` and creates
-  the annotated tag `v0.21.0` with the message `v0.21.0 (ACP schema 1.32.0)`.
-  With `GITHUB_TOKEN`, it creates the GitHub release `v0.21.0` with the notes
-  `ACP schema 1.32.0`. A version with a `-`, such as
+  - No tag and no GitHub release exist for the version, and the version is
+    newer, in SemVer order, than every `v*` tag. A patch for an older minor
+    version cannot go out through this workflow.
+  - The CI run for the push of the release commit passed. A run on a later
+    commit does not count, because it tested other code.
+  - The `release` environment exists and has a required reviewer. A dry run
+    only warns when it does not.
+- `publish` waits for approval in the `release` environment. Then it checks
+  that the environment holds the three `coder-release-publisher` secrets, and
+  stops before it writes anything when one is missing. It signs as
+  `coder-release-publisher` and creates the annotated tag `v0.21.0` with the
+  message `v0.21.0 (ACP schema 1.32.0)`. It never creates the tag with
+  `GITHUB_TOKEN`. It creates the GitHub release `v0.21.0`, with the notes
+  `ACP schema 1.32.0`, with `GITHUB_TOKEN`. A version with a `-`, such as
   `0.21.0-rc.1`, becomes a prerelease.
 - `proxy` asks `proxy.golang.org` for the new version for about 12 minutes. It
   passes when the proxy serves the version at the release commit.
@@ -167,9 +183,13 @@ repository settings: the next apply reverts a change made by hand.
 
 The `publish` job signs as `coder-release-publisher` through
 [coder/github-app-token-action](https://github.com/coder/github-app-token-action):
-Cloud KMS holds the App's key, and only this job may use it. Until all of the
-steps below are done, `publish` creates the tag with `GITHUB_TOKEN`, which works
-only while the ruleset does not exist.
+Cloud KMS holds the App's key, and only this job may use it.
+
+The Release workflow refuses every real run until all four steps below are
+done, in this order. `preflight` refuses a missing `release` environment and
+one without a required reviewer. `publish` refuses, before it writes anything,
+when a secret is missing. A dry run works at any point, and warns about the
+environment instead.
 
 1. An organization owner installs `coder-release-publisher` on
    `coder/acp-go-sdk`.
@@ -179,12 +199,13 @@ only while the ruleset does not exist.
    `/.github/workflows/release.yaml@refs/heads/main`.
 
 1. Merge and apply the github-org-terraform PR that adds the environment and
-   the ruleset.
+   the ruleset. Leave `admin_bypass` out of the environment entry. The module's
+   default, `false`, keeps repository admins from skipping the approval.
 
 1. A repository admin stores the App's settings as secrets of the `release`
    environment, with the values that other `coder-release-publisher` consumers
-   use. From the apply until this step, nobody can create a `v*` tag, so do
-   not start a release in between.
+   use. Until this step, a real run stops in `publish` before it writes
+   anything.
 
    ```bash
    gh secret set CODER_RELEASE_PUBLISHER_APP_ID --repo coder/acp-go-sdk --env release
@@ -192,17 +213,14 @@ only while the ruleset does not exist.
    gh secret set APP_KEYS_WORKLOAD_ID_PROVIDER --repo coder/acp-go-sdk --env release
    ```
 
-1. Start a dry run, then a real one, as [Publish](#publish) describes.
+1. Start a dry run, then a real one, as [Publish](#publish) describes. The
+   dry run cannot see the environment's secrets, so a missing one shows only
+   when `publish` starts.
 
 The release-notes workflow reads the repository secret `ANTHROPIC_API_KEY`,
 which exists already. To replace it, run
 `gh secret set ANTHROPIC_API_KEY --repo coder/acp-go-sdk`, which prompts for the
 value.
-
-Without the `release` environment, the Release workflow still runs. `preflight`
-then warns that nothing holds `publish` for a review, and `publish` names no
-environment: GitHub would create a missing environment, without protection, the
-first time a job names it.
 
 ## Additional notes
 

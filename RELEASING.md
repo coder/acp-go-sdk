@@ -90,8 +90,8 @@ version. Run it from `main` after the release PR merges. The examples use
    gh workflow run release.yaml --ref main -f version=0.21.0 -f schema=1.32.0
    ```
 
-1. When the `release` environment exists, GitHub holds the `publish` job for a
-   review. Open the run, and choose **Review deployments**. Check `release`,
+1. When the `release` environment exists, GitHub holds the `publish` job until
+   ThomasK33 approves it. Open the run, and choose **Review deployments**. Check `release`,
    and choose **Approve and deploy**. Without the environment, `publish` starts
    at once, and `preflight` warns about it.
 
@@ -103,8 +103,8 @@ version. Run it from `main` after the release PR merges. The examples use
 The `preflight` job computes the release plan once. The later jobs read the
 plan from its outputs and compute nothing again.
 
-- `preflight` checks the release and changes nothing. It fails unless all of
-  these hold:
+- `preflight` checks the release and changes nothing. It runs every check,
+  lists every one that fails, and fails unless all of these hold:
   - The version is a semver. A real run starts from `main`.
   - The `version` file on `main` holds the version. The release commit is the
     last commit on `main` that changed `version`.
@@ -115,9 +115,10 @@ plan from its outputs and compute nothing again.
   - No tag and no GitHub release exist for the version.
   - The CI run for the push of the release commit passed.
 - `publish` waits for approval in the `release` environment, when the
-  environment exists. Then it creates the annotated tag `v0.21.0` with the
-  message `v0.21.0 (ACP schema 1.32.0)`. It creates the GitHub release `v0.21.0`
-  with the notes `ACP schema 1.32.0`. A version with a `-`, such as
+  environment exists. Then it signs as `coder-release-publisher` and creates
+  the annotated tag `v0.21.0` with the message `v0.21.0 (ACP schema 1.32.0)`.
+  With `GITHUB_TOKEN`, it creates the GitHub release `v0.21.0` with the notes
+  `ACP schema 1.32.0`. A version with a `-`, such as
   `0.21.0-rc.1`, becomes a prerelease.
 - `proxy` asks `proxy.golang.org` for the new version for about 12 minutes. It
   passes when the proxy serves the version at the release commit.
@@ -139,6 +140,9 @@ refuses a tag that exists.
   for approval again.
 - A re-run of `proxy` or `notes` repeats its work.
 
+Nobody can push a release tag by hand once the `Release tags (App only)`
+ruleset exists, so the Release workflow is the only way to tag a release.
+
 To regenerate the notes of an existing release, run:
 
 ```bash
@@ -147,119 +151,59 @@ gh workflow run release-notes.yaml --ref main -f tag=v0.21.0
 
 ## One-time repository setup
 
-The repository has no `release` environment and no tag ruleset yet. The Release
-workflow runs without them, but then nothing holds `publish` for a review, and
-anyone with write access can move or delete a release tag. A repository admin
-runs each of these steps once.
+The `release` environment and the `Release tags (App only)` ruleset are
+managed as code in
+[coder/github-org-terraform](https://github.com/coder/github-org-terraform), in
+`orgs/coder/repos/acp-go-sdk.yaml`. Change them there with a PR, never in the
+repository settings: the next apply reverts a change made by hand.
 
-### Create the release environment
+- The `release` environment holds the `publish` job until ThomasK33 approves
+  it. Only `main` may deploy to it. **Prevent self-review** is off, because the
+  one maintainer both starts and approves a release.
+- The `Release tags (App only)` ruleset targets `refs/tags/v*`. It restricts
+  creations, updates, and deletions to its one bypass actor, the
+  `coder-release-publisher` GitHub App. Nobody else can create, move, or delete
+  a release tag, repository admins included.
 
-The `release` environment holds the `publish` job until a reviewer approves it.
+The `publish` job signs as `coder-release-publisher` through
+[coder/github-app-token-action](https://github.com/coder/github-app-token-action):
+Cloud KMS holds the App's key, and only this job may use it. Until all of the
+steps below are done, `publish` creates the tag with `GITHUB_TOKEN`, which works
+only while the ruleset does not exist.
 
-1. Open **Settings** > **Environments**, and choose **New environment**.
-1. Name it `release`, and choose **Configure environment**.
-1. Under **Deployment protection rules**, check **Required reviewers**, and add
-   `ThomasK33`.
-1. Leave **Prevent self-review** off. With one maintainer, the person who
-   starts the run must also approve it.
-1. Under **Deployment branches and tags**, choose **Selected branches and
-   tags**. Add a branch rule with the name pattern `main`.
-1. Choose **Save protection rules**.
+1. An organization owner installs `coder-release-publisher` on
+   `coder/acp-go-sdk`.
 
-Or run these commands:
+1. In [coder/gcp](https://github.com/coder/gcp)
+   `projects/production/coder-github-apps`, add a consumer of
+   `coder-release-publisher` to `apps.tf`, with repository `coder/acp-go-sdk`,
+   environment `release`, and workflow
+   `/.github/workflows/release.yaml@refs/heads/main`, and add the repository to
+   `local.github_repository_ids` in `identity.tf`.
 
-```bash
-id=$(gh api users/ThomasK33 --jq .id)
-gh api -X PUT repos/coder/acp-go-sdk/environments/release --input - <<EOF
-{
-  "prevent_self_review": false,
-  "reviewers": [{"type": "User", "id": $id}],
-  "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}
-}
-EOF
-gh api -X POST repos/coder/acp-go-sdk/environments/release/deployment-branch-policies \
-  -f name=main -f type=branch
-```
+1. A repository admin stores the App's settings as secrets of the `release`
+   environment, with the values that other `coder-release-publisher` consumers
+   use:
 
-### Protect release tags
+   ```bash
+   gh secret set CODER_RELEASE_PUBLISHER_APP_ID --repo coder/acp-go-sdk --env release
+   gh secret set CODER_RELEASE_PUBLISHER_APP_KMS_KEY --repo coder/acp-go-sdk --env release
+   gh secret set APP_KEYS_WORKLOAD_ID_PROVIDER --repo coder/acp-go-sdk --env release
+   ```
 
-The `release tags` ruleset stops everyone except a repository admin from moving
-or deleting a `v*` tag.
+1. Merge and apply the github-org-terraform PR that adds the environment and
+   the ruleset. Apply it after the first three steps, or the ruleset blocks
+   every new release tag until they are done.
 
-1. Open **Settings** > **Rules** > **Rulesets**, and choose **New ruleset** >
-   **New tag ruleset**.
-1. Name it `release tags`, and set **Enforcement status** to **Active**.
-1. Under **Bypass list**, add the **Repository admin** role with **Always
-   allow**.
-1. Under **Target tags**, choose **Add target** > **Include by pattern**, and
-   enter `v*`.
-1. Under **Rules**, check **Restrict updates**, **Restrict deletions**, and
-   **Block force pushes**.
-1. Choose **Create**.
-
-Or run this command. The `actor_id` 5 is the repository admin role.
-
-```bash
-gh api -X POST repos/coder/acp-go-sdk/rulesets --input - <<'EOF'
-{
-  "name": "release tags",
-  "target": "tag",
-  "enforcement": "active",
-  "bypass_actors": [
-    {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "always"}
-  ],
-  "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
-  "rules": [{"type": "deletion"}, {"type": "update"}, {"type": "non_fast_forward"}]
-}
-EOF
-```
-
-<!-- RULESET-CREATION-NOTE -->
-
-PLACEHOLDER: state here whether **Restrict creations**, with the GitHub Actions
-app in the bypass list, lets the Release workflow create release tags.
-
-### Keep the Anthropic API key
-
-The release-notes workflow reads the Actions secret `ANTHROPIC_API_KEY`. The
-secret exists already. To replace it, open **Settings** > **Secrets and
-variables** > **Actions**, or run
+The release-notes workflow reads the repository secret `ANTHROPIC_API_KEY`,
+which exists already. To replace it, run
 `gh secret set ANTHROPIC_API_KEY --repo coder/acp-go-sdk`, which prompts for the
 value.
 
-## By hand
-
-Use these steps only when the Release workflow cannot run.
-
-1. Find the merge commit of the release PR, and check that it carries the
-   expected versions:
-
-   ```bash
-   git fetch origin
-   commit=$(gh pr view <release-pr> --json mergeCommit --jq .mergeCommit.oid)
-   git show "$commit:version" "$commit:schema/version"
-   ```
-
-1. Create an annotated tag on that commit, and push it:
-
-   ```bash
-   git tag -a v0.21.0 -m "v0.21.0 (ACP schema 1.32.0)" "$commit"
-   git push origin v0.21.0
-   ```
-
-1. Create the GitHub release with your own `gh` login. A release that your
-   user token creates starts the release-notes workflow:
-
-   ```bash
-   gh release create v0.21.0 --verify-tag --title v0.21.0 --notes "ACP schema 1.32.0"
-   ```
-
-1. Check that the Go module proxy serves the new version. Announce the release
-   only after this command prints it:
-
-   ```bash
-   GOPROXY=https://proxy.golang.org go list -m github.com/coder/acp-go-sdk@v0.21.0
-   ```
+Without the `release` environment, the Release workflow still runs. `preflight`
+then warns that nothing holds `publish` for a review, and `publish` names no
+environment: GitHub would create a missing environment, without protection, the
+first time a job names it.
 
 ## Additional notes
 

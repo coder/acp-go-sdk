@@ -41,6 +41,8 @@ jobs:
       schema: ${{ steps.commit.outputs.schema }}
       module: ${{ steps.commit.outputs.module }}
       environment: ${{ steps.environment.outputs.environment }}
+    # Each check runs even when an earlier one failed, so one run lists every
+    # problem. A check skips only when it needs a value that failed.
     steps:
       - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -71,6 +73,7 @@ jobs:
 
       - name: Find the release commit
         id: commit
+        if: ${{ !cancelled() && steps.version.outcome == 'success' }}
         env:
           SCHEMA_INPUT: ${{ inputs.schema }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -115,6 +118,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Check that the tag is new
+        if: ${{ !cancelled() && steps.version.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -141,6 +145,7 @@ jobs:
           fi
 
       - name: Check CI on the release commit
+        if: ${{ !cancelled() && steps.commit.outcome == 'success' }}
         env:
           COMMIT: ${{ steps.commit.outputs.commit }}
           GH_TOKEN: ${{ github.token }}
@@ -167,6 +172,7 @@ jobs:
 
       - name: Find the release environment
         id: environment
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -222,14 +228,47 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ needs.preflight.outputs.environment }}
     permissions:
-      contents: write # create the tag and the GitHub release
+      contents: write # create the GitHub release, and the tag when the App is not set up
+      id-token: write # Cloud KMS signs the coder-release-publisher App's JWT
     env:
       COMMIT: ${{ needs.preflight.outputs.commit }}
       GH_TOKEN: ${{ github.token }}
       SCHEMA: ${{ needs.preflight.outputs.schema }}
       TAG: ${{ needs.preflight.outputs.tag }}
     steps:
+      # The "Release tags (App only)" ruleset lets only coder-release-publisher create v* tags.
+      # The release environment holds the App's key settings as secrets, so only this job, after
+      # approval, can sign as the App.
+      - name: Check for the release App
+        id: app
+        env:
+          APP_ID: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_ID }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "$APP_ID" ]]; then
+            echo "use=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No coder-release-publisher settings in this job, so the tag is created with GITHUB_TOKEN. The Release tags (App only) ruleset refuses that. Set up the App as RELEASING.md describes."
+            echo "use=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mint a coder-release-publisher token
+        id: app_token
+        if: ${{ steps.app.outputs.use == 'true' }}
+        uses: coder/github-app-token-action@6e522647a301a860cee724d573b03a59754f84b2 # main 2026-11-17
+        with:
+          client-id: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_ID }}
+          kms-key: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_KMS_KEY }}
+          workload-identity-provider: ${{ secrets.APP_KEYS_WORKLOAD_ID_PROVIDER }}
+          repositories: ${{ github.event.repository.name }}
+          permissions: |
+            contents: write
+            workflows: write
+
       - name: Tag the release commit
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token || github.token }}
         run: |
           set -euo pipefail
 
@@ -254,15 +293,19 @@ jobs:
             -f object="$COMMIT" \
             -f type=commit \
             --jq .sha)"
-          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+          if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
             -f ref="refs/tags/$TAG" \
-            -f sha="$tag_object" > /dev/null
+            -f sha="$tag_object" > /dev/null; then
+            echo "::error::GitHub refused to create refs/tags/$TAG. When the Release tags (App only) ruleset exists, only coder-release-publisher may create it: check the App settings in the release environment (RELEASING.md)."
+            exit 1
+          fi
           echo "Created tag $TAG on $COMMIT."
 
       - name: Create the GitHub release
-        # A release created with GITHUB_TOKEN starts no workflow, so its
-        # release: published event does not run release-notes.yaml. The notes
-        # job below calls that workflow directly.
+        # This step keeps GITHUB_TOKEN on purpose. A release created with it
+        # starts no workflow, so its release: published event does not run
+        # release-notes.yaml a second time. The notes job below calls that
+        # workflow directly.
         run: |
           set -euo pipefail
 

@@ -94,7 +94,8 @@ clean:
 
 # Prepare a release PR: write the SDK version to version (and the schema pin to
 # schema/version when SCHEMA is set), regenerate, format, and test. It makes no
-# commit or tag. RELEASING.md lists the manual steps that follow.
+# commit or tag. After the PR merges, the Release workflow publishes it
+# (RELEASING.md).
 .PHONY: release
 release:
 	@printf '%s\n' "$(VERSION)" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { \

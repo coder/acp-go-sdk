@@ -81,10 +81,11 @@ func patchFieldsOf(defs map[string]any, node any) map[string]patchField {
 			if slices.Contains(required, name) {
 				continue
 			}
-			patched := patchedObject.MatchString(desc) || patchSemantics.MatchString(desc)
-			if changedOnly.MatchString(desc) || patched || named[name] || patchProperty.MatchString(pdesc) {
+			changed, patched := changedOnly.MatchString(desc), patchedObject.MatchString(desc)
+			if changed || patched || named[name] || patchProperty.MatchString(pdesc) {
 				if _, ok := fields[name]; !ok {
-					fields[name] = patchField{ps, patched || !changedOnly.MatchString(desc) || nullClears.MatchString(pdesc)}
+					noClear := changed && !patched && !patchSemantics.MatchString(desc) && !nullClears.MatchString(pdesc)
+					fields[name] = patchField{ps, !noClear}
 				}
 			}
 		}

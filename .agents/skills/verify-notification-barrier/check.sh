@@ -35,7 +35,7 @@ TLA_URL=https://github.com/tlaplus/tlaplus/releases/download/v$TLA_VERSION/tla2t
 CONFIGS=(barrier.cfg slow-handler.cfg drain-timeout.cfg nested-handler.cfg
 	inbound-request.cfg inbound-slow-handler.cfg inbound-nested.cfg inbound-nested-peer.cfg
 	inbound-call.cfg inbound-call-peer.cfg)
-DEEP_CONFIGS=(deep-two-callers.cfg)
+DEEP_CONFIGS=(deep-two-callers.cfg deep-peer-wait.cfg)
 
 COVERED=(
 	"func NewConnection("

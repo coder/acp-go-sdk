@@ -50,8 +50,9 @@ type fieldCheck struct {
 //
 // The rules follow what the Rust SDK rejects. A required member whose type
 // is a string type of the schema ($ref or allOf to a named string, a closed
-// enum or an open one) must not be "", and a required array must not be
-// nil, at every depth. A plain inline string may be "", except where plain
+// enum or an open one) must not be "", and a required array, or a required
+// member that holds its value through a pointer (indirect), must not be nil,
+// at every depth. A plain inline string may be "", except where plain
 // names it. A field whose value type has a Validate method (validates)
 // descends: a pointer when it is not nil, each item and member, a Patch when
 // it is set, and a struct or union itself only when it is required, because
@@ -91,7 +92,7 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 	case isPatch:
 		c.via, leaf = peelContainers(patchValueType(field))
 	default:
-		c.via, leaf = peelContainers(fieldType(field))
+		c.via, leaf = peelContainers(b.fieldType(field))
 	}
 	if isPatch {
 		c.via = append([]container{patch}, c.via...)
@@ -99,7 +100,7 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 
 	if field.Required && !isPatch && def.Default == nil && !acceptsNull(b.schema, def) {
 		switch {
-		case len(c.via) > 0 && c.via[0] == items:
+		case len(c.via) > 0 && (c.via[0] == items || c.via[0] == pointer):
 			c.unset = Nil()
 		case len(c.via) == 0 && !field.Lenient.DefaultOnError && (b.stringType(leaf) || (plain && leaf == "string")):
 			c.unset = Lit("")
@@ -175,26 +176,38 @@ func (b *typesBuilder) stringType(name string) bool {
 // that a variant is set), and a struct when its check plan is not empty. It
 // is the one owner of that decision: a Validate method calls the Validate of
 // a value only when validates says that it has one. A message type with an
-// empty plan has a Validate that returns nil, which no one calls. A $ref
-// cycle reads as false while it is being decided; schema 1.32.0 has none.
+// empty plan has a Validate that returns nil, which no one calls.
+//
+// The first call decides it for every entry: it marks the entries that check
+// something while the others read as false, and repeats until no entry
+// changes. A type that holds itself, as a tree does, then gets the same
+// answer whichever entry is asked first.
 func (b *typesBuilder) validates(name string) bool {
-	if v, ok := b.validated[name]; ok {
-		return v
+	if b.validated == nil {
+		b.validated = map[string]bool{}
+		for changed := true; changed; {
+			changed = false
+			for n, def := range b.schema.Defs {
+				if !b.validated[n] && def != nil && b.checksSomething(n, def) {
+					b.validated[n] = true
+					changed = true
+				}
+			}
+		}
 	}
-	def := b.schema.Defs[name]
-	if def == nil {
-		return false
-	}
-	b.validated[name] = false
-	v := false
+	return b.validated[name]
+}
+
+// checksSomething reports whether the Validate method of def, the $defs
+// entry name, checks something, with validates as it stands.
+func (b *typesBuilder) checksSomething(name string, def *load.Definition) bool {
 	switch classify(def) {
 	case unionKind:
-		v = true
+		return true
 	case structKind:
-		v = len(b.checkPlan(ir.Fields(def.Properties, def.Required), true, messageProps(name, def))) > 0
+		return len(b.checkPlan(ir.Fields(def.Properties, def.Required), true, messageProps(name, def))) > 0
 	}
-	b.validated[name] = v
-	return v
+	return false
 }
 
 // isMessage reports whether the $defs entry name is a request, response, or

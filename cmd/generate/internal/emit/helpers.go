@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/ir"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/util"
 )
@@ -75,7 +76,7 @@ func requiredParams(v unionVariant) ([]Code, Dict) {
 		if key == v.discKey || prop == nil {
 			continue
 		}
-		params = append(params, Id(key).Add(jenTypeFor(prop)))
+		params = append(params, Id(key).Add(v.fieldType(ir.Field{Prop: key, Def: prop})))
 		assigns[Id(util.ToExportedField(key))] = Id(key)
 	}
 	if v.discKey != "" && v.discValue != "" {

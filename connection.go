@@ -494,7 +494,7 @@ func (c *Connection) receive() {
 		}
 
 		var msg anyMessage
-		if err := json.Unmarshal(line, &msg); err != nil {
+		if err := json.Unmarshal(line, &msg); err != nil && !c.readUnreadableResponse(line, err, &msg) {
 			c.loggerOrDefault().Error("failed to parse incoming message", "err", err, "raw", string(line))
 			continue
 		}
@@ -1304,4 +1304,29 @@ func (c *Connection) encodableError(method string, err *RequestError) *RequestEr
 		return NewInternalError(map[string]any{"error": mErr.Error()})
 	}
 	return err
+}
+
+// readUnreadableResponse reads line, which failed to decode into an
+// anyMessage with err, as a response when it is a JSON object with an id and
+// no method, such as one whose error object has a code that is not an
+// integer or does not fit an int. It sets msg to that response with a local
+// -32603 error that carries err and the error object as it was read, so that
+// the request that waits for it fails instead of waiting until its ctx ends,
+// and reports true. It reports false for any other line.
+func (c *Connection) readUnreadableResponse(line []byte, err error, msg *anyMessage) bool {
+	var head struct {
+		ID     *json.RawMessage `json:"id"`
+		Method json.RawMessage  `json:"method"`
+		Error  json.RawMessage  `json:"error"`
+	}
+	if json.Unmarshal(line, &head) != nil || head.ID == nil || head.Method != nil {
+		return false
+	}
+	c.loggerOrDefault().Error("failed to parse incoming response", "err", err, "id", string(*head.ID))
+	data := map[string]any{"error": "invalid response: " + err.Error()}
+	if head.Error != nil {
+		data["response"] = head.Error
+	}
+	*msg = anyMessage{JSONRPC: "2.0", ID: head.ID, Error: NewInternalError(data)}
+	return true
 }

@@ -6,7 +6,8 @@
 #                         from npm, the driver built from this checkout
 #   harness doctor        read-only: is this run worth driving?
 #   harness g4            cross-SDK gate, no model: TS client -> Go example agent,
-#                         Go driver -> TS example agent
+#                         Go driver -> TS example agent, TS client -> Rust
+#                         conductor -> Go example proxy -> Go example agent
 #   harness g5 ADAPTER [SCENARIO,...]
 #                         live gate on the adapter's default model: claude or
 #                         codex; a scenario list reruns only those scenarios
@@ -20,6 +21,8 @@
 #   HARNESS_BUDGET_USD  most model cost that the g5 runs of one run folder may
 #                       report in total (default 25)
 #   HARNESS_G5_TIMEOUT  seconds before g5 stops a driver that hangs (default 1800)
+#   CARGO               cargo binary that launch installs the conductor with
+#                       (default cargo); without it the conductor drive is a SKIP
 #
 # Exit codes: 64 for a usage error, when nothing ran. g5 passes on the
 # driver's code: 0 when no scenario failed, 1 when one failed, 64 when the
@@ -32,6 +35,7 @@ SKILL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 REPO=$(cd "$SKILL_DIR/../../.." && pwd)
 MARKER=.acp-harness-run
 TS_EXAMPLE=https://raw.githubusercontent.com/agentclientprotocol/typescript-sdk
+CONDUCTOR="agent-client-protocol-conductor"
 
 die() {
 	echo "harness: $*" >&2
@@ -164,6 +168,18 @@ installed() {
 	echo unknown
 }
 
+# conductor_latest: the newest stable version of the conductor crate.
+conductor_latest() {
+	curl -fsSL -A "acp-go-sdk verify-real-harnesses" "https://crates.io/api/v1/crates/$CONDUCTOR" |
+		jq -er .crate.max_stable_version
+}
+
+# conductor_skip: why this run has no conductor, or nothing when it has one.
+conductor_skip() {
+	jq -r 'if .conductor.version then empty else .conductor.skip // "the run predates the conductor drive: launch again" end' \
+		"$EVIDENCE/versions.json"
+}
+
 cmd_launch() {
 	local t root
 	for t in go node npm curl jq git sha256sum timeout pgrep; do
@@ -204,6 +220,7 @@ cmd_launch() {
 		cd "$REPO"
 		go build -o "$BIN/acpharness" ./.agents/skills/verify-real-harnesses/scripts/acpharness
 		go build -o "$BIN/acp-example-agent" ./example/agent
+		go build -o "$BIN/acp-example-proxy" ./example/proxy
 	) || die "build failed"
 	[ "$(source_id)" = "$before" ] || die "the checkout changed during the build. Run launch again."
 
@@ -237,6 +254,19 @@ cmd_launch() {
 		die "the example agent no longer imports ../v1/stable/acp.js; update the sed in launch"
 	cp "$SKILL_DIR/scripts/g4/ts-client.mjs" "$WORK/npm/ts/ts-client.mjs"
 
+	# The Rust conductor runs the proxy chain of the third g4 drive. Without
+	# cargo that drive is a SKIP, and versions.json says why.
+	local cargo=${CARGO:-cargo} cver="" cskip=""
+	if command -v "$cargo" >/dev/null; then
+		cver=$(conductor_latest) || die "cannot resolve the latest $CONDUCTOR on crates.io"
+		echo "installing $CONDUCTOR@$cver"
+		"$cargo" install --locked --version "$cver" --root "$WORK/cargo" "$CONDUCTOR" >"$WORK/cargo-install.log" 2>&1 ||
+			die "cargo install $CONDUCTOR@$cver failed; see $WORK/cargo-install.log"
+	else
+		cskip="$cargo is not on PATH; set CARGO to a cargo binary"
+		echo "WARN  $cskip: g4 will SKIP the conductor drive"
+	fi
+
 	local c=$WORK/npm/claude x=$WORK/npm/codex s=$WORK/npm/ts
 	jq -n \
 		--arg source "$before" --arg go "$(go version)" --arg node "$(node --version)" \
@@ -248,20 +278,22 @@ cmd_launch() {
 		--arg codexCli "$(installed "$x" @openai/codex @agentclientprotocol/codex-acp)" \
 		--arg codexAcp "$(installed "$x" @agentclientprotocol/sdk @agentclientprotocol/codex-acp)" \
 		--arg ts "$tsver" --arg url "$url" --arg sha "$(sha256sum "$s/agent.src.ts" | cut -c1-64)" \
+		--arg crate "$CONDUCTOR" --arg cver "$cver" --arg cskip "$cskip" \
 		'{source: $source, schema: $schema, go: $go, node: $node, built: $built,
 		  claude: {package: "@agentclientprotocol/claude-agent-acp", version: $claude, claudeAgentSdk: $claudeSdk, acpTypescriptSdk: $claudeAcp},
 		  codex: {package: "@agentclientprotocol/codex-acp", version: $codex, codexCli: $codexCli, acpTypescriptSdk: $codexAcp},
-		  ts: {package: "@agentclientprotocol/sdk", version: $ts, exampleAgent: $url, exampleAgentSha256: $sha}}' \
+		  ts: {package: "@agentclientprotocol/sdk", version: $ts, exampleAgent: $url, exampleAgentSha256: $sha},
+		  conductor: ({crate: $crate} + if $cver != "" then {version: $cver} else {skip: $cskip} end)}' \
 		>"$EVIDENCE/versions.json"
-	jq -c '{claude: .claude.version, codex: .codex.version, codexCli: .codex.codexCli, ts: .ts.version}' "$EVIDENCE/versions.json"
+	jq -c '{claude: .claude.version, codex: .codex.version, codexCli: .codex.codexCli, ts: .ts.version, conductor: .conductor.version}' "$EVIDENCE/versions.json"
 	echo "Built run $(basename "$RUN")."
 	printf 'export HARNESS_RUN=%q\n' "$RUN"
 }
 
 cmd_doctor() {
 	need_run
-	local ok=1 want have b name latest v
-	for b in acpharness acp-example-agent; do
+	local ok=1 want have b name latest v why
+	for b in acpharness acp-example-agent acp-example-proxy; do
 		if [ -x "$BIN/$b" ]; then echo "ok    $b built"; else
 			echo "FAIL  $b missing"
 			ok=0
@@ -302,6 +334,18 @@ cmd_doctor() {
 			ok=0
 		fi
 	done
+	why=$(conductor_skip)
+	v=$(jq -r '.conductor.version // empty' "$EVIDENCE/versions.json")
+	if [ -n "$why" ]; then
+		echo "WARN  no conductor ($why): g4 will SKIP the conductor drive"
+	elif [ "$("$WORK/cargo/bin/$CONDUCTOR" --version 2>/dev/null || true)" != "$CONDUCTOR $v" ]; then
+		echo "FAIL  $CONDUCTOR $v is not installed in $WORK/cargo: run launch again"
+		ok=0
+	else
+		echo "ok    $CONDUCTOR $v installed"
+		latest=$(conductor_latest 2>/dev/null || echo unknown)
+		[ "$latest" = "$v" ] || echo "WARN  crates.io now has $CONDUCTOR $latest; launch again to test the latest"
+	fi
 	local live=0 pid start cmd
 	while IFS=$'\t' read -r pid start cmd; do
 		[ -n "$pid" ] || continue
@@ -448,8 +492,8 @@ cmd_g5() {
 cmd_g4() {
 	need_run
 	local rc=0 out
-	# Both folders go first, so an interrupted rerun leaves no stale PASS.
-	rm -rf "$EVIDENCE/g4-ts-client-go-agent" "$EVIDENCE/g4-go-client-ts-agent"
+	# Every folder goes first, so an interrupted rerun leaves no stale PASS.
+	rm -rf "$EVIDENCE/g4-ts-client-go-agent" "$EVIDENCE/g4-go-client-ts-agent" "$EVIDENCE/g4-ts-client-conductor-go-proxy"
 	# 1. The TypeScript SDK as the client, this repo's example agent as the agent.
 	out=$EVIDENCE/g4-ts-client-go-agent
 	mkdir -p "$out"
@@ -475,6 +519,30 @@ cmd_g4() {
 	cat "$out/driver.stderr.log" >&2
 	stop_groups "$from"
 	g4_quiet "$out/agent-1.stderr.log" 'error|warn' "the TS agent logged an error" || rc=1
+	echo "harness-checks=done" >>"$out/result.txt"
+
+	# 3. The TypeScript SDK as the client of a proxy chain: the Rust conductor
+	# runs this repo's example proxy in front of its example agent.
+	out=$EVIDENCE/g4-ts-client-conductor-go-proxy
+	mkdir -p "$out"
+	echo "== TS client -> Rust conductor -> Go example proxy -> Go example agent"
+	local why conductor=$WORK/cargo/bin/$CONDUCTOR trace=()
+	why=$(conductor_skip)
+	if [ -n "$why" ]; then
+		echo "SKIP  $why"
+		echo "harness-skip=$why" >"$out/result.txt"
+	else
+		# --trace writes every message that the conductor routes, as JSON lines.
+		grep -q -- '--trace' <<<"$("$conductor" --help)" && trace=(--trace "$out/conductor.trace.jsons")
+		local cmd=(node ts-client.mjs --out "$out" --cwd "$WORK/cwd/g4-proxy" --expect-chunk-prefix "[proxy] "
+			-- "$conductor" ${trace[@]+"${trace[@]}"} agent "$BIN/acp-example-proxy" "$BIN/acp-example-agent")
+		echo "cd $WORK/npm/ts && $(printf '%q ' "${cmd[@]}")" >"$out/command.txt"
+		(cd "$WORK/npm/ts" && tracked env "ACP_HARNESS_TAG=$TAG/g4" timeout --kill-after=10 120 "${cmd[@]}" \
+			2>"$out/client.stderr.log") || rc=1
+		stop_tagged g4
+		g4_quiet "$out/agent.stderr.log" 'ERROR|WARN' "the conductor, proxy or agent logged an error" || rc=1
+		g4_quiet "$out/client.stderr.log" '.' "the TS client wrote to stderr" || rc=1
+	fi
 	echo "harness-checks=done" >>"$out/result.txt"
 	echo "evidence $EVIDENCE/g4-*"
 	return "$rc"
@@ -528,7 +596,8 @@ cmd_report() {
 		echo
 		jq -r '"- claude: \(.claude.package) \(.claude.version) (claude-agent-sdk \(.claude.claudeAgentSdk), ACP TS SDK \(.claude.acpTypescriptSdk))",
 		       "- codex: \(.codex.package) \(.codex.version) (Codex CLI \(.codex.codexCli), ACP TS SDK \(.codex.acpTypescriptSdk))",
-		       "- ts: \(.ts.package) \(.ts.version), example agent \(.ts.exampleAgent)"' "$EVIDENCE/versions.json"
+		       "- ts: \(.ts.package) \(.ts.version), example agent \(.ts.exampleAgent)",
+		       "- conductor: agent-client-protocol-conductor \(.conductor.version // "not installed: \(.conductor.skip // "the run predates it")")"' "$EVIDENCE/versions.json"
 		if [ "${#labels[@]}" -gt 0 ]; then
 			echo
 			echo "## G5: this SDK as the client of real agents"
@@ -594,19 +663,21 @@ cmd_report() {
 				fi
 			done
 		fi
-		if [ -d "$EVIDENCE/g4-ts-client-go-agent" ] || [ -d "$EVIDENCE/g4-go-client-ts-agent" ]; then
+		if [ -d "$EVIDENCE/g4-ts-client-go-agent" ] || [ -d "$EVIDENCE/g4-go-client-ts-agent" ] || [ -d "$EVIDENCE/g4-ts-client-conductor-go-proxy" ]; then
 			echo
 			echo "## G4: cross-SDK, no model"
 			echo
 			echo "| Client -> agent | Result |"
 			echo "|---|---|"
-			for l in g4-ts-client-go-agent g4-go-client-ts-agent; do
+			for l in g4-ts-client-go-agent g4-go-client-ts-agent g4-ts-client-conductor-go-proxy; do
 				f=$EVIDENCE/$l/result.txt
 				s=FAIL
 				[ -f "$f" ] && grep -qx 'exit=0' "$f" && grep -qx 'harness-checks=done' "$f" && ! grep -q '^FAIL' "$f" && s=PASS
+				[ -f "$f" ] && grep -qx 'harness-checks=done' "$f" && grep -q '^harness-skip=' "$f" && s="SKIP: $(sed -n 's/^harness-skip=//p' "$f")"
 				case $l in
 				g4-ts-client-go-agent) echo "| TypeScript SDK client -> Go example agent | $s |" ;;
 				g4-go-client-ts-agent) echo "| Go SDK client (acpharness) -> TypeScript example agent | $s |" ;;
+				g4-ts-client-conductor-go-proxy) echo "| TypeScript SDK client -> Rust conductor -> Go example proxy -> Go example agent | $s |" ;;
 				esac
 			done
 		fi

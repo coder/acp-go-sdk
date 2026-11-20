@@ -280,6 +280,9 @@ func TestUnstableProxySideConnection_RejectsBadMessages(t *testing.T) {
 		{"plain initialize", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}`, -32600},
 		{"envelope without a method", `{"jsonrpc":"2.0","id":1,"method":"proxy/successor","params":{"params":{}}}`, -32602},
 		{"envelope that is not an object", `{"jsonrpc":"2.0","id":1,"method":"proxy/successor","params":["initialize"]}`, -32602},
+		{"envelope with number params", `{"jsonrpc":"2.0","id":1,"method":"proxy/successor","params":{"method":"x/y","params":5}}`, -32602},
+		{"envelope with string params", `{"jsonrpc":"2.0","id":1,"method":"proxy/successor","params":{"method":"x/y","params":"a"}}`, -32602},
+		{"envelope with boolean params", `{"jsonrpc":"2.0","id":1,"method":"proxy/successor","params":{"method":"x/y","params":true}}`, -32602},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -291,6 +294,15 @@ func TestUnstableProxySideConnection_RejectsBadMessages(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A wrapped notification whose params are not an object or an array is
+// dropped: the next message the client side gets is the request after it.
+func TestUnstableProxySideConnection_DropsAWrappedNotificationWithScalarParams(t *testing.T) {
+	p := newProxyPeer(t, nil)
+	p.send(`{"jsonrpc":"2.0","method":"proxy/successor","params":{"method":"x/note","params":5}}`)
+	p.send(`{"jsonrpc":"2.0","id":7,"method":"proxy/successor","params":{"method":"x/ask","params":{}}}`)
+	wantMessage(t, p.next(), false, true, "x/ask", `{}`)
 }
 
 // A FromSuccessor handler that edits a session/update and sends it with

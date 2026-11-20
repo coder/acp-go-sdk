@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"math"
@@ -251,6 +252,29 @@ func (c *UnstableProxySideConnection) undecodable(ctx context.Context, to proxyS
 	return c.forward(ctx, to, method, params, notification)
 }
 
+// fromEnvelope handles the message in a proxy/successor envelope from the
+// conductor. JSON-RPC allows only an object or an array as params, and the
+// envelope's schema says the same, so other params get -32602 instead of
+// going on to the client as a message no peer may send.
+func (c *UnstableProxySideConnection) fromEnvelope(ctx context.Context, method string, params json.RawMessage, notification bool) (any, *RequestError) {
+	if err := checkWrappedParams(params); err != nil {
+		return nil, NewInvalidParams(map[string]any{"error": err.Error()})
+	}
+	return c.handleFromSuccessor(ctx, method, params, notification)
+}
+
+// checkWrappedParams returns an error unless params, as a proxy/successor
+// envelope carries them, are absent, null, an object or an array.
+func checkWrappedParams(params json.RawMessage) error {
+	if noParams(params) {
+		return nil
+	}
+	if b := bytes.TrimSpace(params); len(b) > 0 && (b[0] == '{' || b[0] == '[') {
+		return nil
+	}
+	return errors.New("params of a wrapped message must be an object or an array")
+}
+
 // decodeParams decodes params into p and validates it.
 func decodeParams(params json.RawMessage, p interface{ Validate() error }) error {
 	if err := json.Unmarshal(params, p); err != nil {
@@ -332,6 +356,9 @@ func onWire(to proxySide, method string, params any, notification bool) (string,
 	var wrapped json.RawMessage
 	if !noParams(b) {
 		wrapped = b
+	}
+	if err := checkWrappedParams(wrapped); err != nil {
+		return "", nil, NewInvalidParams(map[string]any{"error": err.Error()})
 	}
 	if notification {
 		return ProxyMethodProxySuccessor, UnstableProxySuccessorNotification{Method: method, Params: wrapped}, nil

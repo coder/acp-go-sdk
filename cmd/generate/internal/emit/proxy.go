@@ -129,9 +129,10 @@ func forward(to string, method Code) Code {
 	return Return(Id("c").Dot("forward").Call(Id("ctx"), Id(to), method, Id("params"), Id("notification")))
 }
 
-// unwrap returns the call of handleFromSuccessor with the decoded envelope p.
+// unwrap returns the call of fromEnvelope (proxy.go), which checks the
+// params of the decoded envelope p and passes it to handleFromSuccessor.
 func unwrap(notification bool) Code {
-	return Return(Id("c").Dot("handleFromSuccessor").Call(Id("ctx"), Id("p").Dot("Method"), Id("p").Dot("Params"), Lit(notification)))
+	return Return(Id("c").Dot("fromEnvelope").Call(Id("ctx"), Id("p").Dot("Method"), Id("p").Dot("Params"), Lit(notification)))
 }
 
 // handle dispatches each message from the conductor.

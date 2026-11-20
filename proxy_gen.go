@@ -300,7 +300,7 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 			if err := p.Validate(); err != nil {
 				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 			}
-			return c.handleFromSuccessor(ctx, p.Method, p.Params, true)
+			return c.fromEnvelope(ctx, p.Method, p.Params, true)
 		}
 		var p UnstableProxySuccessorRequest
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -309,7 +309,7 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 		if err := p.Validate(); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
-		return c.handleFromSuccessor(ctx, p.Method, p.Params, false)
+		return c.fromEnvelope(ctx, p.Method, p.Params, false)
 	case AgentMethodInitialize:
 		return nil, NewInvalidRequest(map[string]string{"error": "proxies must be initialized with proxy/initialize"})
 	case AgentMethodAuthStatus:

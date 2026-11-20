@@ -32,6 +32,16 @@ func TestPruneInert(t *testing.T) {
 			kept: []string{"return nil"},
 		},
 		{
+			name: "the reads of a union's object around a removed switch",
+			body: `disc := string(o.tag("kind"))
+				switch disc {
+				}
+				if raw, _ := o.get("kind"); len(raw) == 0 || !strings.HasPrefix(string(raw), "\"") {
+				}
+				return nil`,
+			kept: []string{"return nil"},
+		},
+		{
 			name: "a statement that returns",
 			body: `var disc string
 				if v, ok := m["kind"]; ok {
@@ -87,7 +97,10 @@ func TestPruneInert(t *testing.T) {
 			dir := t.TempDir()
 			src := "package acp\n\nimport (\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"strings\"\n)\n\n" +
 				"var _, _, _, _ = json.Marshal, errors.New, fmt.Sprint, strings.ToUpper\n\n" +
-				"func f(b []byte, m map[string]json.RawMessage, tag string) error {\n" + tc.body + "\n}\n"
+				"type unionObject struct{}\n\n" +
+				"func (*unionObject) get(string) (json.RawMessage, bool) { return nil, false }\n\n" +
+				"func (*unionObject) tag(string) []byte { return nil }\n\n" +
+				"func f(b []byte, m map[string]json.RawMessage, o unionObject, tag string) error {\n" + tc.body + "\n}\n"
 			if err := os.WriteFile(filepath.Join(dir, "f_gen.go"), []byte(src), 0o644); err != nil {
 				t.Fatal(err)
 			}

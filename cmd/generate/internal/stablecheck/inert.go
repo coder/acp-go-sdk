@@ -18,8 +18,9 @@ import (
 // declaration; when it cannot panic: it does not dereference, assert a type,
 // divide, slice, or index anything but a map; when it writes no field and
 // names no package-level name of the acp package; when each call in it is a
-// conversion to a basic type, len, cap, a function of strings or bytes, or a
-// json.Unmarshal into the address of a local; and when each local that it
+// conversion to a basic type, len, cap, a function of strings or bytes, a
+// json.Unmarshal into the address of a local, or a method that reads the
+// object of a union (unionReader); and when each local that it
 // declares, assigns, or passes to json.Unmarshal lives only inside it or is
 // dead. A local is dead when no code reads it: it is only assigned with = or
 // := and passed to json.Unmarshal. A case of a switch is not a statement
@@ -189,6 +190,8 @@ func (s *side) inert(stmt ast.Stmt, dead, named map[types.Object]bool) bool {
 		case *ast.Ident:
 			switch obj := s.info.Uses[n].(type) {
 			case nil, *types.PkgName, *types.Builtin, *types.Nil:
+			case *types.Func:
+				ok = ok && (obj.Pkg() != s.pkg || s.unionReader(obj))
 			case *types.Var:
 				ok = ok && obj.Parent() != s.pkg.Scope()
 			default:
@@ -201,11 +204,17 @@ func (s *side) inert(stmt ast.Stmt, dead, named map[types.Object]bool) bool {
 }
 
 // pureCall reports whether call is a conversion to a basic type, len, cap,
-// or a call of a function of strings or bytes, which change nothing.
+// a call of a function of strings or bytes, or of a unionReader, which change
+// nothing.
 func (s *side) pureCall(call *ast.CallExpr) bool {
 	if tv, ok := s.info.Types[call.Fun]; ok && tv.IsType() {
 		_, basic := tv.Type.Underlying().(*types.Basic)
 		return basic
+	}
+	if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+		if f, ok := s.info.Uses[sel.Sel].(*types.Func); ok && s.unionReader(f) {
+			return true
+		}
 	}
 	if id, ok := call.Fun.(*ast.Ident); ok {
 		if b, ok := s.info.Uses[id].(*types.Builtin); ok {
@@ -214,4 +223,20 @@ func (s *side) pureCall(call *ast.CallExpr) bool {
 	}
 	f := s.callee(call)
 	return f != nil && (f.Pkg().Path() == "strings" || f.Pkg().Path() == "bytes")
+}
+
+// unionReader reports whether f is get or tag of the type unionObject of the
+// acp package, with which a union reads the members of its object
+// (union.go). Neither changes anything.
+func (s *side) unionReader(f *types.Func) bool {
+	recv := f.Type().(*types.Signature).Recv()
+	if f.Pkg() != s.pkg || recv == nil || (f.Name() != "get" && f.Name() != "tag") {
+		return false
+	}
+	t := recv.Type()
+	if p, ok := t.(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	named, ok := t.(*types.Named)
+	return ok && named.Obj().Name() == "unionObject"
 }

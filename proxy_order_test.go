@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -18,19 +20,28 @@ const orderRuns = 200
 // <method>" for a proxy/successor envelope, or "plain <method>".
 func sentKind(t *testing.T, m anyMessage) string {
 	t.Helper()
+	kind, err := messageKind(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return kind
+}
+
+// messageKind is sentKind for a goroutine other than the test's.
+func messageKind(m anyMessage) (string, error) {
 	switch {
 	case m.Method == "":
-		return "answer " + string(*m.ID)
+		return "answer " + string(*m.ID), nil
 	case m.Method == ProxyMethodProxySuccessor:
 		var envelope struct {
 			Method string `json:"method"`
 		}
 		if err := json.Unmarshal(m.Params, &envelope); err != nil {
-			t.Fatalf("envelope %s: %v", m.Params, err)
+			return "", fmt.Errorf("envelope %s: %v", m.Params, err)
 		}
-		return "wrapped " + envelope.Method
+		return "wrapped " + envelope.Method, nil
 	default:
-		return "plain " + m.Method
+		return "plain " + m.Method, nil
 	}
 }
 
@@ -208,6 +219,117 @@ func TestUnstableProxySideConnection_ReleasesLaterMessagesWhileAHandlerWaits(t *
 	}
 	p.send(replyLine(out, `{"stopReason":"cancelled"}`))
 	wantAnswer(t, p.next(), "1", `{"stopReason":"cancelled"}`)
+}
+
+// answerRuns is how many times each test of an answer that comes at once
+// runs its flow.
+const answerRuns = 20
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(b []byte) (int, error) { return f(b) }
+
+// newAnsweringProxyPeer is newProxyPeer with a conductor that answers some
+// requests at once, as a peer in the same process can: when the proxy writes
+// a request whose kind (see sentKind) is in answers, the conductor answers it
+// with that result, and the proxy has handled the answer before its write
+// returns.
+func newAnsweringProxyPeer(t *testing.T, handlers func(*UnstableProxySideConnection) UnstableProxyHandlers, answers map[string]string) *cancelPeer {
+	t.Helper()
+	var p *cancelPeer
+	p = newRawPeer(t, func(peerInput io.Writer, peerOutput io.Reader) {
+		answering := writerFunc(func(b []byte) (int, error) {
+			n, err := peerInput.Write(b)
+			var m anyMessage
+			if err != nil || json.Unmarshal(b, &m) != nil || m.ID == nil || m.Method == "" {
+				return n, err
+			}
+			if kind, kindErr := messageKind(m); kindErr == nil {
+				if result, ok := answers[kind]; ok {
+					_, _ = io.WriteString(p.in, replyLine(m, result)+"\n")
+					// The proxy handles a line before it reads the next, and a
+					// pipe write returns once it has been read.
+					_, _ = io.WriteString(p.in, "\n")
+				}
+			}
+			return n, err
+		})
+		c := NewUnstableProxySideConnection(handlers, answering, peerOutput)
+		c.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	})
+	return p
+}
+
+// wantKinds checks that the next messages that the proxy sends in run are
+// of the kinds want, and returns them. It fails the test when the proxy
+// sends nothing for 5 s.
+func wantKinds(t *testing.T, run int, p *cancelPeer, want ...string) []anyMessage {
+	t.Helper()
+	msgs := make([]anyMessage, 0, len(want))
+	var kinds []string
+	for len(msgs) < len(want) {
+		select {
+		case m := <-p.lines:
+			msgs = append(msgs, m)
+			kinds = append(kinds, sentKind(t, m))
+		case <-time.After(5 * time.Second):
+			t.Fatalf("run %d: the proxy sent %q and then hung; want %q", run, kinds, want)
+		}
+	}
+	if fmt.Sprint(kinds) != fmt.Sprint(want) {
+		t.Fatalf("run %d: the proxy sent %q, want %q", run, kinds, want)
+	}
+	return msgs
+}
+
+// A handler that sends a request lets the later messages from its side go,
+// also when the answer comes before the proxy has finished sending the
+// request. The handler then waits for the notifications that arrived before
+// the answer (see SendRequest), so a notification left waiting for its turn
+// hangs the handler.
+func TestUnstableProxySideConnection_ReleasesLaterMessagesWhenAnAnswerComesAtOnce(t *testing.T) {
+	t.Run("two requests to the successor", func(t *testing.T) {
+		// The agent answers session/new and announces its commands, and it
+		// answers session/set_mode at once.
+		for i := 0; i < answerRuns; i++ {
+			p := newAnsweringProxyPeer(t, func(c *UnstableProxySideConnection) UnstableProxyHandlers {
+				return UnstableProxyHandlers{FromClient: UnstableProxyFromClient{
+					NewSession: func(ctx context.Context, r NewSessionRequest) (NewSessionResponse, error) {
+						resp, err := c.Successor().NewSession(ctx, r)
+						if err != nil {
+							return resp, err
+						}
+						_, err = c.Successor().SetSessionMode(ctx, SetSessionModeRequest{SessionId: resp.SessionId, ModeId: "plan"})
+						return resp, err
+					},
+				}}
+			}, map[string]string{"wrapped session/set_mode": `{}`})
+			p.send(`{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/","mcpServers":[]}}`)
+			out := wantKinds(t, i, p, "wrapped session/new")[0]
+			p.send(replyLine(out, `{"sessionId":"s"}`), wrappedUpdateLine("s", "commands"))
+			wantKinds(t, i, p, "wrapped session/set_mode", "plain session/update", "answer 1")
+		}
+	})
+	t.Run("a request to the client before the forward", func(t *testing.T) {
+		// A policy proxy asks the client before it forwards the prompt, the
+		// client answers at once, and a session/cancel follows the prompt.
+		for i := 0; i < answerRuns; i++ {
+			p := newAnsweringProxyPeer(t, func(c *UnstableProxySideConnection) UnstableProxyHandlers {
+				return UnstableProxyHandlers{FromClient: UnstableProxyFromClient{
+					Prompt: func(ctx context.Context, r PromptRequest) (PromptResponse, error) {
+						if _, err := c.Client().RequestPermission(ctx, RequestPermissionRequest{SessionId: r.SessionId, ToolCall: ToolCallUpdate{ToolCallId: "t"}, Options: []PermissionOption{}}); err != nil {
+							return PromptResponse{}, err
+						}
+						return c.Successor().Prompt(ctx, r)
+					},
+				}}
+			}, map[string]string{"plain session/request_permission": `{"outcome":{"outcome":"cancelled"}}`})
+			p.send(promptLineOf("1", "s"), cancelLineOf("s"))
+			msgs := wantKinds(t, i, p, "plain session/request_permission", "wrapped session/cancel", "wrapped session/prompt")
+			p.send(replyLine(msgs[2], `{"stopReason":"cancelled"}`))
+			wantAnswer(t, p.next(), "1", `{"stopReason":"cancelled"}`)
+		}
+	})
 }
 
 // A request from the peer starts while the running notification handler

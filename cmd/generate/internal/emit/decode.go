@@ -11,9 +11,10 @@ func decodeFallback(p fieldPlan, target Code) Code {
 }
 
 // emitDecodeFields decodes the JSON object b into recv, a struct name with the
-// fields of plans. A field that customDecode keeps raw decodes on its own, and
-// the others in place. Then it checks the required members
-// (emitRequireMembers).
+// fields of plans, and fails when b holds a property twice, apart from the
+// discriminator of a catch-all variant (repeatable). A field that customDecode
+// keeps raw decodes on its own, and the others in place. Then it checks the
+// required members (emitRequireMembers).
 func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fieldPlan) {
 	b.usesDecodeHelpers = true
 	rawPlans := customDecoded(plans)
@@ -28,6 +29,20 @@ func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fie
 	g.If(Id("err").Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("raw")), Id("err").Op("!=").Nil()).Block(
 		Return(Id("plainFieldError").Call(Id("err"))),
 	)
+	// As the Rust SDK does, the object may hold each property once.
+	props := []Code{Id("b"), Id(recv)}
+	for _, p := range plans {
+		if p.field.Prop != b.repeatable[name] {
+			props = append(props, Lit(p.field.Prop))
+		}
+	}
+	if len(props) > 2+maxProps {
+		panic(fmt.Sprintf("struct %q has more than %d properties, which rejectDuplicateMembers cannot track", name, maxProps))
+	}
+	// A catch-all whose only property is its discriminator makes the call
+	// too, without names, so that a property that the unstable schema adds
+	// only adds a name (stablecheck).
+	g.If(Id("err").Op(":=").Id("rejectDuplicateMembers").Call(props...), Id("err").Op("!=").Nil()).Block(Return(Id("err")))
 	for _, p := range rawPlans {
 		if p.nonNullItem != nil {
 			check := Id("rejectNullItems").Types(p.nonNullItem).Call(Id("raw").Dot(p.field.Name))
@@ -37,6 +52,9 @@ func (b *typesBuilder) emitDecodeFields(g *Group, name, recv string, plans []fie
 	}
 	emitRequireMembers(g, name, recv, plans)
 }
+
+// maxProps is the most properties that rejectDuplicateMembers tracks.
+const maxProps = 64
 
 // emitRequireMembers fails the decode of the struct name when the JSON object
 // b lacks a required member of plans, or holds null for one that does not

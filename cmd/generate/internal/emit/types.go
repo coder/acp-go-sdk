@@ -183,6 +183,9 @@ type typesBuilder struct {
 	// and so no decodeFast.
 	fast       *File
 	rawAliases map[string]bool
+	// repeatable maps a catch-all variant to its discriminator, which the
+	// decoder lets repeat (emitDecodeFields).
+	repeatable map[string]string
 }
 
 // buildTypesJen builds the types_gen.go file and the decode_fast_gen.go file
@@ -204,7 +207,7 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, *File, map[stri
 	b := &typesBuilder{
 		f: f, fast: fast, schema: schema, usedTypeNames: usedTypeNames, variants: emitted,
 		shapes: newShapeTable(schema), patch: ir.PatchFields(schema), nullAsAbsent: ir.NullAsAbsent(schema),
-		validated: map[string]bool{}, rawAliases: map[string]bool{},
+		validated: map[string]bool{}, rawAliases: map[string]bool{}, repeatable: map[string]string{},
 	}
 	for name, def := range schema.Defs {
 		if def != nil && classify(def) == rawKind {
@@ -1184,6 +1187,11 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		openDiscriminator := false
 		if pd := v.Properties[discKey]; pd != nil && pd.Const == nil {
 			openDiscriminator = pd.Type == "string"
+		}
+		if openDiscriminator {
+			// The Rust SDK reads a catch-all variant into a map, where its
+			// discriminator may repeat and the last one wins.
+			b.repeatable[tname] = discKey
 		}
 		var nullKeys []string
 		for _, pk := range sortedPropertyKeys(v.Properties) {

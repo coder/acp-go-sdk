@@ -1013,7 +1013,14 @@ func unionAlternatives(schema *load.Schema, defs []*load.Definition) []unionAlte
 			// expandAllOf copies the enum of the $ref, not its const, so
 			// v.Const is the alternative's own.
 			if v.Const != nil {
-				alt.value, alt.named = schema.Defs[strings.TrimPrefix(ref, "#/$defs/")], []any{v.Const}
+				// The const is checked against the Go type of the $defs
+				// entry, which is a string type for any entry with an enum
+				// (jenTypeFor), whatever its JSON type.
+				value := *schema.Defs[strings.TrimPrefix(ref, "#/$defs/")]
+				if len(value.Enum) > 0 {
+					value.Type = "string"
+				}
+				alt.value, alt.named = &value, []any{v.Const}
 			}
 		}
 		if alt.kind != phantomAlt {
@@ -1063,6 +1070,9 @@ func (a unionAlternative) values(union string) []Code {
 		}
 		if lit == nil {
 			b, _ := json.Marshal(value)
+			if t == "" {
+				panic(fmt.Sprintf("an alternative of union %q names the value %s, but its type has no JSON type, so the decoder cannot check it; give the type one", union, b))
+			}
 			panic(fmt.Sprintf("an alternative of type %s of union %q names the value %s, which its Go type cannot hold exactly", t, union, b))
 		}
 		lits = append(lits, lit)

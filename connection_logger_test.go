@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -64,6 +65,11 @@ func TestConnectionSetLogger_ConcurrentWithReceive(t *testing.T) {
 // a handler.
 func TestConnection_LogsBoundedPeerText(t *testing.T) {
 	big := strings.Repeat("A", 1<<20)
+	// The JSON decoder copies a number that does not fit an int into its
+	// error text, so these lines put 1 MiB in the parse error.
+	nines := strings.Repeat("9", 1<<20)
+	intCode := `{"jsonrpc":"2.0","id":1,"error":{"code":` + nines + `,"message":"x"}}`
+	floatCode := `{"jsonrpc":"2.0","id":1,"error":{"code":1.` + nines + `,"message":"x"}}`
 	handler := func(_ context.Context, method string, params json.RawMessage) (any, *RequestError) {
 		switch {
 		case method == "fail":
@@ -88,6 +94,8 @@ func TestConnection_LogsBoundedPeerText(t *testing.T) {
 		{name: "invalid JSON", line: big, msg: "failed to parse incoming message", also: `"len":1048576`},
 		{name: "neither id nor method", line: `{"jsonrpc":"2.0","result":"` + big + `"}`, msg: "received message with neither id nor method", also: `"len":1048605`},
 		{name: "multibyte line", line: "\"" + strings.Repeat("é", 1<<19), msg: "failed to parse incoming message", also: `"raw":"\"` + strings.Repeat("é", 511) + `... (1048577 bytes)"`},
+		{name: "huge integer error code", line: intCode, msg: "failed to parse incoming message", also: `"len":` + strconv.Itoa(len(intCode))},
+		{name: "huge float error code", line: floatCode, msg: "failed to parse incoming message", also: `"len":` + strconv.Itoa(len(floatCode))},
 		{name: "request id", line: `{"jsonrpc":"2.0","id":{"k":"` + big + `"},"method":"ok"}`, msg: "failed to canonicalize inbound request id"},
 		{name: "response id", line: `{"jsonrpc":"2.0","id":{"k":"` + big + `"},"result":null}`, msg: "failed to canonicalize response id"},
 		{name: "cancel request id", line: `{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":{"k":"` + big + `"}}}`, msg: "failed to canonicalize $/cancel_request requestId"},

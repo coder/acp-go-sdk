@@ -1,5 +1,11 @@
 package acp
 
+import (
+	"bytes"
+	"encoding/binary"
+	"math/bits"
+)
+
 // The generated decoders read the structure of a JSON value with the scanner
 // in this file instead of decoding it again with encoding/json. It expects
 // JSON that encoding/json accepts; on other input it never panics or loops,
@@ -22,15 +28,39 @@ func skipSpace(b []byte, i int) int {
 // skipString returns the index just past the JSON string whose opening quote
 // is at b[i], or -1 when the string does not end.
 func skipString(b []byte, i int) int {
-	for i++; i < len(b); i++ {
-		switch b[i] {
-		case '"':
+	start := i
+	for i++; ; i++ {
+		// Find the next quote. Most strings are short, so read the next two
+		// words here before calling bytes.IndexByte.
+		for n := 0; n < 2 && i+8 <= len(b); n++ {
+			w := binary.LittleEndian.Uint64(b[i:]) ^ (0x0101010101010101 * '"')
+			// The lowest byte of w that is zero, if any, has its high bit set
+			// in m, and no byte below it does.
+			if m := (w - 0x0101010101010101) &^ w & 0x8080808080808080; m != 0 {
+				i += bits.TrailingZeros64(m) / 8
+				goto quote
+			}
+			i += 8
+		}
+		if q := bytes.IndexByte(b[i:], '"'); q >= 0 {
+			i += q
+		} else {
+			return -1
+		}
+	quote:
+		if b[i-1] != '\\' {
 			return i + 1
-		case '\\':
-			i++
+		}
+		// The quote ends the string unless an odd run of backslashes before
+		// it escapes it.
+		j := i
+		for j > start+1 && b[j-1] == '\\' {
+			j--
+		}
+		if (i-j)%2 == 0 {
+			return i + 1
 		}
 	}
-	return -1
 }
 
 // skipValue returns the index just past the JSON value that starts at b[i],

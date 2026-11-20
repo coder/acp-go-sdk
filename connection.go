@@ -199,8 +199,9 @@ type Connection struct {
 // The connection never closes peerInput or peerOutput. A write to a peer that
 // stopped reading blocks, and every later write waits behind it: a handler's
 // reply, SendRequest and SendNotification. Nothing in the connection ends
-// that write, not even Done or a ctx, and Done closes only when the peer's
-// output ends, which a peer that hangs may never do. The owner of the
+// that write, not even Done or a ctx. Done closes when the peer's output ends
+// or the connection closes itself on a limit, so a peer that hangs and sends
+// nothing may never close it. The owner of the
 // transport ends the write by closing it, or by ending the process behind it.
 // Closing an io.Pipe, an os.Pipe, a net.Conn or a child's stdin
 // (exec.Cmd.StdinPipe) ends a blocked write. Close it when you are done with
@@ -1366,10 +1367,11 @@ func (c *Connection) prepareNotification(method string, params any) (anyMessage,
 }
 
 // Done returns a channel that is closed when the underlying reader loop exits
-// (typically when the peer disconnects or the input stream is closed). It does
-// not close while a peer that stopped reading keeps its output open, and it
-// does not end a write that blocks on such a peer: NewConnection says how to
-// end that write.
+// (typically when the peer disconnects or the input stream is closed), or when
+// the connection closes itself on a limit (see ConnectionOption). A peer that
+// stopped reading but keeps its output open and sends nothing never closes
+// it, and Done does not end a write that blocks on such a peer: NewConnection
+// says how to end that write.
 func (c *Connection) Done() <-chan struct{} {
 	return c.ctx.Done()
 }

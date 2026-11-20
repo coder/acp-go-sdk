@@ -15,6 +15,7 @@ go build ./...
 | A `null` item of a string array, or a `null` value of a string map, fails to decode | [Null items and map values](#null-items-and-map-values) |
 | A required member that is missing, or `null` where the schema does not allow it, fails to decode | [Missing and null required members](#missing-and-null-required-members) |
 | An integer out of the range of its schema fails `Validate`, or reads as unset where the schema tolerates a bad value | [Integer ranges](#integer-ranges) |
+| Log attributes hold strings and numbers: `err` is the error's text, and peer text is cut to 1 KiB | [Log attributes](#log-attributes) |
 
 ## Required members
 
@@ -265,3 +266,10 @@ Every property that now rejects an integer out of range, or reads it as unset:
 The rows come from the generated code: the range checks of each `Validate`, and the ranges in the shapes of the lenient decoders, followed from each method that the connection reads.
 
 These types get a `Validate` method, because they check a range or hold a type that does: `ElicitationPropertySchemaString`, `SessionUsageUpdate`, `StringPropertySchema`, `UnstableMcpError`, `UnstableMessageMcpError`, `UsageUpdate`, `Usage`.
+
+## Log attributes
+
+Every value that the connection logs is now a string or a number, so a peer cannot make one log record grow without bound.
+
+- **An `err` attribute holds the error's text, not the `error` value.** A `slog.Handler` that type-asserts `error`, or calls `errors.Is` or `errors.As` on the attribute, no longer matches. Match on the record's message or on the text instead.
+- Text from the peer, such as a raw line, a method, an id or an error message, is cut to 1 KiB and ends with `... (N bytes)`, where N is its full length. Numbers, booleans, durations and times keep their type.

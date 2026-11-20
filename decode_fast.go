@@ -51,7 +51,7 @@ type fastDecoder[T any] interface {
 // when it did not, v holds what it held.
 func tryFast[T any, P fastDecoder[T]](v P, b []byte) bool {
 	if !fastDecode || len(b) == 0 || isSpace(b[0]) || isSpace(b[len(b)-1]) ||
-		!reflect.ValueOf(v).Elem().IsZero() || !json.Valid(b) {
+		!reflect.ValueOf(v).Elem().IsZero() || !validJSON(b) {
 		return false
 	}
 	if v.decodeFast(b) {

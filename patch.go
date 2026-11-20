@@ -86,9 +86,11 @@ func (p Patch[T]) Ptr() *T {
 	return &p.value
 }
 
-// IsNull reports whether p clears the stored value. In a field for which ACP
-// v1 defines no clear, a struct of this package reads null as unset, so
-// IsNull is false there (see Patch).
+// IsNull reports whether p is a null Patch, which clears the stored value. In
+// a field for which ACP v1 defines no clear, decoding null into a fresh struct
+// gives an unset Patch, so IsNull is false after it. A PatchNull that you put
+// there, or one a reused struct already holds, still reports true, though
+// the struct leaves it out on encode (see Patch).
 func (p Patch[T]) IsNull() bool { return p.state == patchNull }
 
 // IsUnset reports whether p leaves the stored value as it is.

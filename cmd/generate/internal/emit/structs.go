@@ -95,6 +95,11 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 	}
 	switch {
 	case def.Default != nil:
+		// Every default passes here, so this is where its range is checked.
+		via, leaf := peelContainers(fieldType(field))
+		if goType := b.integerGoType(leaf); goType != "" {
+			mustHoldDefault(field, goType, b.heldRange(def, via))
+		}
 		defaultJSON, err := json.Marshal(def.Default)
 		if err != nil {
 			panic(fmt.Sprintf("encode the default of property %q: %v", field.Prop, err))

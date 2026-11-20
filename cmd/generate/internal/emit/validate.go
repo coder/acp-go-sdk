@@ -112,10 +112,6 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 		}
 	}
 
-	if goType := b.integerGoType(leaf); goType != "" {
-		// Before the lenient return: a lenient field fills its default too.
-		mustHoldDefault(field, goType, b.heldRange(def, c.via))
-	}
 	optional := len(c.via) == 0 && !field.Required
 	if field.Lenient.DefaultOnError || field.Lenient.SkipInvalidItems || (optional && nested) {
 		return c

@@ -245,10 +245,18 @@ jobs:
             if ! jq -e 'any(.protection_rules[]?; .type == "required_reviewers")' <<< "$environment" > /dev/null; then
               state="no required reviewers"
               problem="The release environment has no required reviewers"
-            elif ! jq -e '.can_admins_bypass == false' <<< "$environment" > /dev/null; then
+              risk="nothing would hold publish for approval"
+            elif jq -e '.can_admins_bypass == true' <<< "$environment" > /dev/null; then
               # An admin could skip the approval with one click.
               state="admins can bypass"
               problem="The release environment lets admins bypass its reviewers"
+              risk="an admin could publish without approval"
+            elif ! jq -e '.can_admins_bypass == false' <<< "$environment" > /dev/null; then
+              # GitHub returns can_admins_bypass but does not document it.
+              # Without it, nothing shows that the approval binds admins.
+              state="admin bypass not reported"
+              problem="GitHub did not report whether admins can bypass the release environment's reviewers"
+              risk="an admin might publish without approval"
             else
               echo "environment=release" >> "$GITHUB_OUTPUT"
               exit 0
@@ -256,6 +264,7 @@ jobs:
           elif grep -q 'HTTP 404' "$err"; then
             state="missing"
             problem="There is no release environment"
+            risk="nothing would hold publish for approval"
           else
             cat "$err" >&2
             echo "::error::Could not look up the release environment. Fix the error above, then run again."
@@ -267,7 +276,7 @@ jobs:
             echo "::warning::$problem, so a real run refuses to start. Set it up as RELEASING.md describes."
             exit 0
           fi
-          echo "::error::$problem, so nothing would hold publish for approval. Set it up as RELEASING.md describes, then run again."
+          echo "::error::$problem, so $risk. Set it up as RELEASING.md describes, then run again."
           exit 1
 
       # The plan lists every check, so it is written when one fails too.

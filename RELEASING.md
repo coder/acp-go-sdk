@@ -186,10 +186,16 @@ The `publish` job signs as `coder-release-publisher` through
 Cloud KMS holds the App's key, and only this job may use it.
 
 The Release workflow refuses every real run until all four steps below are
-done, in this order. `preflight` refuses a missing `release` environment,
-one without a required reviewer, and one that lets admins bypass it. `publish` refuses, before it writes anything,
-when a secret is missing. A dry run works at any point, and warns about the
-environment instead.
+done, in this order. `preflight` refuses a missing `release` environment, one
+without a required reviewer, and one that lets admins bypass it. `publish`
+refuses, before it writes anything, when a secret is missing. A dry run works
+at any point, and warns about the environment instead.
+
+`preflight` reads the bypass setting from the `can_admins_bypass` field of
+GitHub's environment API. GitHub returns that field but does not document it.
+If GitHub stops returning it, `preflight` refuses every real run with "GitHub
+did not report whether admins can bypass", and releases stay blocked until the
+check reads the setting another way.
 
 1. An organization owner installs `coder-release-publisher` on
    `coder/acp-go-sdk`.

@@ -1,6 +1,6 @@
 # Migrating to v0.21.0
 
-v0.21.0 makes inbound decoding stricter: the SDK rejects a message that the ACP schema forbids and that the Rust SDK rejects too, apart from the few differences in bold below. The ACP schema stays at 1.32.0, and `acp.Agent` and `acp.Client` do not change. The integer fields take the Go type of their schema format, such as `uint32` for `ReadTextFileRequest.Line`, and the compiler reports each place that your code needs a change: see [Integer types and ranges](#integer-types-and-ranges).
+v0.21.0 makes inbound decoding stricter: the SDK rejects a message that the ACP schema forbids and that the Rust SDK rejects too, apart from the few differences in bold below. The ACP schema stays at 1.32.0, and `acp.Agent` and `acp.Client` do not change. The integer fields take the Go type of their schema format, such as `uint32` for `ReadTextFileRequest.Line`. The compiler reports each use of a changed field, but not a conversion to a named type that changed: `acp.ProtocolVersion(n)` or `acp.ErrorCodeOther(n)` with an `int` `n` still compiles and now wraps, so 70000 becomes 4464. See [Integer types and ranges](#integer-types-and-ranges) for how to find them.
 
 ```bash
 go get github.com/coder/acp-go-sdk@v0.21.0
@@ -15,6 +15,7 @@ go build ./...
 | A `null` item of a string array, or a `null` value of a string map, fails to decode | [Null items and map values](#null-items-and-map-values) |
 | A required member that is missing, or `null` where the schema does not allow it, fails to decode | [Missing and null required members](#missing-and-null-required-members) |
 | Each integer has the Go type of its schema format, such as `uint32` or `uint64`: a value out of its range fails to decode, or reads as unset where the schema tolerates a bad value | [Integer types and ranges](#integer-types-and-ranges) |
+| `NewAgentSideConnection`, `NewClientSideConnection` and `NewConnection` take `...ConnectionOption`, and every connection limits what it holds from the peer | [Connection constructors and limits](#connection-constructors-and-limits) |
 
 ## Required members
 
@@ -225,12 +226,12 @@ Each integer now has the Go type of the Rust type that its schema `format` names
 
 - A value out of the range of its format fails to decode wherever it arrives. A request gets `-32602` and a notification is dropped, with an error such as `json: cannot unmarshal number -1 into Go struct field ReadTextFileRequest.line of type uint32`. A response fails too: the call that sent the request returns the decode error. v0.20.0 checked no response.
 - A `uint64`, such as `used` of a `usage_update` or a token count of `Usage`, takes every value up to 2^64-1, as in the Rust SDK. v0.20.0 failed a value above `math.MaxInt64`.
-- `-0` in an unsigned integer, and a number with a fraction or an exponent, such as `1.0` or `1e2`, fail to decode, as in the Rust SDK. **A `-0` in a signed integer, such as `RequestId` or `IntegerPropertySchema.minimum`, reads as 0; the Rust SDK rejects it.**
+- `-0` in an unsigned integer, and a number with a fraction or an exponent, such as `1.0` or `1e2`, fail to decode, as in the Rust SDK. **A `-0` in a signed integer reads as 0. The Rust SDK rejects it in `ErrorCode`, `Error.code`, `McpError.code`, `RequestId` and `IntegerPropertySchema.minimum`, reads it as the number `-0.0` in `ElicitationContentValue`, where the SDK reads the integer 0, and leaves the lenient `ResourceLink.size` unset, where the SDK reads 0.**
 - A property with `x-deserialize-default-on-error`, such as `line` of a tool call location or an `exitCode`, reads a value out of range as unset and keeps the object around it, as the Rust SDK does. So does a lenient property that holds an object with an integer out of range: `"usage": {"totalTokens": -1, ...}` of a `session/prompt` result reads as no usage.
-- The SDK cannot send a value out of range: the Go type cannot hold one.
+- A generated field cannot hold a value out of range, so the SDK sends none from one. `RequestError.Code` stays an `int`: a handler that returns `&acp.RequestError{Code: 1 << 31}` sends that code as it is, and the SDK and the Rust SDK both fail to read it. Keep an error code within `int32`.
 - `minLength` and `minItems`, such as a `notice` with `"title": ""` or a prompt suggestion with `"prompt": []`, and the string format `uri` are not checked. The Rust SDK does not check them either.
 
-A TypeScript peer reads a JSON number as a JavaScript number, which holds every integer up to 2^53 exactly. The TypeScript SDK 2.7.0 checks the range of a `uint16`, `uint32` and `int32`, and reads a `uint64` or an `int64` as any integer that `JSON.parse` returns: `18446744073709551615` reads as 18446744073709552000, which it writes back as such, and which the SDK and the Rust SDK then reject. Keep a `uint64` that a TypeScript peer must read at or below 2^53.
+A TypeScript peer reads a JSON number as a JavaScript number, which holds every integer up to 2^53 exactly. The TypeScript SDK 2.7.0 checks the range of a `uint16`, `uint32` and `int32`, reads a `uint64` as any integer of at least 0 that `JSON.parse` returns, and an `int64` as any integer: `18446744073709551615` reads as 18446744073709552000, which it writes back as such, and which the SDK and the Rust SDK then reject. An `int64` rounds the same way: a `RequestId` of `9223372036854775807` comes back as `9223372036854776000`, which the SDK rejects as above `int64`. Keep a `uint64` or an `int64` that a TypeScript peer must read within 2^53 of 0.
 
 ### Field types
 
@@ -263,8 +264,12 @@ The fields of format `int64` keep their type: `ResourceLink.Size`, the `Minimum`
 | `lines[int(max(0, min(*p.Line-1, int64(len(lines))))):]` | `if *p.Line > 0 { start = int(min(uint64(*p.Line-1), uint64(len(lines)))) }`: an unsigned `*p.Line-1` wraps to 4294967295 when `Line` is 0, and an `int(...)` of a `uint32` wraps on a 32-bit target above 2^31 |
 | `code := *status.ExitCode` (an `int64`) | `code := *status.ExitCode` (a `uint32`); `os.Exit(int(code))` as before |
 | `var total int64 = usage.TotalTokens` | `total := usage.TotalTokens` (a `uint64`), or `int64(usage.TotalTokens)` when you know that it fits |
-| `acp.ErrorCodeOther(code)` with an `int` code | `acp.ErrorCodeOther(code)` with an `int32`, or `acp.ErrorCodeOther(int32(code))` after a range check |
-| `case int:` in a type switch on a `ProtocolVersion` or an error code through `any` | `case uint16:` or `case int32:`; such code compiles as before and stops matching, so search for it |
+| `acp.ErrorCodeOther(code)` with an `int` code | the same with an `int32` code, or with an `int` that you checked is within `int32` first: the v0.20.0 form still compiles and wraps |
+| `acp.ProtocolVersion(v)` with an `int` v | the same with a `uint16` v, or with an `int` that you checked is between 0 and 65535 first: the v0.20.0 form still compiles and wraps |
+| `case int64:` in a type switch on `any(*loc.Line)` or another changed field | `case uint32:`, the field's new type; such code compiles as before and stops matching |
+| `reflect.ValueOf(v).Kind() == reflect.Int` for a `ProtocolVersion` or an `ErrorCode*` | `reflect.Uint16` or `reflect.Int32`; such code compiles as before and stops matching. A type switch with `case int:` never matched these named types and still does not, and `acp.ProtocolVersionNumber` stays an untyped constant, so `any(acp.ProtocolVersionNumber)` is still an `int` |
+
+The compiler does not find the conversions, the type switches, the `reflect` checks, or unsigned arithmetic that now wraps, such as `u.Size - u.Used` when `Used` is larger. The `G115` check of gosec finds the conversions: `golangci-lint run --enable-only gosec` with `gosec.includes: [G115]` in `.golangci.yml`, or `gosec -include=G115 ./...`, reports `integer overflow conversion int -> uint16` at `acp.ProtocolVersion(x)`. Find the rest by searching your code for the fields and types in [Field types](#field-types).
 
 Every property whose integer now fails to decode out of range, or reads as unset:
 
@@ -300,3 +305,9 @@ Every property whose integer now fails to decode out of range, or reads as unset
 | `WaitForTerminalExitResponse` | `exitCode` | between 0 and 4294967295 | `terminal/wait_for_exit` response to the agent: `exitCode` reads as unset |
 
 The rows list each property whose format is narrower than `int64`, from the generated code, followed from each method that the connection reads.
+
+## Connection constructors and limits
+
+`NewAgentSideConnection`, `NewClientSideConnection` and `NewConnection` take options after the reader: `opts ...ConnectionOption`. A call compiles as before. Code that stores one of them in a variable or a field of the v0.20.0 function type, such as `var newConn func(acp.Agent, io.Writer, io.Reader) *acp.AgentSideConnection = acp.NewAgentSideConnection`, stops compiling: wrap the call in a function literal.
+
+Every connection now limits the requests that it holds from the peer. A request that does not fit the byte budget (`WithByteBudget`, 64 MiB by default) or that arrives while the connection holds 1024 requests (`WithMaxInboundRequests`) gets a `-32603` reply, and its handler does not run. A notification that does not fit the byte budget closes the connection. `WithMaxQueuedNotifications` sets the queue of waiting notifications, which v0.20.0 fixed at 1024.

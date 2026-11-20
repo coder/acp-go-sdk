@@ -185,17 +185,27 @@ func fastSlice[S ~[]E, E any](dst *S, b []byte, dec func(*E, []byte) bool) bool 
 	default:
 		return false
 	}
-	s := S{}
-	it, _ := arrayItems(b)
-	for it.next() {
-		var item E
-		s = append(s, item)
-		if !dec(&s[len(s)-1], it.item) {
+	var buf [64][]byte
+	items, ok := appendItems(buf[:0], b)
+	s := make(S, len(items))
+	for i, item := range items {
+		if !dec(&s[i], item) {
 			return false
 		}
 	}
 	*dst = s
-	return !it.broken
+	return ok
+}
+
+// appendItems appends the items of the array b to items, and reports whether
+// b ends as an array does. fastSlice and fastItems collect the items first, in
+// a buffer on the stack, so that they allocate their slice once, at its length.
+func appendItems(items [][]byte, b []byte) ([][]byte, bool) {
+	it, _ := arrayItems(b)
+	for it.next() {
+		items = append(items, it.item)
+	}
+	return items, !it.broken
 }
 
 // fastMap reads an object into a fresh map. A key that repeats declines.
@@ -278,7 +288,8 @@ func fastField[T any](raw []byte, dst *T, dec func(*T, []byte) bool) (decoded, o
 }
 
 // fastLenient mirrors decodeLenient. It never declines: a value that dec
-// declines goes to json.Unmarshal, as in decodeLenient.
+// declines goes to json.Unmarshal, as in decodeLenient. On false, *dst is
+// zero.
 func fastLenient[T any](raw []byte, dst *T, dec func(*T, []byte) bool, check ...shapeID) bool {
 	if raw == nil || raw[0] == 'n' || !fastOrExact(dst, raw, dec) {
 		return false
@@ -301,18 +312,19 @@ func fastItems[T any](raw []byte, dst *[]T, dec func(*T, []byte) bool, check ...
 	if raw[0] != '[' {
 		return false, raw[0] == 'n'
 	}
-	kept := []T{}
-	it, _ := arrayItems(raw)
-	for it.next() {
-		// An item decodes in place, and leaves a zero value to drop when it
-		// does not.
-		kept = append(kept, *new(T))
-		if !fastLenient(it.item, &kept[len(kept)-1], dec, check...) {
-			kept = kept[:len(kept)-1]
+	var buf [64][]byte
+	items, ok := appendItems(buf[:0], raw)
+	kept := make([]T, len(items))
+	n := 0
+	for _, item := range items {
+		// An item decodes in place, and leaves its place zero for the next
+		// item when it does not.
+		if fastLenient(item, &kept[n], dec, check...) {
+			n++
 		}
 	}
-	*dst = kept
-	return true, !it.broken
+	*dst = kept[:n]
+	return true, ok
 }
 
 // fastLenientItems mirrors decodeLenientItems.

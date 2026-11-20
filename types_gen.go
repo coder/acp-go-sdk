@@ -18556,6 +18556,34 @@ func (v *UnstableForkSessionResponse) Validate() error {
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
 //
+// Request parameters for 'proxy/initialize'.
+//
+// A conductor sends 'proxy/initialize' instead of 'initialize' to every component that has a
+// successor, which tells the component to run as a proxy. The params and the response are
+// the same as for 'initialize'. A conductor sends 'initialize' to the final agent.
+//
+// The params carry the protocol version the conductor selected: the client's requested
+// version, unless the conductor supports only a lower one. Before answering successfully,
+// the proxy MUST forward an 'initialize' request to its successor through 'proxy/successor'.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableInitializeProxyRequest = InitializeRequest
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response to 'proxy/initialize'.
+//
+// The same as the 'initialize' response. The proxy builds it from its successor's
+// 'initialize' response and answers with the capabilities of the chain from itself onward.
+// It MUST NOT change 'protocolVersion'.
+type UnstableInitializeProxyResponse = InitializeResponse
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
 // Request parameters for 'providers/list'.
 type UnstableListProvidersRequest struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -19235,6 +19263,143 @@ func (v *UnstableProviderInfo) Validate() error {
 	}
 	return nil
 }
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Parameters of a 'proxy/successor' notification.
+//
+// A proxy sends it to forward a message to its successor, and the conductor sends it to
+// deliver a message from the successor to the proxy. The envelope wraps one notification: 'method'
+// and 'params' are the wrapped notification's method and params.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableProxySuccessorNotification struct {
+	// Metadata for the 'proxy/successor' envelope itself, separate from the wrapped
+	// message's '_meta'. It is hop-local: the conductor does not copy it into the message
+	// it unwraps.
+	//
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// Method name of the wrapped notification.
+	Method string `json:"method"`
+	// Params of the wrapped notification, forwarded unchanged.
+	//
+	// Optional. Omitted and 'null' are equivalent and mean the wrapped notification has no params.
+	// When present, it MUST be a JSON object or array, as JSON-RPC requires.
+	// The wrapped notification's own '_meta' stays inside these params.
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+func (v *UnstableProxySuccessorNotification) UnmarshalJSON(b []byte) error {
+	var fresh UnstableProxySuccessorNotification
+	v.Method = fresh.Method
+	type plain UnstableProxySuccessorNotification
+	type UnstableProxySuccessorNotification struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnstableProxySuccessorNotification{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "UnstableProxySuccessorNotification", "method")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableProxySuccessorNotification) Validate() error {
+	if v.Method == "" {
+		return fmt.Errorf("method is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Parameters of a 'proxy/successor' request.
+//
+// A proxy sends it to forward a message to its successor, and the conductor sends it to
+// deliver a message from the successor to the proxy. The envelope wraps one request: 'method'
+// and 'params' are the wrapped request's method and params.
+//
+// The result or error of the wrapped request is returned unchanged, as the same JSON value,
+// as the result or error of the 'proxy/successor' request. Errors the conductor returns
+// itself, for example because the successor has exited, are not wrapped results.
+//
+// To cancel it, the sender sends '$/cancel_request' with the ID of this 'proxy/successor'
+// request on the same connection. Cancellation is never forwarded to another hop.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableProxySuccessorRequest struct {
+	// Metadata for the 'proxy/successor' envelope itself, separate from the wrapped
+	// message's '_meta'. It is hop-local: the conductor does not copy it into the message
+	// it unwraps.
+	//
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// Method name of the wrapped request.
+	Method string `json:"method"`
+	// Params of the wrapped request, forwarded unchanged.
+	//
+	// Optional. Omitted and 'null' are equivalent and mean the wrapped request has no params.
+	// When present, it MUST be a JSON object or array, as JSON-RPC requires.
+	// The wrapped request's own '_meta' stays inside these params.
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+func (v *UnstableProxySuccessorRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableProxySuccessorRequest
+	v.Method = fresh.Method
+	type plain UnstableProxySuccessorRequest
+	type UnstableProxySuccessorRequest struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnstableProxySuccessorRequest{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "UnstableProxySuccessorRequest", "method")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableProxySuccessorRequest) Validate() error {
+	if v.Method == "" {
+		return fmt.Errorf("method is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Result of a 'proxy/successor' request: the wrapped request's result, forwarded unchanged.
+// UnstableProxySuccessorResponse is a union or complex schema; it holds the JSON as it was read.
+type UnstableProxySuccessorResponse = json.RawMessage
 
 // **UNSTABLE**
 //

@@ -222,6 +222,9 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 		}
 
 		switch classify(def) {
+		case aliasKind:
+			f.Type().Id(name).Op("=").Add(jenTypeFor(def.AllOf[0]))
+			f.Line()
 		case enumKind:
 			b.emitEnum(name, def)
 		case openEnumKind:
@@ -451,11 +454,14 @@ const (
 	primitiveKind                // a named string, integer, number, or boolean type
 	emptyKind                    // an empty struct
 	rawKind                      // an alias of json.RawMessage
+	aliasKind                    // an alias of the $defs entry that its one allOf entry refers to
 )
 
 // classify returns the kind of Go type that the $defs entry def becomes.
 func classify(def *load.Definition) defKind {
 	switch t := ir.PrimaryType(def); {
+	case isRefAlias(def):
+		return aliasKind
 	case len(def.Enum) > 0, isStringConstUnion(def):
 		return enumKind
 	case len(def.AnyOf) > 0 && isOpenStringEnum(def):
@@ -471,6 +477,14 @@ func classify(def *load.Definition) defKind {
 	default:
 		return rawKind
 	}
+}
+
+// isRefAlias reports whether def has no keyword but an allOf of one $ref,
+// which makes it the schema that the $ref names.
+func isRefAlias(def *load.Definition) bool {
+	return def.Type == nil && len(def.AllOf) == 1 && def.AllOf[0] != nil && strings.HasPrefix(def.AllOf[0].Ref, "#/$defs/") &&
+		len(def.Properties) == 0 && len(def.AnyOf) == 0 && len(def.OneOf) == 0 && len(def.Enum) == 0 &&
+		def.Const == nil && def.Items == nil && !def.AdditionalProperties.Open && def.AdditionalProperties.Schema == nil
 }
 
 // emitValidate declares the Validate method of the type name, whose receiver

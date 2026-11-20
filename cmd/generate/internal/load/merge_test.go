@@ -58,6 +58,30 @@ func TestMergeStableAndUnstable(t *testing.T) {
 		}
 	})
 
+	t.Run("unstable-only proxy method adds unstable-prefixed root types", func(t *testing.T) {
+		stableMeta := &Meta{Version: 1}
+		stableSchema := &Schema{Defs: map[string]*Definition{"InitRequest": {Type: "object"}}}
+
+		unstableMeta := &Meta{Version: 1, ProxyMethods: map[string]string{"proxy_initialize": "proxy/initialize"}}
+		unstableSchema := &Schema{Defs: map[string]*Definition{
+			"InitRequest":            {Type: "object"},
+			"InitializeProxyRequest": {XMethod: "proxy/initialize", XSide: "proxy", AllOf: []*Definition{ref("InitRequest")}},
+		}}
+
+		combinedMeta, combinedSchema := mustMerge(t, stableMeta, stableSchema, unstableMeta, unstableSchema)
+
+		if got := combinedMeta.ProxyMethods["proxy_initialize"]; got != "proxy/initialize" {
+			t.Fatalf("combined meta missing proxy method: got %q", got)
+		}
+		req := combinedSchema.Defs["UnstableInitializeProxyRequest"]
+		if req == nil || req.XSide != "proxy" || req.XMethod != "proxy/initialize" {
+			t.Fatalf("UnstableInitializeProxyRequest = %+v, want the proxy/initialize root", req)
+		}
+		if got := req.AllOf[0].Ref; got != "#/$defs/InitRequest" {
+			t.Fatalf("UnstableInitializeProxyRequest refers to %q, want the shared InitRequest", got)
+		}
+	})
+
 	t.Run("allows omitted unstable version", func(t *testing.T) {
 		stableMeta := &Meta{Version: 2}
 		stableSchema := &Schema{Defs: map[string]*Definition{}}
@@ -604,9 +628,9 @@ func TestMergeStableAndUnstable_MarksTheWholeAddedSubtree(t *testing.T) {
 	}
 }
 
-// A definition with x-method whose method the metadata does not list, such
-// as proxy/initialize, gets no Go method, so the shared definitions that it
-// reaches keep their stable version.
+// A definition with x-method whose method the metadata does not list gets
+// no Go method, so the shared definitions that it reaches keep their stable
+// version.
 func TestMergeStableAndUnstable_IgnoresRootsThatTheMetadataDoesNotList(t *testing.T) {
 	shared := func(props ...string) *Definition {
 		d := &Definition{Type: "object", Properties: map[string]*Definition{}}

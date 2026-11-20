@@ -118,12 +118,13 @@ jobs:
           module="$(git show "$commit:go.mod" | awk '$1 == "module" { print $2; exit }')"
           # Go serves v2 and later only from a module path that ends in /vN,
           # and the proxy serves a tag only from the repository go.mod names.
+          # Module paths are case-sensitive, so the match is exact.
           major="${version%%.*}"
           want="github.com/$GITHUB_REPOSITORY"
           if [[ "$major" -ge 2 ]]; then
             want="$want/v$major"
           fi
-          if [[ "${module,,}" != "${want,,}" ]]; then
+          if [[ "$module" != "$want" ]]; then
             echo "::error::go.mod at $commit declares module '$module', but tag v$version of this repository needs '$want'. Go cannot serve the tag otherwise."
             exit 1
           fi

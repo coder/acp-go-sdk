@@ -19,6 +19,7 @@ import (
 const alternativeKindsSchema = `{"$defs": {
   "Named": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
   "Label": {"type": "string"},
+  "Wide": {"type": "integer", "format": "int64"},
   "PickString": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "string"}]},
   "PickTitled": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"title": "Text", "type": "string"}]},
   "PickConst": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "string", "const": "a"}, {"type": "string", "const": "b"}]},
@@ -31,6 +32,8 @@ const alternativeKindsSchema = `{"$defs": {
   "PickBoolean": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "boolean"}]},
   "PickArray": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "array", "items": {"type": "string"}}]},
   "PickRef": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"$ref": "#/$defs/Label"}]},
+  "PickRefConst": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"const": "a", "allOf": [{"$ref": "#/$defs/Label"}]}]},
+  "PickRefWide": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"const": 4294967295, "allOf": [{"$ref": "#/$defs/Wide"}]}]},
   "PickOpen": {"%[1]s": [{"type": "string", "const": "a"}, {"type": "string", "const": "b"}, {"title": "Other", "type": "string"}]}
 }}`
 
@@ -115,6 +118,8 @@ func TestUnion_KeepsEveryKindOfAlternative(t *testing.T) {
 	roundTrips[PickBoolean](t, []string{named, ` + "`" + `true` + "`" + `}, []string{` + "`" + `"x"` + "`" + `})
 	roundTrips[PickArray](t, []string{named, ` + "`" + `["a"]` + "`" + `}, []string{` + "`" + `"x"` + "`" + `, ` + "`" + `[1]` + "`" + `})
 	roundTrips[PickRef](t, []string{named, ` + "`" + `"x"` + "`" + `}, []string{` + "`" + `5` + "`" + `})
+	roundTrips[PickRefConst](t, []string{named, ` + "`" + `"a"` + "`" + `}, []string{` + "`" + `"b"` + "`" + `})
+	roundTrips[PickRefWide](t, []string{named, ` + "`" + `4294967295` + "`" + `}, []string{` + "`" + `7` + "`" + `})
 	// Consts beside an open string make an open enum under either keyword.
 	roundTrips[PickOpen](t, []string{` + "`" + `"a"` + "`" + `, ` + "`" + `"zzz"` + "`" + `}, []string{` + "`" + `5` + "`" + `})
 	if out, err := json.Marshal(PickOpenA); err != nil || string(out) != ` + "`" + `"a"` + "`" + ` {
@@ -160,6 +165,8 @@ func TestNewUnion_BuildsEveryKindOfAlternative(t *testing.T) {
 	builds(t, ptr(NewPickBooleanPickBooleanVariant2(true)), ` + "`" + `true` + "`" + `)
 	builds(t, ptr(NewPickArrayPickArrayVariant2([]string{"a"})), ` + "`" + `["a"]` + "`" + `)
 	builds(t, ptr(NewPickRefLabel("x")), ` + "`" + `"x"` + "`" + `)
+	builds(t, ptr(NewPickRefConstLabel()), ` + "`" + `"a"` + "`" + `)
+	builds(t, ptr(NewPickRefWideWide()), ` + "`" + `4294967295` + "`" + `)
 }
 `
 
@@ -364,6 +371,7 @@ func TestWriteTypesJen_PanicsOnAValueTheAlternativeCannotHold(t *testing.T) {
 		{"null enum member", `{"type": "string", "enum": ["a", null]}`, `null`},
 		{"array const", `{"type": "array", "items": {"type": "integer"}, "const": [1]}`, `[1]`},
 		{"object const", `{"type": "object", "const": {"a": 1}}`, `{"a":1}`},
+		{"number const on a string $ref", `{"const": 5, "allOf": [{"$ref": "#/$defs/Label"}]}`, `5`},
 		{"integer above 2^53", `{"type": "integer", "const": 9007199254740993}`, `9007199254740992`},
 		{"untyped integer above 2^53", `{"const": 9007199254740993}`, `9007199254740992`},
 	} {
@@ -371,6 +379,7 @@ func TestWriteTypesJen_PanicsOnAValueTheAlternativeCannotHold(t *testing.T) {
 			var schema load.Schema
 			in := `{"$defs": {
   "Named": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+  "Label": {"type": "string"},
   "Pick": {"anyOf": [{"$ref": "#/$defs/Named"}, ` + tc.alternative + `]}
 }}`
 			if err := json.Unmarshal([]byte(in), &schema); err != nil {

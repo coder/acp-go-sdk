@@ -353,25 +353,30 @@ func wrappedCancel(method string, params json.RawMessage) (json.RawMessage, bool
 }
 
 // forwardOrder keeps the order of each side of a proxy (see
-// UnstableProxySideConnection). A handler holds back the later messages from
-// a side while it has a message from that side to send on: its own request,
-// from its arrival, or the answer to its request, from the answer's arrival.
-// It holds them until it sends a request, and so waits for an answer, or
-// until it returns and the connection has written its reply. A handler's
-// send to a side waits until no other handler holds back an earlier message
-// from the other side.
+// UnstableProxySideConnection). A handler holds the messages from a side
+// that it has yet to send on: its own request, and the answers to its
+// requests. It holds each from its arrival until the handler sends a
+// request, and so waits for an answer, or until it returns and the
+// connection has written its reply. A handler's send to a side waits until
+// no other handler holds a message from the other side that arrived before
+// its own.
 //
 // Notifications take no hold: the connection runs a notification's handler
 // after the handlers of the notifications before it and before the handlers
 // of the requests after it start, except while it waits for an answer. A
 // hold there would make a request that the peer needs answered first wait
 // for a notification that waits for the peer.
+//
+// A hold is a message, and only releaseLocked takes holds away, so only it
+// can let a waiting send go, and it closes changed whenever it does. A new
+// hold cannot let a send go: the connection calls requestArrived and
+// holdAnswer in the order the messages arrive, so a new hold is the newest
+// message, and a send waits only for messages older than its own.
 type forwardOrder struct {
 	mu sync.Mutex
-	// holds maps each side to the handlers that hold back the later messages
-	// from it, by the arrival number of the handler's message, each to the
-	// arrival number of the message from that side that it holds.
-	holds [2]map[uint64]uint64
+	// held maps each side to the messages from it that a handler holds, each
+	// by its arrival number to the arrival number of the handler's message.
+	held [2]map[uint64]uint64
 	// running holds the handlers that can take a hold on an answer: request
 	// handlers from their arrival until they return, notification handlers
 	// while they run.
@@ -382,7 +387,7 @@ type forwardOrder struct {
 
 func newForwardOrder() *forwardOrder {
 	return &forwardOrder{
-		holds:   [2]map[uint64]uint64{{}, {}},
+		held:    [2]map[uint64]uint64{{}, {}},
 		running: map[uint64]struct{}{},
 		changed: make(chan struct{}),
 	}
@@ -395,7 +400,7 @@ func (o *forwardOrder) requestArrived(arrival uint64, method string) (done func(
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.running[arrival] = struct{}{}
-	o.holds[sideOf(method)][arrival] = arrival
+	o.held[sideOf(method)][arrival] = arrival
 	return func() { o.finish(arrival) }
 }
 
@@ -422,15 +427,13 @@ func (o *forwardOrder) finish(arrival uint64) {
 	o.releaseLocked(arrival, math.MaxUint64)
 }
 
-// holdAnswer makes the handler owner hold back the side from, where the
-// answer to its request arrived as message arrival, while the handler runs.
-// The answer replaces an older hold on that side: the handler gave that up
-// when it sent the request.
+// holdAnswer makes the handler owner hold the answer to its request, which
+// arrived from side from as message arrival, while the handler runs.
 func (o *forwardOrder) holdAnswer(from proxySide, owner, arrival uint64) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if _, ok := o.running[owner]; ok {
-		o.holds[from][owner] = arrival
+		o.held[from][arrival] = owner
 	}
 }
 
@@ -444,10 +447,12 @@ func (o *forwardOrder) release(owner, upTo uint64) {
 
 func (o *forwardOrder) releaseLocked(owner, upTo uint64) {
 	ended := false
-	for _, held := range o.holds {
-		if a, ok := held[owner]; ok && a <= upTo {
-			delete(held, owner)
-			ended = true
+	for _, held := range o.held {
+		for arrival, by := range held {
+			if by == owner && arrival <= upTo {
+				delete(held, arrival)
+				ended = true
+			}
 		}
 	}
 	if ended {
@@ -457,8 +462,8 @@ func (o *forwardOrder) releaseLocked(owner, upTo uint64) {
 }
 
 // awaitTurn waits until the handler h may send to side to: until no other
-// handler holds back the side from, the other side, with a message that
-// arrived before h's own. h's own is the message from that side that h holds,
+// handler holds a message from the side from, the other side, that arrived
+// before h's own. h's own is the newest message from that side that h holds,
 // or else h's message when it came from that side. A handler with neither
 // sends at once. awaitTurn returns the arrival number of the newest message
 // that h holds, for release. It returns early with ctx's cause when ctx ends.
@@ -466,13 +471,14 @@ func (o *forwardOrder) awaitTurn(ctx context.Context, h proxyHandler, to proxySi
 	from := to.other()
 	for {
 		o.mu.Lock()
-		own, ordered := o.holds[from][h.arrival]
+		own, ordered := o.newestLocked(from, h.arrival)
 		if !ordered && h.from == from {
 			own, ordered = h.arrival, true
 		}
 		if !ordered || !o.holdsBeforeLocked(from, h.arrival, own) {
-			for _, side := range o.holds {
-				held = max(held, side[h.arrival])
+			for side := range o.held {
+				newest, _ := o.newestLocked(proxySide(side), h.arrival)
+				held = max(held, newest)
 			}
 			o.mu.Unlock()
 			return held, nil
@@ -487,11 +493,22 @@ func (o *forwardOrder) awaitTurn(ctx context.Context, h proxyHandler, to proxySi
 	}
 }
 
-// holdsBeforeLocked reports whether a handler other than owner holds back the
-// side from with a message that arrived before arrival.
+// newestLocked returns the arrival number of the newest message from side
+// from that the handler owner holds, if it holds one.
+func (o *forwardOrder) newestLocked(from proxySide, owner uint64) (newest uint64, ok bool) {
+	for arrival, by := range o.held[from] {
+		if by == owner && arrival >= newest {
+			newest, ok = arrival, true
+		}
+	}
+	return newest, ok
+}
+
+// holdsBeforeLocked reports whether a handler other than owner holds a
+// message from side from that arrived before arrival.
 func (o *forwardOrder) holdsBeforeLocked(from proxySide, owner, arrival uint64) bool {
-	for other, a := range o.holds[from] {
-		if other != owner && a < arrival {
+	for a, by := range o.held[from] {
+		if by != owner && a < arrival {
 			return true
 		}
 	}

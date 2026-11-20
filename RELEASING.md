@@ -199,8 +199,9 @@ The Release workflow refuses every real run until all four steps below are
 done, in this order. `preflight` refuses a missing `release` environment, one
 without a required reviewer, and one that lets admins bypass it. It also
 refuses when no active ruleset protects the `v*` tags. `publish` refuses,
-before it writes anything, when a secret is missing. A dry run works at any
-point, and warns about the environment and the ruleset instead.
+before it writes anything, when a secret is missing or the ruleset no longer
+protects the tags. A dry run works at any point, and warns about the
+environment and the ruleset instead.
 
 `preflight` reads the bypass setting from the `can_admins_bypass` field of
 GitHub's environment API. GitHub returns that field but does not document it.

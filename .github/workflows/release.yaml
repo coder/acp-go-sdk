@@ -472,8 +472,12 @@ jobs:
 
           # The approval wait can be long, so check the ruleset again just
           # before the tag becomes permanent.
-          if [[ -z "$RULESET" ]] || ! ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$RULESET?includes_parents=true")"; then
-            echo "::error::Could not read ruleset ${RULESET:-(none)} from preflight, so publish did not create $TAG. Use Re-run failed jobs, or start a new run if the ruleset was replaced."
+          if [[ -z "$RULESET" ]]; then
+            echo "::error::preflight found no tag ruleset, so publish did not create $TAG. Set it up as RELEASING.md describes, then start a new run."
+            exit 1
+          fi
+          if ! ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$RULESET?includes_parents=true")"; then
+            echo "::error::Could not read ruleset $RULESET from preflight, so publish did not create $TAG. Use Re-run failed jobs, or start a new run if the ruleset was replaced."
             exit 1
           fi
           if ! jq -e "$TAG_RULESET_FILTER" <<< "$ruleset" > /dev/null; then

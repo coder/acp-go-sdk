@@ -285,3 +285,76 @@ func TestWriteTypesJen_PanicsOnABoundBeyondInt64(t *testing.T) {
 	}()
 	_ = WriteTypesJen(t.TempDir(), &schema, &load.Meta{})
 }
+
+// optionalIntegersSchema has optional integers that cannot be null, whose Go
+// type is not a pointer, so an absent member reads as 0. count has no bound
+// but its format's, level and offset have a minimum and a maximum that
+// narrow their format, one that leaves out 0 and one that holds it, and hint
+// is lenient.
+const optionalIntegersSchema = `{"$defs": {
+  "TallyRequest": {"type": "object", "properties": {
+    "count": {"type": "integer", "format": "uint32"},
+    "level": {"type": "integer", "format": "uint32", "minimum": 1, "maximum": 10},
+    "offset": {"type": "integer", "format": "int32", "minimum": -5, "maximum": 5},
+    "hint": {"type": "integer", "format": "uint32", "maximum": 10, "x-deserialize-default-on-error": true}}}
+}}`
+
+const optionalIntegersTest = `package acp
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+// An optional integer that cannot be null fails to decode out of the range of
+// its format, and Validate checks its minimum and maximum when it is set.
+// Absent reads as 0, which Validate takes, and so does an explicit 0.
+func TestTallyRequest_Validate_ChecksOptionalIntegers(t *testing.T) {
+	tests := []struct {
+		payload, wantErr string
+	}{
+		{"{}", ""},
+		{` + "`" + `{"count":4294967295}` + "`" + `, ""},
+		{` + "`" + `{"count":4294967296}` + "`" + `, "cannot unmarshal number 4294967296"},
+		{` + "`" + `{"count":-1}` + "`" + `, "cannot unmarshal number -1"},
+		{` + "`" + `{"level":1}` + "`" + `, ""},
+		{` + "`" + `{"level":10}` + "`" + `, ""},
+		{` + "`" + `{"level":11}` + "`" + `, "level must be between 1 and 10"},
+		{` + "`" + `{"level":0}` + "`" + `, ""},
+		{` + "`" + `{"offset":-5}` + "`" + `, ""},
+		{` + "`" + `{"offset":-6}` + "`" + `, "offset must be between -5 and 5"},
+		{` + "`" + `{"offset":6}` + "`" + `, "offset must be between -5 and 5"},
+	}
+	for _, tt := range tests {
+		var req TallyRequest
+		err := json.Unmarshal([]byte(tt.payload), &req)
+		if err == nil {
+			err = req.Validate()
+		}
+		if got := errorText(err); tt.wantErr == "" && got != "" || !strings.Contains(got, tt.wantErr) {
+			t.Errorf("reading %s fails with %q, want %q", tt.payload, got, tt.wantErr)
+		}
+	}
+	var req TallyRequest
+	if err := json.Unmarshal([]byte(` + "`" + `{"hint":11}` + "`" + `), &req); err != nil || req.Hint != 0 {
+		t.Errorf("hint 11 reads as %d with error %v, want absent", req.Hint, err)
+	}
+	if err := (&TallyRequest{Level: 11}).Validate(); err == nil {
+		t.Error("Validate of a TallyRequest built with level 11 = nil, want an error")
+	}
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+`
+
+// No integer of schema 1.18.0 through 1.33.0 is optional and not nullable,
+// so this schema stands for one.
+func TestWriteTypesJen_ValidateChecksOptionalIntegers(t *testing.T) {
+	checkGenerated(t, optionalIntegersSchema, map[string]string{"optional_test.go": optionalIntegersTest})
+}

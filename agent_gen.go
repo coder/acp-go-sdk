@@ -11,7 +11,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 	switch method {
 	case AgentMethodAuthStatus:
 		var p UnstableAuthStatusRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -28,7 +28,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodAuthenticate:
 		var p AuthenticateRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -41,7 +41,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodInitialize:
 		var p InitializeRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -54,7 +54,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodLogout:
 		var p LogoutRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -67,7 +67,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodMcpMessage:
 		var p UnstableMessageMcpNotification
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -83,7 +83,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return nil, nil
 	case AgentMethodProvidersDisable:
 		var p UnstableDisableProviderRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -100,7 +100,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodProvidersList:
 		var p UnstableListProvidersRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -117,7 +117,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodProvidersSet:
 		var p UnstableSetProviderRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -134,7 +134,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionArchive:
 		var p UnstableArchiveSessionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -151,7 +151,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionCancel:
 		var p CancelNotification
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -164,7 +164,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return nil, nil
 	case AgentMethodSessionClose:
 		var p CloseSessionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -177,7 +177,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionDelete:
 		var p DeleteSessionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -190,7 +190,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionFork:
 		var p UnstableForkSessionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -207,7 +207,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionList:
 		var p ListSessionsRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -220,7 +220,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionLoad:
 		var p LoadSessionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -237,7 +237,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionNew:
 		var p NewSessionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -250,7 +250,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionOptions:
 		var p UnstableSessionOptionsRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -267,7 +267,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionPrompt:
 		var p PromptRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -285,7 +285,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionResume:
 		var p ResumeSessionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -298,7 +298,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionSetConfigOption:
 		var p SetSessionConfigOptionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -311,7 +311,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionSetMode:
 		var p SetSessionModeRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -324,7 +324,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionSetTitle:
 		var p UnstableSetSessionTitleRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -341,7 +341,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionStatus:
 		var p UnstableSessionStatusRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -358,7 +358,7 @@ func (a *AgentSideConnection) handle(ctx context.Context, method string, params 
 		return resp, nil
 	case AgentMethodSessionUnarchive:
 		var p UnstableUnarchiveSessionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {

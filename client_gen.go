@@ -11,7 +11,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 	switch method {
 	case ClientMethodAuthStatusUpdate:
 		var p UnstableAuthStatusUpdateNotification
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -27,7 +27,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return nil, nil
 	case ClientMethodElicitationComplete:
 		var p CompleteElicitationNotification
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -39,7 +39,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return nil, nil
 	case ClientMethodElicitationCreate:
 		var p CreateElicitationRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -52,7 +52,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodFsReadTextFile:
 		var p ReadTextFileRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -65,7 +65,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodFsWriteTextFile:
 		var p WriteTextFileRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -78,7 +78,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodMcpMessage:
 		var p UnstableMessageMcpRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -95,7 +95,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodSessionRequestPermission:
 		var p RequestPermissionRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -108,7 +108,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodSessionUpdate:
 		var p SessionNotification
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -120,7 +120,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return nil, nil
 	case ClientMethodTerminalCreate:
 		var p CreateTerminalRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -133,7 +133,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodTerminalKill:
 		var p KillTerminalRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -146,7 +146,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodTerminalOutput:
 		var p TerminalOutputRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -159,7 +159,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodTerminalRelease:
 		var p ReleaseTerminalRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {
@@ -172,7 +172,7 @@ func (c *ClientSideConnection) handle(ctx context.Context, method string, params
 		return resp, nil
 	case ClientMethodTerminalWaitForExit:
 		var p WaitForTerminalExitRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {

@@ -12,11 +12,11 @@ func jInvInvalid() Code {
 // retToReqErr: wrap error to JSON-RPC request error
 func jRetToReqErr() Code { return Return(Nil(), Id("toReqErr").Call(Id("err"))) }
 
-// jUnmarshalValidate emits var p T; json.Unmarshal; p.Validate
+// jUnmarshalValidate emits var p T; decodeJSON; p.Validate
 func jUnmarshalValidate(typeName string) []Code {
 	return []Code{
 		Var().Id("p").Id(typeName),
-		If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("params"), Op("&").Id("p")), Id("err").Op("!=").Nil()).
+		If(List(Id("err")).Op(":=").Id("decodeJSON").Call(Id("params"), Op("&").Id("p")), Id("err").Op("!=").Nil()).
 			Block(jInvInvalid()),
 		If(List(Id("err")).Op(":=").Id("p").Dot("Validate").Call(), Id("err").Op("!=").Nil()).
 			Block(jInvInvalid()),

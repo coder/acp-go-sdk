@@ -247,33 +247,36 @@ func TestUnstableProxySideConnection_ForwardsARequestWhileANotificationHandlerWa
 // $/cancel_request wrapped in proxy/successor names the proxy/successor
 // request on this connection, as a plain one does, and is never forwarded.
 func TestUnstableProxySideConnection_WrappedCancelRequestIsPerHop(t *testing.T) {
-	t.Run("handled", func(t *testing.T) {
-		started := make(chan struct{})
-		ended := make(chan error, 1)
-		p := newProxyPeer(t, func(c *UnstableProxySideConnection) UnstableProxyHandlers {
-			return UnstableProxyHandlers{FromSuccessor: UnstableProxyFromSuccessor{
-				RequestPermission: func(ctx context.Context, r RequestPermissionRequest) (RequestPermissionResponse, error) {
-					close(started)
-					select {
-					case <-ctx.Done():
-						ended <- ctx.Err()
-					case <-time.After(5 * time.Second):
-						ended <- nil
-					}
-					return RequestPermissionResponse{}, ctx.Err()
-				},
-			}}
+	// JSON can escape any character of the method, as \u005f is "_".
+	for name, method := range map[string]string{"handled": `$/cancel_request`, "handled, escaped": `$/cancel\u005frequest`} {
+		t.Run(name, func(t *testing.T) {
+			started := make(chan struct{})
+			ended := make(chan error, 1)
+			p := newProxyPeer(t, func(c *UnstableProxySideConnection) UnstableProxyHandlers {
+				return UnstableProxyHandlers{FromSuccessor: UnstableProxyFromSuccessor{
+					RequestPermission: func(ctx context.Context, r RequestPermissionRequest) (RequestPermissionResponse, error) {
+						close(started)
+						select {
+						case <-ctx.Done():
+							ended <- ctx.Err()
+						case <-time.After(5 * time.Second):
+							ended <- nil
+						}
+						return RequestPermissionResponse{}, ctx.Err()
+					},
+				}}
+			})
+			p.send(wrappedPermissionLine("c-9", "s"))
+			waitCancelTest(t, started, "the permission handler")
+			p.send(`{"jsonrpc":"2.0","method":"proxy/successor","params":{"method":"` + method + `","params":{"requestId":"c-9"}}}`)
+			if err := <-ended; err == nil {
+				t.Fatal("the wrapped $/cancel_request did not cancel the handler's ctx")
+			}
+			if m := p.next(); sentKind(t, m) != `answer "c-9"` {
+				t.Fatalf("the proxy sent %s, want only its answer to c-9", sentKind(t, m))
+			}
 		})
-		p.send(wrappedPermissionLine("c-9", "s"))
-		waitCancelTest(t, started, "the permission handler")
-		p.send(`{"jsonrpc":"2.0","method":"proxy/successor","params":{"method":"$/cancel_request","params":{"requestId":"c-9"}}}`)
-		if err := <-ended; err == nil {
-			t.Fatal("the wrapped $/cancel_request did not cancel the handler's ctx")
-		}
-		if m := p.next(); sentKind(t, m) != `answer "c-9"` {
-			t.Fatalf("the proxy sent %s, want only its answer to c-9", sentKind(t, m))
-		}
-	})
+	}
 	t.Run("forwarded", func(t *testing.T) {
 		p := newProxyPeer(t, nil)
 		p.send(wrappedPermissionLine("c-9", "s"))

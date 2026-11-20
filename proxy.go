@@ -337,7 +337,9 @@ func noParams(params json.RawMessage) bool {
 // proxy/successor notification. The RFD has the receiver treat it as a plain
 // one: its requestId names a proxy/successor request on this connection.
 func wrappedCancel(method string, params json.RawMessage) (json.RawMessage, bool) {
-	if method != ProxyMethodProxySuccessor || !bytes.Contains(params, []byte("cancel_request")) {
+	// JSON spells each character of the name as itself or as a \u escape, so
+	// params with neither the name nor an escape wrap no cancel.
+	if method != ProxyMethodProxySuccessor || !bytes.Contains(params, []byte("cancel_request")) && !bytes.Contains(params, []byte(`\u`)) {
 		return nil, false
 	}
 	var envelope struct {

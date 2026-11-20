@@ -200,7 +200,11 @@ type Connection struct {
 // stopped reading blocks, and every later write waits behind it: a handler's
 // reply, SendRequest and SendNotification. Nothing in the connection ends
 // that write, not even Done or a ctx. Once Done closes, close the transport
-// (peerInput, or the process or socket behind it) so that the writes return.
+// so that the writes return. Closing an io.Pipe, an os.Pipe, a net.Conn or a
+// child's stdin (exec.Cmd.StdinPipe) ends a blocked write. Closing os.Stdout
+// does not: when stdout is a pipe in blocking mode, as for an agent that a
+// client starts, Close returns nil and the write stays blocked until the
+// process exits. Such an agent must exit once Done closes.
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
 	limits := connectionLimits{
 		byteBudget:             defaultByteBudget,

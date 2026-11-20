@@ -41,9 +41,11 @@ func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Read
 	return asc
 }
 
-// Done exposes a channel that closes when the peer disconnects. Close the
-// transport after it closes, so that a write blocked on a peer that stopped
-// reading returns (see NewConnection).
+// Done exposes a channel that closes when the peer disconnects. After it
+// closes, close the transport so that a write blocked on a peer that stopped
+// reading returns. An agent that writes to os.Stdout must exit instead,
+// because closing a blocking stdout pipe leaves the write blocked (see
+// NewConnection).
 func (c *AgentSideConnection) Done() <-chan struct{} { return c.conn.Done() }
 
 // SetLogger directs connection diagnostics to the provided logger.

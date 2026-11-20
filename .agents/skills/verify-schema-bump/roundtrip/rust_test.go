@@ -376,8 +376,10 @@ func TestGoSide_ValidatesOnlyRequestsAndNotifications(t *testing.T) {
 	if g := goSide("CreateTerminalRequest", []byte(`{"sessionId":"s","command":""}`)); g.OK {
 		t.Error("goSide accepts a CreateTerminalRequest with an empty command, which the dispatcher rejects")
 	}
-	if g := goSide("ListSessionsResponse", []byte(`{"sessions":[{"sessionId":"","cwd":"/w"}]}`)); !g.OK {
-		t.Errorf("goSide rejects a ListSessionsResponse that Connection.SendRequest accepts: %s", g.Err)
+	// Validate rejects the empty sessionId, so this fails if goSide validates
+	// responses too.
+	if g := goSide("NewSessionResponse", []byte(`{"sessionId":""}`)); !g.OK {
+		t.Errorf("goSide rejects a NewSessionResponse that Connection.SendRequest accepts: %s", g.Err)
 	}
 }
 

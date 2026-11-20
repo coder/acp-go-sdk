@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 
 // bigParams returns params that do not fit a pipe or socket buffer, so
 // writing them blocks until the peer reads.
-func bigParams() string { return strings.Repeat("x", 64<<20) }
+func bigParams() string { return strings.Repeat("x", 4<<20) }
 
 // TestConnection_CloseTransportEndsBlockedWrite checks what the NewConnection
 // godoc tells callers: Done does not end a write to a peer that stopped
@@ -76,6 +76,9 @@ func TestConnection_CloseTransportEndsBlockedWrite(t *testing.T) {
 			}
 			peer := <-accepted
 			t.Cleanup(func() { _ = peer.Close() })
+			// Small buffers, so that bigParams fills them.
+			_ = w.(*net.TCPConn).SetWriteBuffer(64 << 10)
+			_ = peer.(*net.TCPConn).SetReadBuffer(64 << 10)
 			return w, w
 		}},
 		{name: "child stdin", open: func(t *testing.T) (io.Writer, io.Closer) {

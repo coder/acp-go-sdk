@@ -1071,7 +1071,7 @@ func (a unionAlternative) values(union string) []Code {
 		if lit == nil {
 			b, _ := json.Marshal(value)
 			if t == "" {
-				panic(fmt.Sprintf("an alternative of union %q names the value %s, but its type has no JSON type, so the decoder cannot check it; give the type one", union, b))
+				panic(fmt.Sprintf("an alternative of union %q names the value %s, but the schema it refers to has no single JSON type to check that value against, such as a oneOf of consts", union, b))
 			}
 			panic(fmt.Sprintf("an alternative of type %s of union %q names the value %s, which its Go type cannot hold exactly", t, union, b))
 		}

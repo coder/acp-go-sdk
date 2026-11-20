@@ -74,9 +74,9 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 		"Env":      "map[string]string",
 		"Loose":    "map[string]json.RawMessage",
 		"Frees":    "map[string]Free",
-		"Count":    "int64",
+		"Count":    "uint32",
 		"Size":     "*int64",
-		"Port":     "int",
+		"Port":     "uint16",
 	}
 	for name, typ := range want {
 		if fields[name] != typ {

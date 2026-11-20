@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -500,19 +499,16 @@ func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
 	return ""
 }
 
-// integerType is the Go type of an integer schema: int64 for a format whose
-// range (formatRange) goes beyond an int32, which are int64, uint32, and
-// uint64, so that a 32-bit target holds every value that a peer sends (such
-// as the exit code 3221225477 of a Windows process, or a token count above
-// 2^31), and int otherwise. A uint64 above 2^63 does not fit; no ACP value
-// comes near it.
+// integerType is the Go type of an integer schema: the Go type of the Rust
+// type that its format names (formatType), such as uint32 for "uint32", and
+// int without a format. It reads the values that the Rust SDK reads and no
+// other, on every target.
 func integerType(d *load.Definition) *Statement {
-	if d != nil && d.Format != "" {
-		if r := formatRange(d.Format); r.min < math.MinInt32 || r.max > math.MaxInt32 {
-			return Int64()
-		}
+	var format string
+	if d != nil {
+		format = d.Format
 	}
-	return Int()
+	return Id(formatType(format).name)
 }
 
 // Type mapping helpers (unchanged behavior vs original)

@@ -13,9 +13,10 @@ import (
 	"testing"
 )
 
-// An integer of format int64, uint32, or uint64 is an int64, so that a
-// 32-bit target reads every value that a peer sends: the exit code of a
-// Windows process that crashed, and a token count above 2^31.
+// An integer of format uint32, int64 or uint64 is a uint32, an int64 or a
+// uint64, never an int, so that a 32-bit target reads every value that a
+// peer sends: the exit code of a Windows process that crashed, and a token
+// count above 2^31.
 func TestIntegers_HoldEveryValueOnA32BitTarget(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -148,23 +149,23 @@ func sameJSON(t *testing.T, a []byte, b string) bool {
 }
 
 // The ReadTextFile of example_client_test.go clamps line and limit to the
-// file, so that a request with the largest int64 values reads the end of the
-// file instead of panicking.
+// file, so that a request with the largest uint32 values reads the end of the
+// file instead of panicking, also on a 32-bit target.
 func TestClientExample_ReadTextFileClampsLineAndLimit(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "f.txt")
 	if err := os.WriteFile(path, []byte("a\nb\nc"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	const huge = int64(math.MaxInt64)
+	const huge = uint32(math.MaxUint32)
 	tests := []struct {
-		line, limit *int64
+		line, limit *uint32
 		want        string
 	}{
-		{Ptr[int64](2), Ptr[int64](1), "b"},
-		{Ptr[int64](2), Ptr(huge), "b\nc"},
+		{Ptr[uint32](2), Ptr[uint32](1), "b"},
+		{Ptr[uint32](2), Ptr(huge), "b\nc"},
 		{Ptr(huge), Ptr(huge), ""},
-		{Ptr[int64](-1), nil, "a\nb\nc"},
+		{Ptr[uint32](0), nil, "a\nb\nc"},
 	}
 	for _, tt := range tests {
 		got, err := clientExample{}.ReadTextFile(context.Background(), ReadTextFileRequest{Path: path, Line: tt.line, Limit: tt.limit})

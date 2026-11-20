@@ -35,8 +35,8 @@ type fieldCheck struct {
 	// via must be in; nil means no check.
 	bounds *intRange
 	// boundsInInt64 says that a bound does not fit an int32 and the Go type
-	// of the integer is not int64, so the check compares it as an int64: an
-	// int is 32 bits wide on some targets.
+	// of the integer is int, which is 32 bits wide on some targets, so the
+	// check compares it as an int64.
 	boundsInInt64 bool
 	via           []container
 }
@@ -56,8 +56,9 @@ type fieldCheck struct {
 // descends: a pointer when it is not nil, each item and member, a Patch when
 // it is set, and a struct or union itself only when it is required, because
 // an absent optional one looks like its zero value. An integer that the field
-// holds the same way must be in the range of its format, minimum and maximum
-// (heldRange), because Rust reads it as the Rust type that its format names.
+// holds the same way must be within the minimum and maximum that its Go type
+// does not enforce (heldRange). The Go type of an integer holds the range of
+// its format, as the Rust type that the format names does.
 // A lenient field (x-deserialize-default-on-error or
 // x-deserialize-skip-invalid-items) neither descends nor checks a range: Rust
 // reads a bad value there as the default, and the shape of the field holds
@@ -113,10 +114,11 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 		c.descends = len(b.checkPlan(ir.Fields(def.Properties, def.Required), false, nil)) > 0
 	} else {
 		c.descends = b.validates(leaf)
-		if b.integerGoType(leaf) {
+		goType := b.integerGoType(leaf)
+		if goType != "" {
 			c.bounds = b.heldRange(def, c.via)
 		}
-		c.boundsInInt64 = c.bounds != nil && leaf != "int64" && (c.bounds.min < math.MinInt32 || c.bounds.max > math.MaxInt32)
+		c.boundsInInt64 = c.bounds != nil && goType == "int" && (c.bounds.min < math.MinInt32 || c.bounds.max > math.MaxInt32)
 	}
 	return c
 }
@@ -142,16 +144,24 @@ func peelContainers(goType Code) ([]container, string) {
 	}
 }
 
-// integerGoType reports whether name, the Go type that a field holds, is an
-// integer: int, int64, or a $defs entry that becomes a named integer type. A
-// range check compares only such a value; raw JSON, such as a $defs entry
-// with a $ref and a bound but no type, gets none.
-func (b *typesBuilder) integerGoType(name string) bool {
-	if name == "int" || name == "int64" {
-		return true
+// integerGoType returns the Go integer type of name, the Go type that a field
+// holds: name itself when it is int or a type of formatTypes, the underlying
+// type when name is a $defs entry that becomes a named integer type, and ""
+// otherwise. A range check compares only such a value; raw JSON, such as a
+// $defs entry with a $ref and a bound but no type, gets none.
+func (b *typesBuilder) integerGoType(name string) string {
+	if name == "int" {
+		return name
 	}
-	def := b.schema.Defs[name]
-	return def != nil && classify(def) == primitiveKind && ir.PrimaryType(def) == "integer"
+	for _, t := range formatTypes {
+		if t.name == name {
+			return name
+		}
+	}
+	if def := b.schema.Defs[name]; def != nil && classify(def) == primitiveKind && ir.PrimaryType(def) == "integer" {
+		return formatType(def.Format).name
+	}
+	return ""
 }
 
 // stringType reports whether name is a $defs entry that becomes a named

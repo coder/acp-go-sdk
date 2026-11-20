@@ -18,6 +18,10 @@ const (
 	items                    // []T: each item
 	members                  // map[string]T: each member
 	patch                    // Patch[T]: the value when it is set
+	// nonZero is an optional member whose Go type is not a pointer: the
+	// value when it is not 0, which an absent member reads as. Only an
+	// integer is held this way.
+	nonZero
 )
 
 // fieldCheck is the check plan of one struct field: what the Validate method
@@ -56,9 +60,10 @@ type fieldCheck struct {
 // descends: a pointer when it is not nil, each item and member, a Patch when
 // it is set, and a struct or union itself only when it is required, because
 // an absent optional one looks like its zero value. An integer that the field
-// holds the same way must be within the minimum and maximum that its Go type
-// does not enforce (heldRange). The Go type of an integer holds the range of
-// its format, as the Rust type that the format names does.
+// holds the same way, or holds itself while optional and not 0 (nonZero),
+// must be within the minimum and maximum that its Go type does not enforce
+// (heldRange). The Go type of an integer holds the range of its format, as
+// the Rust type that the format names does.
 // A lenient field (x-deserialize-default-on-error or
 // x-deserialize-skip-invalid-items) neither descends nor checks a range: Rust
 // reads a bad value there as the default, and the shape of the field holds
@@ -107,18 +112,22 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 		}
 	}
 
-	if field.Lenient.DefaultOnError || field.Lenient.SkipInvalidItems || (len(c.via) == 0 && !field.Required) {
+	optional := len(c.via) == 0 && !field.Required
+	if field.Lenient.DefaultOnError || field.Lenient.SkipInvalidItems || (optional && nested) {
 		return c
 	}
 	if nested {
 		c.descends = len(b.checkPlan(ir.Fields(def.Properties, def.Required), false, nil)) > 0
-	} else {
-		c.descends = b.validates(leaf)
-		goType := b.integerGoType(leaf)
-		if goType != "" {
-			c.bounds = b.heldRange(def, c.via)
-		}
-		c.boundsInInt64 = c.bounds != nil && goType == "int" && (c.bounds.min < math.MinInt32 || c.bounds.max > math.MaxInt32)
+		return c
+	}
+	c.descends = b.validates(leaf) && !optional
+	goType := b.integerGoType(leaf)
+	if goType != "" {
+		c.bounds = b.heldRange(def, c.via)
+	}
+	c.boundsInInt64 = c.bounds != nil && goType == "int" && (c.bounds.min < math.MinInt32 || c.bounds.max > math.MaxInt32)
+	if optional && c.bounds != nil {
+		c.via = []container{nonZero}
 	}
 	return c
 }
@@ -294,6 +303,8 @@ func eachHeld(value *Statement, via []container, path string, args []Code, depth
 	switch via[0] {
 	case pointer:
 		return If(value.Clone().Op("!=").Nil()).Block(at(value.Clone(), depth))
+	case nonZero:
+		return If(value.Clone().Op("!=").Lit(0)).Block(check(value.Clone(), false, path, args))
 	case patch:
 		p := name("p")
 		return If(p.Clone().Op(":=").Add(value.Clone()).Dot("Ptr").Call(), p.Clone().Op("!=").Nil()).Block(at(p.Clone(), depth+1))

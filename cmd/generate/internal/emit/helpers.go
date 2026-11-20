@@ -25,7 +25,7 @@ func WriteHelpersJen(outDir string, schema *load.Schema, meta *load.Meta) error 
 
 	// Build the types once and take each union's variants exactly as emitUnion
 	// emitted and named them, so every constructor builds a type that exists.
-	_, emitted := buildTypesJen(schema, meta)
+	_, _, emitted := buildTypesJen(schema, meta)
 
 	// Iterate definitions deterministically
 	keys := make([]string, 0, len(schema.Defs))

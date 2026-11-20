@@ -226,6 +226,12 @@ func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, pointers bool) Co
 	if !field.Required && !p.fillNilOnEncode && (!p.patch || pointers) {
 		tag += ",omitempty"
 	}
+	return Id(field.Name).Add(declType(p, nestedTypeNames, pointers)).Tag(map[string]string{"json": tag})
+}
+
+// declType returns the Go type of the field of p, as fieldDecl declares it.
+func declType(p fieldPlan, nestedTypeNames map[string]string, pointers bool) Code {
+	field := p.field
 	var typ Code
 	nestedTypeName, ok := nestedTypeNames[field.Prop]
 	value := patchValueType(field)
@@ -245,7 +251,7 @@ func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, pointers bool) Co
 	default:
 		typ = fieldType(field)
 	}
-	return Id(field.Name).Add(typ).Tag(map[string]string{"json": tag})
+	return typ
 }
 
 // metaProperty is the property that ACP reserves on its types for
@@ -356,6 +362,7 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 
 	if open || slices.ContainsFunc(plans, fieldPlan.decoded) {
 		f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
+			g.Add(tryFastStmt("v"))
 			// emitRequireMembers reads a zero required field as a member that
 			// the JSON may lack, so each one starts at zero. The JSON must set
 			// it anyway; the other fields keep what a reused value holds.
@@ -383,6 +390,7 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 		})
 		f.Line()
 	}
+	b.emitFastStruct(name, plans, nestedTypeNames, open)
 
 	checks := b.checkPlan(fields, nestedTypeNames != nil, plain)
 	if len(checks) > 0 || isMessage(name) {

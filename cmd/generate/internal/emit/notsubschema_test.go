@@ -1,6 +1,13 @@
 package emit
 
-import "testing"
+import (
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
+)
 
 // notSubschemaSchema has hinted properties whose schemas use not with a
 // subschema that the shapes cannot say all of: a keyword that they do not
@@ -61,7 +68,7 @@ func TestHolder_UnmarshalJSON_KeepsWhatTheNotSubschemaDoesNotMatch(t *testing.T)
 		{` + "`" + `{"oneOf":"a"}` + "`" + `, ` + "`" + `{"oneOf":"a"}` + "`" + `},
 		{` + "`" + `{"hinted":{"a":"s"}}` + "`" + `, ` + "`" + `{"hinted":{"a":"s"}}` + "`" + `},
 		{` + "`" + `{"otherMember":"b"}` + "`" + `, ` + "`" + `{"otherMember":"b"}` + "`" + `},
-		{` + "`" + `{"pair":{"tag":"ab","other":{"tag":"b"}}}` + "`" + `, ` + "`" + `{"pair":{"tag":"ab","other":{"tag":"b"}}}` + "`" + `},
+		{` + "`" + `{"pair":{"tag":"ab","other":{"tag":"b"}}}` + "`" + `, ` + "`" + `{"pair":{"other":{"tag":"b"},"tag":"ab"}}` + "`" + `},
 		{` + "`" + `{"notChain":{"tag":"x","next":{"tag":"z"}}}` + "`" + `, ` + "`" + `{"notChain":{"next":{"tag":"z"},"tag":"x"}}` + "`" + `},
 		{` + "`" + `{"partial":"hello"}` + "`" + `, ` + "`" + `{"partial":"hello"}` + "`" + `},
 		// The subschema matches these values, so the shapes reject them.
@@ -85,4 +92,27 @@ func TestHolder_UnmarshalJSON_KeepsWhatTheNotSubschemaDoesNotMatch(t *testing.T)
 
 func TestWriteTypesJen_NotKeepsWhatItsSubschemaDoesNotMatch(t *testing.T) {
 	checkGenerated(t, notSubschemaSchema, map[string]string{"not_subschema_test.go": notSubschemaTest})
+}
+
+// TestShapeTable_NodeReadsEachKeywordThatDefinitionHolds fails when
+// load.Definition gains a field for a keyword that node neither translates
+// nor knows to constrain no value. Definition.Unmodeled leaves out each
+// keyword that a field holds, so an under-approximation would fit values
+// that such a keyword rejects, and a not would reject values that its
+// subschema does not match.
+func TestShapeTable_NodeReadsEachKeywordThatDefinitionHolds(t *testing.T) {
+	translated := []string{"$ref", "allOf", "type", "const", "enum", "format", "minimum", "maximum", "required",
+		"additionalProperties", "properties", "items", "anyOf", "oneOf", "not"}
+	// Definition holds these only in a form that constrains no value: the
+	// annotations, the OpenAPI discriminator, and unevaluatedProperties,
+	// which it holds only when it is true. The x- hints only widen a value.
+	free := []string{"description", "title", "default", "discriminator", "unevaluatedProperties"}
+	typ := reflect.TypeOf(load.Definition{})
+	for i := 0; i < typ.NumField(); i++ {
+		k, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
+		if k == "" || k == "-" || strings.HasPrefix(k, "x-") || slices.Contains(translated, k) || slices.Contains(free, k) {
+			continue
+		}
+		t.Errorf("load.Definition holds %q, which node does not translate: translate it, or list it in free if it constrains no value", k)
+	}
 }

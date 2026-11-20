@@ -3,6 +3,7 @@ package emit
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -16,7 +17,7 @@ import (
 // check. The type shape in the root package's shape.go reads it at run time,
 // and its comment says what a value must do to fit.
 type shapeNode struct {
-	ref      string // a $defs entry
+	ref      string // a key of defs: a $defs entry or its under-approximation
 	kinds    []string
 	values   []any
 	ints     *intRange
@@ -44,18 +45,44 @@ var jsonKinds = map[string][]string{
 // each hinted property whose schema is not a $ref.
 type shapeTable struct {
 	schema *load.Schema
-	// defs holds the node of each $defs entry that node has translated.
+	// defs holds the node of each $defs entry that node has translated, by
+	// its key (def).
 	defs map[string]*shapeNode
+	// underKeys maps a $defs entry to the key of its under-approximation.
+	underKeys map[string]string
 	// sites maps the name of each shapeID constant that a decoder names to
 	// its node: a $defs entry, or the schema of one property.
 	sites map[string]*shapeNode
-	// strictDefs holds the $defs entries whose node is strict.
+	// strictDefs holds the keys of defs whose node is strict.
 	strictDefs map[string]bool
 }
 
 func newShapeTable(schema *load.Schema) *shapeTable {
-	return &shapeTable{schema: schema, defs: map[string]*shapeNode{}, sites: map[string]*shapeNode{}, strictDefs: map[string]bool{}}
+	return &shapeTable{
+		schema: schema, defs: map[string]*shapeNode{}, underKeys: map[string]string{},
+		sites: map[string]*shapeNode{}, strictDefs: map[string]bool{},
+	}
 }
+
+// approx is the way that the node of a schema may differ from the schema
+// where the shapes cannot say a rule of it, such as a keyword that
+// load.Definition does not hold or an allOf part besides a $ref. An
+// over-approximation drops the rule, so it fits every value that the schema
+// matches: a decoder must keep each such value. An under-approximation fits
+// no value then, so it fits only values that the schema matches. A value
+// fits not when it does not fit the subschema, so node translates the
+// subschema of a not the other way, and the not rejects only values that the
+// subschema matches.
+//
+// An over-approximation also reads the x-deserialize hints and the enum
+// member "other" as the Rust types do, which take more values than the
+// schema. An under-approximation reads them as JSON Schema does.
+type approx bool
+
+const (
+	over  approx = false
+	under approx = true
+)
 
 // site returns the shapeID constant that the decoder of field, a property of
 // the struct owner with x-deserialize-default-on-error or
@@ -71,7 +98,7 @@ func (t *shapeTable) site(owner string, field ir.Field, goType Code) Code {
 	if def == nil {
 		return nil
 	}
-	n := t.node(withoutNull(def))
+	n := t.node(withoutNull(def), over)
 	if withoutNull(def) != def {
 		// A bound next to the null alternative holds for the value too.
 		if r := ownRange(t.schema, def); r != nil {
@@ -88,13 +115,19 @@ func (t *shapeTable) site(owner string, field ir.Field, goType Code) Code {
 		t.sites[shapeConst(n.ref)] = t.defs[n.ref]
 		return Id(shapeConst(n.ref))
 	}
-	// A $defs entry or another property can have the name already.
-	name := "shape" + owner + field.Name
-	for i := 2; t.sites[name] != nil || t.schema.Defs[strings.TrimPrefix(name, "shape")] != nil; i++ {
-		name = fmt.Sprintf("shape%s%s%d", owner, field.Name, i)
+	key := owner + field.Name
+	for i := 2; t.taken(key); i++ {
+		key = fmt.Sprintf("%s%s%d", owner, field.Name, i)
 	}
-	t.sites[name] = n
-	return Id(name)
+	t.sites[shapeConst(key)] = n
+	return Id(shapeConst(key))
+}
+
+// taken reports whether the shapeID constant of key names a node already: a
+// $defs entry, translated or not, a node of defs, or a site.
+func (t *shapeTable) taken(key string) bool {
+	_, translated := t.defs[key]
+	return translated || t.schema.Defs[key] != nil || t.sites[shapeConst(key)] != nil
 }
 
 // withoutNull returns the one alternative of d that is not null, when d is
@@ -141,60 +174,75 @@ func (n *shapeNode) untypedRules(goType string) bool {
 
 func shapeConst(def string) string { return "shape" + def }
 
-// node translates the schema d into a shape node, and each $defs entry that
-// it refers to. A nil node fits every value.
-func (t *shapeTable) node(d *load.Definition) *shapeNode {
+// node translates the schema d into a shape node that approximates it as a
+// says, and each $defs entry that it refers to. A nil node fits every value.
+func (t *shapeTable) node(d *load.Definition, a approx) *shapeNode {
 	if d == nil {
 		return nil
 	}
-	if d.IsFalse() {
-		return &shapeNode{not: &shapeNode{}} // as {"not": {}}: no value fits
+	if d.IsFalse() || a == under && len(d.Unmodeled()) > 0 {
+		return never()
 	}
 	n := &shapeNode{}
+	// lost records whether n drops a rule of d.
+	lost := false
 	ref := d.Ref
 	for _, part := range d.AllOf {
-		// Every allOf from schema 0.13.5 through 1.32.0 wraps one $ref.
-		// Another part adds no rule, so the shape fits more values.
-		if ref == "" && part != nil && part.Ref != "" {
+		// A node holds one $ref, and every allOf from schema 0.13.5 through
+		// 1.32.0 wraps one $ref. The other parts are lost.
+		if ref == "" && part != nil && part.Ref != "" && (a == over || t.node(part, under).onlyRef()) {
 			ref = part.Ref
+			continue
 		}
+		lost = true
 	}
 	if ref != "" {
-		n.ref = t.def(strings.TrimPrefix(ref, "#/$defs/"))
+		n.ref = t.def(strings.TrimPrefix(ref, "#/$defs/"), a)
 	}
 	n.kinds = kindsOf(d.Type)
-	switch {
-	case d.Const != nil:
-		n.values = scalars([]any{d.Const})
-	case len(d.Enum) > 0 && !hasOtherMember(d):
-		n.values = scalars(d.Enum)
-	default:
-		// The values of an enum or a const decide alone.
-		n.ints = ownRange(t.schema, d)
+	if !t.scalarRules(n, d, a) {
+		lost = true
 	}
 	n.required = d.Required
-	n.rest = t.node(d.AdditionalProperties.Schema)
+	n.rest = t.node(d.AdditionalProperties.Schema, a)
 	for _, k := range sortedPropertyKeys(d.Properties) {
 		// A property that takes every value stays named while rest has a
 		// rule, so that rest does not apply to it.
-		if m := t.member(d.Properties[k]); m != nil || n.rest != nil {
+		if m := t.member(d.Properties[k], a); m != nil || n.rest != nil {
 			if n.props == nil {
 				n.props = map[string]*shapeNode{}
 			}
 			n.props[k] = m
 		}
 	}
-	n.items = t.node(d.Items)
+	n.items = t.node(d.Items, a)
 	alts := d.AnyOf
-	if len(alts) == 0 {
+	switch {
+	case len(alts) == 0:
 		alts = d.OneOf
+		// n takes them as an anyOf, but a oneOf also rejects a value that
+		// fits more than one of them.
+		lost = lost || len(alts) > 1
+	case len(d.OneOf) > 0:
+		lost = true // the oneOf beside the anyOf
 	}
 	if len(alts) > 0 {
-		t.alternatives(n, d, alts)
+		t.alternatives(n, d, alts, a)
 	}
-	n.not = t.node(d.Not)
-	if d.Not.IsTrue() {
-		n.not = &shapeNode{} // d.Not fits every value, so n fits none
+	if d.Not != nil {
+		// A value fits n only when it does not fit d.Not, so node
+		// approximates d.Not the other way (approx).
+		switch sub := t.node(d.Not, !a); {
+		case sub == nil:
+			n.not = &shapeNode{} // d.Not fits every value, so n fits none
+		case reflect.DeepEqual(sub, never()):
+			// No value fits d.Not, so the not takes no value away.
+		default:
+			n.not = sub
+		}
+	}
+	if lost && a == under {
+		return never()
 	}
 	if n.empty() {
 		return nil
@@ -202,21 +250,46 @@ func (t *shapeTable) node(d *load.Definition) *shapeNode {
 	return n
 }
 
+// never returns a node that no value fits, as {"not": {}}.
+func never() *shapeNode { return &shapeNode{not: &shapeNode{}} }
+
+// scalarRules sets the rules of n that the const, enum, format, minimum and
+// maximum of d make, and reports whether n says all of them.
+func (t *shapeTable) scalarRules(n *shapeNode, d *load.Definition, a approx) bool {
+	switch {
+	case d.Const != nil:
+		n.values = scalars([]any{d.Const})
+	case len(d.Enum) > 0 && (a == under || !hasOtherMember(d)):
+		// An over-approximation reads a value that the enum does not list
+		// as its member "other", as the Rust types do.
+		n.values = scalars(d.Enum)
+	default:
+		n.ints = ownRange(t.schema, d)
+		// ints holds integers, so it drops the bounds of other numbers.
+		return d.Minimum == "" && d.Maximum == "" || integer(t.schema, d)
+	}
+	// The values decide alone: n drops an array or object value, an enum
+	// beside a const, and the range of the values.
+	return n.values != nil && (d.Const == nil || len(d.Enum) == 0) && ownRange(t.schema, d) == nil
+}
+
 // alternatives sets the rules of n that the alternatives alts make. When
 // every alternative is a const, n takes their values. When one alternative
 // takes every value of the kinds of the others, as in an open enum, n takes
 // those kinds. An enum with the member "other" takes every string: the Rust
 // types read an unknown value as that member. Otherwise n takes anyOf.
-func (t *shapeTable) alternatives(n *shapeNode, d *load.Definition, alts []*load.Definition) {
+// Those folds can fit a value that no alternative fits, such as the value of
+// a const whose type rejects it, so an under-approximation takes anyOf.
+func (t *shapeTable) alternatives(n *shapeNode, d *load.Definition, alts []*load.Definition, a approx) {
 	nodes := make([]*shapeNode, 0, len(alts))
 	for _, alt := range alts {
-		an := t.node(alt)
+		an := t.node(alt, a)
 		if an == nil {
 			return // an alternative that takes every value
 		}
 		nodes = append(nodes, an)
 	}
-	if !slices.ContainsFunc(nodes, func(an *shapeNode) bool { return !an.onlyScalar() }) {
+	if a == over && !slices.ContainsFunc(nodes, func(an *shapeNode) bool { return !an.onlyScalar() }) {
 		var values []any
 		var kinds, open []string // the kinds of all alternatives, and of those without values
 		for _, an := range nodes {
@@ -294,15 +367,19 @@ func intersectKinds(a, b []string) []string {
 	return mergeKinds(nil, both)
 }
 
-// member returns the node of a property, changed by its hints as the Rust
-// types read it: a property with x-deserialize-default-on-error takes every
-// value, one with x-deserialize-skip-invalid-items takes every item, and
-// one with x-deserialize-default-on-null takes null.
-func (t *shapeTable) member(d *load.Definition) *shapeNode {
+// member returns the node of a property. An over-approximation changes it by
+// its hints as the Rust types read it: a property with
+// x-deserialize-default-on-error takes every value, one with
+// x-deserialize-skip-invalid-items takes every item, and one with
+// x-deserialize-default-on-null takes null.
+func (t *shapeTable) member(d *load.Definition, a approx) *shapeNode {
+	if a == under {
+		return t.node(d, under)
+	}
 	if d == nil || d.DefaultOnError {
 		return nil
 	}
-	n := t.node(d)
+	n := t.node(d, over)
 	if n != nil && d.SkipInvalidItems {
 		c := *n
 		c.items = nil
@@ -317,13 +394,27 @@ func (t *shapeTable) member(d *load.Definition) *shapeNode {
 	return n
 }
 
-// def translates the $defs entry name, once, and returns name.
-func (t *shapeTable) def(name string) string {
-	if _, ok := t.defs[name]; !ok {
-		t.defs[name] = nil // a $ref back to name, while it is translated
-		t.defs[name] = t.node(t.schema.Defs[name])
+// def translates the $defs entry name, once for each approximation, and
+// returns the key of its node in defs: name for an over-approximation, and
+// a key of its own, nameUnder, for an under-approximation, which the not of
+// a $ref needs.
+func (t *shapeTable) def(name string, a approx) string {
+	key := name
+	if a == under {
+		if t.underKeys[name] == "" {
+			key = name + "Under"
+			for i := 2; t.taken(key); i++ {
+				key = fmt.Sprintf("%sUnder%d", name, i)
+			}
+			t.underKeys[name] = key
+		}
+		key = t.underKeys[name]
 	}
-	return name
+	if _, ok := t.defs[key]; !ok {
+		t.defs[key] = nil // a $ref back to key, while it is translated
+		t.defs[key] = t.node(t.schema.Defs[name], a)
+	}
+	return key
 }
 
 func (n *shapeNode) empty() bool {

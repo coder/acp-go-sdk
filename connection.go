@@ -8,10 +8,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
 const notificationQueueDrainTimeout = 5 * time.Second
@@ -235,7 +237,9 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 }
 
 // SetLogger installs a logger used for internal connection diagnostics.
-// If unset, logs are written via the default logger.
+// If unset, logs are written via the default logger. A record carries at most
+// the first 1 KiB of each value from the peer, such as a bad input line, and
+// then that value's length.
 func (c *Connection) SetLogger(l *slog.Logger) { c.logger.Store(l) }
 
 func (c *Connection) loggerOrDefault() *slog.Logger {
@@ -243,6 +247,23 @@ func (c *Connection) loggerOrDefault() *slog.Logger {
 		return l
 	}
 	return slog.Default()
+}
+
+// maxLoggedPeerBytes bounds the text from the peer in one log attribute.
+const maxLoggedPeerBytes = 1024
+
+// peerText returns s, text that the peer controls, for a log attribute: whole
+// up to maxLoggedPeerBytes, else cut there at a rune start and followed by
+// its length. One input line can be 10 MiB, and a record must not carry it.
+func peerText[T ~string | ~[]byte](s T) string {
+	if len(s) <= maxLoggedPeerBytes {
+		return string(s)
+	}
+	n := maxLoggedPeerBytes
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return string(s[:n]) + "... (" + strconv.Itoa(len(s)) + " bytes)"
 }
 
 const (
@@ -495,7 +516,7 @@ func (c *Connection) receive() {
 
 		var msg anyMessage
 		if err := json.Unmarshal(line, &msg); err != nil {
-			c.loggerOrDefault().Error("failed to parse incoming message", "err", err, "raw", string(line))
+			c.loggerOrDefault().Error("failed to parse incoming message", "err", err, "raw", peerText(line), "len", len(line))
 			continue
 		}
 
@@ -514,16 +535,16 @@ func (c *Connection) receive() {
 			if msg.ID != nil {
 				idKey, err := canonicalJSONRPCIDKey(*msg.ID)
 				if err != nil {
-					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", string(*msg.ID))
+					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", peerText(*msg.ID))
 					idKey = string(*msg.ID)
 				}
 				// The request keeps its id twice: in msg for the reply, and
 				// as the key in c.inflight.
 				size += len(idKey)
 				if rejection := c.budget.holdRequest(size); rejection != nil {
-					c.loggerOrDefault().Warn("rejected request from the peer", "method", msg.Method, "err", rejection)
+					c.loggerOrDefault().Warn("rejected request from the peer", "method", peerText(msg.Method), "err", rejection)
 					if !c.queueRejection(&msg, rejection) {
-						c.loggerOrDefault().Error("the peer does not read the rejections of its requests; closing connection", "err", errRejectionQueueOverflow, "method", msg.Method, "queued", len(c.rejections))
+						c.loggerOrDefault().Error("the peer does not read the rejections of its requests; closing connection", "err", errRejectionQueueOverflow, "method", peerText(msg.Method), "queued", len(c.rejections))
 						c.shutdownReceive(errRejectionQueueOverflow)
 						return
 					}
@@ -579,7 +600,7 @@ func (c *Connection) receive() {
 			}
 
 			if !c.budget.holdNotification(size) {
-				c.loggerOrDefault().Error("notification does not fit the byte budget; closing connection", "err", errByteBudgetExceeded, "method", msg.Method, "size", size, "budget", c.budget.maxBytes)
+				c.loggerOrDefault().Error("notification does not fit the byte budget; closing connection", "err", errByteBudgetExceeded, "method", peerText(msg.Method), "size", size, "budget", c.budget.maxBytes)
 				c.shutdownReceive(errByteBudgetExceeded)
 				return
 			}
@@ -612,7 +633,7 @@ func (c *Connection) receive() {
 				return
 			}
 		default:
-			c.loggerOrDefault().Error("received message with neither id nor method", "raw", string(line))
+			c.loggerOrDefault().Error("received message with neither id nor method", "raw", peerText(line), "len", len(line))
 		}
 	}
 
@@ -682,7 +703,7 @@ func (c *Connection) processNotifications() {
 func (c *Connection) handleResponse(msg *anyMessage) {
 	idStr, err := canonicalJSONRPCIDKey(*msg.ID)
 	if err != nil {
-		c.loggerOrDefault().Error("failed to canonicalize response id", "err", err, "id", string(*msg.ID))
+		c.loggerOrDefault().Error("failed to canonicalize response id", "err", err, "id", peerText(*msg.ID))
 		idStr = string(*msg.ID)
 	}
 
@@ -718,7 +739,7 @@ func (c *Connection) handleCancelRequest(msg *anyMessage) {
 
 	idKey, err := canonicalJSONRPCIDKey(p.RequestID)
 	if err != nil {
-		c.loggerOrDefault().Error("failed to canonicalize $/cancel_request requestId", "err", err, "requestId", string(p.RequestID))
+		c.loggerOrDefault().Error("failed to canonicalize $/cancel_request requestId", "err", err, "requestId", peerText(p.RequestID))
 		idKey = string(p.RequestID)
 	}
 
@@ -759,10 +780,10 @@ func (c *Connection) handleInbound(ctx context.Context, req *anyMessage) {
 				// A notification needs no answer, so one that this side does
 				// not handle, such as an optional method that the Client or
 				// Agent does not implement, is not a failure.
-				c.loggerOrDefault().Debug("ignored unhandled notification", "method", req.Method, "err", err)
+				c.loggerOrDefault().Debug("ignored unhandled notification", "method", peerText(req.Method), "err", peerText(err.Error()))
 				return
 			}
-			c.loggerOrDefault().Error("failed to handle notification", "method", req.Method, "err", err)
+			c.loggerOrDefault().Error("failed to handle notification", "method", peerText(req.Method), "err", peerText(err.Error()))
 		}
 		return
 	}
@@ -1300,7 +1321,7 @@ func (c *Connection) Done() <-chan struct{} {
 // instead of waiting for one that never comes.
 func (c *Connection) encodableError(method string, err *RequestError) *RequestError {
 	if _, mErr := json.Marshal(err); mErr != nil {
-		c.loggerOrDefault().Error("failed to encode the error of a request handler", "method", method, "err", mErr)
+		c.loggerOrDefault().Error("failed to encode the error of a request handler", "method", peerText(method), "err", mErr)
 		return NewInternalError(map[string]any{"error": mErr.Error()})
 	}
 	return err

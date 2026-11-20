@@ -81,9 +81,13 @@ func TestConnection_LogsBoundedPeerText(t *testing.T) {
 		line string
 		opts []ConnectionOption
 		msg  string
+		// also is a part of the record besides msg, such as the length of
+		// the value it cut.
+		also string
 	}{
-		{name: "invalid JSON", line: big, msg: "failed to parse incoming message"},
-		{name: "neither id nor method", line: `{"jsonrpc":"2.0","result":"` + big + `"}`, msg: "received message with neither id nor method"},
+		{name: "invalid JSON", line: big, msg: "failed to parse incoming message", also: `"len":1048576`},
+		{name: "neither id nor method", line: `{"jsonrpc":"2.0","result":"` + big + `"}`, msg: "received message with neither id nor method", also: `"len":1048605`},
+		{name: "multibyte line", line: "\"" + strings.Repeat("é", 1<<19), msg: "failed to parse incoming message", also: `"raw":"\"` + strings.Repeat("é", 511) + `... (1048577 bytes)"`},
 		{name: "request id", line: `{"jsonrpc":"2.0","id":{"k":"` + big + `"},"method":"ok"}`, msg: "failed to canonicalize inbound request id"},
 		{name: "response id", line: `{"jsonrpc":"2.0","id":{"k":"` + big + `"},"result":null}`, msg: "failed to canonicalize response id"},
 		{name: "cancel request id", line: `{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":{"k":"` + big + `"}}}`, msg: "failed to canonicalize $/cancel_request requestId"},
@@ -115,6 +119,9 @@ func TestConnection_LogsBoundedPeerText(t *testing.T) {
 					t.Fatalf("no %s record; logs: %.300s", want, logs.String())
 				}
 				time.Sleep(time.Millisecond)
+			}
+			if !strings.Contains(logs.String(), tc.also) {
+				t.Errorf("no %s in the logs: %.300s", tc.also, logs.String())
 			}
 			for _, rec := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
 				if len(rec) > 4096 {

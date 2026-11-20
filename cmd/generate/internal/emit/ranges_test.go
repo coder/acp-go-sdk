@@ -289,11 +289,12 @@ func TestWriteTypesJen_PanicsOnABoundBeyondInt64(t *testing.T) {
 // optionalIntegersSchema has optional integers that cannot be null, whose Go
 // type is not a pointer, so an absent member reads as 0. count has no bound
 // but its format's, level and offset have a minimum and a maximum that
-// narrow their format, one that leaves out 0 and one that holds it, and hint
-// is lenient.
+// narrow their format, one that leaves out 0 and one that holds it, depth
+// has such bounds and a default, and hint is lenient.
 const optionalIntegersSchema = `{"$defs": {
   "TallyRequest": {"type": "object", "properties": {
     "count": {"type": "integer", "format": "uint32"},
+    "depth": {"type": "integer", "format": "uint32", "minimum": 1, "maximum": 10, "default": 5},
     "level": {"type": "integer", "format": "uint32", "minimum": 1, "maximum": 10},
     "offset": {"type": "integer", "format": "int32", "minimum": -5, "maximum": 5},
     "hint": {"type": "integer", "format": "uint32", "maximum": 10, "x-deserialize-default-on-error": true}}}
@@ -309,7 +310,8 @@ import (
 
 // An optional integer that cannot be null fails to decode out of the range of
 // its format, and Validate checks its minimum and maximum when it is set.
-// Absent reads as 0, which Validate takes, and so does an explicit 0.
+// Absent reads as 0, or as the default, which Validate takes, and so does an
+// explicit 0: the struct writes 0 as an absent member.
 func TestTallyRequest_Validate_ChecksOptionalIntegers(t *testing.T) {
 	tests := []struct {
 		payload, wantErr string
@@ -325,6 +327,8 @@ func TestTallyRequest_Validate_ChecksOptionalIntegers(t *testing.T) {
 		{` + "`" + `{"offset":-5}` + "`" + `, ""},
 		{` + "`" + `{"offset":-6}` + "`" + `, "offset must be between -5 and 5"},
 		{` + "`" + `{"offset":6}` + "`" + `, "offset must be between -5 and 5"},
+		{` + "`" + `{"depth":11}` + "`" + `, "depth must be between 1 and 10"},
+		{` + "`" + `{"depth":0}` + "`" + `, ""},
 	}
 	for _, tt := range tests {
 		var req TallyRequest
@@ -337,6 +341,10 @@ func TestTallyRequest_Validate_ChecksOptionalIntegers(t *testing.T) {
 		}
 	}
 	var req TallyRequest
+	if err := json.Unmarshal([]byte("{}"), &req); err != nil || req.Depth != 5 {
+		t.Errorf("{} reads depth %d with error %v, want the default 5", req.Depth, err)
+	}
+	req = TallyRequest{}
 	if err := json.Unmarshal([]byte(` + "`" + `{"hint":11}` + "`" + `), &req); err != nil || req.Hint != 0 {
 		t.Errorf("hint 11 reads as %d with error %v, want absent", req.Hint, err)
 	}
@@ -357,4 +365,30 @@ func errorText(err error) string {
 // so this schema stands for one.
 func TestWriteTypesJen_ValidateChecksOptionalIntegers(t *testing.T) {
 	checkGenerated(t, optionalIntegersSchema, map[string]string{"optional_test.go": optionalIntegersTest})
+}
+
+// A default fills an absent member, so a default that its own bounds or its
+// format leave out would make Validate reject a message that omits the
+// member, or would not decode. Such a schema contradicts itself, and the
+// generator stops on it.
+func TestWriteTypesJen_PanicsOnADefaultOutsideItsBounds(t *testing.T) {
+	for _, tt := range []struct{ name, prop string }{
+		{"above the maximum", `{"type": "integer", "format": "int32", "minimum": 1, "maximum": 10, "default": 20}`},
+		{"below the format", `{"type": "integer", "format": "uint32", "default": -1}`},
+		{"not an integer", `{"type": "integer", "format": "int32", "default": 1.5}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var schema load.Schema
+			in := `{"$defs": {"PingRequest": {"type": "object", "properties": {"level": ` + tt.prop + `}}}}`
+			if err := json.Unmarshal([]byte(in), &schema); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), `"level"`) {
+					t.Errorf("WriteTypesJen with level %s recovered %v, want a panic that names the property", tt.prop, r)
+				}
+			}()
+			_ = WriteTypesJen(t.TempDir(), &schema, &load.Meta{})
+		})
+	}
 }

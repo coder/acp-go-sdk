@@ -33,7 +33,8 @@ const alternativeKindsSchema = `{"$defs": {
 
 // roundTripTest is the helper of the generated tests: each JSON value of
 // accept decodes into a T that encodes back to the same JSON, and no value
-// of reject decodes.
+// of reject decodes. A null member counts as absent, as in the G2 comparison
+// (roundtrip/compare_test.go normalize), since an optional field drops it.
 const roundTripTest = `package acp
 
 import (
@@ -41,6 +42,24 @@ import (
 	"reflect"
 	"testing"
 )
+
+func withoutNulls(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		for k, member := range v {
+			if member == nil {
+				delete(v, k)
+			} else {
+				v[k] = withoutNulls(member)
+			}
+		}
+	case []any:
+		for i, item := range v {
+			v[i] = withoutNulls(item)
+		}
+	}
+	return v
+}
 
 func roundTrips[T any](t *testing.T, accept, reject []string) {
 	t.Helper()
@@ -58,7 +77,7 @@ func roundTrips[T any](t *testing.T, accept, reject []string) {
 		var want, got any
 		_ = json.Unmarshal([]byte(in), &want)
 		_ = json.Unmarshal(out, &got)
-		if !reflect.DeepEqual(want, got) {
+		if !reflect.DeepEqual(withoutNulls(want), withoutNulls(got)) {
 			t.Errorf("%T: %s encodes back as %s", v, in, out)
 		}
 	}

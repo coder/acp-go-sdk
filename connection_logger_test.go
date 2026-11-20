@@ -15,7 +15,7 @@ import (
 // TestConnectionSetLogger_ConcurrentWithReceive guards the logger field against
 // a data race: NewConnection spawns receive/processNotifications before the
 // caller has any chance to install a logger, so a later SetLogger writes the
-// field while those goroutines read it through loggerOrDefault.
+// field while those goroutines read it through log.
 //
 // Unparseable input makes receive log, which is the read side of the race.
 // Run under -race; without synchronization on the field this fails.

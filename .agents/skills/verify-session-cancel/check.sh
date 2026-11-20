@@ -355,8 +355,18 @@ if [ -z "$JAR" ]; then
 	if [ ! -f "$JAR" ]; then
 		mkdir -p "$CACHE"
 		echo "Downloading $TLA_URL"
-		curl -fsSL -o "$JAR.tmp" "$TLA_URL" || die "download failed: $TLA_URL"
-		mv "$JAR.tmp" "$JAR"
+		tmp=$(mktemp "$CACHE/tla2tools.XXXXXX")
+		curl -fsSL -o "$tmp" "$TLA_URL" || {
+			rm -f "$tmp"
+			die "download failed: $TLA_URL"
+		}
+		# Check the download before it enters the cache, so that a bad file
+		# never stays there.
+		if ! echo "$TLA_SHA256  $tmp" | sha256sum -c --quiet - >/dev/null 2>&1; then
+			rm -f "$tmp"
+			die "the download from $TLA_URL is not tla2tools $TLA_VERSION (sha256 mismatch)"
+		fi
+		mv "$tmp" "$JAR"
 	fi
 fi
 echo "$TLA_SHA256  $JAR" | sha256sum -c --quiet - || die "$JAR is not tla2tools $TLA_VERSION (sha256 mismatch)"

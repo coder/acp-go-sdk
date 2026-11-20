@@ -174,16 +174,17 @@ only while the ruleset does not exist.
 1. An organization owner installs `coder-release-publisher` on
    `coder/acp-go-sdk`.
 
-1. In [coder/gcp](https://github.com/coder/gcp)
-   `projects/production/coder-github-apps`, add a consumer of
-   `coder-release-publisher` to `apps.tf`, with repository `coder/acp-go-sdk`,
-   environment `release`, and workflow
-   `/.github/workflows/release.yaml@refs/heads/main`, and add the repository to
-   `local.github_repository_ids` in `identity.tf`.
+1. In `coder/gcp`, grant `coder-release-publisher` to a new consumer:
+   repository `coder/acp-go-sdk`, environment `release`, workflow
+   `/.github/workflows/release.yaml@refs/heads/main`.
+
+1. Merge and apply the github-org-terraform PR that adds the environment and
+   the ruleset.
 
 1. A repository admin stores the App's settings as secrets of the `release`
    environment, with the values that other `coder-release-publisher` consumers
-   use:
+   use. From the apply until this step, nobody can create a `v*` tag, so do
+   not start a release in between.
 
    ```bash
    gh secret set CODER_RELEASE_PUBLISHER_APP_ID --repo coder/acp-go-sdk --env release
@@ -191,9 +192,7 @@ only while the ruleset does not exist.
    gh secret set APP_KEYS_WORKLOAD_ID_PROVIDER --repo coder/acp-go-sdk --env release
    ```
 
-1. Merge and apply the github-org-terraform PR that adds the environment and
-   the ruleset. Apply it after the first three steps, or the ruleset blocks
-   every new release tag until they are done.
+1. Start a dry run, then a real one, as [Publish](#publish) describes.
 
 The release-notes workflow reads the repository secret `ANTHROPIC_API_KEY`,
 which exists already. To replace it, run

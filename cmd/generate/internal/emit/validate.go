@@ -51,8 +51,8 @@ type fieldCheck struct {
 // The rules follow what the Rust SDK rejects. A required member whose type
 // is a string type of the schema ($ref or allOf to a named string, a closed
 // enum or an open one) must not be "", and a required array, or a required
-// member that holds its value through a pointer (indirect), must not be nil,
-// at every depth. A plain inline string may be "", except where plain
+// member that holds its value through a pointer (indirect) and has no hint
+// that reads a bad value or null as nil, must not be nil, at every depth. A plain inline string may be "", except where plain
 // names it. A field whose value type has a Validate method (validates)
 // descends: a pointer when it is not nil, each item and member, a Patch when
 // it is set, and a struct or union itself only when it is required, because
@@ -100,7 +100,10 @@ func (b *typesBuilder) fieldCheckFor(field ir.Field, nests, plain bool) fieldChe
 
 	if field.Required && !isPatch && def.Default == nil && !acceptsNull(b.schema, def) {
 		switch {
-		case len(c.via) > 0 && (c.via[0] == items || c.via[0] == pointer):
+		case len(c.via) > 0 && c.via[0] == items:
+			c.unset = Nil()
+		case len(c.via) > 0 && c.via[0] == pointer && !field.Lenient.DefaultOnError && !field.Lenient.DefaultOnNull:
+			// Under these hints the decoder reads a bad value or null as nil.
 			c.unset = Nil()
 		case len(c.via) == 0 && !field.Lenient.DefaultOnError && (b.stringType(leaf) || (plain && leaf == "string")):
 			c.unset = Lit("")

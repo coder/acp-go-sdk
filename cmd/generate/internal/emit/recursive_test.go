@@ -26,7 +26,8 @@ const recursiveSchema = `{"$defs": {
     "left": {"$ref": "#/$defs/Tree"},
     "right": {"description": "The right subtree.", "allOf": [{"$ref": "#/$defs/Tree"}]},
     "middle": {"$ref": "#/$defs/Tree", "x-deserialize-default-on-error": true}}},
-  "Kin": {"type": "object", "required": ["kid", "kin"], "properties": {
+  "Kin": {"type": "object", "required": ["kid", "kin", "age"], "properties": {
+    "age": {"type": "integer", "format": "int32", "minimum": 0},
     "kid": {"$ref": "#/$defs/Kin", "x-deserialize-default-on-error": true},
     "kin": {"$ref": "#/$defs/Kin", "x-deserialize-default-on-null": true}}},
   "A": {"type": "object", "required": ["b"], "properties": {"b": {"allOf": [{"$ref": "#/$defs/B"}]}}},
@@ -99,11 +100,14 @@ func TestTree_HoldsSubtreesThroughPointers(t *testing.T) {
 
 func TestKin_TakesTheDefaultsThatItsHintsReadAsNil(t *testing.T) {
 	var kin Kin
-	if err := json.Unmarshal([]byte(` + "`" + `{"kid":"bad","kin":null}` + "`" + `), &kin); err != nil || kin.Kid != nil || kin.Kin != nil {
+	if err := json.Unmarshal([]byte(` + "`" + `{"age":1,"kid":"bad","kin":null}` + "`" + `), &kin); err != nil || kin.Kid != nil || kin.Kin != nil {
 		t.Fatalf("decoded %+v, %v", kin, err)
 	}
 	if err := kin.Validate(); err != nil {
 		t.Errorf("Validate rejects the defaults that the hints read: %v", err)
+	}
+	if kin.Age = -1; kin.Validate() == nil {
+		t.Error("Validate takes an age below its minimum")
 	}
 }
 

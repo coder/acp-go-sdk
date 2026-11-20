@@ -126,8 +126,8 @@ plan from its outputs and compute nothing again.
     version cannot go out through this workflow.
   - The CI run for the push of the release commit passed. A run on a later
     commit does not count, because it tested other code.
-  - The `release` environment exists and has a required reviewer. A dry run
-    only warns when it does not.
+  - The `release` environment exists, has a required reviewer, and does not
+    let admins bypass it. A dry run only warns when it does not.
 - `publish` waits for approval in the `release` environment. Then it checks
   that the environment holds the three `coder-release-publisher` secrets, and
   stops before it writes anything when one is missing. It signs as
@@ -186,8 +186,8 @@ The `publish` job signs as `coder-release-publisher` through
 Cloud KMS holds the App's key, and only this job may use it.
 
 The Release workflow refuses every real run until all four steps below are
-done, in this order. `preflight` refuses a missing `release` environment and
-one without a required reviewer. `publish` refuses, before it writes anything,
+done, in this order. `preflight` refuses a missing `release` environment,
+one without a required reviewer, and one that lets admins bypass it. `publish` refuses, before it writes anything,
 when a secret is missing. A dry run works at any point, and warns about the
 environment instead.
 
@@ -200,7 +200,8 @@ environment instead.
 
 1. Merge and apply the github-org-terraform PR that adds the environment and
    the ruleset. Leave `admin_bypass` out of the environment entry. The module's
-   default, `false`, keeps repository admins from skipping the approval.
+   default, `false`, keeps repository admins from skipping the approval, and
+   `preflight` refuses a real run when it is `true`.
 
 1. A repository admin stores the App's settings as secrets of the `release`
    environment, with the values that other `coder-release-publisher` consumers

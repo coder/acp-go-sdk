@@ -60,6 +60,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Bracket ranges such as [A-Za-z] below must mean ASCII letters
+          # only, whatever the runner's locale.
+          export LC_ALL=C
+
           # Refuse control characters before any step prints an input: a
           # newline would let the value start its own workflow command line.
           if [[ "$VERSION" == *[[:cntrl:]]* ]]; then
@@ -238,12 +242,17 @@ jobs:
           # it only when this check passes.
           err="$RUNNER_TEMP/gh-error"
           if environment="$(gh api "repos/$GITHUB_REPOSITORY/environments/release" 2> "$err")"; then
-            if jq -e 'any(.protection_rules[]?; .type == "required_reviewers")' <<< "$environment" > /dev/null; then
+            if ! jq -e 'any(.protection_rules[]?; .type == "required_reviewers")' <<< "$environment" > /dev/null; then
+              state="no required reviewers"
+              problem="The release environment has no required reviewers"
+            elif ! jq -e '.can_admins_bypass == false' <<< "$environment" > /dev/null; then
+              # An admin could skip the approval with one click.
+              state="admins can bypass"
+              problem="The release environment lets admins bypass its reviewers"
+            else
               echo "environment=release" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            state="no required reviewers"
-            problem="The release environment has no required reviewers"
           elif grep -q 'HTTP 404' "$err"; then
             state="missing"
             problem="There is no release environment"

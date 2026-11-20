@@ -18,6 +18,9 @@
 #   BENCHTIME  -test.benchtime (default 1s)
 #   CPU        -test.cpu (default 1)
 #   BENCH_OUT  output folder (default ${TMPDIR:-/tmp}/acp-bench/<time>)
+#   ALLOW_OUTCOME_DIFF=1  run even when the two sides decode a message
+#              differently (for a change that is meant to; otherwise the
+#              script stops)
 #   BENCHSTAT  benchstat command (default: benchstat on PATH, else go run of
 #              golang.org/x/perf/cmd/benchstat at a pinned version)
 set -euo pipefail
@@ -84,8 +87,11 @@ if [ -n "$BASE" ]; then
 		echo "outcomes: every message decodes as on base"
 	else
 		echo "outcomes: $(grep -c '^>' "$out/outcomes.diff") messages decode differently from base (see $out/outcomes.diff)"
+		# The two sides would not time the same work.
+		[ "${ALLOW_OUTCOME_DIFF:-0}" = 1 ] || exit 1
 	fi
 fi
+for side in "${sides[@]}"; do : >"$out/$side.txt"; done
 
 run() {
 	(cd "$(dir_of "$1")" && "$out/$1.test" -test.run '^$' -test.bench "$BENCH" -test.benchmem \

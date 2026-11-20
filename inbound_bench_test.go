@@ -28,10 +28,15 @@ import (
 
 // inboundCorpusGlobs name the recorded traffic: the fixtures of the Claude and
 // Codex adapters and the verify-acp-go-sdk journeys in testdata/bench, and the
-// transcripts that verify-schema-bump's G2 gate round-trips.
-var inboundCorpusGlobs = []string{
-	"testdata/bench/*/*.jsonl",
-	".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl",
+// transcripts that verify-schema-bump's G2 gate round-trips. The module that
+// the Go proxy serves leaves out .agents, which is a module of its own, so
+// the G2 transcripts are optional; the corpus digest tells the corpora apart.
+var inboundCorpusGlobs = []struct {
+	glob     string
+	required bool
+}{
+	{"testdata/bench/*/*.jsonl", true},
+	{".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl", false},
 }
 
 // An inboundMessage is one message of the corpus, as the side that receives
@@ -51,10 +56,10 @@ type inboundMessage struct {
 func loadInboundCorpus(tb testing.TB) []inboundMessage {
 	tb.Helper()
 	var paths []string
-	for _, glob := range inboundCorpusGlobs {
-		matches, err := filepath.Glob(glob)
-		if err != nil || len(matches) == 0 {
-			tb.Fatalf("no corpus files match %s: %v", glob, err)
+	for _, g := range inboundCorpusGlobs {
+		matches, err := filepath.Glob(g.glob)
+		if err != nil || (g.required && len(matches) == 0) {
+			tb.Fatalf("no corpus files match %s: %v", g.glob, err)
 		}
 		paths = append(paths, matches...)
 	}

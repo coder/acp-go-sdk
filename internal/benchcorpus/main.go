@@ -107,7 +107,8 @@ func fetch(src source, dir string) error {
 		prefix := path.Join(src.dir, profile) + "/"
 		for name, data := range files {
 			scenario, isFixture := strings.CutPrefix(name, prefix)
-			if !isFixture || strings.Contains(scenario, "/") || !strings.HasSuffix(scenario, ".jsonl") {
+			// The scenario becomes a file name in dir, so it must not leave it.
+			if !isFixture || !filepath.IsLocal(scenario) || strings.ContainsAny(scenario, `/\`) || strings.Contains(scenario, "..") || !strings.HasSuffix(scenario, ".jsonl") {
 				continue
 			}
 			if _, seen := scenarios[scenario]; !seen {

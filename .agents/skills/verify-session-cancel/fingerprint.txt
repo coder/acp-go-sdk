@@ -5,14 +5,16 @@ adbd7e72f96941a3a24be4208efd4751d5772745bfc8b43a85777055522d7f8f  agent.go|func 
 2b76eacc2216b296a7692be1e05152b2b628dc78f708bd9f262f4868755a6bd1  agent_gen.go|	case AgentMethodSessionCancel:
 6bfe43ed3fcf17a8f59ed84fa5b2d2fc6eec61cc033a95b6f0d60a96eff9d0b5  agent_gen.go|	case AgentMethodSessionPrompt:
 e1a98e274064cc3555b3df46988c93d2b8b462ad7335675a71473a88f1716c23  extensions.go|func (a *AgentSideConnection) handleWithExtensions(
-653f6f8b8a038d797c487cb147adddd8ca3d8fc95459f6cb7680dddd14819bf2  connection.go|func NewConnection(
+45fcde3482116e83f0f8f1000a67ad95f68ceccb91743d5e98746fdff2f7835b  connection.go|func NewConnection(
 edb3eeb64a845734dc70d72f8447b16ffb70ec435787dba498a715d5a4008a45  connection.go|func (c *Connection) notificationSeq(
 ffa1b899dba9ef6c4f71ba020c7bf0c80f4fc275039f6e0260024f6c0922bd4b  connection.go|func (c *Connection) messageArrival(
-be7b3908f3f2335bdc7623b863df0bba51c13184820018201a691703274dcc26  connection.go|func (c *Connection) receive(
+134273e8d9efa1d80218bb843a6a244d5565838cdd5d3678e0e5b1a0fa5f5f8d  connection.go|func (c *Connection) receive(
 c640f2ee2a9a2b436d655c77b70f0259e3b3601e3eb7dc4480ac56f115b2443d  connection.go|func (c *Connection) processNotifications(
 1743b41cbb59a80a17b71ecdff9acdbd3d28f3ab9aa8c26ac61cdd14e48995c7  connection.go|func (c *Connection) handleInbound(
-f41b53dbc152eb541c95aa128abbfc4e7afd92aab9d43feb8399264baefe8566  connection.go|func SendRequest[T any](c *Connection,
-5501eee3e4b0a557960ff811976f34bf02ba901b634addab228c0577e119f6cb  connection.go|func (c *Connection) SendRequestNoResult(
+9056a42446d69cc568535c731f59b4e6029b1219755cd17597a6041db9908c24  connection.go|func SendRequest[T any](c *Connection,
+89eec2e3bd7ffcafedd0bcb6d8f1fef895add39f3342df64373b76eb1641cb9a  connection.go|func (c *Connection) SendRequestNoResult(
+e7b168edfdd67c082d134dc316a4cc96f9eabc630fc2e294aa77afd7a52ea8b9  connection.go|func (r *sentRequest) wait(
+f031d52d257eec469abe0910a3fee2b890d21dd3e582dcfb6897c846be1577f5  connection.go|func (c *Connection) handleResponse(
 8ef9b3537d842153780141d02dac4a88b1c7c8da1b300c198ff421f90d1812cc  connection.go|func (c *Connection) waitNotifications(
 be2432fed3f96a9cdb62bb48db871289743fb9b467160a218c7ca9041da16113  connection.go|func (c *Connection) waitInboundBarrier(
 6632b6156f326675dd5e6bc89df29fd2eceb55d061bb61910ee4f3f65d4838a5  connection.go|func (c *Connection) startPeerWait(

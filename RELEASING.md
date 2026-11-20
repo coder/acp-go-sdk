@@ -128,6 +128,10 @@ plan from its outputs and compute nothing again.
     commit does not count, because it tested other code.
   - The `release` environment exists, has a required reviewer, and does not
     let admins bypass it. A dry run only warns when it does not.
+  - An active tag ruleset, such as `Release tags (App only)`, covers every
+    `v*` tag and restricts creating, moving and deleting it. A dry run only
+    warns when none does. `GITHUB_TOKEN` cannot see a ruleset's bypass
+    actors, so `publish` proves that the App is one when it creates the tag.
 - `publish` waits for approval in the `release` environment. Then it checks
   that the environment holds the three `coder-release-publisher` secrets, and
   stops before it writes anything when one is missing. It signs as
@@ -137,7 +141,10 @@ plan from its outputs and compute nothing again.
   `ACP schema 1.32.0`, with `GITHUB_TOKEN`. A version with a `-`, such as
   `0.21.0-rc.1`, becomes a prerelease.
 - `proxy` asks `proxy.golang.org` for the new version for about 12 minutes. It
-  passes when the proxy serves the version at the release commit.
+  passes when the proxy serves the version, and the proxy's archive hash equals
+  the hash of the tag downloaded straight from git. The proxy keeps the first
+  archive it saw for a version, so this catches a version that it cached from
+  an older tag of the same name.
 - `notes` calls the
   [release-notes workflow](.github/workflows/release-notes.yaml). It runs
   `communique` and replaces the release body with generated notes. GitHub starts
@@ -187,9 +194,10 @@ Cloud KMS holds the App's key, and only this job may use it.
 
 The Release workflow refuses every real run until all four steps below are
 done, in this order. `preflight` refuses a missing `release` environment, one
-without a required reviewer, and one that lets admins bypass it. `publish`
-refuses, before it writes anything, when a secret is missing. A dry run works
-at any point, and warns about the environment instead.
+without a required reviewer, and one that lets admins bypass it. It also
+refuses when no active ruleset protects the `v*` tags. `publish` refuses,
+before it writes anything, when a secret is missing. A dry run works at any
+point, and warns about the environment and the ruleset instead.
 
 `preflight` reads the bypass setting from the `can_admins_bypass` field of
 GitHub's environment API. GitHub returns that field but does not document it.

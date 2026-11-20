@@ -257,6 +257,7 @@ jobs:
               state="admin bypass not reported"
               problem="GitHub did not report whether admins can bypass the release environment's reviewers"
               risk="an admin might publish without approval"
+              fix="See the can_admins_bypass note in RELEASING.md"
             else
               echo "environment=release" >> "$GITHUB_OUTPUT"
               exit 0
@@ -272,11 +273,47 @@ jobs:
           fi
 
           echo "state=$state" >> "$GITHUB_OUTPUT"
+          fix="${fix:-Set it up as RELEASING.md describes}"
+          if [[ "$DRY_RUN" == true ]]; then
+            echo "::warning::$problem, so a real run refuses to start. $fix."
+            exit 0
+          fi
+          echo "::error::$problem, so $risk. $fix, then run again."
+          exit 1
+
+      - name: Check the release-tag ruleset
+        id: ruleset
+        if: ${{ !cancelled() }}
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # The ruleset makes a release tag permanent: once the Go proxy has
+          # cached a version, nobody may move or delete its tag. This token
+          # cannot see a ruleset's bypass actors. publish shows that the App
+          # is one when it creates the tag, because the ruleset blocks
+          # everyone else.
+          ids="$(gh api "repos/$GITHUB_REPOSITORY/rulesets?targets=tag&includes_parents=true&per_page=100" \
+            --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id')"
+          for id in $ids; do
+            if gh api "repos/$GITHUB_REPOSITORY/rulesets/$id?includes_parents=true" | jq -e '
+              ((.conditions.ref_name.include // []) | any(. == "~ALL" or . == "refs/tags/v*"))
+              and ((.conditions.ref_name.exclude // []) | length == 0)
+              and ([.rules[]?.type] | contains(["creation", "update", "deletion"]))
+            ' > /dev/null; then
+              echo "ruleset=$id" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          problem="No active ruleset restricts creating, moving and deleting every v* tag"
           if [[ "$DRY_RUN" == true ]]; then
             echo "::warning::$problem, so a real run refuses to start. Set it up as RELEASING.md describes."
             exit 0
           fi
-          echo "::error::$problem, so $risk. Set it up as RELEASING.md describes, then run again."
+          echo "::error::$problem, so a published version's tag could be moved or deleted. Set it up as RELEASING.md describes, then run again."
           exit 1
 
       # The plan lists every check, so it is written when one fails too.
@@ -286,6 +323,7 @@ jobs:
           CHECK_CI: ${{ steps.ci.outcome }}
           CHECK_COMMIT: ${{ steps.commit.outcome }}
           CHECK_ENVIRONMENT: ${{ steps.environment.outcome }}
+          CHECK_RULESET: ${{ steps.ruleset.outcome }}
           CHECK_TAG: ${{ steps.tag.outcome }}
           CHECK_VERSION: ${{ steps.version.outcome }}
           COMMIT: ${{ steps.commit.outputs.commit }}
@@ -293,6 +331,7 @@ jobs:
           ENVIRONMENT: ${{ steps.environment.outputs.environment }}
           ENVIRONMENT_STATE: ${{ steps.environment.outputs.state }}
           MODULE: ${{ steps.commit.outputs.module }}
+          RULESET: ${{ steps.ruleset.outputs.ruleset }}
           SCHEMA: ${{ steps.commit.outputs.schema }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -312,8 +351,12 @@ jobs:
           if [[ "$CHECK_ENVIRONMENT" == success && -z "$ENVIRONMENT" ]]; then
             environment="**warned**: $ENVIRONMENT_STATE, so a real run refuses to start"
           fi
+          ruleset="$(result "$CHECK_RULESET")"
+          if [[ "$CHECK_RULESET" == success && -z "$RULESET" ]]; then
+            ruleset="**warned**: missing, so a real run refuses to start"
+          fi
           failed=0
-          for outcome in "$CHECK_VERSION" "$CHECK_COMMIT" "$CHECK_TAG" "$CHECK_CI" "$CHECK_ENVIRONMENT"; do
+          for outcome in "$CHECK_VERSION" "$CHECK_COMMIT" "$CHECK_TAG" "$CHECK_CI" "$CHECK_ENVIRONMENT" "$CHECK_RULESET"; do
             if [[ "$outcome" == failure ]]; then
               failed=$((failed + 1))
             fi
@@ -336,7 +379,8 @@ jobs:
             echo "| Release commit: version, schema, module path | $(result "$CHECK_COMMIT") |"
             echo "| New version: no tag, no release, newer than every v* tag | $(result "$CHECK_TAG") |"
             echo "| CI passed on the release commit | $(result "$CHECK_CI") |"
-            echo "| release environment with required reviewers | $environment |"
+            echo "| release environment: required reviewers, no admin bypass | $environment |"
+            echo "| Ruleset: only an exempt actor may create, move or delete v* tags | $ruleset |"
             echo "| coder-release-publisher secrets | checked by publish after approval |"
             echo
             if [[ "$failed" -gt 0 ]]; then
@@ -487,7 +531,22 @@ jobs:
                 exit 1
               fi
               if [[ "$(jq -r .Version <<< "$info")" == "$TAG" && -n "$(jq -r '.Zip // empty' <<< "$info")" ]]; then
-                echo "The proxy serves $MODULE@$TAG."
+                # The proxy may omit Origin, and it keeps the first archive it
+                # saw, even one from an older tag of the same name. So compare
+                # its archive hash with one built straight from the tag in git.
+                # The direct download also checks sum.golang.org, which keeps
+                # the first hash it saw too.
+                sum="$(jq -r '.Sum // empty' <<< "$info")"
+                if ! fromgit="$(GOPROXY=direct GOMODCACHE="$RUNNER_TEMP/direct" go mod download -json "$MODULE@$TAG" 2> "$err")"; then
+                  echo "::error::Could not hash $MODULE@$TAG from git: $(jq -r '.Error // empty' <<< "$fromgit" 2> /dev/null || true) $(cat "$err")"
+                  exit 1
+                fi
+                direct="$(jq -r '.Sum // empty' <<< "$fromgit")"
+                if [[ -z "$sum" || "$sum" != "$direct" ]]; then
+                  echo "::error::The proxy serves $MODULE@$TAG with hash ${sum:-unknown}, but the tag in git hashes to ${direct:-unknown}."
+                  exit 1
+                fi
+                echo "The proxy serves $MODULE@$TAG at $COMMIT ($sum)."
                 exit 0
               fi
               last="unexpected answer: $info"

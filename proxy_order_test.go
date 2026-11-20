@@ -163,6 +163,38 @@ func TestUnstableProxySideConnection_ForwardsARequestBeforeALaterAnswer(t *testi
 	})
 }
 
+// A $/cancel_request for a forwarded request whose answer has arrived does
+// not let that answer pass a request that the successor sent before it.
+func TestUnstableProxySideConnection_KeepsAnAnswersPlaceWhenItsRequestIsCancelled(t *testing.T) {
+	release := make(chan struct{})
+	p := newProxyPeer(t, func(c *UnstableProxySideConnection) UnstableProxyHandlers {
+		return UnstableProxyHandlers{FromSuccessor: UnstableProxyFromSuccessor{
+			RequestPermission: func(ctx context.Context, r RequestPermissionRequest) (RequestPermissionResponse, error) {
+				<-release
+				return c.Client().RequestPermission(ctx, r)
+			},
+		}}
+	})
+	p.send(promptLineOf("1", "s"))
+	out := wantKinds(t, p, "wrapped session/prompt")[0]
+	p.send(wrappedPermissionLine("c-1", "s"), replyLine(out, `{"stopReason":"end_turn"}`))
+	p.send(`{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":1}}`)
+	// Give an answer that does not wait for its turn the time to go out.
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+	var kinds []string
+	for len(kinds) < 2 {
+		// The cancel can reach the prompt's handler before the answer
+		// does, and the proxy then cancels its own request.
+		if kind := sentKind(t, p.next()); kind != "plain $/cancel_request" {
+			kinds = append(kinds, kind)
+		}
+	}
+	if want := []string{"plain session/request_permission", "answer 1"}; fmt.Sprint(kinds) != fmt.Sprint(want) {
+		t.Errorf("the proxy sent %q, want %q", kinds, want)
+	}
+}
+
 // A handler that sends its message on to the other side holds back the
 // later messages from its side until it has sent it.
 func TestUnstableProxySideConnection_HoldsLaterMessagesUntilAHandlerSends(t *testing.T) {

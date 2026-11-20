@@ -224,31 +224,37 @@ func TestWriteTypesJen_RealUnionValuesRoundTripUnderEveryForm(t *testing.T) {
 	if err := json.Unmarshal(src, &top); err != nil {
 		t.Fatalf("parse schema.json: %v", err)
 	}
-	defs := map[string]json.RawMessage{}
 	values := map[string][]string{}
-	var calls strings.Builder
 	for _, name := range sortedKeys(realUnions) {
-		addWithRefs(t, top.Defs, defs, name)
 		for _, v := range transcriptValues(t, realUnions[name]) {
 			values[name] = append(values[name], "`"+v+"`")
 		}
 		if len(values[name]) == 0 {
 			t.Fatalf("the G2 transcripts hold no value of %s", name)
 		}
-		for _, form := range []struct {
-			suffix, keyword string
-			titled          bool
-		}{{"AnyOfTitled", "anyOf", true}, {"AnyOf", "anyOf", false}, {"OneOfTitled", "oneOf", true}, {"OneOf", "oneOf", false}} {
-			defs[name+form.suffix] = realUnionForm(t, top.Defs[name], form.keyword, form.titled)
-			fmt.Fprintf(&calls, "\troundTrips[%s%s](t, []string{%s}, nil)\n", name, form.suffix, strings.Join(values[name], ", "))
-		}
 	}
-	schema, err := json.Marshal(map[string]any{"$defs": defs})
-	if err != nil {
-		t.Fatalf("encode the schema: %v", err)
+	for _, keyword := range []string{"anyOf", "oneOf"} {
+		t.Run(keyword, func(t *testing.T) {
+			defs := map[string]json.RawMessage{}
+			var calls strings.Builder
+			for _, name := range sortedKeys(realUnions) {
+				addWithRefs(t, top.Defs, defs, name)
+				for _, form := range []struct {
+					suffix string
+					titled bool
+				}{{"Titled", true}, {"Untitled", false}} {
+					defs[name+form.suffix] = realUnionForm(t, top.Defs[name], keyword, form.titled)
+					fmt.Fprintf(&calls, "\troundTrips[%s%s](t, []string{%s}, nil)\n", name, form.suffix, strings.Join(values[name], ", "))
+				}
+			}
+			schema, err := json.Marshal(map[string]any{"$defs": defs})
+			if err != nil {
+				t.Fatalf("encode the schema: %v", err)
+			}
+			test := "package acp\n\nimport \"testing\"\n\nfunc TestRealValues_RoundTrip(t *testing.T) {\n" + calls.String() + "}\n"
+			checkGenerated(t, string(schema), map[string]string{"roundtrip_test.go": roundTripTest, "real_test.go": test})
+		})
 	}
-	test := "package acp\n\nimport \"testing\"\n\nfunc TestRealValues_RoundTrip(t *testing.T) {\n" + calls.String() + "}\n"
-	checkGenerated(t, string(schema), map[string]string{"roundtrip_test.go": roundTripTest, "real_test.go": test})
 }
 
 // realUnionForm returns the union def with its anyOf alternatives under

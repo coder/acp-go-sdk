@@ -225,13 +225,14 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 		case enumKind:
 			b.emitEnum(name, def)
 		case openEnumKind:
-			// "Open" string enum: `anyOf` of string consts plus (typically) a
-			// free-form string catch-all. Emit as a named string type with
-			// constants for the known values. Unknown values are still
-			// representable as strings, matching the schema's extensibility.
+			// "Open" string enum: an anyOf or oneOf of string consts plus
+			// (typically) a free-form string catch-all. Emit as a named string
+			// type with constants for the known values. Unknown values are
+			// still representable as strings, matching the schema's
+			// extensibility.
 			f.Type().Id(name).String()
 			defs := []Code{}
-			for _, v := range def.AnyOf {
+			for _, v := range alternativesOf(def) {
 				if v == nil || v.Const == nil {
 					continue
 				}
@@ -404,19 +405,19 @@ func (b *typesBuilder) emitEnum(name string, def *load.Definition) {
 }
 
 // isOpenStringEnum reports whether def is an "open" string enum: an `anyOf`
-// where every variant is a plain string schema (type: "string") and at least
-// one variant has a string `const`. Such schemas describe a string value with
-// a recommended set of known values while still permitting arbitrary strings
-// for extensibility (see e.g. SessionConfigOptionCategory).
+// or a `oneOf` where every variant is a plain string schema (type: "string")
+// and at least one variant has a string `const`. Such schemas describe a
+// string value with a recommended set of known values while still permitting
+// arbitrary strings for extensibility (see e.g. SessionConfigOptionCategory).
 //
 // These are emitted as a Go string-derived type with named constants for each
 // known value, rather than as a discriminated union wrapper.
 func isOpenStringEnum(def *load.Definition) bool {
-	if def == nil || len(def.AnyOf) == 0 {
+	if def == nil {
 		return false
 	}
 	sawConst := false
-	for _, v := range def.AnyOf {
+	for _, v := range alternativesOf(def) {
 		if v == nil {
 			return false
 		}
@@ -440,6 +441,14 @@ func isOpenStringEnum(def *load.Definition) bool {
 	return sawConst
 }
 
+// alternativesOf returns the anyOf alternatives of def, or else its oneOf ones.
+func alternativesOf(def *load.Definition) []*load.Definition {
+	if len(def.AnyOf) > 0 {
+		return def.AnyOf
+	}
+	return def.OneOf
+}
+
 // defKind is the kind of Go type that a $defs entry becomes.
 type defKind uint8
 
@@ -458,7 +467,7 @@ func classify(def *load.Definition) defKind {
 	switch t := ir.PrimaryType(def); {
 	case len(def.Enum) > 0, isStringConstUnion(def):
 		return enumKind
-	case len(def.AnyOf) > 0 && isOpenStringEnum(def):
+	case isOpenStringEnum(def):
 		return openEnumKind
 	case len(def.AnyOf) > 0, len(def.OneOf) > 0:
 		return unionKind
@@ -811,7 +820,10 @@ func jenTypeForOptional(d *load.Definition) Code {
 // unionVariant is one variant of a union as emitUnion emitted it: the wrapper
 // field, the variant type, the discriminator, and the variant's own required
 // keys and properties. nested holds the alternatives of an inline variant that
-// is a union in turn, which encodes only with one of them set.
+// is a union in turn, which encodes only with one of them set. isStruct says
+// that the variant type is a struct, which a constructor builds from the
+// required properties. Otherwise a constructor takes the value of the variant,
+// or sets value when that is the one value the variant takes.
 type unionVariant struct {
 	fieldName string
 	typeName  string
@@ -820,6 +832,23 @@ type unionVariant struct {
 	required  []string
 	props     map[string]*load.Definition
 	nested    []unionVariant
+	isStruct  bool
+	value     Code
+}
+
+// isStruct reports whether the Go type of the union alternative alt is a
+// struct.
+func (b *typesBuilder) isStruct(alt unionAlternative) bool {
+	switch alt.kind {
+	case extensionAlt, valueAlt:
+		return false
+	case refAlt:
+		if def := b.schema.Defs[strings.TrimPrefix(alt.ref, "#/$defs/")]; def != nil {
+			kind := classify(def)
+			return kind == unionKind || kind == structKind || kind == emptyKind
+		}
+	}
+	return true
 }
 
 // sortedPropertyKeys returns the keys of props in sorted order.
@@ -844,16 +873,82 @@ func firstConstPropertyKey(v *load.Definition) string {
 	return ""
 }
 
-// isPhantomVariant reports whether the expanded union variant v has no $ref
-// (ref), no properties, no null type, and no title. emitUnion emits no type for
-// such a variant and records none, so WriteHelpersJen emits no constructor for
-// it. Title-only variants such as ExtMethodRequest are not phantom.
-func isPhantomVariant(v *load.Definition, ref string) bool {
-	isNull := false
-	if s, ok := v.Type.(string); ok && s == "null" {
-		isNull = true
+// altKind is the kind of Go type that emitUnion declares for a union
+// alternative. The shape of the alternative decides it. A title only names
+// the type.
+type altKind uint8
+
+const (
+	phantomAlt   altKind = iota // no $ref, properties, null type, value type, or title: emitUnion skips it
+	refAlt                      // a $ref: the $defs type
+	nullAlt                     // type null: an empty struct, which JSON null selects
+	objectAlt                   // properties: a struct, or a union of its own alternatives
+	extensionAlt                // an extension: an alias of json.RawMessage, which keeps the payload
+	valueAlt                    // a value of one JSON type (valueType): a defined type of its Go type
+	emptyAlt                    // a title alone: an empty struct
+)
+
+// alternativeKind returns the kind of the expanded union alternative v, whose
+// $ref is ref. An extension is a variant whose description contains
+// "extension" or whose title contains "Ext", such as ExtMethodRequest.
+func alternativeKind(v *load.Definition, ref string) altKind {
+	switch {
+	case ref != "":
+		return refAlt
+	case v.Type == "null":
+		return nullAlt
+	case len(v.Properties) > 0:
+		return objectAlt
 	}
-	return len(v.Properties) == 0 && ref == "" && !isNull && v.Title == ""
+	t := valueType(v)
+	switch {
+	case t == "" && v.Title == "":
+		return phantomAlt
+	case strings.Contains(strings.ToLower(v.Description), "extension") || strings.Contains(v.Title, "Ext"):
+		return extensionAlt
+	case t != "":
+		return valueAlt
+	default:
+		return emptyAlt
+	}
+}
+
+// valueType returns the JSON type of the values of v: its type, or without
+// one, the type that the values of its const or enum share, as "string" for
+// {"const": "a"}. It returns "" when v names no values, and panics when they
+// are of more than one type or none of string, number, and boolean, for which
+// there is no one Go type.
+func valueType(v *load.Definition) string {
+	if t := ir.PrimaryType(v); t != "" {
+		return t
+	}
+	values := namedValues(v)
+	t := ""
+	for _, value := range values {
+		var vt string
+		switch value.(type) {
+		case string:
+			vt = "string"
+		case float64:
+			vt = "number"
+		case bool:
+			vt = "boolean"
+		}
+		if vt == "" || (t != "" && vt != t) {
+			panic(fmt.Sprintf("union alternative with the values %v has no one Go type; give it a type", values))
+		}
+		t = vt
+	}
+	return t
+}
+
+// namedValues returns the values that v names: its const, or the members of
+// its enum.
+func namedValues(v *load.Definition) []any {
+	if v.Const != nil {
+		return []any{v.Const}
+	}
+	return v.Enum
 }
 
 func variantRef(v *load.Definition) string {
@@ -875,12 +970,18 @@ func variantRef(v *load.Definition) string {
 	return v.Ref
 }
 
+// unionAlternative is an alternative of a union that emitUnion emits. value is
+// the schema of the values of a valueAlt, with the type that valueType found.
 type unionAlternative struct {
 	index    int
 	ref      string
 	expanded *load.Definition
+	kind     altKind
+	value    *load.Definition
 }
 
+// unionAlternatives returns the alternatives defs of a union, without the
+// phantom ones.
 func unionAlternatives(schema *load.Schema, defs []*load.Definition) []unionAlternative {
 	var alts []unionAlternative
 	for index, v := range defs {
@@ -889,20 +990,52 @@ func unionAlternatives(schema *load.Schema, defs []*load.Definition) []unionAlte
 		}
 		ref := variantRef(v)
 		v = expandAllOf(schema, v)
-		if !isPhantomVariant(v, ref) {
-			alts = append(alts, unionAlternative{index: index, ref: ref, expanded: v})
+		alt := unionAlternative{index: index, ref: ref, expanded: v, kind: alternativeKind(v, ref)}
+		if alt.kind == valueAlt {
+			// jenTypeFor reads an enum as a string; the type decides here.
+			value := *v
+			value.Type, value.Enum = valueType(v), nil
+			alt.value = &value
+		}
+		if alt.kind != phantomAlt {
+			alts = append(alts, alt)
 		}
 	}
 	return alts
 }
 
-func (a unionAlternative) isNull() bool {
-	s, ok := a.expanded.Type.(string)
-	return ok && s == "null"
-}
+func (a unionAlternative) isNull() bool { return a.kind == nullAlt }
 
-func (a unionAlternative) isInlineObject() bool {
-	return a.ref == "" && len(a.expanded.Properties) > 0 && !a.isNull()
+func (a unionAlternative) isInlineObject() bool { return a.kind == objectAlt }
+
+// values returns the literals of the values that a valueAlt takes: its const
+// or the members of its enum. It returns none when it takes every value of
+// its type.
+func (a unionAlternative) values() []Code {
+	if a.kind != valueAlt {
+		return nil
+	}
+	var lits []Code
+	for _, value := range namedValues(a.expanded) {
+		switch t := ir.PrimaryType(a.value); value := value.(type) {
+		case float64:
+			if t == "integer" {
+				lits = append(lits, Lit(int(value)))
+			}
+			if t == "number" {
+				lits = append(lits, Lit(value))
+			}
+		case string:
+			if t == "string" {
+				lits = append(lits, Lit(value))
+			}
+		case bool:
+			if t == "boolean" {
+				lits = append(lits, Lit(value))
+			}
+		}
+	}
+	return lits
 }
 
 func allInlineObjects(alts []unionAlternative) bool {
@@ -912,27 +1045,6 @@ func allInlineObjects(alts []unionAlternative) bool {
 		}
 	}
 	return true
-}
-
-func scalarConstOf(v *load.Definition) Code {
-	switch value := v.Const.(type) {
-	case float64:
-		if ir.PrimaryType(v) == "integer" {
-			return Lit(int(value))
-		}
-		if ir.PrimaryType(v) == "number" {
-			return Lit(value)
-		}
-	case string:
-		if ir.PrimaryType(v) == "string" {
-			return Lit(value)
-		}
-	case bool:
-		if ir.PrimaryType(v) == "boolean" {
-			return Lit(value)
-		}
-	}
-	return nil
 }
 
 // opensMembers reports whether d takes members that it does not name:
@@ -994,8 +1106,10 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		openDiscriminator bool
 		// nullKeys are the properties whose type is "null" alone, as in a
 		// "none" variant. The variant matches when they are absent or null.
-		nullKeys    []string
-		scalarConst Code
+		nullKeys []string
+		// values are the values that a value variant takes, when not every
+		// value of its type (unionAlternative.values).
+		values      []Code
 		isNull      bool
 		description string
 		// validated says how Validate reaches the Validate of the variant
@@ -1164,23 +1278,24 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				nullKeys = append(nullKeys, pk)
 			}
 		}
+		values := alt.values()
 		var validated fieldCheck
 		if ref != "" {
 			validated.descends = b.validates(strings.TrimPrefix(ref, "#/$defs/"))
 		}
 		var nestedVariants []unionVariant
-		// Emit struct for inline variants (non-$ref)
-		if (isObj || isNull || v.Title != "") && ref == "" {
+		// Declare the type of an alternative that is not a $ref.
+		if alt.kind != refAlt {
 			// DEFENSIVE PROGRAMMING: Verify tname is registered before emitting
 			if !usedTypeNames[tname] {
 				panic(fmt.Sprintf("BUG: attempting to emit unregistered type: %q (parent union: %q)", tname, name))
 			}
 
-			switch {
-			case isNull:
+			switch alt.kind {
+			case nullAlt:
 				f.Type().Id(tname).Struct()
 				f.Line()
-			case isObj:
+			case objectAlt:
 				mergedProps := make(map[string]*load.Definition, len(sharedProps)+len(v.Properties))
 				for pk, pDef := range sharedProps {
 					mergedProps[pk] = pDef
@@ -1210,30 +1325,24 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 					validated.descends = b.emitStruct(tname, fields, nil, opensMembers(v), plain)
 				}
 			default:
-				// Title-only variants: check if they're extension types
-				// Extension types should preserve the raw payload, not drop it
-				isExtension := strings.Contains(strings.ToLower(v.Description), "extension") ||
-					strings.Contains(v.Title, "Ext")
-
 				if v.Description != "" {
 					emitDocComment(f, v.Description)
 				}
 
-				if isExtension {
-					// Emit as type alias (=) to json.RawMessage to preserve marshal/unmarshal methods.
-					// Using type alias ensures the RawMessage methods are inherited, unlike a defined type.
+				switch alt.kind {
+				case extensionAlt:
+					// An alias (=) keeps the methods of json.RawMessage, which a
+					// defined type would drop.
 					f.Type().Id(tname).Op("=").Qual("encoding/json", "RawMessage")
-				} else if ir.PrimaryType(v) != "" {
-					// Non-object title-only variants can still carry payloads (e.g. arrays).
-					// Emit a concrete type so sequential decode can succeed for valid payloads.
-					goType := jenTypeFor(v)
+				case valueAlt:
+					goType := jenTypeFor(alt.value)
 					f.Type().Id(tname).Add(goType)
 					// Validate reaches the items of an array through the
 					// named slice type, which has no Validate of its own.
 					var leaf string
 					validated.via, leaf = peelContainers(goType)
 					validated.descends = len(validated.via) > 0 && b.validates(leaf)
-					if item := b.nonNullItem(ir.Field{Def: v}); item != nil {
+					if item := b.nonNullItem(ir.Field{Def: alt.value}); item != nil {
 						// encoding/json reads a null item as the zero value, and
 						// the schema allows no null there (nonNullItem).
 						b.usesDecodeHelpers = true
@@ -1243,8 +1352,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 							Return(Qual("encoding/json", "Unmarshal").Call(Id("b"), Parens(Op("*").Add(goType)).Call(Id("v")))),
 						)
 					}
-				} else {
-					// Emit as empty struct only for truly empty variants.
+				default:
 					f.Type().Id(tname).Struct()
 				}
 				f.Line()
@@ -1263,12 +1371,12 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			constPairs:        consts,
 			openDiscriminator: openDiscriminator,
 			nullKeys:          nullKeys,
-			scalarConst:       scalarConstOf(v),
+			values:            values,
 			isNull:            isNull,
 			description:       v.Description,
 			validated:         validated,
 		})
-		recorded = append(recorded, unionVariant{
+		variant := unionVariant{
 			fieldName: fieldName,
 			typeName:  tname,
 			discKey:   discKey,
@@ -1276,7 +1384,12 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			required:  append([]string(nil), v.Required...),
 			props:     v.Properties,
 			nested:    nestedVariants,
-		})
+			isStruct:  b.isStruct(alt),
+		}
+		if len(values) == 1 {
+			variant.value = values[0]
+		}
+		recorded = append(recorded, variant)
 	}
 	if exactlyOne {
 		b.variants[name] = recorded
@@ -1471,8 +1584,15 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				continue
 			}
 			decodes := Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("v")).Op("==").Nil()
-			if vi.scalarConst != nil {
-				decodes = decodes.Op("&&").Id("v").Op("==").Add(vi.scalarConst)
+			if len(vi.values) > 0 {
+				takes := Id("v").Op("==").Add(vi.values[0])
+				for _, value := range vi.values[1:] {
+					takes.Op("||").Id("v").Op("==").Add(value)
+				}
+				if len(vi.values) > 1 {
+					takes = Parens(takes)
+				}
+				decodes = decodes.Op("&&").Add(takes)
 			}
 			g.Block(
 				Var().Id("v").Id(vi.typeName),

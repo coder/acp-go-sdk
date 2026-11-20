@@ -260,10 +260,10 @@ func newAnsweringProxyPeer(t *testing.T, handlers func(*UnstableProxySideConnect
 	return p
 }
 
-// wantKinds checks that the next messages that the proxy sends in run are
-// of the kinds want, and returns them. It fails the test when the proxy
-// sends nothing for 5 s.
-func wantKinds(t *testing.T, run int, p *cancelPeer, want ...string) []anyMessage {
+// wantKinds checks that the next messages that the proxy sends are of the
+// kinds want, and returns them. It fails the test when the proxy sends
+// nothing for 5 s.
+func wantKinds(t *testing.T, p *cancelPeer, want ...string) []anyMessage {
 	t.Helper()
 	msgs := make([]anyMessage, 0, len(want))
 	var kinds []string
@@ -273,11 +273,11 @@ func wantKinds(t *testing.T, run int, p *cancelPeer, want ...string) []anyMessag
 			msgs = append(msgs, m)
 			kinds = append(kinds, sentKind(t, m))
 		case <-time.After(5 * time.Second):
-			t.Fatalf("run %d: the proxy sent %q and then hung; want %q", run, kinds, want)
+			t.Fatalf("the proxy sent %q and then hung; want %q", kinds, want)
 		}
 	}
 	if fmt.Sprint(kinds) != fmt.Sprint(want) {
-		t.Fatalf("run %d: the proxy sent %q, want %q", run, kinds, want)
+		t.Fatalf("the proxy sent %q, want %q", kinds, want)
 	}
 	return msgs
 }
@@ -305,9 +305,9 @@ func TestUnstableProxySideConnection_ReleasesLaterMessagesWhenAnAnswerComesAtOnc
 				}}
 			}, map[string]string{"wrapped session/set_mode": `{}`})
 			p.send(`{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/","mcpServers":[]}}`)
-			out := wantKinds(t, i, p, "wrapped session/new")[0]
+			out := wantKinds(t, p, "wrapped session/new")[0]
 			p.send(replyLine(out, `{"sessionId":"s"}`), wrappedUpdateLine("s", "commands"))
-			wantKinds(t, i, p, "wrapped session/set_mode", "plain session/update", "answer 1")
+			wantKinds(t, p, "wrapped session/set_mode", "plain session/update", "answer 1")
 		}
 	})
 	t.Run("a request to the client before the forward", func(t *testing.T) {
@@ -325,11 +325,33 @@ func TestUnstableProxySideConnection_ReleasesLaterMessagesWhenAnAnswerComesAtOnc
 				}}
 			}, map[string]string{"plain session/request_permission": `{"outcome":{"outcome":"cancelled"}}`})
 			p.send(promptLineOf("1", "s"), cancelLineOf("s"))
-			msgs := wantKinds(t, i, p, "plain session/request_permission", "wrapped session/cancel", "wrapped session/prompt")
+			msgs := wantKinds(t, p, "plain session/request_permission", "wrapped session/cancel", "wrapped session/prompt")
 			p.send(replyLine(msgs[2], `{"stopReason":"cancelled"}`))
 			wantAnswer(t, p.next(), "1", `{"stopReason":"cancelled"}`)
 		}
 	})
+}
+
+// A handler that sends with a ctx derived from its own, such as one from
+// context.WithoutCancel, sends as the handler: its forward lets the later
+// messages from its side go, so the client's answer to a permission request
+// that the agent sends before it answers the prompt reaches the agent.
+func TestUnstableProxySideConnection_KnowsAHandlerByACtxDerivedFromItsOwn(t *testing.T) {
+	p := newProxyPeer(t, func(c *UnstableProxySideConnection) UnstableProxyHandlers {
+		return UnstableProxyHandlers{FromClient: UnstableProxyFromClient{
+			Prompt: func(ctx context.Context, r PromptRequest) (PromptResponse, error) {
+				return c.Successor().Prompt(context.WithoutCancel(ctx), r)
+			},
+		}}
+	})
+	p.send(promptLineOf("1", "s"))
+	prompt := wantKinds(t, p, "wrapped session/prompt")[0]
+	p.send(wrappedPermissionLine("c-1", "s"))
+	permission := wantKinds(t, p, "plain session/request_permission")[0]
+	p.send(replyLine(permission, `{"outcome":{"outcome":"cancelled"}}`))
+	wantKinds(t, p, `answer "c-1"`)
+	p.send(replyLine(prompt, `{"stopReason":"end_turn"}`))
+	wantAnswer(t, p.next(), "1", `{"stopReason":"end_turn"}`)
 }
 
 // A request from the peer starts while the running notification handler

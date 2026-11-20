@@ -226,6 +226,13 @@ conn := acp.NewUnstableProxySideConnection(func(c *acp.UnstableProxySideConnecti
   the answer, or returns, so one that answers a request itself or works long
   before it sends delays them, and notifications queued behind them count
   against `WithMaxQueuedNotifications`.
+- The proxy knows which handler sends only by the ctx of the send, so a
+  handler must send with its ctx or one derived from it, such as
+  `context.WithoutCancel(ctx)`. A handler that sends a request with
+  `context.Background()` keeps holding back its side until it returns, so the
+  proxy deadlocks when the answer needs a later message of that side, such as
+  the client's answer to a permission request that the agent sends before it
+  answers the prompt.
 
 [`example/proxy`](./example/proxy) adds `[proxy] ` in front of each agent
 message chunk. Run it in a chain with the Rust conductor

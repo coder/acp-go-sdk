@@ -67,8 +67,17 @@ import (
 // handler lets the later messages go while it waits for an answer from
 // either side, and a request that starts while a notification handler waits
 // for an answer (see MethodHandler) goes ahead of the notifications queued
-// behind that handler. A message sent without a handler's ctx, such as with
-// context.Background(), keeps no order.
+// behind that handler.
+//
+// The proxy knows which handler sends a message only by the ctx it is sent
+// with, so a handler must send with its ctx or one derived from it, such as
+// context.WithoutCancel(ctx). A message sent with another ctx, such as
+// context.Background(), keeps no order, and the handler keeps holding back
+// the later messages from its side until it returns. When the answer to such
+// a request needs one of those messages, the proxy deadlocks: a Prompt
+// handler that forwards the prompt with context.Background() never gets the
+// answer if the agent asks the client for permission first, because the
+// client's answer waits for that handler.
 type UnstableProxySideConnection struct {
 	conn      *Connection
 	handlers  UnstableProxyHandlers

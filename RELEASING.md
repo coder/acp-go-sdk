@@ -132,13 +132,14 @@ plan from its outputs and compute nothing again.
     `v*` tag and restricts creating, moving and deleting it. A dry run only
     warns when none does. `GITHUB_TOKEN` cannot see a ruleset's bypass
     actors, so `publish` proves that the App is one when it creates the tag.
-- `publish` waits for approval in the `release` environment. Then it checks
-  that the environment holds the three `coder-release-publisher` secrets, and
-  stops before it writes anything when one is missing. It signs as
-  `coder-release-publisher` and creates the annotated tag `v0.21.0` with the
-  message `v0.21.0 (ACP schema 1.32.0)`. It never creates the tag with
-  `GITHUB_TOKEN`. It creates the GitHub release `v0.21.0`, with the notes
-  `ACP schema 1.32.0`, with `GITHUB_TOKEN`. A version with a `-`, such as
+- `publish` waits for approval in the `release` environment. Then it checks that
+  the environment holds the three `coder-release-publisher` secrets, and stops
+  before it writes anything when one is missing. Just before it creates the tag,
+  it checks again that the ruleset `preflight` found still protects the `v*`
+  tags. It signs as `coder-release-publisher` and creates the annotated tag
+  `v0.21.0` with the message `v0.21.0 (ACP schema 1.32.0)`. It never creates the
+  tag with `GITHUB_TOKEN`. It creates the GitHub release `v0.21.0`, with the
+  notes `ACP schema 1.32.0`, with `GITHUB_TOKEN`. A version with a `-`, such as
   `0.21.0-rc.1`, becomes a prerelease.
 - `proxy` asks `proxy.golang.org` for the new version for about 12 minutes. It
   passes when the proxy serves the version, and the proxy's archive hash equals

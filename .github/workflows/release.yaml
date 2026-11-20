@@ -28,6 +28,16 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  # A ruleset that keeps everyone but its bypass actors from creating, moving
+  # or deleting any v* tag. preflight looks for one, and publish checks it
+  # again just before it creates the tag.
+  TAG_RULESET_FILTER: >-
+    .target == "tag" and .enforcement == "active"
+    and ((.conditions.ref_name.include // []) | any(. == "~ALL" or . == "refs/tags/v*"))
+    and ((.conditions.ref_name.exclude // []) | length == 0)
+    and ([.rules[]?.type] | contains(["creation", "update", "deletion"]))
+
 jobs:
   preflight:
     name: preflight
@@ -41,6 +51,7 @@ jobs:
       schema: ${{ steps.commit.outputs.schema }}
       module: ${{ steps.commit.outputs.module }}
       environment: ${{ steps.environment.outputs.environment }}
+      ruleset: ${{ steps.ruleset.outputs.ruleset }}
     # Each check runs even when an earlier one failed, so one run lists every
     # problem. A check skips only when it needs a value that failed.
     steps:
@@ -298,11 +309,7 @@ jobs:
           ids="$(gh api "repos/$GITHUB_REPOSITORY/rulesets?targets=tag&includes_parents=true&per_page=100" \
             --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id')"
           for id in $ids; do
-            if gh api "repos/$GITHUB_REPOSITORY/rulesets/$id?includes_parents=true" | jq -e '
-              ((.conditions.ref_name.include // []) | any(. == "~ALL" or . == "refs/tags/v*"))
-              and ((.conditions.ref_name.exclude // []) | length == 0)
-              and ([.rules[]?.type] | contains(["creation", "update", "deletion"]))
-            ' > /dev/null; then
+            if gh api "repos/$GITHUB_REPOSITORY/rulesets/$id?includes_parents=true" | jq -e "$TAG_RULESET_FILTER" > /dev/null; then
               echo "ruleset=$id" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -406,6 +413,7 @@ jobs:
     env:
       COMMIT: ${{ needs.preflight.outputs.commit }}
       GH_TOKEN: ${{ github.token }}
+      RULESET: ${{ needs.preflight.outputs.ruleset }}
       SCHEMA: ${{ needs.preflight.outputs.schema }}
       TAG: ${{ needs.preflight.outputs.tag }}
     steps:
@@ -460,6 +468,17 @@ jobs:
             fi
             echo "Tag $TAG already points at $COMMIT."
             exit 0
+          fi
+
+          # The approval wait can be long, so check the ruleset again just
+          # before the tag becomes permanent.
+          if [[ -z "$RULESET" ]] || ! ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$RULESET?includes_parents=true")"; then
+            echo "::error::Could not read ruleset ${RULESET:-(none)} from preflight, so publish did not create $TAG. Use Re-run failed jobs, or start a new run if the ruleset was replaced."
+            exit 1
+          fi
+          if ! jq -e "$TAG_RULESET_FILTER" <<< "$ruleset" > /dev/null; then
+            echo "::error::Ruleset $RULESET no longer keeps others from creating, moving and deleting v* tags, so publish did not create $TAG. Restore it as RELEASING.md describes, then use Re-run failed jobs."
+            exit 1
           fi
 
           # If the ref already exists after all, creating it fails, and the

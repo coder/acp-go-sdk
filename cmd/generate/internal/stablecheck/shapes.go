@@ -32,9 +32,9 @@ type rule struct {
 // shapeChanges compares each entry of old's shapes table with its version
 // in new. The new version may only add to it: values, kinds, members, and
 // alternatives, and its not rules may only take less. When a union of the
-// schema gains a variant, the not rule of its catch-all variant gains an
-// alternative for the variant's discriminator value. Any other change can
-// make the decoder default or drop a stable value.
+// schema gains a variant, the not rule of its catch-all variant may gain an
+// alternative for the variant's discriminator value (claims). Any other
+// change can make the decoder default or drop a stable value.
 func shapeChanges(old, new *side) []string {
 	oldEntries, err := old.shapes()
 	if err != nil {
@@ -262,22 +262,35 @@ func (r *rule) lostIn(n *rule, path string) string {
 	if (r.anyOf == nil) != (n.anyOf == nil) {
 		return path + ": gains or loses its alternatives"
 	}
-	grows := len(n.anyOf) > len(r.anyOf)
+	// Each alternative of r gets a merged version that takes what it takes.
 	used := map[*rule]bool{}
+	pair := func(alt *rule, relax func(*rule) *rule) bool {
+		j := slices.IndexFunc(n.anyOf, func(b *rule) bool { return !used[b] && alt.lostIn(relax(b), "") == "" })
+		if j >= 0 {
+			used[n.anyOf[j]] = true
+		}
+		return j >= 0
+	}
+	var left []int
 	for i, alt := range r.anyOf {
-		j := slices.IndexFunc(n.anyOf, func(b *rule) bool {
-			if used[b] {
-				return false
-			}
-			if grows {
-				b = b.withoutNewExclusions(alt)
-			}
-			return alt.lostIn(b, "") == ""
-		})
-		if j < 0 {
+		if !pair(alt, func(b *rule) *rule { return b }) {
+			left = append(left, i)
+		}
+	}
+	// The merged alternatives without a version and without a not rule are
+	// new, such as a new variant. The not rule of a catch-all may leave out
+	// the values that they claim.
+	var added []*rule
+	for _, b := range n.anyOf {
+		if !used[b] && b.not == nil {
+			added = append(added, b)
+		}
+	}
+	for _, i := range left {
+		alt := r.anyOf[i]
+		if !pair(alt, func(b *rule) *rule { return b.withoutClaimedExclusions(alt, added) }) {
 			return fmt.Sprintf("%s.anyOf[%d]: has no merged version", path, i)
 		}
-		used[n.anyOf[j]] = true
 	}
 	return ""
 }
@@ -289,22 +302,39 @@ func rangeText(ints string) string {
 	return ints
 }
 
-// withoutNewExclusions returns b, an alternative of a union that gains
-// alternatives, without the alternatives of its not rule that the not rule
-// of alt, its stable version, has no version of. A catch-all variant gains
-// them when its union gains a variant: the new variant takes the values
-// that the catch-all then leaves out.
-func (b *rule) withoutNewExclusions(alt *rule) *rule {
+// withoutClaimedExclusions returns b, an alternative of a union, without the
+// alternatives of its not rule that the not rule of alt, its stable version,
+// has no version of and that an alternative of added claims. A catch-all
+// variant gains them when its union gains a variant: the new variant claims
+// the values that the catch-all then leaves out.
+func (b *rule) withoutClaimedExclusions(alt *rule, added []*rule) *rule {
 	if b.not == nil || alt.not == nil || b.not.anyOf == nil || alt.not.anyOf == nil {
 		return b
 	}
 	not := *b.not
 	not.anyOf = slices.DeleteFunc(slices.Clone(not.anyOf), func(x *rule) bool {
-		return !slices.ContainsFunc(alt.not.anyOf, func(y *rule) bool { return x.lostIn(y, "") == "" })
+		return !slices.ContainsFunc(alt.not.anyOf, func(y *rule) bool { return x.lostIn(y, "") == "" }) &&
+			slices.ContainsFunc(added, func(a *rule) bool { return a.claims(x) })
 	})
 	out := *b
 	out.not = &not
 	return &out
+}
+
+// claims reports whether x takes only objects whose member m, which x
+// requires, holds one of the values that a takes for m, and a takes only
+// those values for m, as a variant pins its discriminator: the not rule of a
+// catch-all leaves out the discriminator values of the variants.
+func (a *rule) claims(x *rule) bool {
+	if !slices.Equal(x.kinds, []string{"kindObject"}) {
+		return false
+	}
+	return slices.ContainsFunc(x.required, func(quoted string) bool {
+		m, _ := strconv.Unquote(quoted)
+		xm, am := x.props[m], a.props[m]
+		return xm != nil && am != nil && xm.values != nil &&
+			!slices.ContainsFunc(xm.values, func(v string) bool { return !slices.Contains(am.values, v) })
+	})
 }
 
 // siteChanges checks each site where the merged code checks a stable value

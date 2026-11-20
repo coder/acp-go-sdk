@@ -14,7 +14,9 @@ import (
 // has a check of its own; Dir through the struct of an inline property; and the
 // union Shape through its own property. Go rejects a struct that holds
 // itself in place, so each such member must hold its value through a
-// pointer. Update holds Change through a patch field, a Patch that holds
+// pointer. Kin requires two members of its own type whose hints read a bad
+// value or null as the default, which is nil. Update holds Change through a
+// patch field, a Patch that holds
 // its value in place, so the member of Change gets the pointer. The variant
 // of Pick copies the members of A, so its constructor takes the required b
 // as A declares it.
@@ -24,6 +26,9 @@ const recursiveSchema = `{"$defs": {
     "left": {"$ref": "#/$defs/Tree"},
     "right": {"description": "The right subtree.", "allOf": [{"$ref": "#/$defs/Tree"}]},
     "middle": {"$ref": "#/$defs/Tree", "x-deserialize-default-on-error": true}}},
+  "Kin": {"type": "object", "required": ["kid", "kin"], "properties": {
+    "kid": {"$ref": "#/$defs/Kin", "x-deserialize-default-on-error": true},
+    "kin": {"$ref": "#/$defs/Kin", "x-deserialize-default-on-null": true}}},
   "A": {"type": "object", "required": ["b"], "properties": {"b": {"allOf": [{"$ref": "#/$defs/B"}]}}},
   "B": {"type": "object", "properties": {"a": {"$ref": "#/$defs/A"}}},
   "Update": {"type": "object", "description": "Only changed fields need to be included.",
@@ -89,6 +94,16 @@ func TestTree_HoldsSubtreesThroughPointers(t *testing.T) {
 	var lenient Tree
 	if err := json.Unmarshal([]byte(` + "`" + `{"value":1,"middle":{"value":"x"}}` + "`" + `), &lenient); err != nil || lenient.Middle != nil {
 		t.Errorf("a bad middle subtree reads as %+v, %v; want absent", lenient.Middle, err)
+	}
+}
+
+func TestKin_TakesTheDefaultsThatItsHintsReadAsNil(t *testing.T) {
+	var kin Kin
+	if err := json.Unmarshal([]byte(` + "`" + `{"kid":"bad","kin":null}` + "`" + `), &kin); err != nil || kin.Kid != nil || kin.Kin != nil {
+		t.Fatalf("decoded %+v, %v", kin, err)
+	}
+	if err := kin.Validate(); err != nil {
+		t.Errorf("Validate rejects the defaults that the hints read: %v", err)
 	}
 }
 

@@ -7,8 +7,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -28,15 +30,17 @@ import (
 
 // inboundCorpusGlobs name the recorded traffic: the fixtures of the Claude and
 // Codex adapters and the verify-acp-go-sdk journeys in testdata/bench, and the
-// transcripts that verify-schema-bump's G2 gate round-trips. The module that
-// the Go proxy serves leaves out .agents, which is a module of its own, so
-// the G2 transcripts are optional; the corpus digest tells the corpora apart.
+// transcripts that verify-schema-bump's G2 gate round-trips. testdata/bench
+// and .agents are modules of their own, so the module zip that the Go proxy
+// serves has neither: a test that needs the corpus skips there. In a checkout
+// each folder that exists must match its glob; the corpus digest tells the
+// corpora apart.
 var inboundCorpusGlobs = []struct {
-	glob     string
-	required bool
+	dir  string
+	glob string
 }{
-	{"testdata/bench/*/*.jsonl", true},
-	{".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl", false},
+	{"testdata/bench", "testdata/bench/*/*.jsonl"},
+	{".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts", ".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl"},
 }
 
 // An inboundMessage is one message of the corpus, as the side that receives
@@ -57,11 +61,17 @@ func loadInboundCorpus(tb testing.TB) []inboundMessage {
 	tb.Helper()
 	var paths []string
 	for _, g := range inboundCorpusGlobs {
+		if _, err := os.Stat(g.dir); errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		matches, err := filepath.Glob(g.glob)
-		if err != nil || (g.required && len(matches) == 0) {
+		if err != nil || len(matches) == 0 {
 			tb.Fatalf("no corpus files match %s: %v", g.glob, err)
 		}
 		paths = append(paths, matches...)
+	}
+	if len(paths) == 0 {
+		tb.Skip("no corpus: this is the module zip, which leaves out testdata/bench and .agents")
 	}
 	sort.Strings(paths)
 	var corpus []inboundMessage

@@ -40,3 +40,7 @@ Run them with `make bench` (`scripts/bench`), which is not part of `make test`. 
 make bench BASE=origin/main
 RUNS=20 BENCH='^BenchmarkInbound$' scripts/bench origin/main
 ```
+
+This folder is a Go module of its own (`go.mod`, no code), so the module zip
+that the Go proxy serves leaves it out and consumers do not download it. The
+corpus tests skip when the folder is missing.

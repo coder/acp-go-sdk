@@ -201,9 +201,10 @@ func (c *UnstableProxySideConnection) handleWhenReady(ctx context.Context, metho
 	}
 	result, err := c.handle(ctx, method, params)
 	// The answer goes back to h.from. When it forwards an answer from the
-	// other side, it waits for its turn there. The hooks end h's holds once
-	// the connection has written it.
-	_, _ = c.order.awaitTurn(ctx, h, h.from)
+	// other side, it waits for its turn there, until the connection closes:
+	// the connection writes it even when a $/cancel_request has ended ctx.
+	// The hooks end h's holds once the connection has written it.
+	_, _ = c.order.awaitTurn(c.conn.ctx, h, h.from)
 	c.order.stop(arrival)
 	return result, err
 }

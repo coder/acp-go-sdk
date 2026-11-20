@@ -30,7 +30,9 @@ go run ./internal/benchcorpus -g3 "$ACP_VERIFY_RUN/evidence"
 | `BenchmarkConnectionPipe/pair` | An `AgentSideConnection` sends every `session/update` notification of the corpus to a `ClientSideConnection` over an `io.Pipe`, with at most 256 sent and not yet handled. |
 | `BenchmarkConnectionPipe/inbound` | The same, with the recorded lines written to the `ClientSideConnection` directly, so the agent does not encode them. |
 
-Each reports `msgs/op`, and the decode benchmarks also `errors/op`: the messages that the connection rejects or drops, such as a request for a method that the side does not have. `TestInboundCorpus` decodes the corpus once and, with `ACP_BENCH_OUTCOMES=FILE`, writes the outcome of each message: a hash of the decoded value encoded again, or the error.
+Each reports `cpu-ns/op`, the CPU time that the process used per op (Unix only), and `msgs/op`; the decode benchmarks also report `errors/op`: the messages that the connection rejects or drops, such as a request for a method that the side does not have. `TestInboundCorpus` decodes the corpus once and, with `ACP_BENCH_OUTCOMES=FILE`, writes the outcome of each message: a hash of the decoded value encoded again, or the error.
+
+On a shared machine, compare `cpu-sec/op` rather than `sec/op`: wall time grows while other processes hold the CPU, and CPU time does not. In an A/A run (the same commit on both sides, 10 runs, load average 25 to 40), `sec/op` of `BenchmarkInbound/corpus` varied by up to 82% and `cpu-sec/op` by 11%, with no significant difference on any benchmark.
 
 Run them with `make bench` (`scripts/bench`), which is not part of `make test`. With `BASE=<commit>` it compares that commit with the checkout: it copies the checkout's benchmark file and corpus into `BASE`, checks that both sides decode every message to the same outcome, runs the two test binaries in turn 10 times with `-cpu 1`, and prints `benchstat`. The header lists the corpus digest, so results of two different corpora do not mix.
 

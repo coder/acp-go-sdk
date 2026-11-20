@@ -1101,8 +1101,8 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				usedTypeNames[tname] = true
 			}
 		}
-		// Ensure Title-derived names are exported (e.g., "stdio" -> "Stdio").
-		tname = util.ToExportedField(tname)
+		// tname is final: the $defs key that the type is emitted under, or
+		// the name registered above. It is a Go name already.
 
 		// Derive field name with priority: discriminator value > title > type name
 		fieldName := ""
@@ -1124,7 +1124,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 
 		// Priority 3: Fall back to type name
 		if fieldName == "" {
-			fieldName = util.ToExportedField(tname)
+			fieldName = tname
 		}
 		isObj := len(v.Properties) > 0
 		isArray := ir.PrimaryType(v) == "array"

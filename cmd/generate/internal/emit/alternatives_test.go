@@ -21,6 +21,8 @@ const alternativeKindsSchema = `{"$defs": {
   "Label": {"type": "string"},
   "Choice": {"enum": ["a", "b"]},
   "Wide": {"type": "integer", "format": "int64"},
+  "NamedAlias": {"allOf": [{"$ref": "#/$defs/Named"}]},
+  "LabelAlias": {"allOf": [{"$ref": "#/$defs/Label"}]},
   "PickString": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "string"}]},
   "PickTitled": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"title": "Text", "type": "string"}]},
   "PickConst": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "string", "const": "a"}, {"type": "string", "const": "b"}]},
@@ -36,6 +38,8 @@ const alternativeKindsSchema = `{"$defs": {
   "PickRefConst": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"const": "a", "allOf": [{"$ref": "#/$defs/Label"}]}]},
   "PickRefEnumConst": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"const": "a", "allOf": [{"$ref": "#/$defs/Choice"}]}]},
   "PickRefWide": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"const": 4294967295, "allOf": [{"$ref": "#/$defs/Wide"}]}]},
+  "PickAlias": {"%[1]s": [{"$ref": "#/$defs/NamedAlias"}, {"$ref": "#/$defs/LabelAlias"}]},
+  "PickRefAliasConst": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"const": "a", "allOf": [{"$ref": "#/$defs/LabelAlias"}]}]},
   "PickOpen": {"%[1]s": [{"type": "string", "const": "a"}, {"type": "string", "const": "b"}, {"title": "Other", "type": "string"}]}
 }}`
 
@@ -123,6 +127,9 @@ func TestUnion_KeepsEveryKindOfAlternative(t *testing.T) {
 	roundTrips[PickRefConst](t, []string{named, ` + "`" + `"a"` + "`" + `}, []string{` + "`" + `"b"` + "`" + `})
 	roundTrips[PickRefEnumConst](t, []string{named, ` + "`" + `"a"` + "`" + `}, []string{` + "`" + `"b"` + "`" + `})
 	roundTrips[PickRefWide](t, []string{named, ` + "`" + `4294967295` + "`" + `}, []string{` + "`" + `7` + "`" + `})
+	// An alias is the type of the entry that it names.
+	roundTrips[PickAlias](t, []string{named, ` + "`" + `"x"` + "`" + `}, []string{` + "`" + `5` + "`" + `})
+	roundTrips[PickRefAliasConst](t, []string{named, ` + "`" + `"a"` + "`" + `}, []string{` + "`" + `"b"` + "`" + `})
 	// Consts beside an open string make an open enum under either keyword.
 	roundTrips[PickOpen](t, []string{` + "`" + `"a"` + "`" + `, ` + "`" + `"zzz"` + "`" + `}, []string{` + "`" + `5` + "`" + `})
 	if out, err := json.Marshal(PickOpenA); err != nil || string(out) != ` + "`" + `"a"` + "`" + ` {
@@ -170,6 +177,10 @@ func TestNewUnion_BuildsEveryKindOfAlternative(t *testing.T) {
 	builds(t, ptr(NewPickRefLabel("x")), ` + "`" + `"x"` + "`" + `)
 	builds(t, ptr(NewPickRefConstLabel()), ` + "`" + `"a"` + "`" + `)
 	builds(t, ptr(NewPickRefWideWide()), ` + "`" + `4294967295` + "`" + `)
+	// An alias of a struct builds a struct, as its entry does.
+	builds(t, ptr(NewPickAliasNamedAlias()), ` + "`" + `{"name":""}` + "`" + `)
+	builds(t, ptr(NewPickAliasLabelAlias("x")), ` + "`" + `"x"` + "`" + `)
+	builds(t, ptr(NewPickRefAliasConstLabelAlias()), ` + "`" + `"a"` + "`" + `)
 }
 `
 

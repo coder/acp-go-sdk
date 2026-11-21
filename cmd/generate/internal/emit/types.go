@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -170,9 +171,13 @@ type typesBuilder struct {
 	// patch holds the patch fields of the schema (ir.PatchFields), and
 	// nullAsAbsent those of them that have no clear (ir.NullAsAbsent).
 	patch, nullAsAbsent map[*load.Definition]bool
-	usesPatch           bool
-	usesNilIf           bool
-	// validated memoizes validates per $defs entry.
+	// indirect holds the members that hold their value through a pointer
+	// (indirectMembers), keyed as patch is.
+	indirect         map[*load.Definition]bool
+	usesPatch        bool
+	usesAbsentIfNull bool
+	usesNilIf        bool
+	// validated holds validates per $defs entry, nil until its first call.
 	validated map[string]bool
 }
 
@@ -192,8 +197,8 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	b := &typesBuilder{
 		f: f, schema: schema, usedTypeNames: usedTypeNames, variants: emitted,
 		shapes: newShapeTable(schema), patch: ir.PatchFields(schema), nullAsAbsent: ir.NullAsAbsent(schema),
-		validated: map[string]bool{},
 	}
+	b.indirect = b.indirectMembers()
 
 	// Deterministic order
 	keys := make([]string, 0, len(schema.Defs))
@@ -223,6 +228,9 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 		}
 
 		switch classify(def) {
+		case aliasKind:
+			f.Type().Id(name).Op("=").Add(jenTypeFor(def.AllOf[0]))
+			f.Line()
 		case enumKind:
 			b.emitEnum(name, def)
 		case openEnumKind:
@@ -327,15 +335,29 @@ func (b *typesBuilder) emitInterfaces(side string, methods map[string]string, gr
 // that handles mi.
 func (b *typesBuilder) interfaceMethod(mi *ir.MethodInfo) []Code {
 	code := appendDocComments(nil, methodDescription(b.schema, mi))
+	return append(code, methodSignature(b.schema, mi, Id(mi.Name)))
+}
+
+// methodSignature appends to s the parameters and the results of the Go
+// method that handles mi: (ctx, params) and an error, plus the response
+// before the error for a request whose response is not null.
+func methodSignature(schema *load.Schema, mi *ir.MethodInfo, s *Statement) *Statement {
 	ctx := Id("ctx").Qual("context", "Context")
 	if mi.Notif != "" {
-		return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Notif)).Error())
+		return s.Params(ctx, Id("params").Id(mi.Notif)).Error()
 	}
-	respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
-	if ir.IsNullResponse(b.schema.Defs[respName]) {
-		return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Req)).Error())
+	resp, ok := responseType(schema, mi)
+	if !ok {
+		return s.Params(ctx, Id("params").Id(mi.Req)).Error()
 	}
-	return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Req)).Params(Id(respName), Error()))
+	return s.Params(ctx, Id("params").Id(mi.Req)).Params(Id(resp), Error())
+}
+
+// responseType returns the Go type of the response to the request mi, and
+// false when the response is null.
+func responseType(schema *load.Schema, mi *ir.MethodInfo) (string, bool) {
+	name := strings.TrimSuffix(mi.Req, "Request") + "Response"
+	return name, !ir.IsNullResponse(schema.Defs[name])
 }
 
 func isStringConstUnion(def *load.Definition) bool {
@@ -461,11 +483,14 @@ const (
 	primitiveKind                // a named string, integer, number, or boolean type
 	emptyKind                    // an empty struct
 	rawKind                      // an alias of json.RawMessage
+	aliasKind                    // an alias of the $defs entry that its one allOf entry refers to
 )
 
 // classify returns the kind of Go type that the $defs entry def becomes.
 func classify(def *load.Definition) defKind {
 	switch t := ir.PrimaryType(def); {
+	case isRefAlias(def):
+		return aliasKind
 	case len(def.Enum) > 0, isStringConstUnion(def):
 		return enumKind
 	case isOpenStringEnum(def):
@@ -481,6 +506,34 @@ func classify(def *load.Definition) defKind {
 	default:
 		return rawKind
 	}
+}
+
+// isRefAlias reports whether def has no keyword but an allOf of one entry
+// that has no keyword but a $ref, which makes it the schema that the $ref
+// names.
+func isRefAlias(def *load.Definition) bool {
+	if len(def.AllOf) != 1 || def.AllOf[0] == nil || !strings.HasPrefix(def.AllOf[0].Ref, "#/$defs/") {
+		return false
+	}
+	return onlyAnnotations(*def, load.Definition{AllOf: def.AllOf}) && onlyAnnotations(*def.AllOf[0], load.Definition{Ref: def.AllOf[0].Ref})
+}
+
+// aliasTarget returns def, or for an alias (isRefAlias) the $defs entry at
+// the end of its $refs, whose Go type the alias is.
+func aliasTarget(schema *load.Schema, def *load.Definition) *load.Definition {
+	for seen := map[*load.Definition]bool{}; def != nil && isRefAlias(def) && !seen[def]; {
+		seen[def] = true
+		def = schema.Defs[strings.TrimPrefix(def.AllOf[0].Ref, "#/$defs/")]
+	}
+	return def
+}
+
+// onlyAnnotations reports whether d is bare once its annotations, which do
+// not change what it accepts, are left out. It compares every field, so a
+// keyword that load.Definition learns later counts too.
+func onlyAnnotations(d, bare load.Definition) bool {
+	d.Description, d.Title, d.XSide, d.XMethod, d.DocsIgnore = "", "", "", "", false
+	return reflect.DeepEqual(d, bare)
 }
 
 // emitValidate declares the Validate method of the type name, whose receiver
@@ -840,6 +893,9 @@ type unionVariant struct {
 	required  []string
 	props     map[string]*load.Definition
 	nested    []unionVariant
+	// fieldType returns the Go type that the variant's struct declares a
+	// property with (typesBuilder.fieldType).
+	fieldType func(ir.Field) Code
 	isStruct  bool
 	value     Code
 }
@@ -851,7 +907,7 @@ func (b *typesBuilder) isStruct(alt unionAlternative) bool {
 	case extensionAlt, valueAlt:
 		return false
 	case refAlt:
-		if def := b.schema.Defs[strings.TrimPrefix(alt.ref, "#/$defs/")]; def != nil {
+		if def := aliasTarget(b.schema, b.schema.Defs[strings.TrimPrefix(alt.ref, "#/$defs/")]); def != nil {
 			kind := classify(def)
 			return kind == unionKind || kind == structKind || kind == emptyKind
 		}
@@ -1014,9 +1070,9 @@ func unionAlternatives(schema *load.Schema, defs []*load.Definition) []unionAlte
 			// v.Const is the alternative's own.
 			if v.Const != nil {
 				// The const is checked against the Go type of the $defs
-				// entry, which is a string type for any entry with an enum
-				// (jenTypeFor), whatever its JSON type.
-				value := *schema.Defs[strings.TrimPrefix(ref, "#/$defs/")]
+				// entry (aliasTarget), which is a string type for any entry
+				// with an enum (jenTypeFor), whatever its JSON type.
+				value := *aliasTarget(schema, schema.Defs[strings.TrimPrefix(ref, "#/$defs/")])
 				if len(value.Enum) > 0 {
 					value.Type = "string"
 				}
@@ -1213,7 +1269,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	open := parentDef != nil && opensMembers(parentDef)
 	alts := unionAlternatives(schema, defs)
 	var wrapperFields []ir.Field
-	if len(sharedProps) > 0 && !allInlineObjects(alts) {
+	if keepsOwnProperties(parentDef, alts) {
 		wrapperFields = ir.Fields(parentDef.Properties, parentDef.Required)
 		sharedProps = map[string]*load.Definition{}
 		sharedRequired = map[string]struct{}{}
@@ -1257,8 +1313,8 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				usedTypeNames[tname] = true
 			}
 		}
-		// Ensure Title-derived names are exported (e.g., "stdio" -> "Stdio").
-		tname = util.ToExportedField(tname)
+		// tname is final: the $defs key that the type is emitted under, or
+		// the name registered above. It is a Go name already.
 
 		// Derive field name with priority: discriminator value > title > type name
 		fieldName := ""
@@ -1280,7 +1336,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 
 		// Priority 3: Fall back to type name
 		if fieldName == "" {
-			fieldName = util.ToExportedField(tname)
+			fieldName = tname
 		}
 		isObj := len(v.Properties) > 0
 		isArray := ir.PrimaryType(v) == "array"
@@ -1426,6 +1482,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			required:  append([]string(nil), v.Required...),
 			props:     v.Properties,
 			nested:    nestedVariants,
+			fieldType: b.fieldType,
 			isStruct:  b.isStruct(alt),
 		}
 		if len(values) == 1 {
@@ -1704,11 +1761,8 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				}
 			})
 		}
-		if len(wrapperFields) > 0 {
-			g.Return(Nil(), Qual("errors", "New").Call(Lit(name+" has no variant set")))
-		} else {
-			g.Return(Index().Byte().Values(), Nil())
-		}
+		// A union with no variant set has no JSON form, as Validate says.
+		g.Return(Nil(), Qual("errors", "New").Call(Lit(name+" has no variant set")))
 	})
 	f.Line()
 

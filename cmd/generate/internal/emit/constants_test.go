@@ -15,6 +15,7 @@ func TestWriteConstantsJen_DeclaresConstants(t *testing.T) {
 		AgentMethods:    map[string]string{"session_prompt": "session/prompt"},
 		ClientMethods:   map[string]string{"session_update": "session/update"},
 		ProtocolMethods: map[string]string{"cancel_request": "$/cancel_request"},
+		ProxyMethods:    map[string]string{"proxy_successor": "proxy/successor"},
 	}
 	dir := t.TempDir()
 	if err := WriteConstantsJen(dir, meta, "1.32.0"); err != nil {
@@ -39,6 +40,7 @@ func TestWriteConstantsJen_DeclaresConstants(t *testing.T) {
 		"AgentMethodSessionPrompt":    `"session/prompt"`,
 		"ClientMethodSessionUpdate":   `"session/update"`,
 		"ProtocolMethodCancelRequest": `"$/cancel_request"`,
+		"ProxyMethodProxySuccessor":   `"proxy/successor"`,
 	}
 	for name, lit := range want {
 		if got[name] != lit {

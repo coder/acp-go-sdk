@@ -8,9 +8,10 @@ import (
 )
 
 func TestCheck_ReportsUnwiredMethods(t *testing.T) {
-	const metaJSON = `{"agentMethods":{"session_new":"session/new"},"clientMethods":{},"protocolMethods":{"cancel_request":"$/cancel_request"}}`
-	const constants = "package acp\n\nconst (\n\tAgentMethodSessionNew = \"session/new\"\n\tProtocolMethodCancelRequest = \"$/cancel_request\"\n)\n"
+	const metaJSON = `{"agentMethods":{"session_new":"session/new"},"clientMethods":{},"protocolMethods":{"cancel_request":"$/cancel_request"},"proxyMethods":{"proxy_successor":"proxy/successor"}}`
+	const constants = "package acp\n\nconst (\n\tAgentMethodSessionNew = \"session/new\"\n\tProtocolMethodCancelRequest = \"$/cancel_request\"\n\tProxyMethodProxySuccessor = \"proxy/successor\"\n)\n"
 	const dispatch = "package acp\n\nfunc (a *AgentSideConnection) handle(method string) {\n\tswitch method {\n\tcase AgentMethodSessionNew:\n\t}\n}\n"
+	const proxyDispatch = "package acp\n\nfunc (c *UnstableProxySideConnection) handle(method string) {\n\tswitch method {\n\tcase ProxyMethodProxySuccessor:\n\t}\n}\n"
 	tests := []struct {
 		name     string
 		files    map[string]string
@@ -21,6 +22,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     dispatch,
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    "package acp\n\nfunc send(c interface{ Notify(string) }) { c.Notify(\"$/cancel_request\") }\n",
 			},
 			wantGaps: []string{"MISSING handler protocol $/cancel_request in hand-written code"},
@@ -30,6 +32,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     dispatch,
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    "package acp\n\nfunc send(method string) bool { return method == ProtocolMethodCancelRequest }\n",
 			},
 			wantGaps: []string{"MISSING handler protocol $/cancel_request in hand-written code"},
@@ -39,6 +42,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     dispatch,
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    receive("ProtocolMethodCancelRequest"),
 			},
 		},
@@ -47,6 +51,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     dispatch,
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    "package acp\n\nimport \"encoding/json\"\n\nfunc recv(line []byte) bool {\n\tvar msg struct{ Method string }\n\tok := msg.Method == ProtocolMethodCancelRequest\n\t_ = json.Unmarshal(line, &msg)\n\treturn ok\n}\n",
 			},
 			wantGaps: []string{"MISSING handler protocol $/cancel_request in hand-written code"},
@@ -56,6 +61,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     dispatch,
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    "package acp\n\nimport \"encoding/json\"\n\nfunc recv(line []byte, out struct{ Method string }) bool {\n\tvar msg struct{ Method string }\n\t_ = json.Unmarshal(line, &msg)\n\t{\n\t\tmsg := out\n\t\treturn msg.Method == ProtocolMethodCancelRequest\n\t}\n}\n",
 			},
 			wantGaps: []string{"MISSING handler protocol $/cancel_request in hand-written code"},
@@ -65,6 +71,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     "package acp\n\nfunc (a *AgentSideConnection) handle(method string) {}\n",
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    receive(`"$/cancel_request"`),
 			},
 			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
@@ -74,6 +81,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     "package acp\n\nfunc (a *AgentSideConnection) handle(method string) {\n\tother := \"\"\n\tswitch other {\n\tcase AgentMethodSessionNew:\n\t}\n}\n",
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    receive(`"$/cancel_request"`),
 			},
 			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
@@ -83,6 +91,7 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			files: map[string]string{
 				"constants_gen.go": constants,
 				"agent_gen.go":     "package acp\n\nfunc (a *AgentSideConnection) handle(method string) {\n\t{\n\t\tmethod := \"\"\n\t\tswitch method {\n\t\tcase AgentMethodSessionNew:\n\t\t}\n\t}\n}\n",
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    receive(`"$/cancel_request"`),
 			},
 			wantGaps: []string{"MISSING case agent session/new in (*AgentSideConnection).handle"},
@@ -90,11 +99,33 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 		{
 			name: "constant only in hand-written code",
 			files: map[string]string{
-				"constants_gen.go": "package acp\n\nconst AgentMethodSessionNew = \"session/new\"\n",
+				"constants_gen.go": "package acp\n\nconst (\n\tAgentMethodSessionNew = \"session/new\"\n\tProxyMethodProxySuccessor = \"proxy/successor\"\n)\n",
 				"agent_gen.go":     dispatch,
+				"proxy_gen.go":     proxyDispatch,
 				"connection.go":    receive("cancelRequest") + "\nconst cancelRequest = \"$/cancel_request\"\n",
 			},
 			wantGaps: []string{"MISSING constant protocol $/cancel_request"},
+		},
+		{
+			name: "proxy method without a case",
+			files: map[string]string{
+				"constants_gen.go": constants,
+				"agent_gen.go":     dispatch,
+				"proxy_gen.go":     "package acp\n\nfunc (c *UnstableProxySideConnection) handle(method string) {}\n",
+				"connection.go":    receive(`"$/cancel_request"`),
+			},
+			wantGaps: []string{"MISSING case proxy proxy/successor in (*UnstableProxySideConnection).handle"},
+		},
+		{
+			name: "proxy method without a generated constant",
+			files: map[string]string{
+				"constants_gen.go": "package acp\n\nconst (\n\tAgentMethodSessionNew = \"session/new\"\n\tProtocolMethodCancelRequest = \"$/cancel_request\"\n)\n",
+				"agent_gen.go":     dispatch,
+				"proxy.go":         "package acp\n\nconst ProxyMethodProxySuccessor = \"proxy/successor\"\n",
+				"proxy_gen.go":     proxyDispatch,
+				"connection.go":    receive(`"$/cancel_request"`),
+			},
+			wantGaps: []string{"MISSING constant proxy proxy/successor"},
 		},
 	}
 	for _, tt := range tests {
@@ -117,8 +148,8 @@ func TestCheck_ReportsUnwiredMethods(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if checked != 2 || !reflect.DeepEqual(gaps, tt.wantGaps) {
-				t.Errorf("check() = %q, %d checked; want %q, 2 checked", gaps, checked, tt.wantGaps)
+			if checked != 3 || !reflect.DeepEqual(gaps, tt.wantGaps) {
+				t.Errorf("check() = %q, %d checked; want %q, 3 checked", gaps, checked, tt.wantGaps)
 			}
 		})
 	}

@@ -88,6 +88,41 @@ func TestWriteTypesJen_FreeFormValuesAreRawJSON(t *testing.T) {
 	}
 }
 
+// A definition that is only an allOf of one $ref is that schema, so it is an
+// alias of the type that the $ref names. An allOf with another keyword, at
+// either level, is not.
+func TestWriteTypesJen_AllOfOneRefIsAnAlias(t *testing.T) {
+	src, _ := emitUnionFiles(t, `{"$defs": {
+  "Init": {"type": "object", "properties": {"version": {"type": "integer"}}},
+  "ProxyInit": {"description": "Init, for a proxy.", "allOf": [{"$ref": "#/$defs/Init"}]},
+  "Both": {"allOf": [{"$ref": "#/$defs/Init"}, {"$ref": "#/$defs/Init"}]},
+  "Named": {"allOf": [{"$ref": "#/$defs/Init"}], "properties": {"name": {"type": "string"}}},
+  "InnerNamed": {"allOf": [{"$ref": "#/$defs/Init", "properties": {"name": {"type": "string"}}}]},
+  "Open": {"allOf": [{"$ref": "#/$defs/Init"}], "unevaluatedProperties": true},
+  "Negated": {"allOf": [{"$ref": "#/$defs/Init"}], "not": {"required": ["version"]}}
+}}`)
+	file, err := parser.ParseFile(token.NewFileSet(), "types_gen.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse the generated code: %v", err)
+	}
+	got := map[string]string{}
+	for _, decl := range file.Decls {
+		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.TYPE {
+			spec := gen.Specs[0].(*ast.TypeSpec)
+			if spec.Assign.IsValid() {
+				got[spec.Name.Name] = types.ExprString(spec.Type)
+			}
+		}
+	}
+	want := map[string]string{"ProxyInit": "Init", "Both": "json.RawMessage", "Named": "json.RawMessage",
+		"InnerNamed": "json.RawMessage", "Open": "json.RawMessage", "Negated": "json.RawMessage"}
+	for name, typ := range want {
+		if got[name] != typ {
+			t.Errorf("%s is an alias of %q, want %q", name, got[name], typ)
+		}
+	}
+}
+
 // A patch field whose schema is an inline object keeps the struct that the
 // generator writes for it.
 func TestWriteTypesJen_PatchOfAnInlineObjectUsesItsStruct(t *testing.T) {
@@ -101,20 +136,23 @@ func TestWriteTypesJen_PatchOfAnInlineObjectUsesItsStruct(t *testing.T) {
 	}
 }
 
-// A patch field for which the schema defines no clear says how to read null.
+// A patch field for which the schema defines no clear says how the SDK reads
+// null, also where its description says that null leaves it unchanged, and a
+// field whose description says that null clears it does not.
 func TestWriteTypesJen_NullAsAbsentPatchFieldSaysSo(t *testing.T) {
 	src, _ := emitUnionFiles(t, `{"$defs": {
   "Update": {"description": "Only changed fields need to be included.", "type": "object", "properties": {
     "title": {"type": ["string", "null"], "description": "Update the title."},
-    "name": {"type": ["string", "null"], "description": "Sending null leaves the name unchanged."}
+    "name": {"type": ["string", "null"], "description": "Sending null leaves the name unchanged."},
+    "note": {"type": ["string", "null"], "description": "Set to null to clear."}
   }}
 }}`)
-	const want = "// Update the title.\n\t//\n\t// ACP v1 does not say that null clears this field, and the Rust SDK\n\t// reads null here as absent: treat IsNull like IsUnset.\n\tTitle Patch[string]"
+	const want = "// Update the title.\n\t//\n\t// ACP v1 defines no clear for this field, so null leaves it unchanged, as\n\t// absent does: the SDK reads null as unset, and leaves out a null Patch.\n\tTitle Patch[string]"
 	if !strings.Contains(src, want) {
 		t.Errorf("types_gen.go lacks the null note on Title:\n%s", src)
 	}
-	if strings.Count(src, "ACP v1 does not say") != 1 {
-		t.Errorf("types_gen.go has the null note on a field whose description says what null does:\n%s", src)
+	if strings.Count(src, "ACP v1 defines no clear") != 2 {
+		t.Errorf("types_gen.go has the null note on a field other than Title and Name:\n%s", src)
 	}
 }
 

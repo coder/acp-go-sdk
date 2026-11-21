@@ -48,8 +48,9 @@ func TestPatchFields_ReadsTheDescriptions(t *testing.T) {
 }
 
 // A field of an object that says only that it carries the changed fields,
-// and whose own description says nothing about null, has no clear: ACP v1
-// reads null there as absent.
+// and whose own description does not say that null clears it, has no clear:
+// ACP v1 reads null there as absent, also where the description says so, as
+// it does for name of ToolCallUpdate.
 func TestNullAsAbsent_ReadsTheDescriptions(t *testing.T) {
 	var schema load.Schema
 	if err := json.Unmarshal([]byte(`{"$defs": {
@@ -75,7 +76,7 @@ func TestNullAsAbsent_ReadsTheDescriptions(t *testing.T) {
 		}
 	}
 	sort.Strings(got)
-	const want = "Info._meta Update.title"
+	const want = "Info._meta Update.name Update.title"
 	if strings.Join(got, " ") != want {
 		t.Errorf("null-as-absent fields = %v, want %s", got, want)
 	}

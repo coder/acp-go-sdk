@@ -15,6 +15,8 @@ go build ./...
 | A `null` item of a string array, or a `null` value of a string map, fails to decode | [Null items and map values](#null-items-and-map-values) |
 | A required member that is missing, or `null` where the schema does not allow it, fails to decode | [Missing and null required members](#missing-and-null-required-members) |
 | An integer out of the range of its schema fails `Validate`, or reads as unset where the schema tolerates a bad value | [Integer ranges](#integer-ranges) |
+| Log attributes hold strings and numbers: `err` is the error's text, and peer text is cut to 1 KiB | [Log attributes](#log-attributes) |
+| A `null` in a `tool_call_update` field, or in `_meta` of a `session_info_update`, reads as unset, and `PatchNull` there is left out | [Null in a tool call update](#null-in-a-tool-call-update) |
 
 ## Required members
 
@@ -109,6 +111,7 @@ The rows come from the generated `Validate` methods of v0.20.0 and v0.21.0, foll
 ### Validate on values you build
 
 - Every union, and each struct that has one of the checks above, now has a `Validate` method: 112 types more than in v0.20.0, such as `ContentChunk`, `McpServerAcpInline` and `PermissionOption`. A `oneOf` union's `Validate` requires exactly one variant set, and an `anyOf` union's one at least (`McpServer has no variant set`), so `Validate` on a zero union fails.
+- `json.Marshal` of a zero union, such as `acp.ContentBlock{}`, fails with `ContentBlock has no variant set`. An `anyOf` union's `Validate` gives the same text. A `oneOf` union's `Validate` gives `ContentBlock must have exactly one variant set`, because it also rejects two variants set. v0.20.0 failed the marshal too: with encoding/json's `unexpected end of JSON input` for 26 unions, and with this same text for the other 5 (`CreateElicitationForm`, `CreateElicitationOther`, `CreateElicitationUrl`, `ElicitationFormMode` and `ElicitationUrlMode`). A send method, such as `SessionUpdate` with no update set, returns it inside its `-32602` error, and nothing is sent. A handler whose result holds a zero union, such as a `RequestPermission` that returns `RequestPermissionResponse{}`, makes the connection reply `-32603` with this text in `data.error`, so the peer reads `RequestPermissionOutcome has no variant set` where v0.20.0 sent `unexpected end of JSON input`.
 - `SessionConfigOption.Validate` no longer rejects an empty `name`. The SDK never calls it on its own: the requests and notifications that it reads hold a `SessionConfigOption` only in a lenient member.
 - The `Validate` of a response type checks the same rules. The SDK does not call it on a response that it receives.
 
@@ -265,3 +268,19 @@ Every property that now rejects an integer out of range, or reads it as unset:
 The rows come from the generated code: the range checks of each `Validate`, and the ranges in the shapes of the lenient decoders, followed from each method that the connection reads.
 
 These types get a `Validate` method, because they check a range or hold a type that does: `ElicitationPropertySchemaString`, `SessionUsageUpdate`, `StringPropertySchema`, `UnstableMcpError`, `UnstableMessageMcpError`, `UsageUpdate`, `Usage`.
+
+## Log attributes
+
+Every value that the connection logs is now a string or a number, so a peer cannot make one log record grow without bound.
+
+- **An `err` attribute holds the error's text, not the `error` value.** A `slog.Handler` that type-asserts `error`, or calls `errors.Is` or `errors.As` on the attribute, no longer matches. Match on the record's message or on the text instead.
+- Text from the peer, such as a raw line, a method, an id or an error message, is cut to 1 KiB and ends with `... (N bytes)`, where N is its full length. Numbers, booleans, durations and times keep their type.
+
+## Null in a tool call update
+
+ACP v1 defines no clear for the fields of a `ToolCallUpdate` and for `_meta` of a `SessionInfoUpdate`: a `null` there leaves the stored value unchanged, as an absent member does. The protocol docs say so for `name`, `rawInput` and `rawOutput`, the v2 migration guide says that v1 treats `null` like omission, and the Rust SDK reads every such `null` as absent. v0.20.0 read it as `IsNull()` and asked you to treat that like `IsUnset()`. v0.21.0 reads it as unset, and the API does not change:
+
+- A `null` member leaves the field as it is, as an absent member does: decoded into a new struct, it reads as `IsUnset()`, and `IsNull()` is false; a struct that already holds a value or a `PatchNull` keeps it. This holds for every field of `ToolCallUpdate`, the `toolCall` of `session/request_permission`, the `tool_call_update` variant of `SessionUpdate` (`SessionToolCallUpdate`), and `_meta` of `SessionInfoUpdate` and of its variant `SessionSessionInfoUpdate`. Code that treated `IsNull()` like `IsUnset()` there needs no change.
+- `acp.PatchNull[T]()` in these fields is left out of the JSON, where v0.20.0 wrote `null`. ACP v1 reads both as "unchanged", and the Rust SDK leaves the member out too.
+- To clear `content` or `locations`, send an empty list, as in v0.20.0: `acp.PatchSet([]acp.ToolCallContent{})` or `WithUpdateContent([]acp.ToolCallContent{})`.
+- `title` and `updatedAt` of `SessionInfoUpdate`, and the patch fields of `CompactionUpdate`, `SubagentUpdate` and `SessionMessage`, whose schema says that `null` clears them, still read and write `null` as a clear.

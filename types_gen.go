@@ -390,7 +390,7 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AgentResponse has no variant set")
 }
 
 func (u *AgentResponse) Validate() error {
@@ -732,7 +732,7 @@ func (u AuthMethod) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AuthMethod has no variant set")
 }
 
 func (u *AuthMethod) Validate() error {
@@ -1091,7 +1091,7 @@ func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AvailableCommandInput has no variant set")
 }
 
 func (u *AvailableCommandInput) Validate() error {
@@ -1709,7 +1709,7 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ClientResponse has no variant set")
 }
 
 func (u *ClientResponse) Validate() error {
@@ -2589,7 +2589,7 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"resource\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ContentBlock has no variant set")
 }
 
 func (u *ContentBlock) Validate() error {
@@ -3342,7 +3342,7 @@ func (u CreateElicitationRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("CreateElicitationRequest has no variant set")
 }
 
 func (u *CreateElicitationRequest) Validate() error {
@@ -3706,7 +3706,7 @@ func (u CreateElicitationResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("CreateElicitationResponse has no variant set")
 }
 
 func (u *CreateElicitationResponse) Validate() error {
@@ -4203,7 +4203,7 @@ func (u ElicitationContentValue) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("ElicitationContentValue has no variant set")
 }
 
 func (u *ElicitationContentValue) Validate() error {
@@ -5050,7 +5050,7 @@ func (u ElicitationPropertySchema) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ElicitationPropertySchema has no variant set")
 }
 
 func (u *ElicitationPropertySchema) Validate() error {
@@ -5586,7 +5586,7 @@ func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("EmbeddedResourceResource has no variant set")
 }
 
 func (u *EmbeddedResourceResource) Validate() error {
@@ -5943,7 +5943,7 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("ErrorCode has no variant set")
 }
 
 func (u *ErrorCode) Validate() error {
@@ -6660,7 +6660,7 @@ func (u IdleStateUpdate) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("IdleStateUpdate has no variant set")
 }
 
 func (u *IdleStateUpdate) Validate() error {
@@ -6996,7 +6996,7 @@ func (u InitialSessionConfigOption) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("InitialSessionConfigOption has no variant set")
 }
 
 func (u *InitialSessionConfigOption) Validate() error {
@@ -8096,7 +8096,7 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("McpServer has no variant set")
 }
 
 func (u *McpServer) Validate() error {
@@ -8660,7 +8660,7 @@ func (u MultiSelectItems) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("MultiSelectItems has no variant set")
 }
 
 func (u *MultiSelectItems) Validate() error {
@@ -9809,7 +9809,7 @@ func (u PlanUpdateContent) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"markdown\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("PlanUpdateContent has no variant set")
 }
 
 func (u *PlanUpdateContent) Validate() error {
@@ -10625,7 +10625,7 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("RequestId has no variant set")
 }
 
 func (u *RequestId) Validate() error {
@@ -10803,7 +10803,7 @@ func (u RequestPermissionOutcome) MarshalJSON() ([]byte, error) {
 		m["outcome"] = json.RawMessage("\"selected\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("RequestPermissionOutcome has no variant set")
 }
 
 func (u *RequestPermissionOutcome) Validate() error {
@@ -11788,7 +11788,7 @@ func (u SessionConfigOption) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"boolean\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionConfigOption has no variant set")
 }
 
 func (u *SessionConfigOption) Validate() error {
@@ -12131,7 +12131,7 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionConfigSelectOptions has no variant set")
 }
 
 func (u *SessionConfigSelectOptions) Validate() error {
@@ -12314,8 +12314,8 @@ type SessionInfoUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Human-readable title for the session. Set to null to clear.
 	Title Patch[string] `json:"title"`
@@ -12333,7 +12333,7 @@ func (v SessionInfoUpdate) MarshalJSON() ([]byte, error) {
 		UpdatedAt *Patch[string] `json:"updatedAt,omitempty"`
 	}
 	return json.Marshal(wire{
-		Meta:      a.Meta.orNil(),
+		Meta:      a.Meta.setOrNil(),
 		Title:     a.Title.orNil(),
 		UpdatedAt: a.UpdatedAt.orNil(),
 	})
@@ -12351,7 +12351,7 @@ func (v *SessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
 	return nil
@@ -13233,49 +13233,52 @@ type SessionToolCallUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
 	// the existing name is left unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Name Patch[string] `json:"name"`
 	// Update the raw input.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawOutput     Patch[json.RawMessage] `json:"rawOutput"`
 	SessionUpdate string                 `json:"sessionUpdate"`
 	// Update the execution status.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
@@ -13299,16 +13302,16 @@ func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
 		ToolCallId    ToolCallId                 `json:"toolCallId"`
 	}
 	return json.Marshal(wire{
-		Content:       a.Content.orNil(),
-		Kind:          a.Kind.orNil(),
-		Locations:     a.Locations.orNil(),
-		Meta:          a.Meta.orNil(),
-		Name:          a.Name.orNil(),
-		RawInput:      a.RawInput.orNil(),
-		RawOutput:     a.RawOutput.orNil(),
+		Content:       a.Content.setOrNil(),
+		Kind:          a.Kind.setOrNil(),
+		Locations:     a.Locations.setOrNil(),
+		Meta:          a.Meta.setOrNil(),
+		Name:          a.Name.setOrNil(),
+		RawInput:      a.RawInput.setOrNil(),
+		RawOutput:     a.RawOutput.setOrNil(),
 		SessionUpdate: a.SessionUpdate,
-		Status:        a.Status.orNil(),
-		Title:         a.Title.orNil(),
+		Status:        a.Status.setOrNil(),
+		Title:         a.Title.setOrNil(),
 		ToolCallId:    a.ToolCallId,
 	})
 }
@@ -13334,15 +13337,15 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
-	decodePatchItems(raw.Content, &v.Content, shapeToolCallContent)
-	decodePatch(raw.Kind, &v.Kind)
-	decodePatchItems(raw.Locations, &v.Locations, shapeToolCallLocation)
-	decodePatch(raw.Name, &v.Name)
-	decodePatch(raw.RawInput, &v.RawInput)
-	decodePatch(raw.RawOutput, &v.RawOutput)
-	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
-	decodePatch(raw.Title, &v.Title)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
+	decodePatchItems(absentIfNull(raw.Content), &v.Content, shapeToolCallContent)
+	decodePatch(absentIfNull(raw.Kind), &v.Kind)
+	decodePatchItems(absentIfNull(raw.Locations), &v.Locations, shapeToolCallLocation)
+	decodePatch(absentIfNull(raw.Name), &v.Name)
+	decodePatch(absentIfNull(raw.RawInput), &v.RawInput)
+	decodePatch(absentIfNull(raw.RawOutput), &v.RawOutput)
+	decodePatch(absentIfNull(raw.Status), &v.Status, shapeToolCallStatus)
+	decodePatch(absentIfNull(raw.Title), &v.Title)
 	if maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.ToolCallId) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
@@ -13702,8 +13705,8 @@ type SessionSessionInfoUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta          Patch[Meta] `json:"_meta"`
 	SessionUpdate string      `json:"sessionUpdate"`
 	// Human-readable title for the session. Set to null to clear.
@@ -13723,7 +13726,7 @@ func (v SessionSessionInfoUpdate) MarshalJSON() ([]byte, error) {
 		UpdatedAt     *Patch[string] `json:"updatedAt,omitempty"`
 	}
 	return json.Marshal(wire{
-		Meta:          a.Meta.orNil(),
+		Meta:          a.Meta.setOrNil(),
 		SessionUpdate: a.SessionUpdate,
 		Title:         a.Title.orNil(),
 		UpdatedAt:     a.UpdatedAt.orNil(),
@@ -13744,7 +13747,7 @@ func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
 	if maybeAbsent(&v.SessionUpdate) {
@@ -14878,7 +14881,7 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		m["sessionUpdate"] = json.RawMessage("\"session_message_chunk\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionUpdate has no variant set")
 }
 
 func (u *SessionUpdate) Validate() error {
@@ -15253,7 +15256,7 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SetSessionConfigOptionRequest has no variant set")
 }
 
 func (u *SetSessionConfigOptionRequest) Validate() error {
@@ -16034,7 +16037,7 @@ func (u StateUpdateIdle) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("StateUpdateIdle has no variant set")
 }
 
 func (u *StateUpdateIdle) Validate() error {
@@ -16328,7 +16331,7 @@ func (u StateUpdate) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("StateUpdate has no variant set")
 }
 
 func (u *StateUpdate) Validate() error {
@@ -17629,7 +17632,7 @@ func (u ToolCallContent) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"session\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ToolCallContent has no variant set")
 }
 
 func (u *ToolCallContent) Validate() error {
@@ -17745,48 +17748,51 @@ type ToolCallUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
 	// the existing name is left unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Name Patch[string] `json:"name"`
 	// Update the raw input.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawOutput Patch[json.RawMessage] `json:"rawOutput"`
 	// Update the execution status.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
@@ -17809,15 +17815,15 @@ func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
 		ToolCallId ToolCallId                 `json:"toolCallId"`
 	}
 	return json.Marshal(wire{
-		Content:    a.Content.orNil(),
-		Kind:       a.Kind.orNil(),
-		Locations:  a.Locations.orNil(),
-		Meta:       a.Meta.orNil(),
-		Name:       a.Name.orNil(),
-		RawInput:   a.RawInput.orNil(),
-		RawOutput:  a.RawOutput.orNil(),
-		Status:     a.Status.orNil(),
-		Title:      a.Title.orNil(),
+		Content:    a.Content.setOrNil(),
+		Kind:       a.Kind.setOrNil(),
+		Locations:  a.Locations.setOrNil(),
+		Meta:       a.Meta.setOrNil(),
+		Name:       a.Name.setOrNil(),
+		RawInput:   a.RawInput.setOrNil(),
+		RawOutput:  a.RawOutput.setOrNil(),
+		Status:     a.Status.setOrNil(),
+		Title:      a.Title.setOrNil(),
 		ToolCallId: a.ToolCallId,
 	})
 }
@@ -17842,15 +17848,15 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
-	decodePatchItems(raw.Content, &v.Content, shapeToolCallContent)
-	decodePatch(raw.Kind, &v.Kind)
-	decodePatchItems(raw.Locations, &v.Locations, shapeToolCallLocation)
-	decodePatch(raw.Name, &v.Name)
-	decodePatch(raw.RawInput, &v.RawInput)
-	decodePatch(raw.RawOutput, &v.RawOutput)
-	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
-	decodePatch(raw.Title, &v.Title)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
+	decodePatchItems(absentIfNull(raw.Content), &v.Content, shapeToolCallContent)
+	decodePatch(absentIfNull(raw.Kind), &v.Kind)
+	decodePatchItems(absentIfNull(raw.Locations), &v.Locations, shapeToolCallLocation)
+	decodePatch(absentIfNull(raw.Name), &v.Name)
+	decodePatch(absentIfNull(raw.RawInput), &v.RawInput)
+	decodePatch(absentIfNull(raw.RawOutput), &v.RawOutput)
+	decodePatch(absentIfNull(raw.Status), &v.Status, shapeToolCallStatus)
+	decodePatch(absentIfNull(raw.Title), &v.Title)
 	if maybeAbsent(&v.ToolCallId) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
@@ -18556,6 +18562,34 @@ func (v *UnstableForkSessionResponse) Validate() error {
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
 //
+// Request parameters for 'proxy/initialize'.
+//
+// A conductor sends 'proxy/initialize' instead of 'initialize' to every component that has a
+// successor, which tells the component to run as a proxy. The params and the response are
+// the same as for 'initialize'. A conductor sends 'initialize' to the final agent.
+//
+// The params carry the protocol version the conductor selected: the client's requested
+// version, unless the conductor supports only a lower one. Before answering successfully,
+// the proxy MUST forward an 'initialize' request to its successor through 'proxy/successor'.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableInitializeProxyRequest = InitializeRequest
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response to 'proxy/initialize'.
+//
+// The same as the 'initialize' response. The proxy builds it from its successor's
+// 'initialize' response and answers with the capabilities of the chain from itself onward.
+// It MUST NOT change 'protocolVersion'.
+type UnstableInitializeProxyResponse = InitializeResponse
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
 // Request parameters for 'providers/list'.
 type UnstableListProvidersRequest struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -19073,7 +19107,7 @@ func (u UnstableMessageMcpResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("UnstableMessageMcpResponse has no variant set")
 }
 
 func (u *UnstableMessageMcpResponse) Validate() error {
@@ -19235,6 +19269,143 @@ func (v *UnstableProviderInfo) Validate() error {
 	}
 	return nil
 }
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Parameters of a 'proxy/successor' notification.
+//
+// A proxy sends it to forward a message to its successor, and the conductor sends it to
+// deliver a message from the successor to the proxy. The envelope wraps one notification: 'method'
+// and 'params' are the wrapped notification's method and params.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableProxySuccessorNotification struct {
+	// Metadata for the 'proxy/successor' envelope itself, separate from the wrapped
+	// message's '_meta'. It is hop-local: the conductor does not copy it into the message
+	// it unwraps.
+	//
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// Method name of the wrapped notification.
+	Method string `json:"method"`
+	// Params of the wrapped notification, forwarded unchanged.
+	//
+	// Optional. Omitted and 'null' are equivalent and mean the wrapped notification has no params.
+	// When present, it MUST be a JSON object or array, as JSON-RPC requires.
+	// The wrapped notification's own '_meta' stays inside these params.
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+func (v *UnstableProxySuccessorNotification) UnmarshalJSON(b []byte) error {
+	var fresh UnstableProxySuccessorNotification
+	v.Method = fresh.Method
+	type plain UnstableProxySuccessorNotification
+	type UnstableProxySuccessorNotification struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnstableProxySuccessorNotification{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "UnstableProxySuccessorNotification", "method")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableProxySuccessorNotification) Validate() error {
+	if v.Method == "" {
+		return fmt.Errorf("method is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Parameters of a 'proxy/successor' request.
+//
+// A proxy sends it to forward a message to its successor, and the conductor sends it to
+// deliver a message from the successor to the proxy. The envelope wraps one request: 'method'
+// and 'params' are the wrapped request's method and params.
+//
+// The result or error of the wrapped request is returned unchanged, as the same JSON value,
+// as the result or error of the 'proxy/successor' request. Errors the conductor returns
+// itself, for example because the successor has exited, are not wrapped results.
+//
+// To cancel it, the sender sends '$/cancel_request' with the ID of this 'proxy/successor'
+// request on the same connection. Cancellation is never forwarded to another hop.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableProxySuccessorRequest struct {
+	// Metadata for the 'proxy/successor' envelope itself, separate from the wrapped
+	// message's '_meta'. It is hop-local: the conductor does not copy it into the message
+	// it unwraps.
+	//
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// Method name of the wrapped request.
+	Method string `json:"method"`
+	// Params of the wrapped request, forwarded unchanged.
+	//
+	// Optional. Omitted and 'null' are equivalent and mean the wrapped request has no params.
+	// When present, it MUST be a JSON object or array, as JSON-RPC requires.
+	// The wrapped request's own '_meta' stays inside these params.
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+func (v *UnstableProxySuccessorRequest) UnmarshalJSON(b []byte) error {
+	var fresh UnstableProxySuccessorRequest
+	v.Method = fresh.Method
+	type plain UnstableProxySuccessorRequest
+	type UnstableProxySuccessorRequest struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnstableProxySuccessorRequest{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "UnstableProxySuccessorRequest", "method")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableProxySuccessorRequest) Validate() error {
+	if v.Method == "" {
+		return fmt.Errorf("method is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Result of a 'proxy/successor' request: the wrapped request's result, forwarded unchanged.
+// UnstableProxySuccessorResponse is a union or complex schema; it holds the JSON as it was read.
+type UnstableProxySuccessorResponse = json.RawMessage
 
 // **UNSTABLE**
 //
@@ -21294,6 +21465,16 @@ func decodePatchItems[T any](raw json.RawMessage, dst *Patch[[]T], check ...shap
 			*dst = PatchSet(v)
 		}
 	}
+}
+
+// absentIfNull returns nil for a raw null, and raw otherwise, so that a patch
+// field for which the schema defines no clear reads null as absent, as ACP v1
+// reads it.
+func absentIfNull(raw json.RawMessage) json.RawMessage {
+	if string(raw) == "null" {
+		return nil
+	}
+	return raw
 }
 
 // additionalProperties returns the members of the JSON object b that named

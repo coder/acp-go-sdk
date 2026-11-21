@@ -44,7 +44,7 @@ type goType struct {
 type goKind uint8
 
 const (
-	goBuiltin goKind = iota // string, int, int64, float64, or bool
+	goBuiltin goKind = iota // a type of leafHelpers
 	goRaw                   // json.RawMessage, or an alias of it
 	goNamed                 // a generated type, or Meta: it has a decodeFast
 	goPointer
@@ -54,8 +54,13 @@ const (
 	goOther // a type without a fast decoder, which fastExact decodes
 )
 
-// leafHelpers are the fast decoders of the builtin types.
-var leafHelpers = map[string]string{"string": "fastString", "int": "fastInt", "int64": "fastInt", "float64": "fastFloat", "bool": "fastBool"}
+// leafHelpers are the fast decoders of the builtin types, the integer types
+// of formatTypes among them. A builtin without one decodes with fastExact.
+var leafHelpers = map[string]string{
+	"string": "fastString", "float64": "fastFloat", "bool": "fastBool",
+	"int": "fastInt", "int32": "fastInt", "int64": "fastInt",
+	"uint16": "fastUint", "uint32": "fastUint", "uint64": "fastUint",
+}
 
 // fastType reads the Go type that typ, the code of a type, spells.
 func (b *typesBuilder) fastType(typ Code) goType {
@@ -281,7 +286,12 @@ func (b *typesBuilder) fastDecodeStmt(p fieldPlan, recv string, nestedTypeNames 
 
 	if p.patch && !lenient {
 		field := func() *Statement { return Id(recv).Dot(p.field.Name) }
-		return If(raw().Op("!=").Nil().Op("&&").Op("!").Add(typ.callField(field, raw()))).Block(decline())
+		present := raw().Op("!=").Nil()
+		if p.nullAsAbsent {
+			// As decodeStmt does, null reads as absent.
+			present = present.Op("&&").Id("string").Call(raw()).Op("!=").Lit("null")
+		}
+		return If(present.Op("&&").Op("!").Add(typ.callField(field, raw()))).Block(decline())
 	}
 	// value is the type that the helper decodes: the type of the field, of
 	// its Patch's value, or of the items of either.
@@ -307,6 +317,9 @@ func (b *typesBuilder) fastDecodeStmt(p fieldPlan, recv string, nestedTypeNames 
 	}
 
 	if p.patch {
+		if p.nullAsAbsent {
+			args[0] = Id("absentIfNull").Call(raw())
+		}
 		return pick("fastPatchLenient", "fastPatchLenientItems").Call(args...)
 	}
 	if lenient {
@@ -404,7 +417,9 @@ type fastVariant struct {
 	byItemKeys          bool
 	itemRequired        []fastKey
 	ordered             bool
-	scalarConst         Code
+	// values are the values that a value variant takes, when not every
+	// value of its type (unionAlternative.values).
+	values []Code
 }
 
 // fastKey is a key that a variant requires (requireKey in emitUnion).
@@ -428,10 +443,12 @@ func keyTakesNull(schema *load.Schema, def *load.Definition) bool {
 // fastOrExact, whose answer is exact: so a variant that does not decode
 // passes the turn to the next, as in the exact decoder.
 func (b *typesBuilder) emitFastUnion(u fastUnion) {
-	try := func(v fastVariant) []Code {
+	// try decodes the variant v, and with values checks that it is one of
+	// v.values, as the exact decoder does in its ordered tries alone.
+	try := func(v fastVariant, values bool) []Code {
 		decodes := Id("fastOrExact").Call(Op("&").Id("v"), Id("b"), b.fastType(Id(v.typeName)).decoder())
-		if v.scalarConst != nil {
-			decodes = decodes.Op("&&").Id("v").Op("==").Add(v.scalarConst)
+		if values && len(v.values) > 0 {
+			decodes = decodes.Op("&&").Add(takesValue(v.values))
 		}
 		return []Code{
 			Var().Id("v").Id(v.typeName),
@@ -505,7 +522,7 @@ func (b *typesBuilder) emitFastUnion(u fastUnion) {
 					obj.Switch(Id("disc")).BlockFunc(func(sw *Group) {
 						for _, v := range u.variants {
 							if v.discValue != "" {
-								sw.Case(Lit(v.discValue)).Block(try(v)...)
+								sw.Case(Lit(v.discValue)).Block(try(v, false)...)
 							}
 						}
 					})
@@ -531,7 +548,7 @@ func (b *typesBuilder) emitFastUnion(u fastUnion) {
 						for _, key := range v.nullKeys {
 							h.If(value("m", key), Op("!").Id("absentOrNull").Call(Id("raw"))).Block(noMatch)
 						}
-						h.If(Id("match")).Block(try(v)...)
+						h.If(Id("match")).Block(try(v, false)...)
 					})
 				}
 			})
@@ -552,14 +569,14 @@ func (b *typesBuilder) emitFastUnion(u fastUnion) {
 								loop.Add(requireKey("elem", k))
 							}
 						})
-						h.If(Id("match")).Block(try(v)...)
+						h.If(Id("match")).Block(try(v, false)...)
 					})
 				}
 			})
 		}
 		for _, v := range u.variants {
 			if v.ordered {
-				g.Block(try(v)...)
+				g.Block(try(v, true)...)
 			}
 		}
 		g.Add(decline())

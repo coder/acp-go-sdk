@@ -1,0 +1,19 @@
+# The example proxy in a chain whose conductor and successor this journey plays: the
+# proxy's predecessor sends plain methods, and its successor talks in proxy/successor
+# envelopes. The rules answer what the proxy forwards to its successor. Feature: proxy.md
+{"respond":"proxy/successor","where":{"params.method":"initialize"},"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":false},"authMethods":[]}}
+{"respond":"proxy/successor","where":{"params.method":"session/new"},"result":{"sessionId":"sess-1"}}
+{"respond":"proxy/successor","where":{"params.method":"session/prompt"},"result":{"stopReason":"end_turn"}}
+{"respond":"session/request_permission","result":{"outcome":{"outcome":"selected","optionId":"allow"}}}
+{"send":"proxy/initialize","params":{"protocolVersion":1,"clientCapabilities":{}},"save":"init","expect":{"result.protocolVersion":1}}
+{"waitFor":"proxy/successor","where":{"params.method":"initialize","params.params.protocolVersion":1}}
+{"send":"session/new","params":{"cwd":"/tmp","mcpServers":[]},"save":"new","expect":{"result.sessionId":"sess-1"}}
+{"waitFor":"proxy/successor","where":{"params.method":"session/new","params.params.cwd":"/tmp"}}
+{"notify":"proxy/successor","params":{"method":"session/update","params":{"sessionId":"sess-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Hello from the successor."}}}}}
+{"waitFor":"session/update","where":{"params.sessionId":"sess-1","params.update.sessionUpdate":"agent_message_chunk","params.update.content.text":"[proxy] Hello from the successor."}}
+{"notify":"proxy/successor","params":{"method":"session/update","params":{"sessionId":"sess-1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Thinking it over."}}}}}
+{"waitFor":"session/update","where":{"params.update.sessionUpdate":"agent_thought_chunk","params.update.content.text":"Thinking it over."}}
+{"send":"proxy/successor","params":{"method":"session/request_permission","params":{"sessionId":"sess-1","toolCall":{"toolCallId":"call_1","title":"Edit config"},"options":[{"optionId":"allow","name":"Allow","kind":"allow_once"},{"optionId":"reject","name":"Reject","kind":"reject_once"}]}},"save":"perm","expect":{"result.outcome.outcome":"selected","result.outcome.optionId":"allow"}}
+{"send":"session/prompt","params":{"sessionId":"sess-1","prompt":[{"type":"text","text":"Hello, proxy!"}]},"save":"turn","expect":{"result.stopReason":"end_turn"}}
+{"waitFor":"proxy/successor","where":{"params.method":"session/prompt","params.params.sessionId":"sess-1"}}
+{"close":true,"expectExit":0}

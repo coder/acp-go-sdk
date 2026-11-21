@@ -1,6 +1,6 @@
 # Migrating to v0.21.0
 
-v0.21.0 makes inbound decoding stricter: the SDK rejects a message that the ACP schema forbids and that the Rust SDK rejects too, apart from the few differences in bold below. The ACP schema stays at 1.32.0, and `acp.Agent` and `acp.Client` do not change, so your code compiles as before.
+v0.21.0 makes inbound decoding stricter: the SDK rejects a message that the ACP schema forbids and that the Rust SDK rejects too, apart from the few differences in bold below. The ACP schema stays at 1.32.0, and `acp.Agent` and `acp.Client` do not change. The integer fields take the Go type of their schema format, such as `uint32` for `ReadTextFileRequest.Line`. The compiler reports a use that mixes a changed field with a value of its old type. It does not report arithmetic among changed fields, which can now wrap: `u.Size - u.Used` of a `UsageUpdate` with `Size` 1 and `Used` 3 gives 18446744073709551614, where v0.20.0 gave -2. Nor does it report a conversion to a named type that changed: `acp.ProtocolVersion(n)` or `acp.ErrorCodeOther(n)` with an `int` `n` still compiles and now wraps past the new range: with `n := 70000`, `acp.ProtocolVersion(n)` is 4464 (the constant `acp.ProtocolVersion(70000)` does not compile), and `acp.ErrorCodeOther(n)` wraps only past `int32`. See [Integer types and ranges](#integer-types-and-ranges) for how to find them.
 
 ```bash
 go get github.com/coder/acp-go-sdk@v0.21.0
@@ -14,7 +14,10 @@ go build ./...
 | Required members are checked at every depth | [Required members](#required-members) |
 | A `null` item of a string array, or a `null` value of a string map, fails to decode | [Null items and map values](#null-items-and-map-values) |
 | A required member that is missing, or `null` where the schema does not allow it, fails to decode | [Missing and null required members](#missing-and-null-required-members) |
-| An integer out of the range of its schema fails `Validate`, or reads as unset where the schema tolerates a bad value | [Integer ranges](#integer-ranges) |
+| Each integer has the Go type of its schema format, such as `uint32` or `uint64`: a value out of its range fails to decode, or reads as unset where the schema tolerates a bad value | [Integer types and ranges](#integer-types-and-ranges) |
+| `NewAgentSideConnection`, `NewClientSideConnection` and `NewConnection` take `...ConnectionOption`, and every connection limits what it holds from the peer | [Connection constructors and limits](#connection-constructors-and-limits) |
+| Log attributes hold strings and numbers: `err` is the error's text, and peer text is cut to 1 KiB | [Log attributes](#log-attributes) |
+| A `null` in a `tool_call_update` field, or in `_meta` of a `session_info_update`, reads as unset, and `PatchNull` there is left out | [Null in a tool call update](#null-in-a-tool-call-update) |
 
 ## Required members
 
@@ -109,6 +112,7 @@ The rows come from the generated `Validate` methods of v0.20.0 and v0.21.0, foll
 ### Validate on values you build
 
 - Every union, and each struct that has one of the checks above, now has a `Validate` method: 112 types more than in v0.20.0, such as `ContentChunk`, `McpServerAcpInline` and `PermissionOption`. A `oneOf` union's `Validate` requires exactly one variant set, and an `anyOf` union's one at least (`McpServer has no variant set`), so `Validate` on a zero union fails.
+- `json.Marshal` of a zero union, such as `acp.ContentBlock{}`, fails with `ContentBlock has no variant set`. An `anyOf` union's `Validate` gives the same text. A `oneOf` union's `Validate` gives `ContentBlock must have exactly one variant set`, because it also rejects two variants set. v0.20.0 failed the marshal too: with encoding/json's `unexpected end of JSON input` for 26 unions, and with this same text for the other 5 (`CreateElicitationForm`, `CreateElicitationOther`, `CreateElicitationUrl`, `ElicitationFormMode` and `ElicitationUrlMode`). A send method, such as `SessionUpdate` with no update set, returns it inside its `-32602` error, and nothing is sent. A handler whose result holds a zero union, such as a `RequestPermission` that returns `RequestPermissionResponse{}`, makes the connection reply `-32603` with this text in `data.error`, so the peer reads `RequestPermissionOutcome has no variant set` where v0.20.0 sent `unexpected end of JSON input`.
 - `SessionConfigOption.Validate` no longer rejects an empty `name`. The SDK never calls it on its own: the requests and notifications that it reads hold a `SessionConfigOption` only in a lenient member.
 - The `Validate` of a response type checks the same rules. The SDK does not call it on a response that it receives.
 
@@ -219,49 +223,110 @@ Every member that the rules above let through when it was missing or `null`, and
 
 The rows come from the generated decoders of this release and of the checks above: each `requireMember` call on a path from a message that a connection reads, without the members that `Validate` or the choice of a union variant already rejected, and without lenient properties.
 
-## Integer ranges
+## Integer types and ranges
 
-Since v0.20.0 an integer of format `uint32` or `uint64` is an `int64`, and one of format `int32` or `uint16` is an `int`, and the SDK checked neither `format` nor `minimum` and `maximum`. So `"line": -1` in `fs/read_text_file` reached `Client.ReadTextFile`, and `"protocolVersion": 70000` reached `Agent.Initialize`. The Rust SDK reads each integer as the Rust type that its format names (`i32`, `u16`, `u32`, `u64`) and fails the message, so v0.21.0 checks the range: the format's range, narrowed by `minimum` and `maximum`.
+Each integer now has the Go type of the Rust type that its schema `format` names: `int32`, `int64`, `uint16`, `uint32` or `uint64`. In v0.20.0 an integer of format `uint32` or `uint64` was an `int64`, one of format `int32` or `uint16` was an `int`, and the SDK checked neither range, so `"line": -1` in `fs/read_text_file` reached `Client.ReadTextFile`, and `"protocolVersion": 70000` reached `Agent.Initialize`. The Rust SDK reads each integer as the Rust type that its format names and fails the message, and so does the SDK now, because `encoding/json` fails a value that its Go type cannot hold.
 
-- `Validate` checks every integer that a field holds, required, optional, an item or a map member, also through a named type such as `ProtocolVersion`. A request out of range gets `-32602` and a notification is dropped, with an error such as `line must be between 0 and 4294967295`, `outputByteLimit must be at least 0` or `update: used must be at least 0`.
+- A value out of the range of its format fails to decode wherever it arrives. A request gets `-32602` and a notification is dropped, with an error such as `json: cannot unmarshal number -1 into Go struct field ReadTextFileRequest.line of type uint32`. A response fails too: the call that sent the request returns the decode error. v0.20.0 checked no response.
+- A `uint64`, such as `used` of a `usage_update` or a token count of `Usage`, takes every value up to 2^64-1, as in the Rust SDK. v0.20.0 failed a value above `math.MaxInt64`.
+- `-0` in an unsigned integer, and a number with a fraction or an exponent, such as `1.0` or `1e2`, fail to decode, as in the Rust SDK. **A `-0` in a signed integer reads as 0. The Rust SDK rejects it in `ErrorCode`, `Error.code`, `McpError.code`, `RequestId` and `IntegerPropertySchema.minimum` and `.maximum`, reads it as the number `-0.0` in `ElicitationContentValue`, where the SDK reads the integer 0, and leaves the lenient `ResourceLink.size` and `IntegerPropertySchema.default` unset, where the SDK reads 0.**
 - A property with `x-deserialize-default-on-error`, such as `line` of a tool call location or an `exitCode`, reads a value out of range as unset and keeps the object around it, as the Rust SDK does. So does a lenient property that holds an object with an integer out of range: `"usage": {"totalTokens": -1, ...}` of a `session/prompt` result reads as no usage.
-- An integer of format `int64`, such as `size` of a resource link, needs no check: an `int64` holds every value.
-- A `uint64` above `math.MaxInt64` still fails to decode, as in v0.20.0, because an `int64` cannot hold it. The Rust SDK accepts it.
+- A generated field cannot hold a value out of range, so the SDK sends none from one. `RequestError.Code` stays an `int`: a handler that returns a code above `math.MaxInt32` sends it as it is. The Rust SDK fails to read it, and so does this SDK where `int` has 32 bits, such as on 386; on a 64-bit platform this SDK reads it. Keep an error code within `int32`.
 - `minLength` and `minItems`, such as a `notice` with `"title": ""` or a prompt suggestion with `"prompt": []`, and the string format `uri` are not checked. The Rust SDK does not check them either.
 
-Every property that now rejects an integer out of range, or reads it as unset:
+A TypeScript peer reads a JSON number as a JavaScript number, which holds every integer up to 2^53 exactly. The TypeScript SDK 2.7.0 checks the range of a `uint16`, `uint32` and `int32`, reads a `uint64` as any integer of at least 0 that `JSON.parse` returns, and an `int64` as any integer: `18446744073709551615` reads as 18446744073709552000, which it writes back as such, and which the SDK and the Rust SDK then reject. An `int64` rounds the same way: a `RequestId` of `9223372036854775807` comes back as `9223372036854776000`, which the SDK rejects as above `int64`. Keep a `uint64` or an `int64` that a TypeScript peer must read within 2^53 of 0.
+
+### Field types
+
+| Field or type | v0.20.0 | v0.21.0 |
+| --- | --- | --- |
+| `ReadTextFileRequest.Line`, `ReadTextFileRequest.Limit` | `*int64` | `*uint32` |
+| `ToolCallLocation.Line` | `*int64` | `*uint32` |
+| `TerminalExitStatus.ExitCode`, `WaitForTerminalExitResponse.ExitCode` | `*int64` | `*uint32` |
+| `StringPropertySchema.MinLength`, `StringPropertySchema.MaxLength` | `*int64` | `*uint32` |
+| `ElicitationPropertySchemaString.MinLength`, `ElicitationPropertySchemaString.MaxLength` | `*int64` | `*uint32` |
+| `CreateTerminalRequest.OutputByteLimit` | `*int64` | `*uint64` |
+| `MultiSelectPropertySchema.MinItems`, `MultiSelectPropertySchema.MaxItems` | `*int64` | `*uint64` |
+| `ElicitationPropertySchemaArray.MinItems`, `ElicitationPropertySchemaArray.MaxItems` | `*int64` | `*uint64` |
+| `Usage.InputTokens`, `Usage.OutputTokens`, `Usage.TotalTokens` | `int64` | `uint64` |
+| `Usage.ThoughtTokens`, `Usage.CachedReadTokens`, `Usage.CachedWriteTokens` | `*int64` | `*uint64` |
+| `UsageUpdate.Used`, `UsageUpdate.Size`, `SessionUsageUpdate.Used`, `SessionUsageUpdate.Size` | `int64` | `uint64` |
+| `ProtocolVersion` | `int` | `uint16` |
+| `ErrorCodeParseError`, `ErrorCodeInvalidRequest`, `ErrorCodeMethodNotFound`, `ErrorCodeInvalidParams`, `ErrorCodeInternalError`, `ErrorCodeRequestCancelled`, `ErrorCodeAuthenticationRequired`, `ErrorCodeResourceNotFound`, `ErrorCodeOther` | `int` | `int32` |
+| `UnstableMcpError.Code` | `int` | `int32` |
+
+The fields of format `int64` keep their type: `ResourceLink.Size`, the `Minimum`, `Maximum` and `Default` of `IntegerPropertySchema`, `RequestIdNumber` and `ElicitationContentValueInteger`. `RequestError.Code` stays an `int`.
+
+### Code changes
+
+| v0.20.0 | v0.21.0 |
+| --- | --- |
+| `Line: acp.Ptr[int64](10)`, `MinLength: acp.Ptr[int64](1)` | `Line: acp.Ptr[uint32](10)`, `MinLength: acp.Ptr[uint32](1)` |
+| `OutputByteLimit: acp.Ptr[int64](limit)` with an `int64` limit | `OutputByteLimit: acp.Ptr(uint64(limit))`, after you check that `limit >= 0` |
+| `acp.UsageUpdate{Used: int64(used), Size: int64(size)}` | `acp.UsageUpdate{Used: uint64(used), Size: uint64(size)}`, after you check that both are at least 0 |
+| `lines[int(max(0, min(*p.Line-1, int64(len(lines))))):]` | `if *p.Line > 0 { start = int(min(uint64(*p.Line-1), uint64(len(lines)))) }`: an unsigned `*p.Line-1` wraps to 4294967295 when `Line` is 0, and an `int(...)` of a `uint32` wraps on a 32-bit target above 2^31 |
+| `code := *status.ExitCode` (an `int64`) | `code := *status.ExitCode` (a `uint32`); `os.Exit(int(code))` as before |
+| `var total int64 = usage.TotalTokens` | `total := usage.TotalTokens` (a `uint64`), or `int64(usage.TotalTokens)` when you know that it fits |
+| `acp.ErrorCodeOther(code)` with an `int` code | the same with an `int32` code, or with an `int` that you checked is within `int32` first: the v0.20.0 form still compiles and wraps |
+| `acp.ProtocolVersion(v)` with an `int` v | the same with a `uint16` v, or with an `int` that you checked is between 0 and 65535 first: the v0.20.0 form still compiles and wraps |
+| `case int64:` in a type switch on `any(*loc.Line)` or another changed field | `case uint32:`, the field's new type; such code compiles as before and stops matching |
+| `reflect.ValueOf(v).Kind() == reflect.Int` for a `ProtocolVersion` or an `ErrorCode*` | `reflect.Uint16` or `reflect.Int32`; such code compiles as before and stops matching. A type switch with `case int:` never matched these named types and still does not, and `acp.ProtocolVersionNumber` stays an untyped constant, so `any(acp.ProtocolVersionNumber)` is still an `int` |
+
+The compiler does not find the conversions, the type switches, the `reflect` checks, or unsigned arithmetic that now wraps, such as `u.Size - u.Used` when `Used` is larger. The `G115` check of gosec finds the conversions: `golangci-lint run --enable-only gosec` with `gosec.includes: [G115]` in `.golangci.yml`, or `gosec -include=G115 ./...`, reports `integer overflow conversion int -> uint16` at `acp.ProtocolVersion(x)`. Find the rest by searching your code for the fields and types in [Field types](#field-types).
+
+Every property whose integer now fails to decode out of range, or reads as unset:
 
 | Type | Property | Allowed | Where it arrives, and what a value out of range does there |
 | --- | --- | --- | --- |
-| `CreateTerminalRequest` | `outputByteLimit` | at least 0 | `terminal/create` request to the client: -32602, no handler call |
-| `ElicitationPropertySchemaArray` | `maxItems` | at least 0 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
-| `ElicitationPropertySchemaArray` | `minItems` | at least 0 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
+| `CreateTerminalRequest` | `outputByteLimit` | between 0 and 18446744073709551615 | `terminal/create` request to the client: -32602, no handler call |
+| `ElicitationPropertySchemaArray` | `maxItems` | between 0 and 18446744073709551615 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
+| `ElicitationPropertySchemaArray` | `minItems` | between 0 and 18446744073709551615 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
 | `ElicitationPropertySchemaString` | `maxLength` | between 0 and 4294967295 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
 | `ElicitationPropertySchemaString` | `minLength` | between 0 and 4294967295 | `elicitation/create` request to the client, in `requestedSchema.properties{}`: -32602, no handler call |
 | `Error` | `code` | between -2147483648 and 2147483647 | `session/update` notification to the client, in `update.state.error`: `update.state.error` reads as unset |
 | `InitializeRequest` | `protocolVersion` | between 0 and 65535 | `initialize` request to the agent: -32602, no handler call |
-| `InitializeResponse` | `protocolVersion` | between 0 and 65535 | `initialize` response to the client: not checked, because the SDK does not call `Validate` on a response |
-| `MultiSelectPropertySchema` | `maxItems` | at least 0 | no message carries it; `Validate` reports it when you call it |
-| `MultiSelectPropertySchema` | `minItems` | at least 0 | no message carries it; `Validate` reports it when you call it |
+| `InitializeResponse` | `protocolVersion` | between 0 and 65535 | `initialize` response to the client: `Initialize` returns the decode error |
+| `MultiSelectPropertySchema` | `maxItems` | between 0 and 18446744073709551615 | no message carries it; `json.Unmarshal` of a value that holds it fails |
+| `MultiSelectPropertySchema` | `minItems` | between 0 and 18446744073709551615 | no message carries it; `json.Unmarshal` of a value that holds it fails |
 | `ReadTextFileRequest` | `limit` | between 0 and 4294967295 | `fs/read_text_file` request to the client: -32602, no handler call |
 | `ReadTextFileRequest` | `line` | between 0 and 4294967295 | `fs/read_text_file` request to the client: -32602, no handler call |
-| `SessionUsageUpdate` | `size` | at least 0 | `session/update` notification to the client, in `update`: dropped, no handler call |
-| `SessionUsageUpdate` | `used` | at least 0 | `session/update` notification to the client, in `update`: dropped, no handler call |
-| `StringPropertySchema` | `maxLength` | between 0 and 4294967295 | no message carries it; `Validate` reports it when you call it |
-| `StringPropertySchema` | `minLength` | between 0 and 4294967295 | no message carries it; `Validate` reports it when you call it |
+| `SessionUsageUpdate` | `size` | between 0 and 18446744073709551615 | `session/update` notification to the client, in `update`: dropped, no handler call |
+| `SessionUsageUpdate` | `used` | between 0 and 18446744073709551615 | `session/update` notification to the client, in `update`: dropped, no handler call |
+| `StringPropertySchema` | `maxLength` | between 0 and 4294967295 | no message carries it; `json.Unmarshal` of a value that holds it fails |
+| `StringPropertySchema` | `minLength` | between 0 and 4294967295 | no message carries it; `json.Unmarshal` of a value that holds it fails |
 | `TerminalExitStatus` | `exitCode` | between 0 and 4294967295 | `terminal/output` response to the agent, in `exitStatus`: `exitStatus.exitCode` reads as unset |
 | `ToolCallLocation` | `line` | between 0 and 4294967295 | `session/request_permission` request to the client, in `toolCall.locations[]`: `toolCall.locations[].line` reads as unset; `session/update` notification to the client, in `update.locations[]`: `update.locations[].line` reads as unset |
-| `UnstableMcpError` | `code` | between -2147483648 and 2147483647 | `mcp/message` response to the agent, in `error`: not checked, because the SDK does not call `Validate` on a response |
-| `Usage` | `cachedReadTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage.cachedReadTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.cachedReadTokens` reads as unset |
-| `Usage` | `cachedWriteTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage.cachedWriteTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.cachedWriteTokens` reads as unset |
-| `Usage` | `inputTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
-| `Usage` | `outputTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
-| `Usage` | `thoughtTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage.thoughtTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.thoughtTokens` reads as unset |
-| `Usage` | `totalTokens` | at least 0 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
-| `UsageUpdate` | `size` | at least 0 | no message carries it; `Validate` reports it when you call it |
-| `UsageUpdate` | `used` | at least 0 | no message carries it; `Validate` reports it when you call it |
+| `UnstableMcpError` | `code` | between -2147483648 and 2147483647 | `mcp/message` response to the agent, in `error`: `UnstableMessageMcp` returns the decode error |
+| `Usage` | `cachedReadTokens` | between 0 and 18446744073709551615 | `session/prompt` response to the client, in `usage`: `usage.cachedReadTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.cachedReadTokens` reads as unset |
+| `Usage` | `cachedWriteTokens` | between 0 and 18446744073709551615 | `session/prompt` response to the client, in `usage`: `usage.cachedWriteTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.cachedWriteTokens` reads as unset |
+| `Usage` | `inputTokens` | between 0 and 18446744073709551615 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
+| `Usage` | `outputTokens` | between 0 and 18446744073709551615 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
+| `Usage` | `thoughtTokens` | between 0 and 18446744073709551615 | `session/prompt` response to the client, in `usage`: `usage.thoughtTokens` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage.thoughtTokens` reads as unset |
+| `Usage` | `totalTokens` | between 0 and 18446744073709551615 | `session/prompt` response to the client, in `usage`: `usage` reads as unset; `session/update` notification to the client, in `update.state.usage`: `update.state.usage` reads as unset |
+| `UsageUpdate` | `size` | between 0 and 18446744073709551615 | no message carries it; `json.Unmarshal` of a value that holds it fails |
+| `UsageUpdate` | `used` | between 0 and 18446744073709551615 | no message carries it; `json.Unmarshal` of a value that holds it fails |
 | `WaitForTerminalExitResponse` | `exitCode` | between 0 and 4294967295 | `terminal/wait_for_exit` response to the agent: `exitCode` reads as unset |
 
-The rows come from the generated code: the range checks of each `Validate`, and the ranges in the shapes of the lenient decoders, followed from each method that the connection reads.
+The rows list each property whose format is narrower than `int64`, from the generated code, followed from each method that the connection reads.
 
-These types get a `Validate` method, because they check a range or hold a type that does: `ElicitationPropertySchemaString`, `SessionUsageUpdate`, `StringPropertySchema`, `UnstableMcpError`, `UnstableMessageMcpError`, `UsageUpdate`, `Usage`.
+## Connection constructors and limits
+
+`NewAgentSideConnection`, `NewClientSideConnection` and `NewConnection` take options after the reader: `opts ...ConnectionOption`. A call compiles as before. Code that stores one of them in a variable or a field of the v0.20.0 function type, such as `var newConn func(acp.Agent, io.Writer, io.Reader) *acp.AgentSideConnection = acp.NewAgentSideConnection`, stops compiling: wrap the call in a function literal.
+
+Every connection now limits the requests that it holds from the peer. A request that does not fit the byte budget (`WithByteBudget`, 64 MiB by default) or that arrives while the connection holds 1024 requests (`WithMaxInboundRequests`) gets a `-32603` reply, and its handler does not run. A notification that does not fit the byte budget closes the connection. `WithMaxQueuedNotifications` sets the queue of waiting notifications, which v0.20.0 fixed at 1024.
+
+## Log attributes
+
+Every value that the connection logs is now a string or a number, so a peer cannot make one log record grow without bound.
+
+- **An `err` attribute holds the error's text, not the `error` value.** A `slog.Handler` that type-asserts `error`, or calls `errors.Is` or `errors.As` on the attribute, no longer matches. Match on the record's message or on the text instead.
+- Text from the peer, such as a raw line, a method, an id or an error message, is cut to 1 KiB and ends with `... (N bytes)`, where N is its full length. Numbers, booleans, durations and times keep their type.
+
+## Null in a tool call update
+
+ACP v1 defines no clear for the fields of a `ToolCallUpdate` and for `_meta` of a `SessionInfoUpdate`: a `null` there leaves the stored value unchanged, as an absent member does. The protocol docs say so for `name`, `rawInput` and `rawOutput`, the v2 migration guide says that v1 treats `null` like omission, and the Rust SDK reads every such `null` as absent. v0.20.0 read it as `IsNull()` and asked you to treat that like `IsUnset()`. v0.21.0 reads it as unset, and the API does not change:
+
+- A `null` member leaves the field as it is, as an absent member does: decoded into a new struct, it reads as `IsUnset()`, and `IsNull()` is false; a struct that already holds a value or a `PatchNull` keeps it. This holds for every field of `ToolCallUpdate`, the `toolCall` of `session/request_permission`, the `tool_call_update` variant of `SessionUpdate` (`SessionToolCallUpdate`), and `_meta` of `SessionInfoUpdate` and of its variant `SessionSessionInfoUpdate`. Code that treated `IsNull()` like `IsUnset()` there needs no change.
+- `acp.PatchNull[T]()` in these fields is left out of the JSON, where v0.20.0 wrote `null`. ACP v1 reads both as "unchanged", and the Rust SDK leaves the member out too.
+- To clear `content` or `locations`, send an empty list, as in v0.20.0: `acp.PatchSet([]acp.ToolCallContent{})` or `WithUpdateContent([]acp.ToolCallContent{})`.
+- `title` and `updatedAt` of `SessionInfoUpdate`, and the patch fields of `CompactionUpdate`, `SubagentUpdate` and `SessionMessage`, whose schema says that `null` clears them, still read and write `null` as a clear.

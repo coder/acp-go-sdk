@@ -1,0 +1,613 @@
+name: Release
+
+# Tags and publishes a release that has merged to main. RELEASING.md "Publish"
+# describes how to run it. The preflight job computes the release plan once;
+# every later job reads its outputs and computes nothing again.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SDK version, as in the version file (for example 0.21.0). A leading v is dropped.
+        required: true
+        type: string
+      schema:
+        description: Optional. The ACP schema version you expect (for example 1.32.0). It must equal schema/version at the release commit.
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: Run only the preflight checks. A dry run writes nothing.
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # A ruleset that keeps everyone but its bypass actors from creating, moving
+  # or deleting any v* tag. preflight looks for one, and publish checks it
+  # again just before it creates the tag.
+  TAG_RULESET_FILTER: >-
+    .target == "tag" and .enforcement == "active"
+    and ((.conditions.ref_name.include // []) | any(. == "~ALL" or . == "refs/tags/v*"))
+    and ((.conditions.ref_name.exclude // []) | length == 0)
+    and ([.rules[]?.type] | contains(["creation", "update", "deletion"]))
+
+jobs:
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # check out main and look up the tag and release
+      actions: read # read CI runs and the release environment
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.commit.outputs.commit }}
+      schema: ${{ steps.commit.outputs.schema }}
+      module: ${{ steps.commit.outputs.module }}
+      environment: ${{ steps.environment.outputs.environment }}
+      ruleset: ${{ steps.ruleset.outputs.ruleset }}
+    # Each check runs even when an earlier one failed, so one run lists every
+    # problem. A check skips only when it needs a value that failed.
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: refs/heads/main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the inputs
+        id: version
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          SCHEMA_INPUT: ${{ inputs.schema }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Bracket ranges such as [A-Za-z] below must mean ASCII letters
+          # only, whatever the runner's locale.
+          export LC_ALL=C
+
+          # Refuse control characters before any step prints an input: a
+          # newline would let the value start its own workflow command line.
+          if [[ "$VERSION" == *[[:cntrl:]]* ]]; then
+            echo "::error::The version input holds a control character, such as a newline. Run again with the plain version."
+            exit 1
+          fi
+          if [[ "$SCHEMA_INPUT" == *[[:cntrl:]]* ]]; then
+            echo "::error::The schema input holds a control character, such as a newline. Run again with the plain schema version."
+            exit 1
+          fi
+
+          # SemVer 2.0.0 without build metadata, which Go rejects in a module
+          # version: no leading zeros, no empty prerelease identifiers.
+          version="${VERSION#v}"
+          num='(0|[1-9][0-9]*)'
+          pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          if ! [[ "$version" =~ ^$num\.$num\.$num(-$pre(\.$pre)*)?$ ]]; then
+            echo "::error::Version '$VERSION' is not a semver such as 0.21.0 or 0.21.0-rc.1. Run again with the SDK version from the version file."
+            exit 1
+          fi
+          if [[ "$DRY_RUN" != true && "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::This run is on $GITHUB_REF. A real release runs from main; dispatch from another ref only with dry_run."
+            exit 1
+          fi
+
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Find the release commit
+        id: commit
+        if: ${{ !cancelled() && steps.version.outcome == 'success' }}
+        env:
+          SCHEMA_INPUT: ${{ inputs.schema }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          version="${TAG#v}"
+          main_version="$(cat version)"
+          if [[ "$main_version" != "$version" ]]; then
+            echo "::error::main's version file says $main_version. Merge the 'make release VERSION=$version' PR first."
+            exit 1
+          fi
+
+          # The release commit is the last commit on main that changed version.
+          commit="$(git log -1 --first-parent --format=%H -- version)"
+          schema="$(git show "$commit:schema/version")"
+          if [[ -n "$SCHEMA_INPUT" && "$SCHEMA_INPUT" != "$schema" ]]; then
+            echo "::error::schema/version at $commit says $schema, not $SCHEMA_INPUT. Fix the schema input, or merge a release PR with 'make release VERSION=$version SCHEMA=$SCHEMA_INPUT'."
+            exit 1
+          fi
+          if ! git show "$commit:constants_gen.go" | grep -Fqx "const SchemaVersion = \"$schema\""; then
+            echo "::error::constants_gen.go at $commit does not set SchemaVersion to $schema. Run 'make generate' in a new release PR."
+            exit 1
+          fi
+
+          module="$(git show "$commit:go.mod" | awk '$1 == "module" { print $2; exit }')"
+          # Go serves v2 and later only from a module path that ends in /vN,
+          # and the proxy serves a tag only from the repository go.mod names.
+          # Module paths are case-sensitive, so the match is exact.
+          major="${version%%.*}"
+          want="github.com/$GITHUB_REPOSITORY"
+          if [[ "$major" -ge 2 ]]; then
+            want="$want/v$major"
+          fi
+          if [[ "$module" != "$want" ]]; then
+            echo "::error::go.mod at $commit declares module '$module', but tag v$version of this repository needs '$want'. Go cannot serve the tag otherwise."
+            exit 1
+          fi
+
+          ahead="$(git rev-list --count "$commit..HEAD")"
+          if [[ "$ahead" -gt 0 ]]; then
+            echo "main is $ahead commits past the release commit. The tag goes on $commit, not on main's head."
+          fi
+
+          {
+            echo "commit=$commit"
+            echo "schema=$schema"
+            echo "module=$module"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check that the version is new
+        id: tag
+        if: ${{ !cancelled() && steps.version.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          err="$RUNNER_TEMP/gh-error"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" > /dev/null 2> "$err"; then
+            echo "::error::Tag $TAG already exists. To resume a failed run, use Re-run failed jobs on that run."
+            exit 1
+          elif ! grep -q 'HTTP 404' "$err"; then
+            cat "$err" >&2
+            echo "::error::Could not look up tag $TAG. Fix the error above, then run again."
+            exit 1
+          fi
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2> "$err"; then
+            echo "::error::Release $TAG already exists. To resume a failed run, use Re-run failed jobs on that run."
+            exit 1
+          elif ! grep -q 'release not found' "$err"; then
+            cat "$err" >&2
+            echo "::error::Could not look up release $TAG. Fix the error above, then run again."
+            exit 1
+          fi
+
+          # The version must be newer, in SemVer order, than every v* tag that
+          # is a SemVer. key sorts as SemVer 2.0.0 does: the numbers, then a
+          # release above its prereleases, then the prerelease identifiers,
+          # numeric ones below alphanumeric ones.
+          num='(0|[1-9][0-9]*)'
+          pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          key='def key: capture("^(?<core>[^-]+)(-(?<pre>.+))?$")
+            | (.core | split(".") | map(tonumber))
+              + [if .pre then 0 else 1 end]
+              + [.pre // "" | split(".") | map(if test("^[0-9]+$") then [0, tonumber] else [1, .] end)];'
+          if ! refs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --jq '.[].ref' 2> "$err")"; then
+            cat "$err" >&2
+            echo "::error::Could not list the v* tags. Fix the error above, then run again."
+            exit 1
+          fi
+          latest="$(jq -Rrn --arg re "^refs/tags/v$num\\.$num\\.$num(-$pre(\\.$pre)*)?\$" "$key"'
+            [inputs | select(test($re)) | ltrimstr("refs/tags/v")] | max_by(key) // empty' <<< "$refs")"
+          if [[ -n "$latest" ]] && ! jq -en --arg new "${TAG#v}" --arg latest "$latest" "$key"'($new | key) > ($latest | key)' > /dev/null; then
+            echo "::error::Version ${TAG#v} is not newer than v$latest, the newest release tag. Pick a version above it."
+            exit 1
+          fi
+
+      - name: Check CI on the release commit
+        id: ci
+        if: ${{ !cancelled() && steps.commit.outcome == 'success' }}
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yaml/runs?head_sha=$COMMIT&event=push&per_page=1" --jq '.workflow_runs[0] // {}')"
+          url="$(jq -r '.html_url // empty' <<< "$run")"
+          status="$(jq -r '.status // empty' <<< "$run")"
+          conclusion="$(jq -r '.conclusion // empty' <<< "$run")"
+
+          # Only a push run on this exact commit counts: a run on a later
+          # commit tested other code. A push of several commits at once runs CI
+          # on the newest only, so the release PR must land on its own.
+          if [[ -z "$url" ]]; then
+            echo "::error::CI has no push run on $COMMIT. It probably reached main in one push with later commits. Land the release PR on its own, as RELEASING.md describes."
+            exit 1
+          elif [[ "$status" != completed ]]; then
+            echo "::error::CI on $COMMIT is still running ($status): $url. Run again after it passes."
+            exit 1
+          elif [[ "$conclusion" == cancelled ]]; then
+            echo "::error::CI on $COMMIT was cancelled: $url. A newer push to main cancels a CI run that still waits for the one before it. Re-run it there, then run again."
+            exit 1
+          elif [[ "$conclusion" != success ]]; then
+            echo "::error::CI on $COMMIT ended with $conclusion: $url. Fix main or re-run CI, then run again."
+            exit 1
+          fi
+
+          echo "CI passed on $COMMIT: $url"
+
+      - name: Check the release environment
+        id: environment
+        if: ${{ !cancelled() }}
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # A real run needs the environment with a required reviewer: it is
+          # the approval gate, and it holds the App's secrets. GitHub would
+          # create a missing environment without protection, so publish names
+          # it only when this check passes.
+          err="$RUNNER_TEMP/gh-error"
+          if environment="$(gh api "repos/$GITHUB_REPOSITORY/environments/release" 2> "$err")"; then
+            if ! jq -e 'any(.protection_rules[]?; .type == "required_reviewers")' <<< "$environment" > /dev/null; then
+              state="no required reviewers"
+              problem="The release environment has no required reviewers"
+              risk="nothing would hold publish for approval"
+            elif jq -e '.can_admins_bypass == true' <<< "$environment" > /dev/null; then
+              # An admin could skip the approval with one click.
+              state="admins can bypass"
+              problem="The release environment lets admins bypass its reviewers"
+              risk="an admin could publish without approval"
+            elif ! jq -e '.can_admins_bypass == false' <<< "$environment" > /dev/null; then
+              # GitHub returns can_admins_bypass but does not document it.
+              # Without it, nothing shows that the approval binds admins.
+              state="admin bypass not reported"
+              problem="GitHub did not report whether admins can bypass the release environment's reviewers"
+              risk="an admin might publish without approval"
+              fix="See the can_admins_bypass note in RELEASING.md"
+            else
+              echo "environment=release" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          elif grep -q 'HTTP 404' "$err"; then
+            state="missing"
+            problem="There is no release environment"
+            risk="nothing would hold publish for approval"
+          else
+            cat "$err" >&2
+            echo "::error::Could not look up the release environment. Fix the error above, then run again."
+            exit 1
+          fi
+
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          fix="${fix:-Set it up as RELEASING.md describes}"
+          if [[ "$DRY_RUN" == true ]]; then
+            echo "::warning::$problem, so a real run refuses to start. $fix."
+            exit 0
+          fi
+          echo "::error::$problem, so $risk. $fix, then run again."
+          exit 1
+
+      - name: Check the release-tag ruleset
+        id: ruleset
+        if: ${{ !cancelled() }}
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # The ruleset makes a release tag permanent: once the Go proxy has
+          # cached a version, nobody may move or delete its tag. This token
+          # cannot see a ruleset's bypass actors. publish shows that the App
+          # is one when it creates the tag, because the ruleset blocks
+          # everyone else.
+          ids="$(gh api "repos/$GITHUB_REPOSITORY/rulesets?targets=tag&includes_parents=true&per_page=100" \
+            --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id')"
+          for id in $ids; do
+            if gh api "repos/$GITHUB_REPOSITORY/rulesets/$id?includes_parents=true" | jq -e "$TAG_RULESET_FILTER" > /dev/null; then
+              echo "ruleset=$id" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          problem="No active ruleset restricts creating, moving and deleting every v* tag"
+          if [[ "$DRY_RUN" == true ]]; then
+            echo "::warning::$problem, so a real run refuses to start. Set it up as RELEASING.md describes."
+            exit 0
+          fi
+          echo "::error::$problem, so a published version's tag could be moved or deleted. Set it up as RELEASING.md describes, then run again."
+          exit 1
+
+      # The plan lists every check, so it is written when one fails too.
+      - name: Write the release plan
+        if: ${{ !cancelled() }}
+        env:
+          CHECK_CI: ${{ steps.ci.outcome }}
+          CHECK_COMMIT: ${{ steps.commit.outcome }}
+          CHECK_ENVIRONMENT: ${{ steps.environment.outcome }}
+          CHECK_RULESET: ${{ steps.ruleset.outcome }}
+          CHECK_TAG: ${{ steps.tag.outcome }}
+          CHECK_VERSION: ${{ steps.version.outcome }}
+          COMMIT: ${{ steps.commit.outputs.commit }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          ENVIRONMENT: ${{ steps.environment.outputs.environment }}
+          ENVIRONMENT_STATE: ${{ steps.environment.outputs.state }}
+          MODULE: ${{ steps.commit.outputs.module }}
+          RULESET: ${{ steps.ruleset.outputs.ruleset }}
+          SCHEMA: ${{ steps.commit.outputs.schema }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          result() {
+            case "$1" in
+              success) echo passed ;;
+              failure) echo "**failed** (see its error)" ;;
+              *) echo "skipped (an earlier check failed)" ;;
+            esac
+          }
+          value() {
+            if [[ -n "$1" ]]; then echo "\`$1\`"; else echo unknown; fi
+          }
+          environment="$(result "$CHECK_ENVIRONMENT")"
+          if [[ "$CHECK_ENVIRONMENT" == success && -z "$ENVIRONMENT" ]]; then
+            environment="**warned**: $ENVIRONMENT_STATE, so a real run refuses to start"
+          fi
+          ruleset="$(result "$CHECK_RULESET")"
+          if [[ "$CHECK_RULESET" == success && -z "$RULESET" ]]; then
+            ruleset="**warned**: missing, so a real run refuses to start"
+          fi
+          failed=0
+          for outcome in "$CHECK_VERSION" "$CHECK_COMMIT" "$CHECK_TAG" "$CHECK_CI" "$CHECK_ENVIRONMENT" "$CHECK_RULESET"; do
+            if [[ "$outcome" == failure ]]; then
+              failed=$((failed + 1))
+            fi
+          done
+
+          {
+            echo "## Release plan"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Tag | $(value "$TAG") |"
+            echo "| Commit | $(value "$COMMIT") |"
+            echo "| ACP schema | $(value "$SCHEMA") |"
+            echo "| Module | $(value "$MODULE") |"
+            echo "| Dry run | $DRY_RUN |"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Inputs: plain text, SemVer, a real run from main | $(result "$CHECK_VERSION") |"
+            echo "| Release commit: version, schema, module path | $(result "$CHECK_COMMIT") |"
+            echo "| New version: no tag, no release, newer than every v* tag | $(result "$CHECK_TAG") |"
+            echo "| CI passed on the release commit | $(result "$CHECK_CI") |"
+            echo "| release environment: required reviewers, no admin bypass | $environment |"
+            echo "| Ruleset: only an exempt actor may create, move or delete v* tags | $ruleset |"
+            echo "| coder-release-publisher secrets | checked by publish after approval |"
+            echo
+            if [[ "$failed" -gt 0 ]]; then
+              echo "Failed checks: $failed. Nothing was published."
+            elif [[ "$DRY_RUN" == true ]]; then
+              echo "Dry run: nothing was published."
+            else
+              echo "All checks passed. publish waits for approval in the release environment."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Every step below reads the current state first, so "Re-run failed jobs"
+  # resumes a run that stopped part way.
+  publish:
+    name: publish
+    needs: preflight
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: ${{ needs.preflight.outputs.environment }}
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # Cloud KMS signs the coder-release-publisher App's JWT
+    env:
+      COMMIT: ${{ needs.preflight.outputs.commit }}
+      GH_TOKEN: ${{ github.token }}
+      RULESET: ${{ needs.preflight.outputs.ruleset }}
+      SCHEMA: ${{ needs.preflight.outputs.schema }}
+      TAG: ${{ needs.preflight.outputs.tag }}
+    steps:
+      # Only coder-release-publisher creates the tag, never GITHUB_TOKEN: the "Release tags (App
+      # only)" ruleset lets only the App create v* tags. The release environment holds the App's
+      # key settings as secrets, so only this job, after approval, can sign as the App.
+      - name: Check the coder-release-publisher secrets
+        env:
+          APP_ID: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_ID }}
+          APP_KMS_KEY: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_KMS_KEY }}
+          WORKLOAD_ID_PROVIDER: ${{ secrets.APP_KEYS_WORKLOAD_ID_PROVIDER }}
+        run: |
+          set -euo pipefail
+
+          # Only the App may create the tag, so publish stops here, before it
+          # writes anything, when a secret is missing.
+          missing=()
+          [[ -n "$APP_ID" ]] || missing+=(CODER_RELEASE_PUBLISHER_APP_ID)
+          [[ -n "$APP_KMS_KEY" ]] || missing+=(CODER_RELEASE_PUBLISHER_APP_KMS_KEY)
+          [[ -n "$WORKLOAD_ID_PROVIDER" ]] || missing+=(APP_KEYS_WORKLOAD_ID_PROVIDER)
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::The release environment lacks ${missing[*]}, so publish cannot sign as coder-release-publisher. Store them as RELEASING.md describes, then use Re-run failed jobs."
+            exit 1
+          fi
+
+      - name: Mint a coder-release-publisher token
+        id: app_token
+        uses: coder/github-app-token-action@6e522647a301a860cee724d573b03a59754f84b2 # main 2026-11-17
+        with:
+          client-id: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_ID }}
+          kms-key: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_KMS_KEY }}
+          workload-identity-provider: ${{ secrets.APP_KEYS_WORKLOAD_ID_PROVIDER }}
+          repositories: ${{ github.event.repository.name }}
+          permissions: |
+            contents: write
+            workflows: write
+
+      - name: Tag the release commit
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          if ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" 2> /dev/null)"; then
+            sha="$(jq -r .object.sha <<< "$ref")"
+            if [[ "$(jq -r .object.type <<< "$ref")" == tag ]]; then
+              sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .object.sha)"
+            fi
+            if [[ "$sha" != "$COMMIT" ]]; then
+              echo "::error::Tag $TAG points at $sha, not at the release commit $COMMIT. Find out who made it before you change it: the Go module proxy may already serve it."
+              exit 1
+            fi
+            echo "Tag $TAG already points at $COMMIT."
+            exit 0
+          fi
+
+          # The approval wait can be long, so check the ruleset again just
+          # before the tag becomes permanent.
+          if [[ -z "$RULESET" ]]; then
+            echo "::error::preflight found no tag ruleset, so publish did not create $TAG. Set it up as RELEASING.md describes, then start a new run."
+            exit 1
+          fi
+          if ! ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$RULESET?includes_parents=true")"; then
+            echo "::error::Could not read ruleset $RULESET from preflight, so publish did not create $TAG. Use Re-run failed jobs, or start a new run if the ruleset was replaced."
+            exit 1
+          fi
+          if ! jq -e "$TAG_RULESET_FILTER" <<< "$ruleset" > /dev/null; then
+            echo "::error::Ruleset $RULESET no longer keeps others from creating, moving and deleting v* tags, so publish did not create $TAG. Restore it as RELEASING.md describes, then use Re-run failed jobs."
+            exit 1
+          fi
+
+          # If the ref already exists after all, creating it fails, and the
+          # unused tag object is garbage-collected.
+          tag_object="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$TAG" \
+            -f message="$TAG (ACP schema $SCHEMA)" \
+            -f object="$COMMIT" \
+            -f type=commit \
+            --jq .sha)"
+          if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG" \
+            -f sha="$tag_object" > /dev/null; then
+            echo "::error::GitHub refused to create refs/tags/$TAG for coder-release-publisher. Check that the App is installed and is the bypass actor of the Release tags (App only) ruleset (RELEASING.md)."
+            exit 1
+          fi
+          echo "Created tag $TAG on $COMMIT."
+
+      - name: Create the GitHub release
+        # This step keeps GITHUB_TOKEN on purpose. A release created with it
+        # starts no workflow, so its release: published event does not run
+        # release-notes.yaml a second time. The notes job below calls that
+        # workflow directly.
+        run: |
+          set -euo pipefail
+
+          prerelease=()
+          want_prerelease=false
+          if [[ "$TAG" == *-* ]]; then
+            prerelease=(--prerelease)
+            want_prerelease=true
+          fi
+
+          # A re-run keeps a release that exists, but only one that a
+          # consumer sees as this version: published, and a prerelease
+          # exactly when the version has a "-".
+          if release="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease 2> /dev/null)"; then
+            if [[ "$(jq -r .isDraft <<< "$release")" != false ]]; then
+              echo "::error::Release $TAG exists as a draft. Publish it or delete it, then use Re-run failed jobs."
+              exit 1
+            fi
+            if [[ "$(jq -r .isPrerelease <<< "$release")" != "$want_prerelease" ]]; then
+              echo "::error::Release $TAG exists, but its prerelease flag is not $want_prerelease. Fix the flag, then use Re-run failed jobs."
+              exit 1
+            fi
+            echo "Release $TAG already exists."
+            exit 0
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$TAG" --notes "ACP schema $SCHEMA" "${prerelease[@]}"
+
+  proxy:
+    name: proxy
+    needs: [preflight, publish]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Wait for the Go module proxy
+        env:
+          COMMIT: ${{ needs.preflight.outputs.commit }}
+          MODULE: ${{ needs.preflight.outputs.module }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # Run outside any module, so no go.mod changes what go resolves.
+          cd "$RUNNER_TEMP"
+          go version
+          export GOPROXY=https://proxy.golang.org GOFLAGS=
+
+          # go mod download fetches the .info, .mod and .zip files that a
+          # consumer needs. go list -m can pass on the .info file alone.
+          err="$RUNNER_TEMP/go-error"
+          attempt=0
+          for delay in 0 15 30 60 90 120 180 240; do
+            attempt=$((attempt + 1))
+            sleep "$delay"
+            if info="$(go mod download -json "$MODULE@$TAG" 2> "$err")"; then
+              hash="$(jq -r '.Origin.Hash // empty' <<< "$info")"
+              if [[ -n "$hash" && "$hash" != "$COMMIT" ]]; then
+                echo "::error::The proxy serves $MODULE@$TAG at $hash, not at the release commit $COMMIT."
+                exit 1
+              fi
+              if [[ "$(jq -r .Version <<< "$info")" == "$TAG" && -n "$(jq -r '.Zip // empty' <<< "$info")" ]]; then
+                # The proxy may omit Origin, and it keeps the first archive it
+                # saw, even one from an older tag of the same name. So compare
+                # its archive hash with one built straight from the tag in git.
+                # The direct download also checks sum.golang.org, which keeps
+                # the first hash it saw too.
+                sum="$(jq -r '.Sum // empty' <<< "$info")"
+                if ! fromgit="$(GOPROXY=direct GOMODCACHE="$RUNNER_TEMP/direct" go mod download -json "$MODULE@$TAG" 2> "$err")"; then
+                  echo "::error::Could not hash $MODULE@$TAG from git: $(jq -r '.Error // empty' <<< "$fromgit" 2> /dev/null || true) $(cat "$err")"
+                  exit 1
+                fi
+                direct="$(jq -r '.Sum // empty' <<< "$fromgit")"
+                if [[ -z "$sum" || "$sum" != "$direct" ]]; then
+                  echo "::error::The proxy serves $MODULE@$TAG with hash ${sum:-unknown}, but the tag in git hashes to ${direct:-unknown}."
+                  exit 1
+                fi
+                gitcommit="$(jq -r '.Origin.Hash // empty' <<< "$fromgit")"
+                if [[ "$gitcommit" != "$COMMIT" ]]; then
+                  echo "::error::The tag $TAG in git points at ${gitcommit:-an unknown commit}, not at the release commit $COMMIT."
+                  exit 1
+                fi
+                echo "The proxy serves $MODULE@$TAG at $COMMIT ($sum)."
+                exit 0
+              fi
+              last="unexpected answer: $info"
+            else
+              # go mod download -json reports a failure in the Error field.
+              last="$(jq -r '.Error // empty' <<< "$info" 2> /dev/null || true) $(cat "$err")"
+            fi
+            echo "Attempt $attempt: $last"
+          done
+
+          echo "::error::The proxy did not serve $MODULE@$TAG after $attempt attempts. Last error: $last. Use Re-run failed jobs to try again."
+          exit 1
+
+  notes:
+    name: notes
+    needs: [preflight, publish]
+    permissions:
+      contents: write # release-notes.yaml rewrites the release body
+    uses: ./.github/workflows/release-notes.yaml
+    with:
+      tag: ${{ needs.preflight.outputs.tag }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

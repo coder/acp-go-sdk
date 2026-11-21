@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"math"
 	"reflect"
 	"strings"
 )
@@ -407,7 +406,7 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AgentResponse has no variant set")
 }
 
 func (u *AgentResponse) Validate() error {
@@ -757,7 +756,7 @@ func (u AuthMethod) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AuthMethod has no variant set")
 }
 
 func (u *AuthMethod) Validate() error {
@@ -1133,7 +1132,7 @@ func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AvailableCommandInput has no variant set")
 }
 
 func (u *AvailableCommandInput) Validate() error {
@@ -1783,7 +1782,7 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ClientResponse has no variant set")
 }
 
 func (u *ClientResponse) Validate() error {
@@ -2698,7 +2697,7 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"resource\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ContentBlock has no variant set")
 }
 
 func (u *ContentBlock) Validate() error {
@@ -3450,7 +3449,7 @@ func (u CreateElicitationRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("CreateElicitationRequest has no variant set")
 }
 
 func (u *CreateElicitationRequest) Validate() error {
@@ -3822,7 +3821,7 @@ func (u CreateElicitationResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("CreateElicitationResponse has no variant set")
 }
 
 func (u *CreateElicitationResponse) Validate() error {
@@ -3874,7 +3873,7 @@ type CreateTerminalRequest struct {
 	// The Client MUST ensure truncation happens at a character boundary to maintain valid
 	// string output, even if this means the retained output is slightly less than the
 	// specified limit.
-	OutputByteLimit *int64 `json:"outputByteLimit,omitempty"`
+	OutputByteLimit *uint64 `json:"outputByteLimit,omitempty"`
 	// The session ID for this request.
 	SessionId SessionId `json:"sessionId"`
 }
@@ -3918,11 +3917,6 @@ func (v *CreateTerminalRequest) UnmarshalJSON(b []byte) error {
 func (v *CreateTerminalRequest) Validate() error {
 	if v.Command == "" {
 		return fmt.Errorf("command is required")
-	}
-	if v.OutputByteLimit != nil {
-		if *v.OutputByteLimit < 0 {
-			return fmt.Errorf("outputByteLimit must be at least 0")
-		}
 	}
 	if v.SessionId == "" {
 		return fmt.Errorf("sessionId is required")
@@ -4342,7 +4336,7 @@ func (u ElicitationContentValue) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("ElicitationContentValue has no variant set")
 }
 
 func (u *ElicitationContentValue) Validate() error {
@@ -4577,11 +4571,11 @@ type ElicitationPropertySchemaString struct {
 	// Maximum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum length constraint.
-	MaxLength *int64 `json:"maxLength,omitempty"`
+	MaxLength *uint32 `json:"maxLength,omitempty"`
 	// Minimum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum length constraint.
-	MinLength *int64 `json:"minLength,omitempty"`
+	MinLength *uint32 `json:"minLength,omitempty"`
 	// Titled enum options for titled single-select enums.
 	// Optional. Omitted and 'null' are equivalent and mean no titled single-select choices are
 	// declared by 'oneOf'.
@@ -4607,8 +4601,8 @@ func (v ElicitationPropertySchemaString) MarshalJSON() ([]byte, error) {
 		Description *string       `json:"description,omitempty"`
 		Enum        *[]string     `json:"enum,omitempty"`
 		Format      *StringFormat `json:"format,omitempty"`
-		MaxLength   *int64        `json:"maxLength,omitempty"`
-		MinLength   *int64        `json:"minLength,omitempty"`
+		MaxLength   *uint32       `json:"maxLength,omitempty"`
+		MinLength   *uint32       `json:"minLength,omitempty"`
 		OneOf       *[]EnumOption `json:"oneOf,omitempty"`
 		Pattern     *string       `json:"pattern,omitempty"`
 		Title       *string       `json:"title,omitempty"`
@@ -4662,20 +4656,6 @@ func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Type, "type", false); err != nil {
 			return propertyError(err, "ElicitationPropertySchemaString", "type")
-		}
-	}
-	return nil
-}
-
-func (v *ElicitationPropertySchemaString) Validate() error {
-	if v.MaxLength != nil {
-		if *v.MaxLength < 0 || *v.MaxLength > 4294967295 {
-			return fmt.Errorf("maxLength must be between 0 and 4294967295")
-		}
-	}
-	if v.MinLength != nil {
-		if *v.MinLength < 0 || *v.MinLength > 4294967295 {
-			return fmt.Errorf("minLength must be between 0 and 4294967295")
 		}
 	}
 	return nil
@@ -4888,11 +4868,11 @@ type ElicitationPropertySchemaArray struct {
 	// Maximum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum selection count.
-	MaxItems *int64 `json:"maxItems,omitempty"`
+	MaxItems *uint64 `json:"maxItems,omitempty"`
 	// Minimum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum selection count.
-	MinItems *int64 `json:"minItems,omitempty"`
+	MinItems *uint64 `json:"minItems,omitempty"`
 	// Optional title for the property.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
@@ -4909,8 +4889,8 @@ func (v ElicitationPropertySchemaArray) MarshalJSON() ([]byte, error) {
 		Default     *[]string        `json:"default,omitempty"`
 		Description *string          `json:"description,omitempty"`
 		Items       MultiSelectItems `json:"items"`
-		MaxItems    *int64           `json:"maxItems,omitempty"`
-		MinItems    *int64           `json:"minItems,omitempty"`
+		MaxItems    *uint64          `json:"maxItems,omitempty"`
+		MinItems    *uint64          `json:"minItems,omitempty"`
 		Title       *string          `json:"title,omitempty"`
 		Type        string           `json:"type"`
 	}
@@ -4964,16 +4944,6 @@ func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
 func (v *ElicitationPropertySchemaArray) Validate() error {
 	if err := v.Items.Validate(); err != nil {
 		return fmt.Errorf("items: %w", err)
-	}
-	if v.MaxItems != nil {
-		if *v.MaxItems < 0 {
-			return fmt.Errorf("maxItems must be at least 0")
-		}
-	}
-	if v.MinItems != nil {
-		if *v.MinItems < 0 {
-			return fmt.Errorf("minItems must be at least 0")
-		}
 	}
 	return nil
 }
@@ -5205,7 +5175,7 @@ func (u ElicitationPropertySchema) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ElicitationPropertySchema has no variant set")
 }
 
 func (u *ElicitationPropertySchema) Validate() error {
@@ -5230,11 +5200,6 @@ func (u *ElicitationPropertySchema) Validate() error {
 	}
 	if count == 0 {
 		return errors.New("ElicitationPropertySchema has no variant set")
-	}
-	if u.String != nil {
-		if err := u.String.Validate(); err != nil {
-			return err
-		}
 	}
 	if u.Array != nil {
 		if err := u.Array.Validate(); err != nil {
@@ -5754,7 +5719,7 @@ func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("EmbeddedResourceResource has no variant set")
 }
 
 func (u *EmbeddedResourceResource) Validate() error {
@@ -5926,32 +5891,32 @@ func (v *Error) Validate() error {
 // range LSP reserves (-32899 to -32800).
 // **Parse error**: Invalid JSON was received by the server.
 // An error occurred on the server while parsing the JSON text.
-type ErrorCodeParseError int
+type ErrorCodeParseError int32
 
 // **Invalid request**: The JSON sent is not a valid Request object.
-type ErrorCodeInvalidRequest int
+type ErrorCodeInvalidRequest int32
 
 // **Method not found**: The method does not exist or is not available.
-type ErrorCodeMethodNotFound int
+type ErrorCodeMethodNotFound int32
 
 // **Invalid params**: Invalid method parameter(s).
-type ErrorCodeInvalidParams int
+type ErrorCodeInvalidParams int32
 
 // **Internal error**: Internal JSON-RPC error.
-type ErrorCodeInternalError int
+type ErrorCodeInternalError int32
 
 // **Request cancelled**: Execution of the method was aborted either due to a cancellation request from the caller or
 // because of resource constraints or shutdown.
-type ErrorCodeRequestCancelled int
+type ErrorCodeRequestCancelled int32
 
 // **Authentication required**: Authentication is required before this operation can be performed.
-type ErrorCodeAuthenticationRequired int
+type ErrorCodeAuthenticationRequired int32
 
 // **Resource not found**: A given resource, such as a session or file, was not found.
-type ErrorCodeResourceNotFound int
+type ErrorCodeResourceNotFound int32
 
 // Other undefined error code.
-type ErrorCodeOther int
+type ErrorCodeOther int32
 
 type ErrorCode struct {
 	// **Parse error**: Invalid JSON was received by the server.
@@ -6119,7 +6084,7 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("ErrorCode has no variant set")
 }
 
 func (u *ErrorCode) Validate() error {
@@ -6865,7 +6830,7 @@ func (u IdleStateUpdate) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("IdleStateUpdate has no variant set")
 }
 
 func (u *IdleStateUpdate) Validate() error {
@@ -7209,7 +7174,7 @@ func (u InitialSessionConfigOption) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("InitialSessionConfigOption has no variant set")
 }
 
 func (u *InitialSessionConfigOption) Validate() error {
@@ -7299,9 +7264,6 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *InitializeRequest) Validate() error {
-	if v.ProtocolVersion < 0 || v.ProtocolVersion > 65535 {
-		return fmt.Errorf("protocolVersion must be between 0 and 65535")
-	}
 	return nil
 }
 
@@ -7382,9 +7344,6 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *InitializeResponse) Validate() error {
-	if v.ProtocolVersion < 0 || v.ProtocolVersion > 65535 {
-		return fmt.Errorf("protocolVersion must be between 0 and 65535")
-	}
 	return nil
 }
 
@@ -8353,7 +8312,7 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("McpServer has no variant set")
 }
 
 func (u *McpServer) Validate() error {
@@ -8931,7 +8890,7 @@ func (u MultiSelectItems) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("MultiSelectItems has no variant set")
 }
 
 func (u *MultiSelectItems) Validate() error {
@@ -8984,11 +8943,11 @@ type MultiSelectPropertySchema struct {
 	// Maximum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum selection count.
-	MaxItems *int64 `json:"maxItems,omitempty"`
+	MaxItems *uint64 `json:"maxItems,omitempty"`
 	// Minimum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum selection count.
-	MinItems *int64 `json:"minItems,omitempty"`
+	MinItems *uint64 `json:"minItems,omitempty"`
 	// Optional title for the property.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
@@ -9004,8 +8963,8 @@ func (v MultiSelectPropertySchema) MarshalJSON() ([]byte, error) {
 		Default     *[]string        `json:"default,omitempty"`
 		Description *string          `json:"description,omitempty"`
 		Items       MultiSelectItems `json:"items"`
-		MaxItems    *int64           `json:"maxItems,omitempty"`
-		MinItems    *int64           `json:"minItems,omitempty"`
+		MaxItems    *uint64          `json:"maxItems,omitempty"`
+		MinItems    *uint64          `json:"minItems,omitempty"`
 		Title       *string          `json:"title,omitempty"`
 	}
 	return json.Marshal(wire{
@@ -9053,16 +9012,6 @@ func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
 func (v *MultiSelectPropertySchema) Validate() error {
 	if err := v.Items.Validate(); err != nil {
 		return fmt.Errorf("items: %w", err)
-	}
-	if v.MaxItems != nil {
-		if *v.MaxItems < 0 {
-			return fmt.Errorf("maxItems must be at least 0")
-		}
-	}
-	if v.MinItems != nil {
-		if *v.MinItems < 0 {
-			return fmt.Errorf("minItems must be at least 0")
-		}
 	}
 	return nil
 }
@@ -10121,7 +10070,7 @@ func (u PlanUpdateContent) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"markdown\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("PlanUpdateContent has no variant set")
 }
 
 func (u *PlanUpdateContent) Validate() error {
@@ -10670,7 +10619,7 @@ func (v *PromptSuggestionsUpdate) Validate() error {
 //
 // This version is only bumped for breaking changes.
 // Non-breaking changes should be introduced via capabilities.
-type ProtocolVersion int
+type ProtocolVersion uint16
 
 // **UNSTABLE**
 //
@@ -10716,9 +10665,9 @@ type ReadTextFileRequest struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Maximum number of lines to read.
-	Limit *int64 `json:"limit,omitempty"`
+	Limit *uint32 `json:"limit,omitempty"`
 	// Line number to start reading from (1-based).
-	Line *int64 `json:"line,omitempty"`
+	Line *uint32 `json:"line,omitempty"`
 	// Absolute path to the file to read.
 	Path string `json:"path"`
 	// The session ID for this request.
@@ -10755,16 +10704,6 @@ func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *ReadTextFileRequest) Validate() error {
-	if v.Limit != nil {
-		if *v.Limit < 0 || *v.Limit > 4294967295 {
-			return fmt.Errorf("limit must be between 0 and 4294967295")
-		}
-	}
-	if v.Line != nil {
-		if *v.Line < 0 || *v.Line > 4294967295 {
-			return fmt.Errorf("line must be between 0 and 4294967295")
-		}
-	}
 	if v.Path == "" {
 		return fmt.Errorf("path is required")
 	}
@@ -10978,7 +10917,7 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("RequestId has no variant set")
 }
 
 func (u *RequestId) Validate() error {
@@ -11158,7 +11097,7 @@ func (u RequestPermissionOutcome) MarshalJSON() ([]byte, error) {
 		m["outcome"] = json.RawMessage("\"selected\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("RequestPermissionOutcome has no variant set")
 }
 
 func (u *RequestPermissionOutcome) Validate() error {
@@ -12187,7 +12126,7 @@ func (u SessionConfigOption) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"boolean\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionConfigOption has no variant set")
 }
 
 func (u *SessionConfigOption) Validate() error {
@@ -12544,7 +12483,7 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionConfigSelectOptions has no variant set")
 }
 
 func (u *SessionConfigSelectOptions) Validate() error {
@@ -12736,8 +12675,8 @@ type SessionInfoUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Human-readable title for the session. Set to null to clear.
 	Title Patch[string] `json:"title"`
@@ -12755,7 +12694,7 @@ func (v SessionInfoUpdate) MarshalJSON() ([]byte, error) {
 		UpdatedAt *Patch[string] `json:"updatedAt,omitempty"`
 	}
 	return json.Marshal(wire{
-		Meta:      a.Meta.orNil(),
+		Meta:      a.Meta.setOrNil(),
 		Title:     a.Title.orNil(),
 		UpdatedAt: a.UpdatedAt.orNil(),
 	})
@@ -12776,7 +12715,7 @@ func (v *SessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
 	return nil
@@ -13712,49 +13651,52 @@ type SessionToolCallUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
 	// the existing name is left unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Name Patch[string] `json:"name"`
 	// Update the raw input.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawOutput     Patch[json.RawMessage] `json:"rawOutput"`
 	SessionUpdate string                 `json:"sessionUpdate"`
 	// Update the execution status.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
@@ -13778,16 +13720,16 @@ func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
 		ToolCallId    ToolCallId                 `json:"toolCallId"`
 	}
 	return json.Marshal(wire{
-		Content:       a.Content.orNil(),
-		Kind:          a.Kind.orNil(),
-		Locations:     a.Locations.orNil(),
-		Meta:          a.Meta.orNil(),
-		Name:          a.Name.orNil(),
-		RawInput:      a.RawInput.orNil(),
-		RawOutput:     a.RawOutput.orNil(),
+		Content:       a.Content.setOrNil(),
+		Kind:          a.Kind.setOrNil(),
+		Locations:     a.Locations.setOrNil(),
+		Meta:          a.Meta.setOrNil(),
+		Name:          a.Name.setOrNil(),
+		RawInput:      a.RawInput.setOrNil(),
+		RawOutput:     a.RawOutput.setOrNil(),
 		SessionUpdate: a.SessionUpdate,
-		Status:        a.Status.orNil(),
-		Title:         a.Title.orNil(),
+		Status:        a.Status.setOrNil(),
+		Title:         a.Title.setOrNil(),
 		ToolCallId:    a.ToolCallId,
 	})
 }
@@ -13816,15 +13758,15 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
-	decodePatchItems(raw.Content, &v.Content, shapeToolCallContent)
-	decodePatch(raw.Kind, &v.Kind)
-	decodePatchItems(raw.Locations, &v.Locations, shapeToolCallLocation)
-	decodePatch(raw.Name, &v.Name)
-	decodePatch(raw.RawInput, &v.RawInput)
-	decodePatch(raw.RawOutput, &v.RawOutput)
-	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
-	decodePatch(raw.Title, &v.Title)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
+	decodePatchItems(absentIfNull(raw.Content), &v.Content, shapeToolCallContent)
+	decodePatch(absentIfNull(raw.Kind), &v.Kind)
+	decodePatchItems(absentIfNull(raw.Locations), &v.Locations, shapeToolCallLocation)
+	decodePatch(absentIfNull(raw.Name), &v.Name)
+	decodePatch(absentIfNull(raw.RawInput), &v.RawInput)
+	decodePatch(absentIfNull(raw.RawOutput), &v.RawOutput)
+	decodePatch(absentIfNull(raw.Status), &v.Status, shapeToolCallStatus)
+	decodePatch(absentIfNull(raw.Title), &v.Title)
 	if maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.ToolCallId) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
@@ -14202,8 +14144,8 @@ type SessionSessionInfoUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta          Patch[Meta] `json:"_meta"`
 	SessionUpdate string      `json:"sessionUpdate"`
 	// Human-readable title for the session. Set to null to clear.
@@ -14223,7 +14165,7 @@ func (v SessionSessionInfoUpdate) MarshalJSON() ([]byte, error) {
 		UpdatedAt     *Patch[string] `json:"updatedAt,omitempty"`
 	}
 	return json.Marshal(wire{
-		Meta:          a.Meta.orNil(),
+		Meta:          a.Meta.setOrNil(),
 		SessionUpdate: a.SessionUpdate,
 		Title:         a.Title.orNil(),
 		UpdatedAt:     a.UpdatedAt.orNil(),
@@ -14247,7 +14189,7 @@ func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
 	if maybeAbsent(&v.SessionUpdate) {
@@ -14271,9 +14213,9 @@ type SessionUsageUpdate struct {
 	Cost          *Cost  `json:"cost,omitempty"`
 	SessionUpdate string `json:"sessionUpdate"`
 	// Total context window size in tokens.
-	Size int64 `json:"size"`
+	Size uint64 `json:"size"`
 	// Tokens currently in context.
-	Used int64 `json:"used"`
+	Used uint64 `json:"used"`
 }
 
 func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
@@ -14307,16 +14249,6 @@ func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
 		if err := requireMember(members, &v.Used, "used", false); err != nil {
 			return propertyError(err, "SessionUsageUpdate", "used")
 		}
-	}
-	return nil
-}
-
-func (v *SessionUsageUpdate) Validate() error {
-	if v.Size < 0 {
-		return fmt.Errorf("size must be at least 0")
-	}
-	if v.Used < 0 {
-		return fmt.Errorf("used must be at least 0")
 	}
 	return nil
 }
@@ -15401,7 +15333,7 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		m["sessionUpdate"] = json.RawMessage("\"session_message_chunk\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionUpdate has no variant set")
 }
 
 func (u *SessionUpdate) Validate() error {
@@ -15521,11 +15453,6 @@ func (u *SessionUpdate) Validate() error {
 	}
 	if u.ConfigOptionUpdate != nil {
 		if err := u.ConfigOptionUpdate.Validate(); err != nil {
-			return err
-		}
-	}
-	if u.UsageUpdate != nil {
-		if err := u.UsageUpdate.Validate(); err != nil {
 			return err
 		}
 	}
@@ -15778,7 +15705,7 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SetSessionConfigOptionRequest has no variant set")
 }
 
 func (u *SetSessionConfigOptionRequest) Validate() error {
@@ -16591,7 +16518,7 @@ func (u StateUpdateIdle) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("StateUpdateIdle has no variant set")
 }
 
 func (u *StateUpdateIdle) Validate() error {
@@ -16890,7 +16817,7 @@ func (u StateUpdate) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("StateUpdate has no variant set")
 }
 
 func (u *StateUpdate) Validate() error {
@@ -17056,11 +16983,11 @@ type StringPropertySchema struct {
 	// Maximum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum length constraint.
-	MaxLength *int64 `json:"maxLength,omitempty"`
+	MaxLength *uint32 `json:"maxLength,omitempty"`
 	// Minimum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum length constraint.
-	MinLength *int64 `json:"minLength,omitempty"`
+	MinLength *uint32 `json:"minLength,omitempty"`
 	// Titled enum options for titled single-select enums.
 	// Optional. Omitted and 'null' are equivalent and mean no titled single-select choices are
 	// declared by 'oneOf'.
@@ -17085,8 +17012,8 @@ func (v StringPropertySchema) MarshalJSON() ([]byte, error) {
 		Description *string       `json:"description,omitempty"`
 		Enum        *[]string     `json:"enum,omitempty"`
 		Format      *StringFormat `json:"format,omitempty"`
-		MaxLength   *int64        `json:"maxLength,omitempty"`
-		MinLength   *int64        `json:"minLength,omitempty"`
+		MaxLength   *uint32       `json:"maxLength,omitempty"`
+		MinLength   *uint32       `json:"minLength,omitempty"`
 		OneOf       *[]EnumOption `json:"oneOf,omitempty"`
 		Pattern     *string       `json:"pattern,omitempty"`
 		Title       *string       `json:"title,omitempty"`
@@ -17132,20 +17059,6 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "StringPropertySchema", "enum")
 	}
 	decodeLenient(raw.Title, &v.Title)
-	return nil
-}
-
-func (v *StringPropertySchema) Validate() error {
-	if v.MaxLength != nil {
-		if *v.MaxLength < 0 || *v.MaxLength > 4294967295 {
-			return fmt.Errorf("maxLength must be between 0 and 4294967295")
-		}
-	}
-	if v.MinLength != nil {
-		if *v.MinLength < 0 || *v.MinLength > 4294967295 {
-			return fmt.Errorf("minLength must be between 0 and 4294967295")
-		}
-	}
 	return nil
 }
 
@@ -17540,7 +17453,7 @@ type TerminalExitStatus struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The process exit code (may be null if terminated by signal).
-	ExitCode *int64 `json:"exitCode,omitempty"`
+	ExitCode *uint32 `json:"exitCode,omitempty"`
 	// The signal that terminated the process (may be null if exited normally).
 	Signal *string `json:"signal,omitempty"`
 }
@@ -17561,7 +17474,7 @@ func (v *TerminalExitStatus) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.ExitCode, &v.ExitCode, shapeTerminalExitStatusExitCode)
+	decodeLenient(raw.ExitCode, &v.ExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
 	return nil
 }
@@ -18241,7 +18154,7 @@ func (u ToolCallContent) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"session\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ToolCallContent has no variant set")
 }
 
 func (u *ToolCallContent) Validate() error {
@@ -18296,7 +18209,7 @@ type ToolCallLocation struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Optional 1-based line number within the file.
-	Line *int64 `json:"line,omitempty"`
+	Line *uint32 `json:"line,omitempty"`
 	// The absolute file path being accessed or modified.
 	Path string `json:"path"`
 }
@@ -18318,7 +18231,7 @@ func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Line, &v.Line, shapeToolCallLocationLine)
+	decodeLenient(raw.Line, &v.Line)
 	if maybeAbsent(&v.Path) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Path, "path", false); err != nil {
@@ -18360,48 +18273,51 @@ type ToolCallUpdate struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Meta Patch[Meta] `json:"_meta"`
 	// Replace the content collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Content Patch[[]ToolCallContent] `json:"content"`
 	// Update the tool kind.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Kind Patch[ToolKind] `json:"kind"`
 	// Replace the locations collection.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Locations Patch[[]ToolCallLocation] `json:"locations"`
 	// Update the programmatic name of the tool being invoked.
 	//
 	// This field is optional. Omitting it or sending 'null' both mean that
 	// the existing name is left unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Name Patch[string] `json:"name"`
 	// Update the raw input.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawInput Patch[json.RawMessage] `json:"rawInput"`
 	// Update the raw output.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	RawOutput Patch[json.RawMessage] `json:"rawOutput"`
 	// Update the execution status.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Status Patch[ToolCallStatus] `json:"status"`
 	// Update the human-readable title.
 	//
-	// ACP v1 does not say that null clears this field, and the Rust SDK
-	// reads null here as absent: treat IsNull like IsUnset.
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Title Patch[string] `json:"title"`
 	// The ID of the tool call being updated.
 	ToolCallId ToolCallId `json:"toolCallId"`
@@ -18424,15 +18340,15 @@ func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
 		ToolCallId ToolCallId                 `json:"toolCallId"`
 	}
 	return json.Marshal(wire{
-		Content:    a.Content.orNil(),
-		Kind:       a.Kind.orNil(),
-		Locations:  a.Locations.orNil(),
-		Meta:       a.Meta.orNil(),
-		Name:       a.Name.orNil(),
-		RawInput:   a.RawInput.orNil(),
-		RawOutput:  a.RawOutput.orNil(),
-		Status:     a.Status.orNil(),
-		Title:      a.Title.orNil(),
+		Content:    a.Content.setOrNil(),
+		Kind:       a.Kind.setOrNil(),
+		Locations:  a.Locations.setOrNil(),
+		Meta:       a.Meta.setOrNil(),
+		Name:       a.Name.setOrNil(),
+		RawInput:   a.RawInput.setOrNil(),
+		RawOutput:  a.RawOutput.setOrNil(),
+		Status:     a.Status.setOrNil(),
+		Title:      a.Title.setOrNil(),
 		ToolCallId: a.ToolCallId,
 	})
 }
@@ -18460,15 +18376,15 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	decodePatch(raw.Meta, &v.Meta)
-	decodePatchItems(raw.Content, &v.Content, shapeToolCallContent)
-	decodePatch(raw.Kind, &v.Kind)
-	decodePatchItems(raw.Locations, &v.Locations, shapeToolCallLocation)
-	decodePatch(raw.Name, &v.Name)
-	decodePatch(raw.RawInput, &v.RawInput)
-	decodePatch(raw.RawOutput, &v.RawOutput)
-	decodePatch(raw.Status, &v.Status, shapeToolCallStatus)
-	decodePatch(raw.Title, &v.Title)
+	decodePatch(absentIfNull(raw.Meta), &v.Meta)
+	decodePatchItems(absentIfNull(raw.Content), &v.Content, shapeToolCallContent)
+	decodePatch(absentIfNull(raw.Kind), &v.Kind)
+	decodePatchItems(absentIfNull(raw.Locations), &v.Locations, shapeToolCallLocation)
+	decodePatch(absentIfNull(raw.Name), &v.Name)
+	decodePatch(absentIfNull(raw.RawInput), &v.RawInput)
+	decodePatch(absentIfNull(raw.RawOutput), &v.RawOutput)
+	decodePatch(absentIfNull(raw.Status), &v.Status, shapeToolCallStatus)
+	decodePatch(absentIfNull(raw.Title), &v.Title)
 	if maybeAbsent(&v.ToolCallId) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
@@ -19210,6 +19126,34 @@ func (v *UnstableForkSessionResponse) Validate() error {
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
 //
+// Request parameters for 'proxy/initialize'.
+//
+// A conductor sends 'proxy/initialize' instead of 'initialize' to every component that has a
+// successor, which tells the component to run as a proxy. The params and the response are
+// the same as for 'initialize'. A conductor sends 'initialize' to the final agent.
+//
+// The params carry the protocol version the conductor selected: the client's requested
+// version, unless the conductor supports only a lower one. Before answering successfully,
+// the proxy MUST forward an 'initialize' request to its successor through 'proxy/successor'.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableInitializeProxyRequest = InitializeRequest
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Response to 'proxy/initialize'.
+//
+// The same as the 'initialize' response. The proxy builds it from its successor's
+// 'initialize' response and answers with the capabilities of the chain from itself onward.
+// It MUST NOT change 'protocolVersion'.
+type UnstableInitializeProxyResponse = InitializeResponse
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
 // Request parameters for 'providers/list'.
 type UnstableListProvidersRequest struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -19337,7 +19281,7 @@ const (
 // Explicit 'null' is preserved separately from an omitted key.
 type UnstableMcpError struct {
 	// Inner MCP error code. Never an ACP error code.
-	Code int `json:"code"`
+	Code int32 `json:"code"`
 	// Optional error data. Explicit null is retained.
 	Data json.RawMessage `json:"data,omitempty"`
 	// Inner MCP error message.
@@ -19382,13 +19326,6 @@ func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
 		}
 	}
 	v.AdditionalProperties = additionalProperties(b, "code", "data", "message")
-	return nil
-}
-
-func (v *UnstableMcpError) Validate() error {
-	if v.Code < -2147483648 || v.Code > 2147483647 {
-		return fmt.Errorf("code must be between -2147483648 and 2147483647")
-	}
 	return nil
 }
 
@@ -19661,13 +19598,6 @@ func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (v *UnstableMessageMcpError) Validate() error {
-	if err := v.Error.Validate(); err != nil {
-		return fmt.Errorf("error: %w", err)
-	}
-	return nil
-}
-
 type UnstableMessageMcpResponse struct {
 	// An opaque inner MCP result.
 	Result *UnstableMessageMcpResult `json:"-"`
@@ -19747,7 +19677,7 @@ func (u UnstableMessageMcpResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("UnstableMessageMcpResponse has no variant set")
 }
 
 func (u *UnstableMessageMcpResponse) Validate() error {
@@ -19760,11 +19690,6 @@ func (u *UnstableMessageMcpResponse) Validate() error {
 	}
 	if count == 0 {
 		return errors.New("UnstableMessageMcpResponse has no variant set")
-	}
-	if u.Error != nil {
-		if err := u.Error.Validate(); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -19915,6 +19840,149 @@ func (v *UnstableProviderInfo) Validate() error {
 	}
 	return nil
 }
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Parameters of a 'proxy/successor' notification.
+//
+// A proxy sends it to forward a message to its successor, and the conductor sends it to
+// deliver a message from the successor to the proxy. The envelope wraps one notification: 'method'
+// and 'params' are the wrapped notification's method and params.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableProxySuccessorNotification struct {
+	// Metadata for the 'proxy/successor' envelope itself, separate from the wrapped
+	// message's '_meta'. It is hop-local: the conductor does not copy it into the message
+	// it unwraps.
+	//
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// Method name of the wrapped notification.
+	Method string `json:"method"`
+	// Params of the wrapped notification, forwarded unchanged.
+	//
+	// Optional. Omitted and 'null' are equivalent and mean the wrapped notification has no params.
+	// When present, it MUST be a JSON object or array, as JSON-RPC requires.
+	// The wrapped notification's own '_meta' stays inside these params.
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+func (v *UnstableProxySuccessorNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh UnstableProxySuccessorNotification
+	v.Method = fresh.Method
+	type plain UnstableProxySuccessorNotification
+	type UnstableProxySuccessorNotification struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnstableProxySuccessorNotification{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "UnstableProxySuccessorNotification", "method")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableProxySuccessorNotification) Validate() error {
+	if v.Method == "" {
+		return fmt.Errorf("method is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Parameters of a 'proxy/successor' request.
+//
+// A proxy sends it to forward a message to its successor, and the conductor sends it to
+// deliver a message from the successor to the proxy. The envelope wraps one request: 'method'
+// and 'params' are the wrapped request's method and params.
+//
+// The result or error of the wrapped request is returned unchanged, as the same JSON value,
+// as the result or error of the 'proxy/successor' request. Errors the conductor returns
+// itself, for example because the successor has exited, are not wrapped results.
+//
+// To cancel it, the sender sends '$/cancel_request' with the ID of this 'proxy/successor'
+// request on the same connection. Cancellation is never forwarded to another hop.
+//
+// See the [Proxy Chains RFD](https://agentclientprotocol.com/rfds/proxy-chains).
+type UnstableProxySuccessorRequest struct {
+	// Metadata for the 'proxy/successor' envelope itself, separate from the wrapped
+	// message's '_meta'. It is hop-local: the conductor does not copy it into the message
+	// it unwraps.
+	//
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
+	// these keys.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// Method name of the wrapped request.
+	Method string `json:"method"`
+	// Params of the wrapped request, forwarded unchanged.
+	//
+	// Optional. Omitted and 'null' are equivalent and mean the wrapped request has no params.
+	// When present, it MUST be a JSON object or array, as JSON-RPC requires.
+	// The wrapped request's own '_meta' stays inside these params.
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+func (v *UnstableProxySuccessorRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh UnstableProxySuccessorRequest
+	v.Method = fresh.Method
+	type plain UnstableProxySuccessorRequest
+	type UnstableProxySuccessorRequest struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := UnstableProxySuccessorRequest{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Method) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Method, "method", false); err != nil {
+			return propertyError(err, "UnstableProxySuccessorRequest", "method")
+		}
+	}
+	return nil
+}
+
+func (v *UnstableProxySuccessorRequest) Validate() error {
+	if v.Method == "" {
+		return fmt.Errorf("method is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Result of a 'proxy/successor' request: the wrapped request's result, forwarded unchanged.
+// UnstableProxySuccessorResponse is a union or complex schema; it holds the JSON as it was read.
+type UnstableProxySuccessorResponse = json.RawMessage
 
 // **UNSTABLE**
 //
@@ -20565,17 +20633,17 @@ type Usage struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Total cache read tokens.
-	CachedReadTokens *int64 `json:"cachedReadTokens,omitempty"`
+	CachedReadTokens *uint64 `json:"cachedReadTokens,omitempty"`
 	// Total cache write tokens.
-	CachedWriteTokens *int64 `json:"cachedWriteTokens,omitempty"`
+	CachedWriteTokens *uint64 `json:"cachedWriteTokens,omitempty"`
 	// Total input tokens across all turns.
-	InputTokens int64 `json:"inputTokens"`
+	InputTokens uint64 `json:"inputTokens"`
 	// Total output tokens across all turns.
-	OutputTokens int64 `json:"outputTokens"`
+	OutputTokens uint64 `json:"outputTokens"`
 	// Total thought/reasoning tokens
-	ThoughtTokens *int64 `json:"thoughtTokens,omitempty"`
+	ThoughtTokens *uint64 `json:"thoughtTokens,omitempty"`
 	// Sum of all token types across session.
-	TotalTokens int64 `json:"totalTokens"`
+	TotalTokens uint64 `json:"totalTokens"`
 }
 
 func (v *Usage) UnmarshalJSON(b []byte) error {
@@ -20599,9 +20667,9 @@ func (v *Usage) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens, shapeUsageCachedReadTokens)
-	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens, shapeUsageCachedWriteTokens)
-	decodeLenient(raw.ThoughtTokens, &v.ThoughtTokens, shapeUsageThoughtTokens)
+	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens)
+	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens)
+	decodeLenient(raw.ThoughtTokens, &v.ThoughtTokens)
 	if maybeAbsent(&v.InputTokens) || maybeAbsent(&v.OutputTokens) || maybeAbsent(&v.TotalTokens) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.InputTokens, "inputTokens", false); err != nil {
@@ -20617,19 +20685,6 @@ func (v *Usage) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (v *Usage) Validate() error {
-	if v.InputTokens < 0 {
-		return fmt.Errorf("inputTokens must be at least 0")
-	}
-	if v.OutputTokens < 0 {
-		return fmt.Errorf("outputTokens must be at least 0")
-	}
-	if v.TotalTokens < 0 {
-		return fmt.Errorf("totalTokens must be at least 0")
-	}
-	return nil
-}
-
 // Context window and cost update for a session.
 type UsageUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -20641,9 +20696,9 @@ type UsageUpdate struct {
 	// Cumulative session cost (optional).
 	Cost *Cost `json:"cost,omitempty"`
 	// Total context window size in tokens.
-	Size int64 `json:"size"`
+	Size uint64 `json:"size"`
 	// Tokens currently in context.
-	Used int64 `json:"used"`
+	Used uint64 `json:"used"`
 }
 
 func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
@@ -20673,16 +20728,6 @@ func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
 		if err := requireMember(members, &v.Used, "used", false); err != nil {
 			return propertyError(err, "UsageUpdate", "used")
 		}
-	}
-	return nil
-}
-
-func (v *UsageUpdate) Validate() error {
-	if v.Size < 0 {
-		return fmt.Errorf("size must be at least 0")
-	}
-	if v.Used < 0 {
-		return fmt.Errorf("used must be at least 0")
 	}
 	return nil
 }
@@ -20749,7 +20794,7 @@ type WaitForTerminalExitResponse struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The process exit code (may be null if terminated by signal).
-	ExitCode *int64 `json:"exitCode,omitempty"`
+	ExitCode *uint32 `json:"exitCode,omitempty"`
 	// The signal that terminated the process (may be null if exited normally).
 	Signal *string `json:"signal,omitempty"`
 }
@@ -20770,7 +20815,7 @@ func (v *WaitForTerminalExitResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.ExitCode, &v.ExitCode, shapeWaitForTerminalExitResponseExitCode)
+	decodeLenient(raw.ExitCode, &v.ExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
 	return nil
 }
@@ -21237,22 +21282,16 @@ const (
 	shapeSessionReference
 	shapeStateUpdate
 	shapeTerminal
-	shapeTerminalExitStatusExitCode
 	shapeTerminalId
 	shapeTextContent
 	shapeTextResourceContents
 	shapeToolCallContent
 	shapeToolCallLocation
-	shapeToolCallLocationLine
 	shapeToolCallStatus
 	shapeUnknownStateUpdate
 	shapeUnstableAuthAccount
 	shapeUnstructuredCommandInput
 	shapeUsage
-	shapeUsageCachedReadTokens
-	shapeUsageCachedWriteTokens
-	shapeUsageThoughtTokens
-	shapeWaitForTerminalExitResponseExitCode
 )
 
 var shapes = [...]shape{
@@ -21392,34 +21431,7 @@ var shapes = [...]shape{
 		},
 		required: []string{"code", "message"},
 	},
-	shapeErrorCode: {anyOf: []*shape{{
-		kinds:  kindInteger,
-		values: []any{json.Number("-32700")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32600")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32601")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32602")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32603")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32800")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32000")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32002")},
-	}, {
-		ints:  &intRange{-2147483648, 2147483647},
-		kinds: kindInteger,
-	}}},
+	shapeErrorCode:       {kinds: kindInteger},
 	shapeErrorStopReason: {kinds: kindObject},
 	shapeIdleStateUpdate: {
 		anyOf: []*shape{{
@@ -21727,10 +21739,6 @@ var shapes = [...]shape{
 		props:    map[string]*shape{"terminalId": {ref: shapeTerminalId}},
 		required: []string{"terminalId"},
 	},
-	shapeTerminalExitStatusExitCode: {
-		ints:  &intRange{0, 4294967295},
-		kinds: kindInteger | kindNull,
-	},
 	shapeTerminalId: {kinds: kindString},
 	shapeTextContent: {
 		kinds:    kindObject,
@@ -21783,10 +21791,6 @@ var shapes = [...]shape{
 		props:    map[string]*shape{"path": {kinds: kindString}},
 		required: []string{"path"},
 	},
-	shapeToolCallLocationLine: {
-		ints:  &intRange{0, 4294967295},
-		kinds: kindInteger | kindNull,
-	},
 	shapeToolCallStatus:     {values: []any{"pending", "in_progress", "completed", "failed"}},
 	shapeUnknownStateUpdate: {kinds: kindObject},
 	shapeUnstableAuthAccount: {
@@ -21802,36 +21806,11 @@ var shapes = [...]shape{
 	shapeUsage: {
 		kinds: kindObject,
 		props: map[string]*shape{
-			"inputTokens": {
-				ints:  &intRange{0, math.MaxInt64},
-				kinds: kindInteger,
-			},
-			"outputTokens": {
-				ints:  &intRange{0, math.MaxInt64},
-				kinds: kindInteger,
-			},
-			"totalTokens": {
-				ints:  &intRange{0, math.MaxInt64},
-				kinds: kindInteger,
-			},
+			"inputTokens":  {kinds: kindInteger},
+			"outputTokens": {kinds: kindInteger},
+			"totalTokens":  {kinds: kindInteger},
 		},
 		required: []string{"totalTokens", "inputTokens", "outputTokens"},
-	},
-	shapeUsageCachedReadTokens: {
-		ints:  &intRange{0, math.MaxInt64},
-		kinds: kindInteger | kindNull,
-	},
-	shapeUsageCachedWriteTokens: {
-		ints:  &intRange{0, math.MaxInt64},
-		kinds: kindInteger | kindNull,
-	},
-	shapeUsageThoughtTokens: {
-		ints:  &intRange{0, math.MaxInt64},
-		kinds: kindInteger | kindNull,
-	},
-	shapeWaitForTerminalExitResponseExitCode: {
-		ints:  &intRange{0, 4294967295},
-		kinds: kindInteger | kindNull,
 	},
 }
 
@@ -22025,6 +22004,16 @@ func decodePatchItems[T any](raw json.RawMessage, dst *Patch[[]T], check ...shap
 			*dst = PatchSet(v)
 		}
 	}
+}
+
+// absentIfNull returns nil for a raw null, and raw otherwise, so that a patch
+// field for which the schema defines no clear reads null as absent, as ACP v1
+// reads it.
+func absentIfNull(raw json.RawMessage) json.RawMessage {
+	if string(raw) == "null" {
+		return nil
+	}
+	return raw
 }
 
 // additionalProperties returns the members of the JSON object b that named

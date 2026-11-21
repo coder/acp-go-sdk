@@ -19,7 +19,8 @@ type fieldPlan struct {
 	// Patch of patchValueType.
 	patch bool
 	// nullAsAbsent says that the field is a patch field for which the schema
-	// defines no clear (ir.NullAsAbsent), so its doc says how to read null.
+	// defines no clear (ir.NullAsAbsent): the decoder reads null as unset,
+	// MarshalJSON leaves out a null Patch, and its doc says so.
 	nullAsAbsent bool
 	// keepEmpty says that the field is an optional slice or map whose schema
 	// allows null: the Rust SDK reads it as an Option, so it writes an empty
@@ -49,7 +50,7 @@ func (p fieldPlan) hasFallback() bool {
 // raw and decodes it on its own.
 func (p fieldPlan) customDecode() bool {
 	lenient := p.field.Lenient
-	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems || p.nonNullItem != nil
+	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems || p.nonNullItem != nil || p.nullAsAbsent
 }
 
 // decoded reports whether the struct needs a generated UnmarshalJSON for the
@@ -93,6 +94,7 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 		b.usesPatch = true
 		if lenient.DefaultOnError {
 			p.shape = b.shapes.site(owner, field, patchValueType(field))
+			b.usesAbsentIfNull = b.usesAbsentIfNull || p.nullAsAbsent
 		}
 		return p
 	}
@@ -193,8 +195,8 @@ func mapsToSliceOrMap(d *load.Definition) bool {
 
 // nullAsAbsentNote is the doc of a patch field for which the schema defines
 // no clear (ir.NullAsAbsent).
-const nullAsAbsentNote = "ACP v1 does not say that null clears this field, and the Rust SDK\n" +
-	"reads null here as absent: treat IsNull like IsUnset."
+const nullAsAbsentNote = "ACP v1 defines no clear for this field, so null leaves it unchanged, as\n" +
+	"absent does: the SDK reads null as unset, and leaves out a null Patch."
 
 func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 	decls := []Code{}
@@ -346,6 +348,8 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 					shadow = append(shadow, fieldDecl(p, nestedTypeNames, true))
 					value := Id("a").Dot(p.field.Name)
 					switch {
+					case p.patch && p.nullAsAbsent:
+						value = value.Dot("setOrNil").Call()
 					case p.patch:
 						value = value.Dot("orNil").Call()
 					case p.keepEmpty:

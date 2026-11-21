@@ -171,9 +171,10 @@ type typesBuilder struct {
 	patch, nullAsAbsent map[*load.Definition]bool
 	// indirect holds the members that hold their value through a pointer
 	// (indirectMembers), keyed as patch is.
-	indirect  map[*load.Definition]bool
-	usesPatch bool
-	usesNilIf bool
+	indirect         map[*load.Definition]bool
+	usesPatch        bool
+	usesAbsentIfNull bool
+	usesNilIf        bool
 	// validated holds validates per $defs entry, nil until its first call.
 	validated map[string]bool
 }

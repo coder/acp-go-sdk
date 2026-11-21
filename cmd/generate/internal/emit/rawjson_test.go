@@ -101,20 +101,23 @@ func TestWriteTypesJen_PatchOfAnInlineObjectUsesItsStruct(t *testing.T) {
 	}
 }
 
-// A patch field for which the schema defines no clear says how to read null.
+// A patch field for which the schema defines no clear says how the SDK reads
+// null, also where its description says that null leaves it unchanged, and a
+// field whose description says that null clears it does not.
 func TestWriteTypesJen_NullAsAbsentPatchFieldSaysSo(t *testing.T) {
 	src, _ := emitUnionFiles(t, `{"$defs": {
   "Update": {"description": "Only changed fields need to be included.", "type": "object", "properties": {
     "title": {"type": ["string", "null"], "description": "Update the title."},
-    "name": {"type": ["string", "null"], "description": "Sending null leaves the name unchanged."}
+    "name": {"type": ["string", "null"], "description": "Sending null leaves the name unchanged."},
+    "note": {"type": ["string", "null"], "description": "Set to null to clear."}
   }}
 }}`)
-	const want = "// Update the title.\n\t//\n\t// ACP v1 does not say that null clears this field, and the Rust SDK\n\t// reads null here as absent: treat IsNull like IsUnset.\n\tTitle Patch[string]"
+	const want = "// Update the title.\n\t//\n\t// ACP v1 defines no clear for this field, so null leaves it unchanged, as\n\t// absent does: the SDK reads null as unset, and leaves out a null Patch.\n\tTitle Patch[string]"
 	if !strings.Contains(src, want) {
 		t.Errorf("types_gen.go lacks the null note on Title:\n%s", src)
 	}
-	if strings.Count(src, "ACP v1 does not say") != 1 {
-		t.Errorf("types_gen.go has the null note on a field whose description says what null does:\n%s", src)
+	if strings.Count(src, "ACP v1 defines no clear") != 2 {
+		t.Errorf("types_gen.go has the null note on a field other than Title and Name:\n%s", src)
 	}
 }
 

@@ -33,7 +33,7 @@ const recursiveSchema = `{"$defs": {
   "A": {"type": "object", "required": ["b"], "properties": {"b": {"allOf": [{"$ref": "#/$defs/B"}]}}},
   "B": {"type": "object", "properties": {"a": {"$ref": "#/$defs/A"}}},
   "Update": {"type": "object", "description": "Only changed fields need to be included.",
-    "properties": {"next": {"anyOf": [{"$ref": "#/$defs/Change"}, {"type": "null"}]}}},
+    "properties": {"next": {"description": "Set to null to clear.", "anyOf": [{"$ref": "#/$defs/Change"}, {"type": "null"}]}}},
   "Change": {"type": "object", "properties": {"update": {"$ref": "#/$defs/Update"}}},
   "Pick": {"oneOf": [
     {"type": "object", "allOf": [{"$ref": "#/$defs/A"}], "required": ["kind"], "properties": {"kind": {"type": "string", "const": "a"}}},

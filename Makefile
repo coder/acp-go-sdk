@@ -92,13 +92,20 @@ test: $(GO_FILES)
 clean:
 	rm -f $(SCHEMA_FILES)
 
+# The SemVer that the Release workflow accepts: no leading zeros, an optional
+# prerelease, no build metadata.
+RELEASE_NUM := (0|[1-9][0-9]*)
+RELEASE_PRE := (0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)
+RELEASE_VERSION_RE := $(RELEASE_NUM)\.$(RELEASE_NUM)\.$(RELEASE_NUM)(-$(RELEASE_PRE)(\.$(RELEASE_PRE))*)?
+
 # Prepare a release PR: write the SDK version to version (and the schema pin to
 # schema/version when SCHEMA is set), regenerate, format, and test. It makes no
-# commit or tag. RELEASING.md lists the manual steps that follow.
+# commit or tag. After the PR merges, the Release workflow publishes it
+# (RELEASING.md).
 .PHONY: release
 release:
-	@printf '%s\n' "$(VERSION)" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { \
-		echo "VERSION must be the SDK semver without a v (e.g. 'make release VERSION=0.14.0 SCHEMA=1.18.0')" 1>&2; \
+	@printf '%s\n' "$(VERSION)" | grep -Eqx '$(RELEASE_VERSION_RE)' || { \
+		echo "VERSION must be the SDK semver without a v (e.g. 'make release VERSION=0.14.0 SCHEMA=1.18.0', or 0.14.0-rc.1)" 1>&2; \
 		exit 1; \
 	}
 	@[ -z "$(SCHEMA)" ] || printf '%s\n' "$(SCHEMA)" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { \
@@ -114,4 +121,4 @@ release:
 	GOCACHE=$(GOCACHE) $(MAKE) test
 	@echo
 	@echo "Release candidate v$(VERSION) (ACP schema $$(cat schema/version)) is ready."
-	@echo "Commit it, run 'make check', and open a PR. After it merges, tag it as RELEASING.md describes."
+	@echo "Commit it, run 'make check', and open a PR. After it merges, run the Release workflow (see RELEASING.md)."

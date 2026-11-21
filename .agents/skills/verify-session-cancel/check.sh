@@ -62,6 +62,8 @@ COVERED=(
 	"connection.go|func (c *Connection) handleInbound("
 	"connection.go|func SendRequest[T any](c *Connection,"
 	"connection.go|func (c *Connection) SendRequestNoResult("
+	"connection.go|func (r *sentRequest) wait("
+	"connection.go|func (c *Connection) handleResponse("
 	"connection.go|func (c *Connection) waitNotifications("
 	"connection.go|func (c *Connection) waitInboundBarrier("
 	"connection.go|func (c *Connection) startPeerWait("
@@ -157,6 +159,8 @@ B_newc=$(need connection.go "func NewConnection(")
 B_hin=$(need connection.go "func (c *Connection) handleInbound(")
 B_send=$(need connection.go "func SendRequest[T any](c *Connection,")
 B_sendnr=$(need connection.go "func (c *Connection) SendRequestNoResult(")
+B_sent=$(need connection.go "func (r *sentRequest) wait(")
+B_resp=$(need connection.go "func (c *Connection) handleResponse(")
 B_nseq=$(need connection.go "func (c *Connection) notificationSeq(")
 B_arr=$(need connection.go "func (c *Connection) messageArrival(")
 B_recv=$(need connection.go "func (c *Connection) receive(")
@@ -216,6 +220,11 @@ in_order "$B_recv" "c.inboundMessages++" "c.lastEnqueuedNotificationSeq++" \
 	drift "receive no longer numbers and queues notifications (ReceiveNotification)"
 [ "$(grep -Fc "c.inboundMessages++" <<<"$B_recv")" = 2 ] ||
 	drift "receive numbers messages in a new set of places: the model gives every request and queued notification one arrival"
+# handleResponse, which receive calls, numbers each response to a request of
+# this side too. The model compares arrivals only by order, so a response's
+# number is a gap between two messages that the model numbers.
+[ "$(grep -Fc "c.inboundMessages++" <<<"$B_resp")" = 1 ] && has "$B_recv" "c.handleResponse(&msg)" ||
+	drift "handleResponse no longer numbers each response once"
 # A message over the connection's limits takes no arrival: a request that does
 # not fit queues its reply and is skipped, or closes the connection when the
 # rejection queue is full, and a notification that does not fit closes the
@@ -310,11 +319,14 @@ esac
 
 # InboundStopsAtPeerWait: a request from the peer starts while the running
 # notification handler waits on the peer. Both request paths count the wait.
+# Both write with sendRequest and wait in sentRequest.wait, which counts.
 peer_wait_count() { in_order "$1" "donePeerWait := c.startPeerWait(ctx)" "c.waitForResponse(ctx, pr, idKey)" "donePeerWait()"; }
+for b in "$B_send" "$B_sendnr"; do
+	in_order "$b" "sent, err := c.sendRequest(method, params, nil)" "sent.wait(ctx)" ||
+		drift "SendRequest or SendRequestNoResult no longer waits in sentRequest.wait (StartPeerNote, RunCancel)"
+done
 counted=0
-peer_wait_count "$B_send" && counted=$((counted + 1))
-peer_wait_count "$B_sendnr" && counted=$((counted + 1))
-[ "$counted" != 1 ] || drift "only one of SendRequest and SendRequestNoResult counts its peer wait (StartPeerNote, RunCancel)"
+peer_wait_count "$B_sent" && counted=2
 if has "$B_inb" "c.waitNotifications(ctx, watermark, true)"; then
 	if [ "$counted" = 2 ] && has "$B_wait" "!(stopAtPeerWait && c.peerWaits[c.completedNotificationSeq+1] > 0)" && has "$B_peer" "c.peerWaits[seq]++"; then
 		InboundStopsAtPeerWait=TRUE

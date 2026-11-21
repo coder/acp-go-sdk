@@ -5,10 +5,11 @@ import (
 	"testing"
 )
 
-// A patch field reads an absent member as unset, null as null, and a value as
-// set, and writes each back the same way, so that a receiver can tell
-// "unchanged" from "clear". Each input is in the order that the SDK writes
-// its members, so the output must equal it byte for byte.
+// A patch field reads an absent member as unset, null as null where the schema
+// defines a clear, and a value as set, and writes each back the same way, so
+// that a receiver can tell "unchanged" from "clear". Each input is in the
+// order that the SDK writes its members, so the output must equal it byte for
+// byte.
 func TestPatch_RoundTripsAbsentNullAndValue(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -17,9 +18,8 @@ func TestPatch_RoundTripsAbsentNullAndValue(t *testing.T) {
 		into any
 	}{
 		{"tool call update without changes", `{"toolCallId":"t"}`, &ToolCallUpdate{}},
-		{"tool call update that clears", `{"content":null,"locations":null,"rawInput":null,"title":null,"toolCallId":"t"}`, &ToolCallUpdate{}},
 		{"tool call update with empty arrays", `{"content":[],"locations":[],"toolCallId":"t"}`, &ToolCallUpdate{}},
-		{"session update tool_call_update", `{"content":[],"sessionUpdate":"tool_call_update","status":null,"toolCallId":"t"}`, &SessionUpdate{}},
+		{"session update tool_call_update", `{"content":[],"sessionUpdate":"tool_call_update","status":"completed","toolCallId":"t"}`, &SessionUpdate{}},
 		{"session info update", `{"sessionUpdate":"session_info_update","title":null,"updatedAt":"2026-11-18T00:00:00Z"}`, &SessionUpdate{}},
 		{"compaction update", `{"_meta":null,"compactionId":"c","error":null,"sessionUpdate":"compaction_update","status":"completed","summary":[]}`, &SessionUpdate{}},
 	}
@@ -39,12 +39,12 @@ func TestPatch_RoundTripsAbsentNullAndValue(t *testing.T) {
 
 func TestPatch_States(t *testing.T) {
 	t.Parallel()
-	var u ToolCallUpdate
-	if err := json.Unmarshal([]byte(`{"toolCallId":"t","title":null,"status":"completed"}`), &u); err != nil {
+	var u SessionInfoUpdate
+	if err := json.Unmarshal([]byte(`{"title":null,"updatedAt":"2026-11-18T07:20:01.837Z"}`), &u); err != nil {
 		t.Fatal(err)
 	}
-	if !u.Kind.IsUnset() || u.Kind.IsNull() {
-		t.Errorf("absent kind: IsUnset %v, IsNull %v, want unset", u.Kind.IsUnset(), u.Kind.IsNull())
+	if !u.Meta.IsUnset() || u.Meta.IsNull() {
+		t.Errorf("absent _meta: IsUnset %v, IsNull %v, want unset", u.Meta.IsUnset(), u.Meta.IsNull())
 	}
 	if !u.Title.IsNull() || u.Title.IsUnset() {
 		t.Errorf("null title: IsUnset %v, IsNull %v, want null", u.Title.IsUnset(), u.Title.IsNull())
@@ -52,8 +52,89 @@ func TestPatch_States(t *testing.T) {
 	if _, ok := u.Title.Value(); ok {
 		t.Error("null title has a value")
 	}
-	if status, ok := u.Status.Value(); !ok || status != ToolCallStatusCompleted {
-		t.Errorf("status = %q, %v, want completed", status, ok)
+	if at, ok := u.UpdatedAt.Value(); !ok || at != "2026-11-18T07:20:01.837Z" {
+		t.Errorf("updatedAt = %q, %v, want the timestamp", at, ok)
+	}
+}
+
+// ACP v1 defines no clear for the fields of a tool_call_update or for _meta
+// of a session_info_update: null there leaves the stored value as it is, as
+// an absent member does. The protocol docs say so for name, rawInput and
+// rawOutput, the v2 migration guide says that v1 treats null like omission,
+// and the Rust crate reads null in each of these fields as absent. So the SDK
+// reads such a null as unset and writes the value back as the crate does.
+// Each input is a real message of the G2 transcripts (codex-g5-1.jsonl line
+// 133 and claude-g5-1.jsonl line 17) with null members added, and each want
+// is what agent-client-protocol-schema 1.18.0 writes for it (the 141/ cases of
+// the Rust probe).
+func TestPatch_NullWhereTheSchemaDefinesNoClearIsUnset(t *testing.T) {
+	t.Parallel()
+	const (
+		update  = `"sessionId":"01a1ed8d-ea5e-7ec3-b9a5-0eb4d83755fc","update":{"sessionUpdate":"tool_call_update","toolCallId":"exec-c4e2eb8a-c857-490e-a87f-e77e95f50787","status":"completed"`
+		info    = `"sessionId":"c090a3c6-f962-49ae-bd60-7c52c9c05650","update":{"sessionUpdate":"session_info_update","title":"Pong reply test","updatedAt":"2026-11-18T07:20:01.837Z"`
+		allNull = `{"toolCallId":"exec-c4e2eb8a-c857-490e-a87f-e77e95f50787","kind":null,"status":null,"title":null,"name":null,"content":null,"locations":null,"rawInput":null,"rawOutput":null,"_meta":null}`
+	)
+	tests := []struct {
+		name, in, want string
+		into           any
+	}{
+		{"title null in a tool_call_update", `{` + update + `,"title":null}}`, `{` + update + `}}`, &SessionNotification{}},
+		{"content null in a tool_call_update", `{` + update + `,"content":null}}`, `{` + update + `}}`, &SessionNotification{}},
+		{"every field null in a tool call update", allNull, `{"toolCallId":"exec-c4e2eb8a-c857-490e-a87f-e77e95f50787"}`, &ToolCallUpdate{}},
+		{"_meta null in a session_info_update", `{` + info + `,"_meta":null}}`, `{` + info + `}}`, &SessionNotification{}},
+	}
+	for _, tt := range tests {
+		tt := tt // the module is Go 1.21, where each iteration shares tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := json.Unmarshal([]byte(tt.in), tt.into); err != nil {
+				t.Fatalf("unmarshal %s: %v", tt.in, err)
+			}
+			out, err := json.Marshal(tt.into)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if same, got, want := equalJSON(out, []byte(tt.want)); !same {
+				t.Errorf("%s decodes and encodes to %s, want %s as the Rust crate writes it", tt.in, got, want)
+			}
+		})
+	}
+	var u ToolCallUpdate
+	if err := json.Unmarshal([]byte(allNull), &u); err != nil {
+		t.Fatal(err)
+	}
+	for name, p := range map[string]interface{ IsUnset() bool }{
+		"kind": u.Kind, "status": u.Status, "title": u.Title, "name": u.Name, "content": u.Content,
+		"locations": u.Locations, "rawInput": u.RawInput, "rawOutput": u.RawOutput, "_meta": u.Meta,
+	} {
+		if !p.IsUnset() {
+			t.Errorf("null %s reads as %+v, want unset", name, p)
+		}
+	}
+}
+
+// A null Patch in a field where null does not clear is left out, as the Rust
+// crate leaves out None, so that no peer can read it as a clear. Where null
+// clears, it is written as null.
+func TestPatchNull_IsLeftOutWhereNullDoesNotClear(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		v    any
+		want string
+	}{
+		{"ToolCallUpdate", ToolCallUpdate{ToolCallId: "t", Title: PatchNull[string](), Content: PatchNull[[]ToolCallContent](), Meta: PatchNull[Meta]()}, `{"toolCallId":"t"}`},
+		{"SessionUpdate tool_call_update", UpdateToolCall("t", func(u *SessionToolCallUpdate) { u.Name = PatchNull[string]() }), `{"sessionUpdate":"tool_call_update","toolCallId":"t"}`},
+		{"SessionInfoUpdate", SessionInfoUpdate{Title: PatchNull[string](), Meta: PatchNull[Meta]()}, `{"title":null}`},
+	}
+	for _, tt := range tests {
+		tt := tt // the module is Go 1.21, where each iteration shares tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if out, err := json.Marshal(tt.v); err != nil || string(out) != tt.want {
+				t.Errorf("encodes to %s (error %v), want %s", out, err, tt.want)
+			}
+		})
 	}
 }
 
@@ -76,8 +157,8 @@ func TestPatch_BadValueOfAHintedFieldIsUnset(t *testing.T) {
 
 func TestPatchSet_WritesANilSliceAsEmpty(t *testing.T) {
 	t.Parallel()
-	u := ToolCallUpdate{ToolCallId: "t", Content: PatchSet[[]ToolCallContent](nil), Meta: PatchSet[Meta](nil), Kind: PatchNull[ToolKind]()}
-	const want = `{"_meta":{},"content":[],"kind":null,"toolCallId":"t"}`
+	u := ToolCallUpdate{ToolCallId: "t", Content: PatchSet[[]ToolCallContent](nil), Meta: PatchSet[Meta](nil)}
+	const want = `{"_meta":{},"content":[],"toolCallId":"t"}`
 	if out, err := json.Marshal(u); err != nil || string(out) != want {
 		t.Errorf("update encodes to %s (error %v), want %s", out, err, want)
 	}
@@ -157,16 +238,17 @@ func TestPatch_PtrIsNilUnlessSet(t *testing.T) {
 	}
 }
 
-// A set patch whose value encodes as null is null on the wire, so it reads
-// back as a null patch.
-func TestPatchSet_OfANullValueReadsBackAsNull(t *testing.T) {
+// A set patch whose value encodes as null is null on the wire. In rawInput
+// null leaves the stored value as it is, so it reads back as unset, as the
+// Rust crate reads it as None.
+func TestPatchSet_OfANullRawInputReadsBackAsUnset(t *testing.T) {
 	t.Parallel()
 	out, err := json.Marshal(ToolCallUpdate{ToolCallId: "t", RawInput: PatchSet[json.RawMessage](nil)})
 	if err != nil || string(out) != `{"rawInput":null,"toolCallId":"t"}` {
 		t.Fatalf("update encodes to %s (error %v)", out, err)
 	}
 	var u ToolCallUpdate
-	if err := json.Unmarshal(out, &u); err != nil || !u.RawInput.IsNull() {
-		t.Errorf("rawInput reads back as %+v (error %v), want null", u.RawInput, err)
+	if err := json.Unmarshal(out, &u); err != nil || !u.RawInput.IsUnset() {
+		t.Errorf("rawInput reads back as %+v (error %v), want unset", u.RawInput, err)
 	}
 }

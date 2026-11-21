@@ -10,16 +10,16 @@ import (
 
 // The Rust SDK reads an integer of the schema as the Rust type that its format
 // names (u16, u32, u64), so a value out of that type's range fails the
-// message. The SDK holds such integers in an int or an int64, so its Validate
-// checks the range: the client answers -32602 and calls no handler.
+// message. The SDK reads it as the Go type of the same range, so the value
+// fails to decode: the client answers -32602 and calls no handler.
 func TestClientSideConnection_RejectsIntegersOutOfRange(t *testing.T) {
 	t.Parallel()
 	read := func(members string) string { return `{"sessionId":"s","path":"/p",` + members + `}` }
 	tests := []requestCase{
-		{name: "read line -1", method: ClientMethodFsReadTextFile, params: read(`"line":-1`), invalid: true, want: "line must be between 0 and 4294967295"},
-		{name: "read line 2^32", method: ClientMethodFsReadTextFile, params: read(`"line":4294967296`), invalid: true, want: "line must be between 0 and 4294967295"},
-		{name: "read limit -1", method: ClientMethodFsReadTextFile, params: read(`"limit":-1`), invalid: true, want: "limit must be between 0 and 4294967295"},
-		{name: "terminal output byte limit -1", method: ClientMethodTerminalCreate, params: `{"sessionId":"s","command":"ls","outputByteLimit":-1}`, invalid: true, want: "outputByteLimit must be at least 0"},
+		{name: "read line -1", method: ClientMethodFsReadTextFile, params: read(`"line":-1`), invalid: true, want: "line of type uint32"},
+		{name: "read line 2^32", method: ClientMethodFsReadTextFile, params: read(`"line":4294967296`), invalid: true, want: "line of type uint32"},
+		{name: "read limit -1", method: ClientMethodFsReadTextFile, params: read(`"limit":-1`), invalid: true, want: "limit of type uint32"},
+		{name: "terminal output byte limit -1", method: ClientMethodTerminalCreate, params: `{"sessionId":"s","command":"ls","outputByteLimit":-1}`, invalid: true, want: "outputByteLimit of type uint64"},
 
 		{name: "read line 2^32-1", method: ClientMethodFsReadTextFile, params: read(`"line":4294967295,"limit":0`), check: func(t *testing.T, p any) {
 			if req := p.(ReadTextFileRequest); req.Line == nil || *req.Line != 4294967295 || req.Limit == nil || *req.Limit != 0 {
@@ -52,8 +52,8 @@ func TestClientSideConnection_RejectsIntegersOutOfRange(t *testing.T) {
 func TestAgentSideConnection_RejectsIntegersOutOfRange(t *testing.T) {
 	t.Parallel()
 	tests := []requestCase{
-		{name: "protocol version 70000", method: AgentMethodInitialize, params: `{"protocolVersion":70000}`, invalid: true, want: "protocolVersion must be between 0 and 65535"},
-		{name: "protocol version -1", method: AgentMethodInitialize, params: `{"protocolVersion":-1}`, invalid: true, want: "protocolVersion must be between 0 and 65535"},
+		{name: "protocol version 70000", method: AgentMethodInitialize, params: `{"protocolVersion":70000}`, invalid: true, want: "protocolVersion of type acp.ProtocolVersion"},
+		{name: "protocol version -1", method: AgentMethodInitialize, params: `{"protocolVersion":-1}`, invalid: true, want: "protocolVersion of type acp.ProtocolVersion"},
 
 		{name: "protocol version 65535", method: AgentMethodInitialize, params: `{"protocolVersion":65535}`, check: func(t *testing.T, p any) {
 			if got := p.(InitializeRequest).ProtocolVersion; got != 65535 {
@@ -124,18 +124,45 @@ func TestClientSideConnection_DropsAUsageUpdateOutOfRange(t *testing.T) {
 	}
 }
 
+// used and size of a usage_update, and outputByteLimit of terminal/create, are
+// u64 in the Rust SDK, which reads every value up to 2^64-1. So does the
+// client: the handler gets the value, and no digit of it is lost.
+func TestClientSideConnection_ReadsAUint64AboveMaxInt64(t *testing.T) {
+	t.Parallel()
+	const above = "9223372036854775808" // 2^63
+	const top = "18446744073709551615"  // 2^64-1
+	u := firstUpdate(t, `{"sessionUpdate":"usage_update","used":`+above+`,"size":`+top+`}`).Update.UsageUpdate
+	if got, _ := json.Marshal(u); u == nil || string(got) != `{"sessionUpdate":"usage_update","size":`+top+`,"used":`+above+`}` {
+		t.Errorf("usage_update reads as %s, want used %s and size %s", got, above, top)
+	}
+	runRequestCase(t, requestCase{
+		method: ClientMethodTerminalCreate,
+		params: `{"sessionId":"s","command":"ls","outputByteLimit":` + top + `}`,
+		check: func(t *testing.T, p any) {
+			if got, _ := json.Marshal(p.(CreateTerminalRequest).OutputByteLimit); string(got) != top {
+				t.Errorf("outputByteLimit = %s, want %s", got, top)
+			}
+		},
+	}, func(called chan<- any, w io.Writer, r io.Reader) {
+		NewClientSideConnection(&clientFuncs{CreateTerminalFunc: func(_ context.Context, p CreateTerminalRequest) (CreateTerminalResponse, error) {
+			called <- p
+			return CreateTerminalResponse{TerminalId: "t"}, nil
+		}}, w, r)
+	})
+}
+
 // line of a tool call location has x-deserialize-default-on-error, so the Rust
 // SDK reads a value out of the u32 range as absent and keeps the location.
 func TestClientSideConnection_ReadsALocationLineOutOfRangeAsAbsent(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
 		line string
-		want *int64
+		want *uint32
 	}{
 		{"-1", nil},
 		{"4294967296", nil},
-		{"4294967295", Ptr[int64](4294967295)},
-		{"0", Ptr[int64](0)},
+		{"4294967295", Ptr[uint32](4294967295)},
+		{"0", Ptr[uint32](0)},
 	} {
 		tt := tt
 		t.Run(tt.line, func(t *testing.T) {

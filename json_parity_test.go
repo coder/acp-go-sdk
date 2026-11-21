@@ -292,7 +292,7 @@ func TestJSONGolden_MethodPayloads(t *testing.T) {
 		return PromptRequest{SessionId: "sess_abc123def456", Prompt: []ContentBlock{TextBlock("Can you analyze this code for potential issues?"), ResourceBlock(EmbeddedResourceResource{TextResourceContents: &TextResourceContents{Uri: "file:///home/user/project/main.py", MimeType: Ptr("text/x-python"), Text: "def process_data(items):\n    for item in items:\n        print(item)"}})}}
 	}))
 	t.Run("fs_read_text_file_request", runGolden(func() ReadTextFileRequest {
-		line, limit := int64(10), int64(50)
+		line, limit := uint32(10), uint32(50)
 		return ReadTextFileRequest{SessionId: "sess_abc123def456", Path: "/home/user/project/src/main.py", Line: &line, Limit: &limit}
 	}))
 	t.Run("fs_read_text_file_response", runGolden(func() ReadTextFileResponse {

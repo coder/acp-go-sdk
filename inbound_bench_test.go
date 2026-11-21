@@ -208,7 +208,7 @@ func (p *benchPeers) decode(ctx context.Context, m *inboundMessage, r *recorder)
 	switch {
 	case msg.ID == nil && msg.Method == "$/cancel_request":
 		// The receive loop handles it itself; no request is in flight.
-		p.agent.conn.handleCancelRequest(&msg)
+		p.agent.conn.handleCancelRequest(msg.Params)
 		return nil
 	case msg.Method != "":
 		handle := p.client.handleWithExtensions

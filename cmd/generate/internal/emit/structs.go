@@ -32,6 +32,9 @@ type fieldPlan struct {
 	// nonNullItem is the Go type of the items or member values that the
 	// decoder rejects null for (typesBuilder.nonNullItem); nil for none.
 	nonNullItem Code
+	// goType is the Go type of the field when it is not a patch field and
+	// has no nested struct (typesBuilder.fieldType).
+	goType Code
 	// required says that the decoder fails when the JSON object lacks the
 	// member, or holds null for it and takesNull is false (planFor).
 	// encoding/json leaves such a member at its Go zero value, which
@@ -74,7 +77,7 @@ func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 	def, lenient := field.Def, field.Lenient
 	p := fieldPlan{
-		field: field, patch: b.patch[def], nullAsAbsent: b.nullAsAbsent[def], nonNullItem: b.nonNullItem(field),
+		field: field, patch: b.patch[def], nullAsAbsent: b.nullAsAbsent[def], nonNullItem: b.nonNullItem(field), goType: b.fieldType(field),
 		// As in the Rust SDK, a required member must be present, and may be
 		// null only where its schema accepts null or a hint reads null as
 		// the default. A schema default stands in for an absent member.
@@ -112,7 +115,7 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 	}
 	p.keepEmpty = !field.Required && includesNull(def) && mapsToSliceOrMap(def) && def.Default == nil && field.Prop != metaProperty
 	if lenient.DefaultOnError || lenient.SkipInvalidItems {
-		p.shape = b.shapes.site(owner, field, fieldType(field))
+		p.shape = b.shapes.site(owner, field, p.goType)
 	}
 	return p
 }
@@ -243,9 +246,9 @@ func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, pointers bool) Co
 	case ok:
 		typ = Id(nestedTypeName)
 	case p.keepEmpty && pointers:
-		typ = Op("*").Add(fieldType(field))
+		typ = Op("*").Add(p.goType)
 	default:
-		typ = fieldType(field)
+		typ = p.goType
 	}
 	return Id(field.Name).Add(typ).Tag(map[string]string{"json": tag})
 }
@@ -254,9 +257,20 @@ func fieldDecl(p fieldPlan, nestedTypeNames map[string]string, pointers bool) Co
 // implementations to attach data to.
 const metaProperty = "_meta"
 
-// fieldType returns the Go type of field, a property without a nested struct.
-// A _meta whose members the schema leaves free is a Meta.
-func fieldType(field ir.Field) Code {
+// fieldType returns the Go type of field, a property without a nested struct:
+// inPlaceType, behind a pointer when the value would hold the struct that
+// holds field (indirect).
+func (b *typesBuilder) fieldType(field ir.Field) Code {
+	if b.indirect[field.Def] {
+		return Op("*").Add(inPlaceType(field))
+	}
+	return inPlaceType(field)
+}
+
+// inPlaceType returns the Go type of field, a property without a nested
+// struct, when it holds its value in place. A _meta whose members the schema
+// leaves free is a Meta.
+func inPlaceType(field ir.Field) Code {
 	def := field.Def
 	if field.Prop == metaProperty && ir.PrimaryType(def) == "object" && len(def.Properties) == 0 && freeMembers(def) {
 		return Id("Meta")
@@ -269,7 +283,7 @@ func fieldType(field ir.Field) Code {
 func patchValueType(field ir.Field) Code {
 	def := field.Def
 	if field.Prop == metaProperty {
-		return fieldType(field)
+		return inPlaceType(field)
 	}
 	if nonNull := nonNullAlternative(def); nonNull != nil {
 		return jenTypeFor(nonNull)

@@ -61,7 +61,10 @@ type Run struct {
 // A JSON literal passed with a pointer, such as a default, may gain members
 // for the fields that merged adds to the pointed-to type. Both bodies first
 // lose their statements without effect (pruneInert), and a call of a method
-// that merged adds and that does nothing (noopMethods) counts as added.
+// that merged adds and that does nothing (noopMethods) counts as added. A
+// return of a call that gets an added field, which a stable value leaves
+// empty, is a return of what the call then returns (emptyAdded), and both
+// bodies fold the error check after a json.Marshal (foldMarshal).
 func Compare(pkgDir, schemaVersion string, stable, merged Run) error {
 	dir, err := os.MkdirTemp("", "stablecheck")
 	if err != nil {
@@ -285,6 +288,8 @@ func bodyChanges(old, new *side) ([]string, []site) {
 		}
 		old.pruneInert(of.Body)
 		new.pruneInert(body)
+		old.foldMarshal(of.Body)
+		new.foldMarshal(body)
 		old.canonicalJSON(of.Body, nil)
 		new.canonicalJSON(body, old.pkg)
 		if s, m, ok := firstDifference(old.text(of.Body), new.text(body)); ok {
@@ -352,7 +357,7 @@ func returnsOnlyNil(body *ast.BlockStmt) bool {
 // the receiver and the package-level names that only new declares.
 func newProjection(old, new *side, recv string, isMethod bool) *projection {
 	p := &projection{
-		info: new.info, scope: new.pkg.Scope(),
+		info: new.info, scope: new.pkg.Scope(), funcs: new.funcs,
 		stable: old.declared, added: map[string]bool{}, addedFields: map[string]bool{},
 		addedMembers: map[string]bool{}, guards: map[string]*ast.IfStmt{},
 	}
@@ -428,6 +433,8 @@ func sortedKeys[V any](m map[string]V) []string {
 type projection struct {
 	info  *types.Info
 	scope *types.Scope
+	// funcs holds the functions and methods of the merged generated files.
+	funcs map[string]*ast.FuncDecl
 	// stable and added hold package-level names, stableFields and
 	// addedFields the names of the fields of a struct receiver.
 	stable, added             map[string]bool
@@ -533,8 +540,10 @@ func (p *projection) names(id *ast.Ident) (added, stable bool) {
 
 // block removes from b, at any depth, what refers only to added names: a
 // statement, a switch case, a field of a local struct type, or an element of
-// a composite literal.
+// a composite literal. A return of a call that a stable value makes return
+// at once goes first to what it then returns (emptyAdded).
 func (p *projection) block(b *ast.BlockStmt) *ast.BlockStmt {
+	p.emptyAdded(b)
 	p.values = p.addedValues(b)
 	ast.Inspect(b, func(n ast.Node) bool {
 		switch n := n.(type) {

@@ -1,0 +1,7 @@
+{"dir":"client-\u003eagent","msg":{"id":1,"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":true},"terminal":false}}},"t_ms":0}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":1,"result":{"agentCapabilities":{"auth":{},"loadSession":true,"mcpCapabilities":{},"promptCapabilities":{},"sessionCapabilities":{"delete":{},"list":{},"systemPrompt":{}}},"authMethods":[],"protocolVersion":1}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":2,"jsonrpc":"2.0","method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":2,"result":{"configOptions":[{"category":"model","currentValue":"demo-fast","id":"model","name":"Model","options":[{"name":"Demo Fast","value":"demo-fast"},{"name":"Demo Deep","value":"demo-deep"}],"type":"select"}],"sessionId":"sess_1936e79e8cd1145ace6e6b82"}},"t_ms":3}
+{"dir":"client-\u003eagent","msg":{"id":3,"jsonrpc":"2.0","method":"session/set_config_option","params":{"sessionId":"sess_1936e79e8cd1145ace6e6b82","configId":"web_search","type":"boolean","value":true}},"t_ms":3}
+{"dir":"agent-\u003eclient","msg":{"jsonrpc":"2.0","id":3,"error":{"code":-32602,"message":"Invalid params","data":{"configId":"web_search","error":"no boolean option with this id"}}},"t_ms":3}
+{"dir":"client-\u003eagent","raw":"\u003cEOF\u003e","t_ms":3}

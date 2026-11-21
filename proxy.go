@@ -248,7 +248,7 @@ func (c *UnstableProxySideConnection) undecodable(ctx context.Context, to proxyS
 	if c.handlers.RejectUndecodable {
 		return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 	}
-	c.conn.loggerOrDefault().Debug("forwarding a message that its handler cannot decode", "method", method, "err", err)
+	c.conn.log(slog.LevelDebug, "forwarding a message that its handler cannot decode", "method", method, "err", err)
 	return c.forward(ctx, to, method, params, notification)
 }
 

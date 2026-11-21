@@ -8,10 +8,13 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
 const notificationQueueDrainTimeout = 5 * time.Second
@@ -159,7 +162,7 @@ type Connection struct {
 
 	// logger is atomic because SetLogger may be called after NewConnection has
 	// already spawned the receive/processNotifications goroutines that read it
-	// via loggerOrDefault.
+	// via log.
 	logger atomic.Pointer[slog.Logger]
 
 	notifyMu sync.Mutex
@@ -216,6 +219,25 @@ func withHooks(h connectionHooks) ConnectionOption {
 // exceptions. opts set the limits on what it holds from the peer: a request
 // over a limit gets a -32603 reply instead of a handler call, and a
 // notification over a limit closes the connection (see ConnectionOption).
+//
+// The connection never closes peerInput or peerOutput. A write to a peer that
+// stopped reading blocks, and every later write waits behind it: a handler's
+// reply, SendRequest and SendNotification. Nothing in the connection ends
+// that write, not even Done or a ctx. Done closes when the peer's output ends
+// or the connection closes itself on a limit, so a peer that hangs and sends
+// nothing may never close it. The owner of the
+// transport ends the write by closing it, or by ending the process behind it.
+// Closing an io.Pipe, an os.Pipe, a net.Conn or a child's stdin
+// (exec.Cmd.StdinPipe) ends a blocked write. Close it when you are done with
+// the connection, for example when Done has closed and the handlers that
+// still reply have returned, or when a call outlives a deadline of your own.
+// Do not close it at once when Done closes: a peer that closed only its
+// output still reads, and it would lose the replies of the running handlers.
+//
+// Closing os.Stdout ends a blocked write only when stdout is in non-blocking
+// mode. A child's stdout pipe from os/exec, Node or Python is in blocking
+// mode: there Close returns nil and the write stays blocked until the process
+// exits, so an agent on os.Stdout must exit to end it.
 func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *Connection {
 	cfg := connectionConfig{
 		byteBudget:             defaultByteBudget,
@@ -260,14 +282,70 @@ func NewConnection(handler MethodHandler, peerInput io.Writer, peerOutput io.Rea
 }
 
 // SetLogger installs a logger used for internal connection diagnostics.
-// If unset, logs are written via the default logger.
+// If unset, logs are written via the default logger. A record carries at most
+// the first 1 KiB of each text value, such as a bad input line or an error
+// that quotes the peer, and then that value's length.
 func (c *Connection) SetLogger(l *slog.Logger) { c.logger.Store(l) }
 
-func (c *Connection) loggerOrDefault() *slog.Logger {
-	if l := c.logger.Load(); l != nil {
-		return l
+// log writes a connection diagnostic. Every log call in the connection goes
+// through it, because any text value can come from the peer: a line, an id, a
+// method, or an error that quotes them, such as a decode error that copies a
+// number. args are key-value pairs, and log cuts each value with logValue.
+func (c *Connection) log(level slog.Level, msg string, args ...any) {
+	l := c.logger.Load()
+	if l == nil {
+		l = slog.Default()
 	}
-	return slog.Default()
+	ctx := context.Background()
+	if !l.Enabled(ctx, level) {
+		return
+	}
+	var pc [1]uintptr
+	runtime.Callers(2, pc[:]) // the caller of log, so a source attribute names it
+	r := slog.NewRecord(time.Now(), level, msg, pc[0])
+	bounded := make([]any, len(args))
+	copy(bounded, args)
+	for i := 1; i < len(bounded); i += 2 {
+		bounded[i] = logValue(bounded[i])
+	}
+	r.Add(bounded...)
+	_ = l.Handler().Handle(ctx, r)
+}
+
+// logValue returns v for a log attribute, with its text cut by peerText. A
+// number, bool, duration or time keeps its kind.
+func logValue(v any) slog.Value {
+	switch v := v.(type) {
+	case json.RawMessage:
+		return slog.StringValue(peerText(v))
+	case []byte:
+		return slog.StringValue(peerText(v))
+	case error:
+		return slog.StringValue(peerText(v.Error()))
+	}
+	val := slog.AnyValue(v).Resolve()
+	switch val.Kind() {
+	case slog.KindString, slog.KindAny, slog.KindGroup:
+		return slog.StringValue(peerText(val.String()))
+	}
+	return val
+}
+
+// maxLoggedPeerBytes bounds the text in one log attribute.
+const maxLoggedPeerBytes = 1024
+
+// peerText returns s, text that the peer controls, for a log attribute: whole
+// up to maxLoggedPeerBytes, else cut there at a rune start and followed by
+// its length. One input line can be 10 MiB, and a record must not carry it.
+func peerText[T ~string | ~[]byte](s T) string {
+	if len(s) <= maxLoggedPeerBytes {
+		return string(s)
+	}
+	n := maxLoggedPeerBytes
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return string(s[:n]) + "... (" + strconv.Itoa(len(s)) + " bytes)"
 }
 
 const (
@@ -519,8 +597,8 @@ func (c *Connection) receive() {
 		}
 
 		var msg anyMessage
-		if err := json.Unmarshal(line, &msg); err != nil {
-			c.loggerOrDefault().Error("failed to parse incoming message", "err", err, "raw", string(line))
+		if err := json.Unmarshal(line, &msg); err != nil && !c.readUnreadableResponse(line, err, &msg) {
+			c.log(slog.LevelError, "failed to parse incoming message", "err", err, "raw", line, "len", len(line))
 			continue
 		}
 
@@ -539,16 +617,16 @@ func (c *Connection) receive() {
 			if msg.ID != nil {
 				idKey, err := canonicalJSONRPCIDKey(*msg.ID)
 				if err != nil {
-					c.loggerOrDefault().Error("failed to canonicalize inbound request id", "err", err, "id", string(*msg.ID))
+					c.log(slog.LevelError, "failed to canonicalize inbound request id", "err", err, "id", *msg.ID)
 					idKey = string(*msg.ID)
 				}
 				// The request keeps its id twice: in msg for the reply, and
 				// as the key in c.inflight.
 				size += len(idKey)
 				if rejection := c.budget.holdRequest(size); rejection != nil {
-					c.loggerOrDefault().Warn("rejected request from the peer", "method", msg.Method, "err", rejection)
+					c.log(slog.LevelWarn, "rejected request from the peer", "method", msg.Method, "err", rejection)
 					if !c.queueRejection(&msg, rejection) {
-						c.loggerOrDefault().Error("the peer does not read the rejections of its requests; closing connection", "err", errRejectionQueueOverflow, "method", msg.Method, "queued", len(c.rejections))
+						c.log(slog.LevelError, "the peer does not read the rejections of its requests; closing connection", "err", errRejectionQueueOverflow, "method", msg.Method, "queued", len(c.rejections))
 						c.shutdownReceive(errRejectionQueueOverflow)
 						return
 					}
@@ -609,7 +687,7 @@ func (c *Connection) receive() {
 			}
 
 			if !c.budget.holdNotification(size) {
-				c.loggerOrDefault().Error("notification does not fit the byte budget; closing connection", "err", errByteBudgetExceeded, "method", msg.Method, "size", size, "budget", c.budget.maxBytes)
+				c.log(slog.LevelError, "notification does not fit the byte budget; closing connection", "err", errByteBudgetExceeded, "method", msg.Method, "size", size, "budget", c.budget.maxBytes)
 				c.shutdownReceive(errByteBudgetExceeded)
 				return
 			}
@@ -637,12 +715,12 @@ func (c *Connection) receive() {
 				}
 				c.notifyMu.Unlock()
 				c.budget.releaseNotification(size)
-				c.loggerOrDefault().Error("failed to queue notification; closing connection", "err", errNotificationQueueOverflow, "capacity", cap(c.notificationQueue), "queued", len(c.notificationQueue))
+				c.log(slog.LevelError, "failed to queue notification; closing connection", "err", errNotificationQueueOverflow, "capacity", cap(c.notificationQueue), "queued", len(c.notificationQueue))
 				c.shutdownReceive(errNotificationQueueOverflow)
 				return
 			}
 		default:
-			c.loggerOrDefault().Error("received message with neither id nor method", "raw", string(line))
+			c.log(slog.LevelError, "received message with neither id nor method", "raw", line, "len", len(line))
 		}
 	}
 
@@ -682,7 +760,7 @@ func (c *Connection) shutdownReceive(cause error) {
 		c.inboundCancel(cause)
 	}(finalEnqueuedSeq)
 
-	c.loggerOrDefault().Info("connection closed", "cause", cause.Error())
+	c.log(slog.LevelInfo, "connection closed", "cause", cause)
 }
 
 // processNotifications processes notifications sequentially to maintain order.
@@ -712,7 +790,7 @@ func (c *Connection) processNotifications() {
 func (c *Connection) handleResponse(msg *anyMessage) {
 	idStr, err := canonicalJSONRPCIDKey(*msg.ID)
 	if err != nil {
-		c.loggerOrDefault().Error("failed to canonicalize response id", "err", err, "id", string(*msg.ID))
+		c.log(slog.LevelError, "failed to canonicalize response id", "err", err, "id", *msg.ID)
 		idStr = string(*msg.ID)
 	}
 
@@ -756,17 +834,17 @@ func (c *Connection) cancelRequestParams(msg *anyMessage) (json.RawMessage, bool
 func (c *Connection) handleCancelRequest(params json.RawMessage) {
 	var p cancelRequestParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		c.loggerOrDefault().Error("failed to parse $/cancel_request params", "err", err)
+		c.log(slog.LevelError, "failed to parse $/cancel_request params", "err", err)
 		return
 	}
 	if len(bytes.TrimSpace(p.RequestID)) == 0 {
-		c.loggerOrDefault().Error("received $/cancel_request without requestId")
+		c.log(slog.LevelError, "received $/cancel_request without requestId")
 		return
 	}
 
 	idKey, err := canonicalJSONRPCIDKey(p.RequestID)
 	if err != nil {
-		c.loggerOrDefault().Error("failed to canonicalize $/cancel_request requestId", "err", err, "requestId", string(p.RequestID))
+		c.log(slog.LevelError, "failed to canonicalize $/cancel_request requestId", "err", err, "requestId", p.RequestID)
 		idKey = string(p.RequestID)
 	}
 
@@ -807,10 +885,10 @@ func (c *Connection) handleInbound(ctx context.Context, req *anyMessage) {
 				// A notification needs no answer, so one that this side does
 				// not handle, such as an optional method that the Client or
 				// Agent does not implement, is not a failure.
-				c.loggerOrDefault().Debug("ignored unhandled notification", "method", req.Method, "err", err)
+				c.log(slog.LevelDebug, "ignored unhandled notification", "method", req.Method, "err", err)
 				return
 			}
-			c.loggerOrDefault().Error("failed to handle notification", "method", req.Method, "err", err)
+			c.log(slog.LevelError, "failed to handle notification", "method", req.Method, "err", err)
 		}
 		return
 	}
@@ -845,7 +923,7 @@ func (c *Connection) sendInboundRequestError(req *anyMessage, err *RequestError)
 func (c *Connection) queueRejection(req *anyMessage, rejection *RequestError) bool {
 	line, err := encodeLine(anyMessage{ID: req.ID, Error: rejection})
 	if err != nil {
-		c.loggerOrDefault().Error("failed to encode a rejection", "err", err)
+		c.log(slog.LevelError, "failed to encode a rejection", "err", err)
 		return true
 	}
 	if !c.budget.holdRejection(len(line)) {
@@ -1021,7 +1099,7 @@ func (c *Connection) sendCancelRequests() {
 
 				requestID := json.RawMessage(append([]byte(nil), idKey...))
 				if err := c.SendNotification(context.Background(), "$/cancel_request", cancelRequestParams{RequestID: requestID}); err != nil {
-					c.loggerOrDefault().Debug("failed to send $/cancel_request", "err", err)
+					c.log(slog.LevelDebug, "failed to send $/cancel_request", "err", err)
 				}
 			}
 		}
@@ -1049,7 +1127,7 @@ func (c *Connection) sendCancelRequest(idKey string) {
 	c.mu.Unlock()
 
 	if queueFull {
-		c.loggerOrDefault().Debug("dropping $/cancel_request due to full queue", "queue_len", maxPendingCancelRequests)
+		c.log(slog.LevelDebug, "dropping $/cancel_request due to full queue", "queue_len", maxPendingCancelRequests)
 		return
 	}
 
@@ -1341,7 +1419,11 @@ func (c *Connection) prepareNotification(method string, params any) (anyMessage,
 }
 
 // Done returns a channel that is closed when the underlying reader loop exits
-// (typically when the peer disconnects or the input stream is closed).
+// (typically when the peer disconnects or the input stream is closed), or when
+// the connection closes itself on a limit (see ConnectionOption). A peer that
+// stopped reading but keeps its output open and sends nothing never closes
+// it, and Done does not end a write that blocks on such a peer: NewConnection
+// says how to end that write.
 func (c *Connection) Done() <-chan struct{} {
 	return c.ctx.Done()
 }
@@ -1352,8 +1434,33 @@ func (c *Connection) Done() <-chan struct{} {
 // instead of waiting for one that never comes.
 func (c *Connection) encodableError(method string, err *RequestError) *RequestError {
 	if _, mErr := json.Marshal(err); mErr != nil {
-		c.loggerOrDefault().Error("failed to encode the error of a request handler", "method", method, "err", mErr)
+		c.log(slog.LevelError, "failed to encode the error of a request handler", "method", method, "err", mErr)
 		return NewInternalError(map[string]any{"error": mErr.Error()})
 	}
 	return err
+}
+
+// readUnreadableResponse reads line, which failed to decode into an
+// anyMessage with err, as a response when it is a JSON object with an id and
+// no method, such as one whose error object has a code that is not an
+// integer or does not fit an int. It sets msg to that response with a local
+// -32603 error that carries err and the error object as it was read, so that
+// the request that waits for it fails instead of waiting until its ctx ends,
+// and reports true. It reports false for any other line.
+func (c *Connection) readUnreadableResponse(line []byte, err error, msg *anyMessage) bool {
+	var head struct {
+		ID     *json.RawMessage `json:"id"`
+		Method json.RawMessage  `json:"method"`
+		Error  json.RawMessage  `json:"error"`
+	}
+	if json.Unmarshal(line, &head) != nil || head.ID == nil || head.Method != nil {
+		return false
+	}
+	c.log(slog.LevelError, "failed to parse incoming response", "err", err, "id", *head.ID)
+	data := map[string]any{"error": "invalid response: " + err.Error()}
+	if head.Error != nil {
+		data["response"] = head.Error
+	}
+	*msg = anyMessage{JSONRPC: "2.0", ID: head.ID, Error: NewInternalError(data)}
+	return true
 }

@@ -208,7 +208,7 @@ func TestShapeTable_SiteSeesRulesBehindACycleOfRefs(t *testing.T) {
 	table := newShapeTable(&schema)
 	for _, def := range []string{"B", "A"} {
 		field := ir.Field{Prop: "p", Name: "P", Def: &load.Definition{Ref: "#/$defs/" + def}, Lenient: ir.Lenient{DefaultOnError: true}}
-		if table.site("Holder", field, fieldType(field)) == nil {
+		if table.site("Holder", field, inPlaceType(field)) == nil {
 			t.Errorf("a property of type %s names no shape, want shape%s", def, def)
 		}
 	}

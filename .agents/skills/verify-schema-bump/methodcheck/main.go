@@ -3,7 +3,8 @@
 // generated string constant, and the dispatcher on its side needs a case for
 // it. Agent methods go to (*AgentSideConnection).handle, client methods to
 // (*ClientSideConnection).handle, and a method listed for both sides needs
-// both. Protocol methods ($/...) have no generated dispatcher, so they need a
+// both. Proxy methods (proxy/...) go to (*UnstableProxySideConnection).handle.
+// Protocol methods ($/...) have no generated dispatcher, so they need a
 // constant and a receive path in hand-written code: a function that decodes
 // a message with json.Unmarshal into a variable x and compares x.Method with
 // the wire string or its constant (==, != or a case of switch x.Method).
@@ -31,6 +32,7 @@ type meta struct {
 	AgentMethods    map[string]string `json:"agentMethods"`
 	ClientMethods   map[string]string `json:"clientMethods"`
 	ProtocolMethods map[string]string `json:"protocolMethods"`
+	ProxyMethods    map[string]string `json:"proxyMethods"`
 }
 
 // pkg is what the check needs from the SDK package source.
@@ -60,7 +62,7 @@ func main() {
 
 // check returns one MISSING line per gap and the number of methods checked.
 func check(sdk string) (missing []string, checked int, err error) {
-	sides := map[string]map[string]bool{"agent": {}, "client": {}, "protocol": {}}
+	sides := map[string]map[string]bool{"agent": {}, "client": {}, "proxy": {}, "protocol": {}}
 	for _, name := range []string{"meta.json", "meta.unstable.json"} {
 		b, err := os.ReadFile(filepath.Join(sdk, "schema", name))
 		if err != nil {
@@ -70,7 +72,7 @@ func check(sdk string) (missing []string, checked int, err error) {
 		if err := json.Unmarshal(b, &m); err != nil {
 			return nil, 0, fmt.Errorf("%s: %w", name, err)
 		}
-		for side, methods := range map[string]map[string]string{"agent": m.AgentMethods, "client": m.ClientMethods, "protocol": m.ProtocolMethods} {
+		for side, methods := range map[string]map[string]string{"agent": m.AgentMethods, "client": m.ClientMethods, "proxy": m.ProxyMethods, "protocol": m.ProtocolMethods} {
 			for _, wire := range methods {
 				sides[side][wire] = true
 			}
@@ -81,8 +83,8 @@ func check(sdk string) (missing []string, checked int, err error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	dispatcher := map[string]string{"agent": "AgentSideConnection", "client": "ClientSideConnection"}
-	for _, side := range []string{"agent", "client", "protocol"} {
+	dispatcher := map[string]string{"agent": "AgentSideConnection", "client": "ClientSideConnection", "proxy": "UnstableProxySideConnection"}
+	for _, side := range []string{"agent", "client", "proxy", "protocol"} {
 		for _, wire := range sorted(sides[side]) {
 			checked++
 			if !p.generated[wire] {

@@ -57,3 +57,9 @@ const (
 const (
 	ProtocolMethodCancelRequest = "$/cancel_request"
 )
+
+// Proxy method names, which a conductor and its proxies exchange
+const (
+	ProxyMethodProxyInitialize = "proxy/initialize"
+	ProxyMethodProxySuccessor  = "proxy/successor"
+)

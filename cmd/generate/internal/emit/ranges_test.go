@@ -286,6 +286,30 @@ func TestWriteTypesJen_PanicsOnABoundBeyondInt64(t *testing.T) {
 	_ = WriteTypesJen(t.TempDir(), &schema, &load.Meta{})
 }
 
+// A bound that no value of the Go type meets leaves an empty range, and a
+// check against it would not compile, so the generator stops instead.
+func TestWriteTypesJen_PanicsOnABoundNoValueCanMeet(t *testing.T) {
+	for _, tc := range []struct{ name, property, bound string }{
+		{"uint32 minimum above its max", `{"type": "integer", "format": "uint32", "minimum": 5000000000}`, "5000000000"},
+		{"int32 maximum below its min", `{"type": "integer", "format": "int32", "maximum": -3000000000}`, "-3000000000"},
+		{"uint16 maximum below 0", `{"type": "integer", "format": "uint16", "maximum": -1}`, "-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var schema load.Schema
+			in := `{"$defs": {"PingRequest": {"type": "object", "required": ["n"], "properties": {"n": ` + tc.property + `}}}}`
+			if err := json.Unmarshal([]byte(in), &schema); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), tc.bound) {
+					t.Errorf("WriteTypesJen recovered %v, want a panic that names the bound %s", r, tc.bound)
+				}
+			}()
+			_ = WriteTypesJen(t.TempDir(), &schema, &load.Meta{})
+		})
+	}
+}
+
 // optionalIntegersSchema has optional integers that cannot be null, whose Go
 // type is not a pointer, so an absent member reads as 0. count has no bound
 // but its format's, level and offset have a minimum and a maximum that

@@ -233,7 +233,7 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 			change: func(defs map[string]*load.Definition) {
 				defs["Count"].Format = "int64"
 			},
-			want: "Count: changed from int to int64",
+			want: "Count: changed from uint16 to int64",
 		},
 		{
 			// apidiff does not read tags.
@@ -291,7 +291,7 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 			change: func(defs map[string]*load.Definition) {
 				defs["Hinted"].Properties["count"].Maximum = "100"
 			},
-			want: "shapes[shapeHintedCount]: takes the integers 0..100 instead of 0..4294967295",
+			want: "checks a stable value against the new shapeHintedCount, which takes only the integers -9223372036854775808..100",
 		},
 		{
 			// The new variant takes the values of a kind that the stable

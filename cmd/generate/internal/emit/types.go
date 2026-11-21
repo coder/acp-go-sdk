@@ -563,26 +563,16 @@ func methodDescription(schema *load.Schema, mi *ir.MethodInfo) string {
 	return ""
 }
 
-// integerType is the Go type of an integer schema: int64 for a format whose
-// range (formatRange) goes beyond an int32, which are int64, uint32, and
-// uint64, so that a 32-bit target holds every value that a peer sends (such
-// as the exit code 3221225477 of a Windows process, or a token count above
-// 2^31), and int otherwise. A uint64 above 2^63 does not fit; no ACP value
-// comes near it.
+// integerType is the Go type of an integer schema: the Go type of the Rust
+// type that its format names (formatType), such as uint32 for "uint32", and
+// int without a format. It reads the values that the Rust SDK reads and no
+// other, on every target.
 func integerType(d *load.Definition) *Statement {
-	if wideInteger(d) {
-		return Int64()
+	var format string
+	if d != nil {
+		format = d.Format
 	}
-	return Int()
-}
-
-// wideInteger reports whether the integer schema d is int64 (integerType).
-func wideInteger(d *load.Definition) bool {
-	if d == nil || d.Format == "" {
-		return false
-	}
-	r := formatRange(d.Format)
-	return r.min < math.MinInt32 || r.max > math.MaxInt32
+	return Id(formatType(format).name)
 }
 
 // Type mapping helpers (unchanged behavior vs original)
@@ -1097,7 +1087,8 @@ func (a unionAlternative) isInlineObject() bool { return a.kind == objectAlt }
 // or a rounded one: a value of
 // another JSON type, null, an array or object, a fraction under integer, a
 // number of magnitude 2^53 or more, which may be rounded when it loads, or an
-// int beyond int32, which does not compile on a 32-bit target.
+// integer that the Go type of its format cannot hold on every target
+// (holdsInteger), which does not compile.
 func (a unionAlternative) values(union string) []Code {
 	t := ir.PrimaryType(a.value)
 	var lits []Code
@@ -1106,8 +1097,7 @@ func (a unionAlternative) values(union string) []Code {
 		switch value := value.(type) {
 		case float64:
 			exact := math.Abs(value) < 1<<53
-			fits := wideInteger(a.value) || (value >= math.MinInt32 && value <= math.MaxInt32)
-			if t == "integer" && exact && value == math.Trunc(value) && fits {
+			if t == "integer" && exact && value == math.Trunc(value) && holdsInteger(a.value.Format, value) {
 				// An untyped constant from int64, so that the literal is the
 				// same when the generator runs on a 32-bit host.
 				lit = Id(strconv.FormatInt(int64(value), 10))

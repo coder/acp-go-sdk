@@ -2,21 +2,23 @@ package emit
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 )
 
-// integerRangesSchema has integers of each format with a range at a strict
-// site: a named uint16 type through allOf, a required int32, optional uint32
-// and uint64 pointers, uint32 items, map members of a named type whose
-// minimum and maximum narrow its format, explicit bounds on a property, an
-// int64, a nested struct, and a patch field. Spot.line and the items of marks
-// are lenient sites, and maybe is a lenient site that holds a struct with a
-// uint64. tight, the items of caps and Spot.col put a bound next to a $ref or
-// an allOf, which has no type of its own, nullcap and Spot.row next to a null
-// alternative, and frac has bounds 0.5 and 1e1.
+// integerRangesSchema has integers of each format at strict sites: a named
+// uint16 type through allOf, a required int32, optional uint32 and uint64
+// pointers, uint32 items, map members of a named type whose minimum and
+// maximum narrow its format, explicit bounds on a property, an int64, a
+// nested struct, and a patch field. Spot.line, Spot.hits and the items of
+// marks are lenient sites, and maybe is a lenient site that holds a struct
+// with a uint64. tight, the items of caps and Spot.col put a bound next to a
+// $ref or an allOf, which has no type of its own, nullcap and Spot.row next
+// to a null alternative, and frac has bounds 0.5 and 1e1. least and
+// Spot.hits put a minimum on a uint64, which has no maximum but its type's.
 const integerRangesSchema = `{"$defs": {
   "Version": {"type": "integer", "format": "uint16", "minimum": 0, "maximum": 65535},
   "Level": {"type": "integer", "format": "int32", "minimum": 1, "maximum": 10},
@@ -24,6 +26,7 @@ const integerRangesSchema = `{"$defs": {
   "Spot": {"type": "object", "required": ["path"], "properties": {
     "path": {"type": "string"},
     "line": {"type": ["integer", "null"], "format": "uint32", "minimum": 0, "x-deserialize-default-on-error": true},
+    "hits": {"type": ["integer", "null"], "format": "uint64", "minimum": 1, "x-deserialize-default-on-error": true},
     "col": {"$ref": "#/$defs/Version", "maximum": 10, "x-deserialize-default-on-error": true},
     "row": {"anyOf": [{"$ref": "#/$defs/Version"}, {"type": "null"}], "maximum": 10, "x-deserialize-default-on-error": true}}},
   "PingRequest": {"type": "object", "required": ["version", "offset", "count"], "properties": {
@@ -31,6 +34,7 @@ const integerRangesSchema = `{"$defs": {
     "offset": {"type": "integer", "format": "int32"},
     "line": {"type": ["integer", "null"], "format": "uint32", "minimum": 0},
     "size": {"type": ["integer", "null"], "format": "uint64", "minimum": 0},
+    "least": {"type": ["integer", "null"], "format": "uint64", "minimum": 1},
     "lines": {"type": "array", "items": {"type": "integer", "format": "uint32", "minimum": 0}},
     "levels": {"type": "object", "additionalProperties": {"$ref": "#/$defs/Level"}},
     "narrow": {"type": ["integer", "null"], "format": "uint32", "minimum": 5, "maximum": 10},
@@ -51,9 +55,12 @@ const integerRangesTest = `package acp
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
+// The Go type of an integer holds the range of its format, so a value out of
+// it fails to decode; Validate checks the minimum and maximum that narrow it.
 func TestPingRequest_Validate_ChecksIntegerRanges(t *testing.T) {
 	const valid = ` + "`" + `"version":1,"offset":0,"count":{"n":0}` + "`" + `
 	with := func(members string) string { return "{" + valid + "," + members + "}" }
@@ -62,18 +69,22 @@ func TestPingRequest_Validate_ChecksIntegerRanges(t *testing.T) {
 	}{
 		{"valid", "{" + valid + "}", ""},
 		{"uint16 at its bounds", with(` + "`" + `"version":65535,"latest":0` + "`" + `), ""},
-		{"uint16 above", with(` + "`" + `"version":65536` + "`" + `), "version must be between 0 and 65535"},
-		{"uint16 below", with(` + "`" + `"version":-1` + "`" + `), "version must be between 0 and 65535"},
+		{"uint16 above", with(` + "`" + `"version":65536` + "`" + `), "cannot unmarshal number 65536"},
+		{"uint16 below", with(` + "`" + `"version":-1` + "`" + `), "cannot unmarshal number -1"},
 		{"int32 at its bounds", with(` + "`" + `"offset":-2147483648` + "`" + `), ""},
-		{"int32 above", with(` + "`" + `"offset":2147483648` + "`" + `), "offset must be between -2147483648 and 2147483647"},
-		{"int32 below", with(` + "`" + `"offset":-2147483649` + "`" + `), "offset must be between -2147483648 and 2147483647"},
+		{"int32 above", with(` + "`" + `"offset":2147483648` + "`" + `), "cannot unmarshal number 2147483648"},
+		{"int32 below", with(` + "`" + `"offset":-2147483649` + "`" + `), "cannot unmarshal number -2147483649"},
 		{"uint32 pointer at its maximum", with(` + "`" + `"line":4294967295` + "`" + `), ""},
-		{"uint32 pointer above", with(` + "`" + `"line":4294967296` + "`" + `), "line must be between 0 and 4294967295"},
-		{"uint32 pointer below", with(` + "`" + `"line":-1` + "`" + `), "line must be between 0 and 4294967295"},
+		{"uint32 pointer above", with(` + "`" + `"line":4294967296` + "`" + `), "cannot unmarshal number 4294967296"},
+		{"uint32 pointer below", with(` + "`" + `"line":-1` + "`" + `), "cannot unmarshal number -1"},
+		{"uint32 negative zero", with(` + "`" + `"line":-0` + "`" + `), "cannot unmarshal number -0"},
 		{"optional pointer nil", with(` + "`" + `"line":null,"size":null,"narrow":null,"latest":null` + "`" + `), ""},
-		{"uint64 at the largest int64", with(` + "`" + `"size":9223372036854775807` + "`" + `), ""},
-		{"uint64 below", with(` + "`" + `"size":-1` + "`" + `), "size must be at least 0"},
-		{"item out of range", with(` + "`" + `"lines":[0,-1]` + "`" + `), "lines[1] must be between 0 and 4294967295"},
+		{"uint64 at its maximum", with(` + "`" + `"size":18446744073709551615` + "`" + `), ""},
+		{"uint64 above", with(` + "`" + `"size":18446744073709551616` + "`" + `), "cannot unmarshal number 18446744073709551616"},
+		{"uint64 below", with(` + "`" + `"size":-1` + "`" + `), "cannot unmarshal number -1"},
+		{"uint64 with a minimum at its maximum", with(` + "`" + `"least":18446744073709551615` + "`" + `), ""},
+		{"uint64 below its minimum", with(` + "`" + `"least":0` + "`" + `), "least must be at least 1"},
+		{"item out of range", with(` + "`" + `"lines":[0,-1]` + "`" + `), "cannot unmarshal number -1"},
 		{"member of a named type with minimum and maximum", with(` + "`" + `"levels":{"a":1,"b":10}` + "`" + `), ""},
 		{"member above the maximum of its type", with(` + "`" + `"levels":{"a":11}` + "`" + `), ` + "`" + `levels["a"] must be between 1 and 10` + "`" + `},
 		{"member below the minimum of its type", with(` + "`" + `"levels":{"a":0}` + "`" + `), ` + "`" + `levels["a"] must be between 1 and 10` + "`" + `},
@@ -84,21 +95,22 @@ func TestPingRequest_Validate_ChecksIntegerRanges(t *testing.T) {
 		{"below a fractional minimum", with(` + "`" + `"frac":0` + "`" + `), "frac must be between 1 and 10"},
 		{"above a maximum in exponent form", with(` + "`" + `"frac":11` + "`" + `), "frac must be between 1 and 10"},
 		{"bound beside a $ref", with(` + "`" + `"tight":1` + "`" + `), ""},
-		{"below a bound beside a $ref", with(` + "`" + `"tight":0` + "`" + `), "tight must be between 1 and 65535"},
+		{"below a bound beside a $ref", with(` + "`" + `"tight":0` + "`" + `), "tight must be at least 1"},
 		{"bound next to a null alternative", with(` + "`" + `"nullcap":10` + "`" + `), ""},
-		{"above a bound next to a null alternative", with(` + "`" + `"nullcap":11` + "`" + `), "nullcap must be between 0 and 10"},
-		{"item above a bound beside an allOf", with(` + "`" + `"caps":[10,11]` + "`" + `), "caps[1] must be between 0 and 10"},
-		{"int64 is not checked", with(` + "`" + `"big":-9223372036854775808` + "`" + `), ""},
-		{"nested struct", ` + "`" + `{"version":1,"offset":0,"count":{"n":-1}}` + "`" + `, "count: n must be at least 0"},
-		{"patch above", with(` + "`" + `"latest":65536` + "`" + `), "latest must be between 0 and 65535"},
+		{"above a bound next to a null alternative", with(` + "`" + `"nullcap":11` + "`" + `), "nullcap must be at most 10"},
+		{"item above a bound beside an allOf", with(` + "`" + `"caps":[10,11]` + "`" + `), "caps[1] must be at most 10"},
+		{"int64 at its bounds", with(` + "`" + `"big":-9223372036854775808` + "`" + `), ""},
+		{"nested struct", ` + "`" + `{"version":1,"offset":0,"count":{"n":-1}}` + "`" + `, "cannot unmarshal number -1"},
+		{"patch above", with(` + "`" + `"latest":65536` + "`" + `), "cannot unmarshal number 65536"},
 	}
 	for _, tt := range tests {
 		var req PingRequest
-		if err := json.Unmarshal([]byte(tt.payload), &req); err != nil {
-			t.Fatalf("%s: unmarshal %s: %v", tt.name, tt.payload, err)
+		err := json.Unmarshal([]byte(tt.payload), &req)
+		if err == nil {
+			err = req.Validate()
 		}
-		if got := errorText(req.Validate()); got != tt.wantErr {
-			t.Errorf("%s: Validate() on %s = %q, want %q", tt.name, tt.payload, got, tt.wantErr)
+		if got := errorText(err); tt.wantErr == "" && got != "" || !strings.Contains(got, tt.wantErr) {
+			t.Errorf("%s: reading %s fails with %q, want %q", tt.name, tt.payload, got, tt.wantErr)
 		}
 	}
 }
@@ -124,7 +136,7 @@ func TestPingRequest_UnmarshalJSON_ReadsLenientIntegersOutOfRangeAsAbsent(t *tes
 		t.Errorf("Validate() = %v, want nil", err)
 	}
 
-	for _, line := range []string{"4294967296", "-4294967296", "1e2", "99999999999999999999"} {
+	for _, line := range []string{"4294967296", "-4294967296", "-0", "1e2", "99999999999999999999"} {
 		var spot Spot
 		if err := json.Unmarshal([]byte(` + "`" + `{"path":"/p","line":` + "`" + `+line+` + "`" + `}` + "`" + `), &spot); err != nil || spot.Line != nil {
 			t.Errorf("line %s reads as %v with error %v, want absent", line, spot.Line, err)
@@ -147,12 +159,23 @@ func TestPingRequest_UnmarshalJSON_ReadsLenientIntegersOutOfRangeAsAbsent(t *tes
 			t.Errorf("row %s next to a null alternative reads as %s with error %v, want %s", row, got, err, want)
 		}
 	}
+	for hits, want := range map[string]string{"0": "absent", "1": "1", "9223372036854775808": "9223372036854775808", "18446744073709551615": "18446744073709551615"} {
+		var spot Spot
+		err := json.Unmarshal([]byte(` + "`" + `{"path":"/p","hits":` + "`" + `+hits+` + "`" + `}` + "`" + `), &spot)
+		got := "absent"
+		if spot.Hits != nil {
+			got = fmt.Sprint(*spot.Hits)
+		}
+		if err != nil || got != want {
+			t.Errorf("hits %s with minimum 1 reads as %s with error %v, want %s", hits, got, err, want)
+		}
+	}
 	var spot Spot
 	if err := json.Unmarshal([]byte(` + "`" + `{"path":"/p","line":4294967295}` + "`" + `), &spot); err != nil || spot.Line == nil || *spot.Line != 4294967295 {
 		t.Errorf("line 4294967295 reads as %v with error %v, want it kept", spot.Line, err)
 	}
-	if err := json.Unmarshal([]byte(` + "`" + `{"version":1,"offset":0,"count":{"n":0},"maybe":{"n":9223372036854775807}}` + "`" + `), &req); err != nil || req.Maybe == nil {
-		t.Errorf("maybe with n at the largest int64 = %+v with error %v, want it kept", req.Maybe, err)
+	if err := json.Unmarshal([]byte(` + "`" + `{"version":1,"offset":0,"count":{"n":0},"maybe":{"n":18446744073709551615}}` + "`" + `), &req); err != nil || req.Maybe == nil {
+		t.Errorf("maybe with n at the largest uint64 = %+v with error %v, want it kept", req.Maybe, err)
 	}
 }
 
@@ -231,8 +254,8 @@ func TestWriteTypesJen_RawJSONGetsNoRangeCheck(t *testing.T) {
 	checkGenerated(t, rawBoundSchema, map[string]string{"raw_test.go": rawBoundTest})
 }
 
-// A format that formatRanges does not know stops the generator, so that a
-// new one gets a range before a peer can send a value out of it.
+// A format that formatTypes does not know stops the generator, so that a new
+// one gets a Go type before a peer can send a value out of its range.
 func TestWriteTypesJen_PanicsOnAnUnknownIntegerFormat(t *testing.T) {
 	var schema load.Schema
 	in := `{"$defs": {"PingRequest": {"type": "object", "properties": {"n": {"type": "integer", "format": "uint8"}}}}}`
@@ -245,4 +268,44 @@ func TestWriteTypesJen_PanicsOnAnUnknownIntegerFormat(t *testing.T) {
 		}
 	}()
 	_ = WriteTypesJen(t.TempDir(), &schema, &load.Meta{})
+}
+
+// A bound that the Go type does not enforce and that an int64 cannot hold
+// stops the generator: math.MaxInt64 stands for no bound in intRange.
+func TestWriteTypesJen_PanicsOnABoundBeyondInt64(t *testing.T) {
+	var schema load.Schema
+	in := `{"$defs": {"PingRequest": {"type": "object", "properties": {"n": {"type": ["integer", "null"], "format": "uint64", "maximum": 9223372036854775808}}}}}`
+	if err := json.Unmarshal([]byte(in), &schema); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "9223372036854775808") {
+			t.Errorf("WriteTypesJen with maximum 2^63 on a uint64 recovered %v, want a panic that names the bound", r)
+		}
+	}()
+	_ = WriteTypesJen(t.TempDir(), &schema, &load.Meta{})
+}
+
+// A bound that no value of the Go type meets leaves an empty range, and a
+// check against it would not compile, so the generator stops instead.
+func TestWriteTypesJen_PanicsOnABoundNoValueCanMeet(t *testing.T) {
+	for _, tc := range []struct{ name, property, bound string }{
+		{"uint32 minimum above its max", `{"type": "integer", "format": "uint32", "minimum": 5000000000}`, "5000000000"},
+		{"int32 maximum below its min", `{"type": "integer", "format": "int32", "maximum": -3000000000}`, "-3000000000"},
+		{"uint16 maximum below 0", `{"type": "integer", "format": "uint16", "maximum": -1}`, "-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var schema load.Schema
+			in := `{"$defs": {"PingRequest": {"type": "object", "required": ["n"], "properties": {"n": ` + tc.property + `}}}}`
+			if err := json.Unmarshal([]byte(in), &schema); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), tc.bound) {
+					t.Errorf("WriteTypesJen recovered %v, want a panic that names the bound %s", r, tc.bound)
+				}
+			}()
+			_ = WriteTypesJen(t.TempDir(), &schema, &load.Meta{})
+		})
+	}
 }

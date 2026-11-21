@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"math"
 	"reflect"
 	"strings"
 )
@@ -3758,7 +3757,7 @@ type CreateTerminalRequest struct {
 	// The Client MUST ensure truncation happens at a character boundary to maintain valid
 	// string output, even if this means the retained output is slightly less than the
 	// specified limit.
-	OutputByteLimit *int64 `json:"outputByteLimit,omitempty"`
+	OutputByteLimit *uint64 `json:"outputByteLimit,omitempty"`
 	// The session ID for this request.
 	SessionId SessionId `json:"sessionId"`
 }
@@ -3799,11 +3798,6 @@ func (v *CreateTerminalRequest) UnmarshalJSON(b []byte) error {
 func (v *CreateTerminalRequest) Validate() error {
 	if v.Command == "" {
 		return fmt.Errorf("command is required")
-	}
-	if v.OutputByteLimit != nil {
-		if *v.OutputByteLimit < 0 {
-			return fmt.Errorf("outputByteLimit must be at least 0")
-		}
 	}
 	if v.SessionId == "" {
 		return fmt.Errorf("sessionId is required")
@@ -4436,11 +4430,11 @@ type ElicitationPropertySchemaString struct {
 	// Maximum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum length constraint.
-	MaxLength *int64 `json:"maxLength,omitempty"`
+	MaxLength *uint32 `json:"maxLength,omitempty"`
 	// Minimum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum length constraint.
-	MinLength *int64 `json:"minLength,omitempty"`
+	MinLength *uint32 `json:"minLength,omitempty"`
 	// Titled enum options for titled single-select enums.
 	// Optional. Omitted and 'null' are equivalent and mean no titled single-select choices are
 	// declared by 'oneOf'.
@@ -4466,8 +4460,8 @@ func (v ElicitationPropertySchemaString) MarshalJSON() ([]byte, error) {
 		Description *string       `json:"description,omitempty"`
 		Enum        *[]string     `json:"enum,omitempty"`
 		Format      *StringFormat `json:"format,omitempty"`
-		MaxLength   *int64        `json:"maxLength,omitempty"`
-		MinLength   *int64        `json:"minLength,omitempty"`
+		MaxLength   *uint32       `json:"maxLength,omitempty"`
+		MinLength   *uint32       `json:"minLength,omitempty"`
 		OneOf       *[]EnumOption `json:"oneOf,omitempty"`
 		Pattern     *string       `json:"pattern,omitempty"`
 		Title       *string       `json:"title,omitempty"`
@@ -4518,20 +4512,6 @@ func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Type, "type", false); err != nil {
 			return propertyError(err, "ElicitationPropertySchemaString", "type")
-		}
-	}
-	return nil
-}
-
-func (v *ElicitationPropertySchemaString) Validate() error {
-	if v.MaxLength != nil {
-		if *v.MaxLength < 0 || *v.MaxLength > 4294967295 {
-			return fmt.Errorf("maxLength must be between 0 and 4294967295")
-		}
-	}
-	if v.MinLength != nil {
-		if *v.MinLength < 0 || *v.MinLength > 4294967295 {
-			return fmt.Errorf("minLength must be between 0 and 4294967295")
 		}
 	}
 	return nil
@@ -4735,11 +4715,11 @@ type ElicitationPropertySchemaArray struct {
 	// Maximum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum selection count.
-	MaxItems *int64 `json:"maxItems,omitempty"`
+	MaxItems *uint64 `json:"maxItems,omitempty"`
 	// Minimum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum selection count.
-	MinItems *int64 `json:"minItems,omitempty"`
+	MinItems *uint64 `json:"minItems,omitempty"`
 	// Optional title for the property.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
@@ -4756,8 +4736,8 @@ func (v ElicitationPropertySchemaArray) MarshalJSON() ([]byte, error) {
 		Default     *[]string        `json:"default,omitempty"`
 		Description *string          `json:"description,omitempty"`
 		Items       MultiSelectItems `json:"items"`
-		MaxItems    *int64           `json:"maxItems,omitempty"`
-		MinItems    *int64           `json:"minItems,omitempty"`
+		MaxItems    *uint64          `json:"maxItems,omitempty"`
+		MinItems    *uint64          `json:"minItems,omitempty"`
 		Title       *string          `json:"title,omitempty"`
 		Type        string           `json:"type"`
 	}
@@ -4808,16 +4788,6 @@ func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
 func (v *ElicitationPropertySchemaArray) Validate() error {
 	if err := v.Items.Validate(); err != nil {
 		return fmt.Errorf("items: %w", err)
-	}
-	if v.MaxItems != nil {
-		if *v.MaxItems < 0 {
-			return fmt.Errorf("maxItems must be at least 0")
-		}
-	}
-	if v.MinItems != nil {
-		if *v.MinItems < 0 {
-			return fmt.Errorf("minItems must be at least 0")
-		}
 	}
 	return nil
 }
@@ -5075,11 +5045,6 @@ func (u *ElicitationPropertySchema) Validate() error {
 	}
 	if count == 0 {
 		return errors.New("ElicitationPropertySchema has no variant set")
-	}
-	if u.String != nil {
-		if err := u.String.Validate(); err != nil {
-			return err
-		}
 	}
 	if u.Array != nil {
 		if err := u.Array.Validate(); err != nil {
@@ -5749,32 +5714,32 @@ func (v *Error) Validate() error {
 // range LSP reserves (-32899 to -32800).
 // **Parse error**: Invalid JSON was received by the server.
 // An error occurred on the server while parsing the JSON text.
-type ErrorCodeParseError int
+type ErrorCodeParseError int32
 
 // **Invalid request**: The JSON sent is not a valid Request object.
-type ErrorCodeInvalidRequest int
+type ErrorCodeInvalidRequest int32
 
 // **Method not found**: The method does not exist or is not available.
-type ErrorCodeMethodNotFound int
+type ErrorCodeMethodNotFound int32
 
 // **Invalid params**: Invalid method parameter(s).
-type ErrorCodeInvalidParams int
+type ErrorCodeInvalidParams int32
 
 // **Internal error**: Internal JSON-RPC error.
-type ErrorCodeInternalError int
+type ErrorCodeInternalError int32
 
 // **Request cancelled**: Execution of the method was aborted either due to a cancellation request from the caller or
 // because of resource constraints or shutdown.
-type ErrorCodeRequestCancelled int
+type ErrorCodeRequestCancelled int32
 
 // **Authentication required**: Authentication is required before this operation can be performed.
-type ErrorCodeAuthenticationRequired int
+type ErrorCodeAuthenticationRequired int32
 
 // **Resource not found**: A given resource, such as a session or file, was not found.
-type ErrorCodeResourceNotFound int
+type ErrorCodeResourceNotFound int32
 
 // Other undefined error code.
-type ErrorCodeOther int
+type ErrorCodeOther int32
 
 type ErrorCode struct {
 	// **Parse error**: Invalid JSON was received by the server.
@@ -7083,9 +7048,6 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *InitializeRequest) Validate() error {
-	if v.ProtocolVersion < 0 || v.ProtocolVersion > 65535 {
-		return fmt.Errorf("protocolVersion must be between 0 and 65535")
-	}
 	return nil
 }
 
@@ -7163,9 +7125,6 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (v *InitializeResponse) Validate() error {
-	if v.ProtocolVersion < 0 || v.ProtocolVersion > 65535 {
-		return fmt.Errorf("protocolVersion must be between 0 and 65535")
-	}
 	return nil
 }
 
@@ -8713,11 +8672,11 @@ type MultiSelectPropertySchema struct {
 	// Maximum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum selection count.
-	MaxItems *int64 `json:"maxItems,omitempty"`
+	MaxItems *uint64 `json:"maxItems,omitempty"`
 	// Minimum number of items to select.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum selection count.
-	MinItems *int64 `json:"minItems,omitempty"`
+	MinItems *uint64 `json:"minItems,omitempty"`
 	// Optional title for the property.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no title is provided.
@@ -8733,8 +8692,8 @@ func (v MultiSelectPropertySchema) MarshalJSON() ([]byte, error) {
 		Default     *[]string        `json:"default,omitempty"`
 		Description *string          `json:"description,omitempty"`
 		Items       MultiSelectItems `json:"items"`
-		MaxItems    *int64           `json:"maxItems,omitempty"`
-		MinItems    *int64           `json:"minItems,omitempty"`
+		MaxItems    *uint64          `json:"maxItems,omitempty"`
+		MinItems    *uint64          `json:"minItems,omitempty"`
 		Title       *string          `json:"title,omitempty"`
 	}
 	return json.Marshal(wire{
@@ -8779,16 +8738,6 @@ func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
 func (v *MultiSelectPropertySchema) Validate() error {
 	if err := v.Items.Validate(); err != nil {
 		return fmt.Errorf("items: %w", err)
-	}
-	if v.MaxItems != nil {
-		if *v.MaxItems < 0 {
-			return fmt.Errorf("maxItems must be at least 0")
-		}
-	}
-	if v.MinItems != nil {
-		if *v.MinItems < 0 {
-			return fmt.Errorf("minItems must be at least 0")
-		}
 	}
 	return nil
 }
@@ -10331,7 +10280,7 @@ func (v *PromptSuggestionsUpdate) Validate() error {
 //
 // This version is only bumped for breaking changes.
 // Non-breaking changes should be introduced via capabilities.
-type ProtocolVersion int
+type ProtocolVersion uint16
 
 // **UNSTABLE**
 //
@@ -10374,9 +10323,9 @@ type ReadTextFileRequest struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Maximum number of lines to read.
-	Limit *int64 `json:"limit,omitempty"`
+	Limit *uint32 `json:"limit,omitempty"`
 	// Line number to start reading from (1-based).
-	Line *int64 `json:"line,omitempty"`
+	Line *uint32 `json:"line,omitempty"`
 	// Absolute path to the file to read.
 	Path string `json:"path"`
 	// The session ID for this request.
@@ -10410,16 +10359,6 @@ func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
 }
 
 func (v *ReadTextFileRequest) Validate() error {
-	if v.Limit != nil {
-		if *v.Limit < 0 || *v.Limit > 4294967295 {
-			return fmt.Errorf("limit must be between 0 and 4294967295")
-		}
-	}
-	if v.Line != nil {
-		if *v.Line < 0 || *v.Line > 4294967295 {
-			return fmt.Errorf("line must be between 0 and 4294967295")
-		}
-	}
 	if v.Path == "" {
 		return fmt.Errorf("path is required")
 	}
@@ -13771,9 +13710,9 @@ type SessionUsageUpdate struct {
 	Cost          *Cost  `json:"cost,omitempty"`
 	SessionUpdate string `json:"sessionUpdate"`
 	// Total context window size in tokens.
-	Size int64 `json:"size"`
+	Size uint64 `json:"size"`
 	// Tokens currently in context.
-	Used int64 `json:"used"`
+	Used uint64 `json:"used"`
 }
 
 func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
@@ -13804,16 +13743,6 @@ func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
 		if err := requireMember(members, &v.Used, "used", false); err != nil {
 			return propertyError(err, "SessionUsageUpdate", "used")
 		}
-	}
-	return nil
-}
-
-func (v *SessionUsageUpdate) Validate() error {
-	if v.Size < 0 {
-		return fmt.Errorf("size must be at least 0")
-	}
-	if v.Used < 0 {
-		return fmt.Errorf("used must be at least 0")
 	}
 	return nil
 }
@@ -15001,11 +14930,6 @@ func (u *SessionUpdate) Validate() error {
 	}
 	if u.ConfigOptionUpdate != nil {
 		if err := u.ConfigOptionUpdate.Validate(); err != nil {
-			return err
-		}
-	}
-	if u.UsageUpdate != nil {
-		if err := u.UsageUpdate.Validate(); err != nil {
 			return err
 		}
 	}
@@ -16494,11 +16418,11 @@ type StringPropertySchema struct {
 	// Maximum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no maximum length constraint.
-	MaxLength *int64 `json:"maxLength,omitempty"`
+	MaxLength *uint32 `json:"maxLength,omitempty"`
 	// Minimum string length.
 	//
 	// Optional. Omitted and 'null' are equivalent and mean there is no minimum length constraint.
-	MinLength *int64 `json:"minLength,omitempty"`
+	MinLength *uint32 `json:"minLength,omitempty"`
 	// Titled enum options for titled single-select enums.
 	// Optional. Omitted and 'null' are equivalent and mean no titled single-select choices are
 	// declared by 'oneOf'.
@@ -16523,8 +16447,8 @@ func (v StringPropertySchema) MarshalJSON() ([]byte, error) {
 		Description *string       `json:"description,omitempty"`
 		Enum        *[]string     `json:"enum,omitempty"`
 		Format      *StringFormat `json:"format,omitempty"`
-		MaxLength   *int64        `json:"maxLength,omitempty"`
-		MinLength   *int64        `json:"minLength,omitempty"`
+		MaxLength   *uint32       `json:"maxLength,omitempty"`
+		MinLength   *uint32       `json:"minLength,omitempty"`
 		OneOf       *[]EnumOption `json:"oneOf,omitempty"`
 		Pattern     *string       `json:"pattern,omitempty"`
 		Title       *string       `json:"title,omitempty"`
@@ -16567,20 +16491,6 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 		return propertyError(err, "StringPropertySchema", "enum")
 	}
 	decodeLenient(raw.Title, &v.Title)
-	return nil
-}
-
-func (v *StringPropertySchema) Validate() error {
-	if v.MaxLength != nil {
-		if *v.MaxLength < 0 || *v.MaxLength > 4294967295 {
-			return fmt.Errorf("maxLength must be between 0 and 4294967295")
-		}
-	}
-	if v.MinLength != nil {
-		if *v.MinLength < 0 || *v.MinLength > 4294967295 {
-			return fmt.Errorf("minLength must be between 0 and 4294967295")
-		}
-	}
 	return nil
 }
 
@@ -16960,7 +16870,7 @@ type TerminalExitStatus struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The process exit code (may be null if terminated by signal).
-	ExitCode *int64 `json:"exitCode,omitempty"`
+	ExitCode *uint32 `json:"exitCode,omitempty"`
 	// The signal that terminated the process (may be null if exited normally).
 	Signal *string `json:"signal,omitempty"`
 }
@@ -16978,7 +16888,7 @@ func (v *TerminalExitStatus) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.ExitCode, &v.ExitCode, shapeTerminalExitStatusExitCode)
+	decodeLenient(raw.ExitCode, &v.ExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
 	return nil
 }
@@ -17687,7 +17597,7 @@ type ToolCallLocation struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Optional 1-based line number within the file.
-	Line *int64 `json:"line,omitempty"`
+	Line *uint32 `json:"line,omitempty"`
 	// The absolute file path being accessed or modified.
 	Path string `json:"path"`
 }
@@ -17706,7 +17616,7 @@ func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.Line, &v.Line, shapeToolCallLocationLine)
+	decodeLenient(raw.Line, &v.Line)
 	if maybeAbsent(&v.Path) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Path, "path", false); err != nil {
@@ -18711,7 +18621,7 @@ const (
 // Explicit 'null' is preserved separately from an omitted key.
 type UnstableMcpError struct {
 	// Inner MCP error code. Never an ACP error code.
-	Code int `json:"code"`
+	Code int32 `json:"code"`
 	// Optional error data. Explicit null is retained.
 	Data json.RawMessage `json:"data,omitempty"`
 	// Inner MCP error message.
@@ -18753,13 +18663,6 @@ func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
 		}
 	}
 	v.AdditionalProperties = additionalProperties(b, "code", "data", "message")
-	return nil
-}
-
-func (v *UnstableMcpError) Validate() error {
-	if v.Code < -2147483648 || v.Code > 2147483647 {
-		return fmt.Errorf("code must be between -2147483648 and 2147483647")
-	}
 	return nil
 }
 
@@ -19020,13 +18923,6 @@ func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (v *UnstableMessageMcpError) Validate() error {
-	if err := v.Error.Validate(); err != nil {
-		return fmt.Errorf("error: %w", err)
-	}
-	return nil
-}
-
 type UnstableMessageMcpResponse struct {
 	// An opaque inner MCP result.
 	Result *UnstableMessageMcpResult `json:"-"`
@@ -19120,11 +19016,6 @@ func (u *UnstableMessageMcpResponse) Validate() error {
 	}
 	if count == 0 {
 		return errors.New("UnstableMessageMcpResponse has no variant set")
-	}
-	if u.Error != nil {
-		if err := u.Error.Validate(); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -20023,17 +19914,17 @@ type Usage struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Total cache read tokens.
-	CachedReadTokens *int64 `json:"cachedReadTokens,omitempty"`
+	CachedReadTokens *uint64 `json:"cachedReadTokens,omitempty"`
 	// Total cache write tokens.
-	CachedWriteTokens *int64 `json:"cachedWriteTokens,omitempty"`
+	CachedWriteTokens *uint64 `json:"cachedWriteTokens,omitempty"`
 	// Total input tokens across all turns.
-	InputTokens int64 `json:"inputTokens"`
+	InputTokens uint64 `json:"inputTokens"`
 	// Total output tokens across all turns.
-	OutputTokens int64 `json:"outputTokens"`
+	OutputTokens uint64 `json:"outputTokens"`
 	// Total thought/reasoning tokens
-	ThoughtTokens *int64 `json:"thoughtTokens,omitempty"`
+	ThoughtTokens *uint64 `json:"thoughtTokens,omitempty"`
 	// Sum of all token types across session.
-	TotalTokens int64 `json:"totalTokens"`
+	TotalTokens uint64 `json:"totalTokens"`
 }
 
 func (v *Usage) UnmarshalJSON(b []byte) error {
@@ -20054,9 +19945,9 @@ func (v *Usage) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens, shapeUsageCachedReadTokens)
-	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens, shapeUsageCachedWriteTokens)
-	decodeLenient(raw.ThoughtTokens, &v.ThoughtTokens, shapeUsageThoughtTokens)
+	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens)
+	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens)
+	decodeLenient(raw.ThoughtTokens, &v.ThoughtTokens)
 	if maybeAbsent(&v.InputTokens) || maybeAbsent(&v.OutputTokens) || maybeAbsent(&v.TotalTokens) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.InputTokens, "inputTokens", false); err != nil {
@@ -20072,19 +19963,6 @@ func (v *Usage) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (v *Usage) Validate() error {
-	if v.InputTokens < 0 {
-		return fmt.Errorf("inputTokens must be at least 0")
-	}
-	if v.OutputTokens < 0 {
-		return fmt.Errorf("outputTokens must be at least 0")
-	}
-	if v.TotalTokens < 0 {
-		return fmt.Errorf("totalTokens must be at least 0")
-	}
-	return nil
-}
-
 // Context window and cost update for a session.
 type UsageUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -20096,9 +19974,9 @@ type UsageUpdate struct {
 	// Cumulative session cost (optional).
 	Cost *Cost `json:"cost,omitempty"`
 	// Total context window size in tokens.
-	Size int64 `json:"size"`
+	Size uint64 `json:"size"`
 	// Tokens currently in context.
-	Used int64 `json:"used"`
+	Used uint64 `json:"used"`
 }
 
 func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
@@ -20125,16 +20003,6 @@ func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
 		if err := requireMember(members, &v.Used, "used", false); err != nil {
 			return propertyError(err, "UsageUpdate", "used")
 		}
-	}
-	return nil
-}
-
-func (v *UsageUpdate) Validate() error {
-	if v.Size < 0 {
-		return fmt.Errorf("size must be at least 0")
-	}
-	if v.Used < 0 {
-		return fmt.Errorf("used must be at least 0")
 	}
 	return nil
 }
@@ -20198,7 +20066,7 @@ type WaitForTerminalExitResponse struct {
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The process exit code (may be null if terminated by signal).
-	ExitCode *int64 `json:"exitCode,omitempty"`
+	ExitCode *uint32 `json:"exitCode,omitempty"`
 	// The signal that terminated the process (may be null if exited normally).
 	Signal *string `json:"signal,omitempty"`
 }
@@ -20216,7 +20084,7 @@ func (v *WaitForTerminalExitResponse) UnmarshalJSON(b []byte) error {
 		return plainFieldError(err)
 	}
 	decodeLenient(raw.Meta, &v.Meta)
-	decodeLenient(raw.ExitCode, &v.ExitCode, shapeWaitForTerminalExitResponseExitCode)
+	decodeLenient(raw.ExitCode, &v.ExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
 	return nil
 }
@@ -20677,22 +20545,16 @@ const (
 	shapeSessionReference
 	shapeStateUpdate
 	shapeTerminal
-	shapeTerminalExitStatusExitCode
 	shapeTerminalId
 	shapeTextContent
 	shapeTextResourceContents
 	shapeToolCallContent
 	shapeToolCallLocation
-	shapeToolCallLocationLine
 	shapeToolCallStatus
 	shapeUnknownStateUpdate
 	shapeUnstableAuthAccount
 	shapeUnstructuredCommandInput
 	shapeUsage
-	shapeUsageCachedReadTokens
-	shapeUsageCachedWriteTokens
-	shapeUsageThoughtTokens
-	shapeWaitForTerminalExitResponseExitCode
 )
 
 var shapes = [...]shape{
@@ -20832,34 +20694,7 @@ var shapes = [...]shape{
 		},
 		required: []string{"code", "message"},
 	},
-	shapeErrorCode: {anyOf: []*shape{{
-		kinds:  kindInteger,
-		values: []any{json.Number("-32700")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32600")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32601")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32602")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32603")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32800")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32000")},
-	}, {
-		kinds:  kindInteger,
-		values: []any{json.Number("-32002")},
-	}, {
-		ints:  &intRange{-2147483648, 2147483647},
-		kinds: kindInteger,
-	}}},
+	shapeErrorCode:       {kinds: kindInteger},
 	shapeErrorStopReason: {kinds: kindObject},
 	shapeIdleStateUpdate: {
 		anyOf: []*shape{{
@@ -21167,10 +21002,6 @@ var shapes = [...]shape{
 		props:    map[string]*shape{"terminalId": {ref: shapeTerminalId}},
 		required: []string{"terminalId"},
 	},
-	shapeTerminalExitStatusExitCode: {
-		ints:  &intRange{0, 4294967295},
-		kinds: kindInteger | kindNull,
-	},
 	shapeTerminalId: {kinds: kindString},
 	shapeTextContent: {
 		kinds:    kindObject,
@@ -21223,10 +21054,6 @@ var shapes = [...]shape{
 		props:    map[string]*shape{"path": {kinds: kindString}},
 		required: []string{"path"},
 	},
-	shapeToolCallLocationLine: {
-		ints:  &intRange{0, 4294967295},
-		kinds: kindInteger | kindNull,
-	},
 	shapeToolCallStatus:     {values: []any{"pending", "in_progress", "completed", "failed"}},
 	shapeUnknownStateUpdate: {kinds: kindObject},
 	shapeUnstableAuthAccount: {
@@ -21242,36 +21069,11 @@ var shapes = [...]shape{
 	shapeUsage: {
 		kinds: kindObject,
 		props: map[string]*shape{
-			"inputTokens": {
-				ints:  &intRange{0, math.MaxInt64},
-				kinds: kindInteger,
-			},
-			"outputTokens": {
-				ints:  &intRange{0, math.MaxInt64},
-				kinds: kindInteger,
-			},
-			"totalTokens": {
-				ints:  &intRange{0, math.MaxInt64},
-				kinds: kindInteger,
-			},
+			"inputTokens":  {kinds: kindInteger},
+			"outputTokens": {kinds: kindInteger},
+			"totalTokens":  {kinds: kindInteger},
 		},
 		required: []string{"totalTokens", "inputTokens", "outputTokens"},
-	},
-	shapeUsageCachedReadTokens: {
-		ints:  &intRange{0, math.MaxInt64},
-		kinds: kindInteger | kindNull,
-	},
-	shapeUsageCachedWriteTokens: {
-		ints:  &intRange{0, math.MaxInt64},
-		kinds: kindInteger | kindNull,
-	},
-	shapeUsageThoughtTokens: {
-		ints:  &intRange{0, math.MaxInt64},
-		kinds: kindInteger | kindNull,
-	},
-	shapeWaitForTerminalExitResponseExitCode: {
-		ints:  &intRange{0, 4294967295},
-		kinds: kindInteger | kindNull,
 	},
 }
 

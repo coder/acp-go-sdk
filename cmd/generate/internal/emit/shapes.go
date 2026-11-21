@@ -442,8 +442,9 @@ func (n *shapeNode) onlyScalar() bool {
 // of the listed values, an integer is out of range, a member or item is null
 // where n rejects null, or the value fits none of several alternatives other
 // than null. A value of the wrong kind does not count: its Go type does not
-// decode it. An integer out of ints counts, because an int64 or an int
-// (integerType) decodes it.
+// decode it. Nor does an integer out of the range of its format, which its Go
+// type (integerType) does not decode either; ints holds only the bounds that
+// the Go type does not enforce (ownRange), and an integer out of them counts.
 func (t *shapeTable) strict(n *shapeNode) bool {
 	t.settleStrictDefs()
 	return t.strictNode(n)

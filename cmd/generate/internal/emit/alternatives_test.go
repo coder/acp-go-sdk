@@ -32,6 +32,7 @@ const alternativeKindsSchema = `{"$defs": {
   "PickNumber": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "number"}]},
   "PickInteger": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "integer"}]},
   "PickWideConst": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "integer", "format": "int64", "const": 4294967295}]},
+  "PickFormatConsts": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "integer", "format": "uint16", "const": 65535}, {"type": "integer", "format": "uint32", "const": 4294967295}, {"type": "integer", "format": "int32", "const": -2147483648}, {"type": "integer", "format": "uint64", "const": 9007199254740991}]},
   "PickBoolean": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "boolean"}]},
   "PickArray": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"type": "array", "items": {"type": "string"}}]},
   "PickRef": {"%[1]s": [{"$ref": "#/$defs/Named"}, {"$ref": "#/$defs/Label"}]},
@@ -121,6 +122,8 @@ func TestUnion_KeepsEveryKindOfAlternative(t *testing.T) {
 	roundTrips[PickNumber](t, []string{named, ` + "`" + `1.5` + "`" + `}, []string{` + "`" + `"x"` + "`" + `})
 	roundTrips[PickInteger](t, []string{named, ` + "`" + `7` + "`" + `}, []string{` + "`" + `1.5` + "`" + `, ` + "`" + `"x"` + "`" + `})
 	roundTrips[PickWideConst](t, []string{named, ` + "`" + `4294967295` + "`" + `}, []string{` + "`" + `4294967294` + "`" + `, ` + "`" + `-2147483648` + "`" + `})
+	// A const at the limit of the Go type of its format.
+	roundTrips[PickFormatConsts](t, []string{named, ` + "`" + `65535` + "`" + `, ` + "`" + `4294967295` + "`" + `, ` + "`" + `-2147483648` + "`" + `, ` + "`" + `9007199254740991` + "`" + `}, []string{` + "`" + `65534` + "`" + `, ` + "`" + `0` + "`" + `, ` + "`" + `-1` + "`" + `})
 	roundTrips[PickBoolean](t, []string{named, ` + "`" + `true` + "`" + `}, []string{` + "`" + `"x"` + "`" + `})
 	roundTrips[PickArray](t, []string{named, ` + "`" + `["a"]` + "`" + `}, []string{` + "`" + `"x"` + "`" + `, ` + "`" + `[1]` + "`" + `})
 	roundTrips[PickRef](t, []string{named, ` + "`" + `"x"` + "`" + `}, []string{` + "`" + `5` + "`" + `})
@@ -382,6 +385,11 @@ func TestWriteTypesJen_PanicsOnAValueTheAlternativeCannotHold(t *testing.T) {
 		{"string const under integer", `{"type": "integer", "const": "a"}`, `"a"`},
 		{"fraction under integer", `{"type": "integer", "const": 1.5}`, `1.5`},
 		{"int above int32", `{"type": "integer", "const": 4294967295}`, `4294967295`},
+		{"int32 above int32", `{"type": "integer", "format": "int32", "const": 2147483648}`, `2147483648`},
+		{"uint16 above uint16", `{"type": "integer", "format": "uint16", "const": 65536}`, `65536`},
+		{"negative uint32", `{"type": "integer", "format": "uint32", "const": -1}`, `-1`},
+		{"negative uint64 enum member", `{"type": "integer", "format": "uint64", "enum": [1, -1]}`, `-1`},
+		{"const on a uint32 $ref above uint32", `{"const": 4294967296, "allOf": [{"$ref": "#/$defs/Count"}]}`, `4294967296`},
 		{"null enum member", `{"type": "string", "enum": ["a", null]}`, `null`},
 		{"array const", `{"type": "array", "items": {"type": "integer"}, "const": [1]}`, `[1]`},
 		{"object const", `{"type": "object", "const": {"a": 1}}`, `{"a":1}`},
@@ -398,6 +406,7 @@ func TestWriteTypesJen_PanicsOnAValueTheAlternativeCannotHold(t *testing.T) {
   "Label": {"type": "string"},
   "Raw": {"description": "Any JSON value."},
   "Levels": {"type": "integer", "enum": [1, 2]},
+  "Count": {"type": "integer", "format": "uint32"},
   "Pick": {"anyOf": [{"$ref": "#/$defs/Named"}, ` + tc.alternative + `]}
 }}`
 			if err := json.Unmarshal([]byte(in), &schema); err != nil {

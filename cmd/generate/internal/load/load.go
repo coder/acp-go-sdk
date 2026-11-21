@@ -20,6 +20,8 @@ type Meta struct {
 	AgentMethods    map[string]string `json:"agentMethods"`
 	ClientMethods   map[string]string `json:"clientMethods"`
 	ProtocolMethods map[string]string `json:"protocolMethods,omitempty"`
+	// ProxyMethods are the methods that a conductor and its proxies exchange.
+	ProxyMethods map[string]string `json:"proxyMethods,omitempty"`
 }
 
 // Schema is a minimal view over schema/schema.json definitions used by the generator.

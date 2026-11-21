@@ -40,12 +40,15 @@ DEEP_CONFIGS=(deep-two-callers.cfg deep-peer-wait.cfg)
 COVERED=(
 	"func NewConnection("
 	"func (c *Connection) receive("
+	"func (c *Connection) cancelRequestParams("
 	"func (c *Connection) handleCancelRequest("
 	"func (c *Connection) shutdownReceive("
 	"func (c *Connection) processNotifications("
 	"func (c *Connection) handleResponse("
 	"func SendRequest[T any](c *Connection,"
 	"func (c *Connection) SendRequestNoResult("
+	"func (c *Connection) sendRequest("
+	"func (r *sentRequest) wait("
 	"func (c *Connection) waitForResponse("
 	"func (c *Connection) waitNotificationsUpTo("
 	"func (c *Connection) runningRequestHandler("
@@ -165,6 +168,7 @@ B_proc=$(need_body "func (c *Connection) processNotifications(")
 B_resp=$(need_body "func (c *Connection) handleResponse(")
 B_send=$(need_body "func SendRequest[T any](c *Connection,")
 B_sendnr=$(need_body "func (c *Connection) SendRequestNoResult(")
+B_sent=$(need_body "func (r *sentRequest) wait(")
 B_upto=$(need_body "func (c *Connection) waitNotificationsUpTo(")
 B_running=$(need_body "func (c *Connection) runningRequestHandler(")
 B_wait=$(need_body "func (c *Connection) waitNotifications(")
@@ -246,9 +250,17 @@ barrier_fact() {
 		echo FALSE
 	fi
 }
-f1=$(barrier_fact "$B_send" SendRequest)
-f2=$(barrier_fact "$B_sendnr" SendRequestNoResult)
-if [ "$f1" = TRUE ] && [ "$f2" = TRUE ]; then WaitsForBarrier=TRUE; else WaitsForBarrier=FALSE; fi
+# SendRequest and SendRequestNoResult write the request with sendRequest and
+# then wait in sentRequest.wait, so the facts of their wait come from wait.
+for fn in SendRequest SendRequestNoResult; do
+	b=$B_send
+	[ "$fn" = SendRequest ] || b=$B_sendnr
+	l_sreq=$(line_of "$b" "sent, err := c.sendRequest(method, params, nil)")
+	l_swait=$(line_of "$b" "sent.wait(ctx)")
+	{ [ -n "$l_sreq" ] && [ -n "$l_swait" ] && [ "$l_sreq" -lt "$l_swait" ]; } ||
+		drift "$fn no longer writes with sendRequest and then waits with sentRequest.wait"
+done
+WaitsForBarrier=$(barrier_fact "$B_sent" sentRequest.wait)
 
 if has "$B_resp" "watermark := c.lastEnqueuedNotificationSeq"; then
 	WatermarkSource='"enqueued"'
@@ -388,7 +400,8 @@ else
 	RequestCtxStopsAtPeerWait=FALSE
 fi
 
-# startPeerWait around waitForResponse, in both request functions.
+# startPeerWait around waitForResponse, in the wait that both request
+# functions share.
 has "$B_peer" "seq, ok := c.notificationSeq(ctx)" ||
 	drift "startPeerWait no longer finds the running handler with notificationSeq(ctx)"
 peer_call_fact() {
@@ -402,15 +415,13 @@ peer_call_fact() {
 	echo "$starts $ends"
 }
 # Assign first: a DRIFT exit inside the $(...) of a here-string is lost.
-pc1=$(peer_call_fact "$B_send" SendRequest)
-pc2=$(peer_call_fact "$B_sendnr" SendRequestNoResult)
+pc1=$(peer_call_fact "$B_sent" sentRequest.wait)
 read -r s1 e1 <<<"$pc1"
-read -r s2 e2 <<<"$pc2"
 l_inc=$(line_of "$B_peer" "c.peerWaits[seq]++")
 l_pbc=$(line_of "$B_peer" "c.notifyCond.Broadcast()")
-if [ -n "$l_inc" ] && [ "$s1" = TRUE ] && [ "$s2" = TRUE ]; then PeerWaitCounts=TRUE; else PeerWaitCounts=FALSE; fi
+if [ -n "$l_inc" ] && [ "$s1" = TRUE ]; then PeerWaitCounts=TRUE; else PeerWaitCounts=FALSE; fi
 if [ -n "$l_pbc" ] && { [ -z "$l_inc" ] || [ "$l_pbc" -gt "$l_inc" ]; }; then PeerWaitBroadcasts=TRUE; else PeerWaitBroadcasts=FALSE; fi
-if has "$B_peer" "if c.peerWaits[seq]--; c.peerWaits[seq] == 0 {" && [ "$e1" = TRUE ] && [ "$e2" = TRUE ]; then
+if has "$B_peer" "if c.peerWaits[seq]--; c.peerWaits[seq] == 0 {" && [ "$e1" = TRUE ]; then
 	PeerWaitEnds=TRUE
 else
 	PeerWaitEnds=FALSE

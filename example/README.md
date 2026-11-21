@@ -2,7 +2,7 @@
 
 ## Overview
 
-`example` holds four `package main` programs. Each one imports only `github.com/coder/acp-go-sdk` from this module. `agent` is a scripted ACP agent. `client`, `claude-code`, and `gemini` are ACP clients that start an agent as a child process and speak ACP over its stdin and stdout. All four are part of the root module, so `make test` builds them with `go build ./example/...`.
+`example` holds five `package main` programs. Each one imports only `github.com/coder/acp-go-sdk` from this module. `agent` is a scripted ACP agent. `client`, `claude-code`, and `gemini` are ACP clients that start an agent as a child process and speak ACP over its stdin and stdout. `proxy` is an ACP proxy that a conductor runs between a client and an agent. All five are part of the root module, so `make test` builds them with `go build ./example/...`.
 
 ## Subdirectories & Boundaries
 
@@ -10,3 +10,4 @@
 - claude-code: [./claude-code/README.md](./claude-code/README.md) - REPL client for the Claude Code ACP server, which it starts with `npx -y @agentclientprotocol/claude-agent-acp@latest`. Flag `-yolo` auto-approves permission prompts.
 - client: [./client/README.md](./client/README.md) - Demo client. It starts the agent named on the command line, or `go run` of `../agent`, then sends one `Initialize`, `NewSession`, and `Prompt` and prints the session updates.
 - gemini: [./gemini/README.md](./gemini/README.md) - REPL client for the Gemini CLI, which it starts with `--experimental-acp`. Flags: `-gemini`, `-model`, `-sandbox`, `-yolo`, `-debug`.
+- proxy: [./proxy/README.md](./proxy/README.md) - Unstable proxy for an ACP proxy chain. It adds `[proxy] ` in front of the text of each agent message chunk and forwards every other message unchanged. It speaks ACP to its conductor on stdin and stdout: `agent-client-protocol-conductor agent "go run ./example/proxy" "go run ./example/agent"`.

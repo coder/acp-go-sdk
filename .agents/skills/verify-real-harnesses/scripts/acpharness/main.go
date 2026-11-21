@@ -350,7 +350,7 @@ func (h *harness) finish() int {
 			other[k] += v
 		}
 	}
-	tokens := map[string]int64{}
+	tokens := map[string]uint64{}
 	for _, t := range usage {
 		tokens["input"] += t.InputTokens
 		tokens["output"] += t.OutputTokens

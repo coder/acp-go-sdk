@@ -7,7 +7,7 @@
 // It advertises notices and compaction too. It records every JSON-RPC line in
 // both directions.
 //
-//   node ts-client.mjs --out DIR --cwd DIR -- AGENT [ARGS...]
+//   node ts-client.mjs --out DIR --cwd DIR [--expect-chunk-prefix STR] -- AGENT [ARGS...]
 //
 // It writes DIR/transcript.jsonl, DIR/agent.stderr.log, DIR/summary.json and
 // DIR/result.txt. Exit 0: protocol version 1 was negotiated, the turn ended
@@ -17,8 +17,10 @@
 // one notice and named each tool call, /compact streamed compaction updates
 // with one id and ended with end_turn, no error
 // response or non-JSON line crossed the wire, and the agent exited 0 after
-// its input closed. Exit 1: otherwise. Run it from a folder whose
-// node_modules holds the SDK.
+// its input closed. With --expect-chunk-prefix, exit 0 also needs the text of
+// every agent_message_chunk to start with STR, as when a proxy that rewrites
+// them sits between this client and the agent. Exit 1: otherwise. Run it from
+// a folder whose node_modules holds the SDK.
 import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
@@ -32,9 +34,10 @@ const flag = (name) => {
 };
 const out = flag("--out");
 const cwd = flag("--cwd");
+const chunkPrefix = flag("--expect-chunk-prefix");
 const agent = argv.slice(argv.indexOf("--") + 1);
 if (!out || !cwd || argv.indexOf("--") < 0 || agent.length === 0) {
-  console.error("usage: ts-client.mjs --out DIR --cwd DIR -- AGENT [ARGS...]");
+  console.error("usage: ts-client.mjs --out DIR --cwd DIR [--expect-chunk-prefix STR] -- AGENT [ARGS...]");
   process.exit(2);
 }
 mkdirSync(out, { recursive: true });
@@ -59,6 +62,8 @@ const elicitations = [];
 const notices = [];
 const toolNames = [];
 const compaction = [];
+// chunkTexts holds the text of each agent_message_chunk, null for other content.
+const chunkTexts = [];
 
 function record(dir, line) {
   const entry = { t_ms: Date.now() - start, dir };
@@ -147,6 +152,7 @@ try {
       const u = ctx.params.update;
       const kind = u.sessionUpdate;
       kinds[kind] = (kinds[kind] ?? 0) + 1;
+      if (kind === "agent_message_chunk") chunkTexts.push(u.content?.type === "text" ? u.content.text : null);
       if (kind === "notice") notices.push({ severity: u.severity, title: u.title, description: u.description ?? null });
       if (kind === "tool_call") toolNames.push(`${u.toolCallId}=${u.name ?? "<none>"}`);
       if (kind === "compaction_update") compaction.push({ kind, id: u.compactionId, status: u.status });
@@ -231,6 +237,12 @@ const checks = [
   ["agent exited 0 after its input closed", exit === "exit 0"],
   [`transcript.jsonl written${transcriptErr ? `: ${transcriptErr.message}` : ""}`, transcriptErr === null],
 ];
+if (chunkPrefix !== undefined) {
+  checks.push([
+    `every agent_message_chunk text starts with ${JSON.stringify(chunkPrefix)}`,
+    chunkTexts.length > 0 && chunkTexts.every((t) => typeof t === "string" && t.startsWith(chunkPrefix)),
+  ]);
+}
 const pass = checks.every(([, ok]) => ok);
 const summary = {
   agent,
@@ -242,6 +254,7 @@ const summary = {
   notices,
   toolNames,
   compaction,
+  ...(chunkPrefix !== undefined && { chunkPrefix, chunkTexts }),
   problems,
   agentExit: exit,
   pass,

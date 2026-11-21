@@ -65,7 +65,7 @@ func TestUnmarshalJSON_RejectsARepeatedProperty(t *testing.T) {
 		{
 			name: "named property of a struct with additional properties", into: new(UnstableMcpError),
 			in:   `{"code":1,"code":2,"message":"m"}`,
-			want: "json: cannot unmarshal duplicate member into Go struct field UnstableMcpError.code of type int",
+			want: "json: cannot unmarshal duplicate member into Go struct field UnstableMcpError.code of type int32",
 		},
 		{
 			name: "nested struct", into: new(RequestPermissionRequest),

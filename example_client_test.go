@@ -73,11 +73,11 @@ func (clientExample) ReadTextFile(ctx context.Context, p ReadTextFileRequest) (R
 		lines := strings.Split(content, "\n")
 		start := 0
 		if p.Line != nil && *p.Line > 0 {
-			start = int(min(*p.Line-1, int64(len(lines))))
+			start = int(min(uint64(*p.Line-1), uint64(len(lines))))
 		}
 		end := len(lines)
 		if p.Limit != nil && *p.Limit > 0 {
-			end = start + int(min(*p.Limit, int64(end-start)))
+			end = start + int(min(uint64(*p.Limit), uint64(end-start)))
 		}
 		content = strings.Join(lines[start:end], "\n")
 	}

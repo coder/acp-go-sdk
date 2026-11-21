@@ -9,59 +9,100 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/ir"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 )
 
-// intRange is a closed range of integers: the values that an integer schema
-// allows, within the int64 that is the widest Go type of an integer
-// (integerType). The type intRange of the root package's shape.go has the
-// same fields, so the table shapes holds it as it is.
+// intRange is a closed range of integers: the bounds of an integer schema
+// that the Go type of its value (integerType) does not enforce.
+// math.MinInt64 as min and math.MaxInt64 as max stand for no bound on that
+// side. The type intRange of the root package's shape.go has the same
+// fields, so the table shapes holds it as it is.
 type intRange struct{ min, max int64 }
 
-var int64Range = intRange{math.MinInt64, math.MaxInt64}
+var noBounds = intRange{math.MinInt64, math.MaxInt64}
 
-// formatRanges holds the range of each integer format of the schema: the
-// Rust type that the format names, which fails to read a value out of its
-// range. An int64 holds no uint64 above math.MaxInt64, so the decode rejects
-// one before a range check could.
-var formatRanges = map[string]intRange{
-	"int32":  {math.MinInt32, math.MaxInt32},
-	"int64":  int64Range,
-	"uint16": {0, math.MaxUint16},
-	"uint32": {0, math.MaxUint32},
-	"uint64": {0, math.MaxInt64},
+// intType is a Go integer type and the integers that it holds.
+type intType struct {
+	name string
+	min  int64
+	max  uint64
 }
 
-// formatRange returns the range of the integer format format, or of every
-// int64 when format is "". It panics on a format that formatRanges does not
-// know, so that a new one gets a Go type and a range before a peer can send
-// a value out of it.
-func formatRange(format string) intRange {
+// formatTypes holds the Go type of each integer format of the schema: the Go
+// type of the Rust type that the format names. encoding/json fails to read a
+// value out of its range, as serde_json fails one out of the Rust type, so no
+// check repeats the range of a format.
+var formatTypes = map[string]intType{
+	"int32":  {"int32", math.MinInt32, math.MaxInt32},
+	"int64":  {"int64", math.MinInt64, math.MaxInt64},
+	"uint16": {"uint16", 0, math.MaxUint16},
+	"uint32": {"uint32", 0, math.MaxUint32},
+	"uint64": {"uint64", 0, math.MaxUint64},
+}
+
+// formatType returns the Go type of the integer format format, and int for
+// "", whose bounds a check compares as an int64 (fieldCheck.boundsInInt64).
+// It panics on a format that formatTypes does not know, so that a new one
+// gets a Go type before a peer can send a value out of its range.
+func formatType(format string) intType {
 	if format == "" {
-		return int64Range
+		return intType{"int", math.MinInt64, math.MaxInt64}
 	}
-	r, ok := formatRanges[format]
+	t, ok := formatTypes[format]
 	if !ok {
-		panic(fmt.Sprintf("integer format %q has no range in formatRanges", format))
+		panic(fmt.Sprintf("integer format %q has no Go type in formatTypes", format))
 	}
-	return r
+	return t
 }
 
-// ownRange returns the range that the keywords of d itself allow, when d is
-// an integer schema (integer): its format intersected with minimum and
-// maximum. It returns nil when they allow every int64.
+// holdsInteger reports whether the Go type of the integer format format
+// (formatType) holds the integer value on every target, so that a literal of
+// it compiles: an int holds only the values of an int32, since it is 32 bits
+// wide for GOARCH=386.
+func holdsInteger(format string, value float64) bool {
+	t := formatType(format)
+	least, greatest := float64(t.min), float64(t.max)
+	if t.name == "int" {
+		least, greatest = math.MinInt32, math.MaxInt32
+	}
+	return value >= least && value <= greatest
+}
+
+// ownRange returns the bounds that the keywords of d itself set, when d is an
+// integer schema (integer), and that the Go type of its value does not
+// enforce: minimum above the least value of that type, and maximum below the
+// greatest. The Go type is that of d's format, or of the schema that d stands
+// for when d has no type, such as a bound next to a $ref. It returns nil when
+// the Go type enforces every bound, as it does for each one of schema 1.18.0
+// through 1.33.0. It panics on a bound that no value of the Go type meets,
+// since a check against it would not compile.
 func ownRange(schema *load.Schema, d *load.Definition) *intRange {
 	if d == nil || !integer(schema, d) {
 		return nil
 	}
-	r := formatRange(d.Format)
+	t := formatType(typed(schema, d).Format)
+	least, greatest := big.NewInt(t.min), new(big.Int).SetUint64(t.max)
+	r := noBounds
 	if d.Minimum != "" {
-		r.min = max(r.min, bound(d.Minimum, true))
+		lo := bound(d.Minimum, true)
+		if lo.Cmp(greatest) > 0 {
+			panic(fmt.Sprintf("integer minimum %s is above every value of %s", d.Minimum, t.name))
+		}
+		if lo.Cmp(least) > 0 {
+			r.min = boundInt64(lo, d.Minimum)
+		}
 	}
 	if d.Maximum != "" {
-		r.max = min(r.max, bound(d.Maximum, false))
+		hi := bound(d.Maximum, false)
+		if hi.Cmp(least) < 0 {
+			panic(fmt.Sprintf("integer maximum %s is below every value of %s", d.Maximum, t.name))
+		}
+		if hi.Cmp(greatest) < 0 {
+			r.max = boundInt64(hi, d.Maximum)
+		}
 	}
-	if r == int64Range {
+	if r == noBounds {
 		return nil
 	}
 	return &r
@@ -69,8 +110,8 @@ func ownRange(schema *load.Schema, d *load.Definition) *intRange {
 
 // bound returns the integer bound that n, the JSON number of a minimum (up)
 // or a maximum, sets on an integer: the least integer at or above n, or the
-// greatest at or below it, so that 0.5 and 1e1 work. It clamps to int64.
-func bound(n json.Number, up bool) int64 {
+// greatest at or below it, so that 0.5 and 1e1 work.
+func bound(n json.Number, up bool) *big.Int {
 	var r big.Rat
 	if _, ok := r.SetString(string(n)); !ok {
 		panic(fmt.Sprintf("integer bound %s is not a number", n))
@@ -84,18 +125,22 @@ func bound(n json.Number, up bool) int64 {
 	case rem.Sign() < 0 && !up:
 		q.Sub(q, big.NewInt(1))
 	}
-	switch {
-	case q.IsInt64():
-		return q.Int64()
-	case q.Sign() > 0:
-		return math.MaxInt64
-	default:
-		return math.MinInt64
-	}
+	return q
 }
 
-// intersect returns the values in both r and o, where nil stands for every
-// int64.
+// boundInt64 returns b, a bound from the keyword text n that the Go type does
+// not enforce, as an int64. It panics when b does not fit an int64, or is
+// math.MinInt64 or math.MaxInt64, which stand for no bound; no schema has
+// such a bound.
+func boundInt64(b *big.Int, n json.Number) int64 {
+	if !b.IsInt64() || b.Int64() == math.MinInt64 || b.Int64() == math.MaxInt64 {
+		panic(fmt.Sprintf("integer bound %s does not fit intRange", n))
+	}
+	return b.Int64()
+}
+
+// intersect returns the values in both r and o, where nil stands for no
+// bound.
 func intersect(r, o *intRange) *intRange {
 	switch {
 	case r == nil:
@@ -127,18 +172,25 @@ func referredDef(schema *load.Schema, d *load.Definition) *load.Definition {
 }
 
 // integer reports whether d is an integer schema: by its own type, or, when
-// it has none, by the schema that it stands for (referredDef), so that a
-// minimum or maximum next to a $ref, or next to an allOf of one, counts.
+// it has none, by the schema that it stands for (typed), so that a minimum or
+// maximum next to a $ref, or next to an allOf of one, counts.
 func integer(schema *load.Schema, d *load.Definition) bool {
-	for seen := map[*load.Definition]bool{}; d != nil && d.Type == nil && !seen[d]; {
-		seen[d] = true
-		d = referredDef(schema, d)
-	}
+	d = typed(schema, d)
 	if d == nil {
 		return false
 	}
 	kinds := kindsOf(d.Type)
 	return slices.Contains(kinds, "kindInteger") && !slices.Contains(kinds, "kindFraction")
+}
+
+// typed returns d when it has a type, and otherwise the first schema with a
+// type that d stands for through referredDef, or nil when there is none.
+func typed(schema *load.Schema, d *load.Definition) *load.Definition {
+	for seen := map[*load.Definition]bool{}; d != nil && d.Type == nil && !seen[d]; {
+		seen[d] = true
+		d = referredDef(schema, d)
+	}
+	return d
 }
 
 // target returns the schema at the end of the $refs from d (referred),
@@ -174,6 +226,46 @@ func (b *typesBuilder) heldRange(def *load.Definition, via []container) *intRang
 		}
 	}
 	return r
+}
+
+// mustHoldDefault panics when the default of field, an integer whose Go type
+// is goType, is not an integer within that type and within bounds, the range
+// that Validate checks (nil for none). The default fills an absent member, so
+// Validate would reject a message that leaves the member out, or setDefault
+// would fail to decode the default and leave 0. Such a schema contradicts
+// itself, and none from 1.18.0 through 1.33.0 has one. It panics on a default
+// of 2^53 or beyond too, which load may have rounded.
+func mustHoldDefault(field ir.Field, goType string, bounds *intRange) {
+	// planFor calls it only for a default that is not null.
+	n, ok := field.Def.Default.(float64)
+	if !ok {
+		panic(fmt.Sprintf("default %v of integer property %q is not a number", field.Def.Default, field.Prop))
+	}
+	t := formatType("")
+	for _, ft := range formatTypes {
+		if ft.name == goType {
+			t = ft
+		}
+	}
+	lo, hi := big.NewInt(t.min), new(big.Int).SetUint64(t.max)
+	if bounds != nil {
+		if bounds.min != math.MinInt64 {
+			lo = big.NewInt(bounds.min)
+		}
+		if bounds.max != math.MaxInt64 {
+			hi = big.NewInt(bounds.max)
+		}
+	}
+	var v big.Rat
+	v.SetFloat64(n)
+	if math.Abs(n) >= 1<<53 {
+		// load reads a default as a float64, and planFor writes the fallback
+		// from it, so the generated default would differ from the schema's.
+		panic(fmt.Sprintf("default %s of integer property %q is 2^53 or beyond, so the float64 that load reads it as may have rounded it", strconv.FormatFloat(n, 'f', -1, 64), field.Prop))
+	}
+	if !v.IsInt() || v.Num().Cmp(lo) < 0 || v.Num().Cmp(hi) > 0 {
+		panic(fmt.Sprintf("default %s of integer property %q is not an integer between %s and %s", strconv.FormatFloat(n, 'g', -1, 64), field.Prop, lo, hi))
+	}
 }
 
 // checkRange returns the statement that returns an error when the integer v,

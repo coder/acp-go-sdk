@@ -19,7 +19,8 @@ type fieldPlan struct {
 	// Patch of patchValueType.
 	patch bool
 	// nullAsAbsent says that the field is a patch field for which the schema
-	// defines no clear (ir.NullAsAbsent), so its doc says how to read null.
+	// defines no clear (ir.NullAsAbsent): the decoder reads null as unset,
+	// MarshalJSON leaves out a null Patch, and its doc says so.
 	nullAsAbsent bool
 	// keepEmpty says that the field is an optional slice or map whose schema
 	// allows null: the Rust SDK reads it as an Option, so it writes an empty
@@ -31,6 +32,9 @@ type fieldPlan struct {
 	// nonNullItem is the Go type of the items or member values that the
 	// decoder rejects null for (typesBuilder.nonNullItem); nil for none.
 	nonNullItem Code
+	// goType is the Go type of the field when it is not a patch field and
+	// has no nested struct (typesBuilder.fieldType).
+	goType Code
 	// required says that the decoder fails when the JSON object lacks the
 	// member, or holds null for it and takesNull is false (planFor).
 	// encoding/json leaves such a member at its Go zero value, which
@@ -46,7 +50,7 @@ func (p fieldPlan) hasFallback() bool {
 // raw and decodes it on its own.
 func (p fieldPlan) customDecode() bool {
 	lenient := p.field.Lenient
-	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems || p.nonNullItem != nil
+	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems || p.nonNullItem != nil || p.nullAsAbsent
 }
 
 // encodesPointer says that MarshalJSON encodes the field through a pointer
@@ -67,7 +71,7 @@ func (b *typesBuilder) plansFor(owner string, fields []ir.Field) []fieldPlan {
 func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 	def, lenient := field.Def, field.Lenient
 	p := fieldPlan{
-		field: field, patch: b.patch[def], nullAsAbsent: b.nullAsAbsent[def], nonNullItem: b.nonNullItem(field),
+		field: field, patch: b.patch[def], nullAsAbsent: b.nullAsAbsent[def], nonNullItem: b.nonNullItem(field), goType: b.fieldType(field),
 		// As in the Rust SDK, a required member must be present, and may be
 		// null only where its schema accepts null or a hint reads null as
 		// the default. A schema default stands in for an absent member.
@@ -84,11 +88,18 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 		b.usesPatch = true
 		if lenient.DefaultOnError {
 			p.shape = b.shapes.site(owner, field, patchValueType(field))
+			b.usesAbsentIfNull = b.usesAbsentIfNull || p.nullAsAbsent
 		}
 		return p
 	}
 	switch {
 	case def.Default != nil:
+		// Every default passes here, so this is where its range is checked.
+		// The default of an array or a map of integers is not an integer.
+		via, leaf := peelContainers(p.goType)
+		if goType := b.integerGoType(leaf); goType != "" && !slices.Contains(via, items) && !slices.Contains(via, members) {
+			mustHoldDefault(field, goType, b.heldRange(def, via))
+		}
 		defaultJSON, err := json.Marshal(def.Default)
 		if err != nil {
 			panic(fmt.Sprintf("encode the default of property %q: %v", field.Prop, err))
@@ -104,7 +115,7 @@ func (b *typesBuilder) planFor(owner string, field ir.Field) fieldPlan {
 	}
 	p.keepEmpty = !field.Required && includesNull(def) && mapsToSliceOrMap(def) && def.Default == nil && field.Prop != metaProperty
 	if lenient.DefaultOnError || lenient.SkipInvalidItems {
-		p.shape = b.shapes.site(owner, field, fieldType(field))
+		p.shape = b.shapes.site(owner, field, p.goType)
 	}
 	return p
 }
@@ -184,8 +195,8 @@ func mapsToSliceOrMap(d *load.Definition) bool {
 
 // nullAsAbsentNote is the doc of a patch field for which the schema defines
 // no clear (ir.NullAsAbsent).
-const nullAsAbsentNote = "ACP v1 does not say that null clears this field, and the Rust SDK\n" +
-	"reads null here as absent: treat IsNull like IsUnset."
+const nullAsAbsentNote = "ACP v1 defines no clear for this field, so null leaves it unchanged, as\n" +
+	"absent does: the SDK reads null as unset, and leaves out a null Patch."
 
 func fieldDecls(plans []fieldPlan, nestedTypeNames map[string]string) []Code {
 	decls := []Code{}
@@ -241,9 +252,9 @@ func declType(p fieldPlan, nestedTypeNames map[string]string, pointers bool) Cod
 	case ok:
 		typ = Id(nestedTypeName)
 	case p.keepEmpty && pointers:
-		typ = Op("*").Add(fieldType(field))
+		typ = Op("*").Add(p.goType)
 	default:
-		typ = fieldType(field)
+		typ = p.goType
 	}
 	return typ
 }
@@ -252,9 +263,20 @@ func declType(p fieldPlan, nestedTypeNames map[string]string, pointers bool) Cod
 // implementations to attach data to.
 const metaProperty = "_meta"
 
-// fieldType returns the Go type of field, a property without a nested struct.
-// A _meta whose members the schema leaves free is a Meta.
-func fieldType(field ir.Field) Code {
+// fieldType returns the Go type of field, a property without a nested struct:
+// inPlaceType, behind a pointer when the value would hold the struct that
+// holds field (indirect).
+func (b *typesBuilder) fieldType(field ir.Field) Code {
+	if b.indirect[field.Def] {
+		return Op("*").Add(inPlaceType(field))
+	}
+	return inPlaceType(field)
+}
+
+// inPlaceType returns the Go type of field, a property without a nested
+// struct, when it holds its value in place. A _meta whose members the schema
+// leaves free is a Meta.
+func inPlaceType(field ir.Field) Code {
 	def := field.Def
 	if field.Prop == metaProperty && ir.PrimaryType(def) == "object" && len(def.Properties) == 0 && freeMembers(def) {
 		return Id("Meta")
@@ -267,7 +289,7 @@ func fieldType(field ir.Field) Code {
 func patchValueType(field ir.Field) Code {
 	def := field.Def
 	if field.Prop == metaProperty {
-		return fieldType(field)
+		return inPlaceType(field)
 	}
 	if nonNull := nonNullAlternative(def); nonNull != nil {
 		return jenTypeFor(nonNull)
@@ -332,6 +354,8 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 					shadow = append(shadow, fieldDecl(p, nestedTypeNames, true))
 					value := Id("a").Dot(p.field.Name)
 					switch {
+					case p.patch && p.nullAsAbsent:
+						value = value.Dot("setOrNil").Call()
 					case p.patch:
 						value = value.Dot("orNil").Call()
 					case p.keepEmpty:

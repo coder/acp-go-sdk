@@ -65,7 +65,7 @@ From the repository root:
 | --- | --- | --- |
 | 0 | Every config passed, and the covered code matches `fingerprint.txt`. | Done. |
 | 1 | A property failed that holds at the sync commit. | The `rule:` line under the row names a broken invariant. For a property, TLC does not say which one broke: `/statechart` names it. If `/statechart` is not available, read the error trace in `<config>.out`. Then follow "Bug or model error". |
-| 2 | Setup error, or DRIFT: a line that the model depends on is gone or has a new form. | Install the missing tool, or update the model and `check.sh` for the new code shape. |
+| 2 | Setup error, or DRIFT: a line that the model depends on is gone or has a new form, or a covered function or constant is gone. `--update-fingerprint` then writes nothing. | Install the missing tool, or update the model and `check.sh` for the new code shape. |
 | 3 | TLC found nothing, but covered code changed since the sync commit. This is not a pass: TLC checked the old model, and a change outside the facts is invisible to it. | Follow "Update the verification" before you trust the result. |
 
 Read every TLC result with the `/statechart` skill. It is hidden from the default skill list, so load it by name. Its first run can install Java and TLC, which needs the network: its own instructions say how to use a TLC that you already have. Give it `NotificationBarrier.tla`, the `<config>.effective.cfg` from the output folder and the view module `statechart-view.mjs` in this folder. Work in a scratch folder outside the repository. For a failure, its report tells the shortest path to the broken rule in plain words. For a pass on `chart.cfg` (one update, one request), it draws how a request waits for an earlier handler. The other configs pass with too many states for a chart, and the report then lists the rules that hold. If `/statechart` rejects the view module because its interface changed, rewrite the module from `/statechart`'s instructions. If `/statechart` is not available, read the error trace in `<config>.out`: TLC prints each state on the path to the broken rule.
@@ -134,7 +134,7 @@ Lines are at the sync commit, moved by later commits that changed only comments 
 
 ## Facts that check.sh reads
 
-Each fact sets one model constant. The last column is the result of setting the fact to its broken value at the sync commit, which shows that each property can fail.
+Each fact sets one model constant. The last column is the result of setting the fact to its broken value at the sync commit, which shows that each property can fail. A fact that names a position reads TRUE only for that exact code. `WaitErrorReplies` needs the whole wait-error branch of the `InChecksDone` row, comment lines aside: the `c.Done()` case that starts the handler and returns, an empty `default`, the reply, a `return` right after it, and the handler call after the branch. Dropping that `return`, or swapping what the two branches do, makes it FALSE.
 
 | Fact | Code at the sync commit | Broken value makes this fail |
 | --- | --- | --- |

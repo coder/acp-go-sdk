@@ -390,7 +390,7 @@ func (u AgentResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AgentResponse has no variant set")
 }
 
 func (u *AgentResponse) Validate() error {
@@ -732,7 +732,7 @@ func (u AuthMethod) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AuthMethod has no variant set")
 }
 
 func (u *AuthMethod) Validate() error {
@@ -1091,7 +1091,7 @@ func (u AvailableCommandInput) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("AvailableCommandInput has no variant set")
 }
 
 func (u *AvailableCommandInput) Validate() error {
@@ -1709,7 +1709,7 @@ func (u ClientResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ClientResponse has no variant set")
 }
 
 func (u *ClientResponse) Validate() error {
@@ -2589,7 +2589,7 @@ func (u ContentBlock) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"resource\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ContentBlock has no variant set")
 }
 
 func (u *ContentBlock) Validate() error {
@@ -3342,7 +3342,7 @@ func (u CreateElicitationRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("CreateElicitationRequest has no variant set")
 }
 
 func (u *CreateElicitationRequest) Validate() error {
@@ -3706,7 +3706,7 @@ func (u CreateElicitationResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("CreateElicitationResponse has no variant set")
 }
 
 func (u *CreateElicitationResponse) Validate() error {
@@ -4203,7 +4203,7 @@ func (u ElicitationContentValue) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("ElicitationContentValue has no variant set")
 }
 
 func (u *ElicitationContentValue) Validate() error {
@@ -5050,7 +5050,7 @@ func (u ElicitationPropertySchema) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ElicitationPropertySchema has no variant set")
 }
 
 func (u *ElicitationPropertySchema) Validate() error {
@@ -5586,7 +5586,7 @@ func (u EmbeddedResourceResource) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("EmbeddedResourceResource has no variant set")
 }
 
 func (u *EmbeddedResourceResource) Validate() error {
@@ -5943,7 +5943,7 @@ func (u ErrorCode) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("ErrorCode has no variant set")
 }
 
 func (u *ErrorCode) Validate() error {
@@ -6660,7 +6660,7 @@ func (u IdleStateUpdate) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("IdleStateUpdate has no variant set")
 }
 
 func (u *IdleStateUpdate) Validate() error {
@@ -6996,7 +6996,7 @@ func (u InitialSessionConfigOption) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("InitialSessionConfigOption has no variant set")
 }
 
 func (u *InitialSessionConfigOption) Validate() error {
@@ -8096,7 +8096,7 @@ func (u McpServer) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("McpServer has no variant set")
 }
 
 func (u *McpServer) Validate() error {
@@ -8660,7 +8660,7 @@ func (u MultiSelectItems) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("MultiSelectItems has no variant set")
 }
 
 func (u *MultiSelectItems) Validate() error {
@@ -9809,7 +9809,7 @@ func (u PlanUpdateContent) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"markdown\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("PlanUpdateContent has no variant set")
 }
 
 func (u *PlanUpdateContent) Validate() error {
@@ -10625,7 +10625,7 @@ func (u RequestId) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("RequestId has no variant set")
 }
 
 func (u *RequestId) Validate() error {
@@ -10803,7 +10803,7 @@ func (u RequestPermissionOutcome) MarshalJSON() ([]byte, error) {
 		m["outcome"] = json.RawMessage("\"selected\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("RequestPermissionOutcome has no variant set")
 }
 
 func (u *RequestPermissionOutcome) Validate() error {
@@ -11788,7 +11788,7 @@ func (u SessionConfigOption) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"boolean\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionConfigOption has no variant set")
 }
 
 func (u *SessionConfigOption) Validate() error {
@@ -12131,7 +12131,7 @@ func (u SessionConfigSelectOptions) MarshalJSON() ([]byte, error) {
 		}
 		return _b, nil
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionConfigSelectOptions has no variant set")
 }
 
 func (u *SessionConfigSelectOptions) Validate() error {
@@ -14878,7 +14878,7 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		m["sessionUpdate"] = json.RawMessage("\"session_message_chunk\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SessionUpdate has no variant set")
 }
 
 func (u *SessionUpdate) Validate() error {
@@ -15253,7 +15253,7 @@ func (u SetSessionConfigOptionRequest) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("SetSessionConfigOptionRequest has no variant set")
 }
 
 func (u *SetSessionConfigOptionRequest) Validate() error {
@@ -16034,7 +16034,7 @@ func (u StateUpdateIdle) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("StateUpdateIdle has no variant set")
 }
 
 func (u *StateUpdateIdle) Validate() error {
@@ -16328,7 +16328,7 @@ func (u StateUpdate) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("StateUpdate has no variant set")
 }
 
 func (u *StateUpdate) Validate() error {
@@ -17629,7 +17629,7 @@ func (u ToolCallContent) MarshalJSON() ([]byte, error) {
 		m["type"] = json.RawMessage("\"session\"")
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("ToolCallContent has no variant set")
 }
 
 func (u *ToolCallContent) Validate() error {
@@ -19101,7 +19101,7 @@ func (u UnstableMessageMcpResponse) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(m)
 	}
-	return []byte{}, nil
+	return nil, errors.New("UnstableMessageMcpResponse has no variant set")
 }
 
 func (u *UnstableMessageMcpResponse) Validate() error {

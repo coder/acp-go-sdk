@@ -170,9 +170,12 @@ type typesBuilder struct {
 	// patch holds the patch fields of the schema (ir.PatchFields), and
 	// nullAsAbsent those of them that have no clear (ir.NullAsAbsent).
 	patch, nullAsAbsent map[*load.Definition]bool
-	usesPatch           bool
-	usesNilIf           bool
-	// validated memoizes validates per $defs entry.
+	// indirect holds the members that hold their value through a pointer
+	// (indirectMembers), keyed as patch is.
+	indirect  map[*load.Definition]bool
+	usesPatch bool
+	usesNilIf bool
+	// validated holds validates per $defs entry, nil until its first call.
 	validated map[string]bool
 }
 
@@ -192,8 +195,8 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 	b := &typesBuilder{
 		f: f, schema: schema, usedTypeNames: usedTypeNames, variants: emitted,
 		shapes: newShapeTable(schema), patch: ir.PatchFields(schema), nullAsAbsent: ir.NullAsAbsent(schema),
-		validated: map[string]bool{},
 	}
+	b.indirect = b.indirectMembers()
 
 	// Deterministic order
 	keys := make([]string, 0, len(schema.Defs))
@@ -859,6 +862,9 @@ type unionVariant struct {
 	required  []string
 	props     map[string]*load.Definition
 	nested    []unionVariant
+	// fieldType returns the Go type that the variant's struct declares a
+	// property with (typesBuilder.fieldType).
+	fieldType func(ir.Field) Code
 }
 
 // sortedPropertyKeys returns the keys of props in sorted order.
@@ -1096,7 +1102,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 	open := parentDef != nil && opensMembers(parentDef)
 	alts := unionAlternatives(schema, defs)
 	var wrapperFields []ir.Field
-	if len(sharedProps) > 0 && !allInlineObjects(alts) {
+	if keepsOwnProperties(parentDef, alts) {
 		wrapperFields = ir.Fields(parentDef.Properties, parentDef.Required)
 		sharedProps = map[string]*load.Definition{}
 		sharedRequired = map[string]struct{}{}
@@ -1140,8 +1146,8 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				usedTypeNames[tname] = true
 			}
 		}
-		// Ensure Title-derived names are exported (e.g., "stdio" -> "Stdio").
-		tname = util.ToExportedField(tname)
+		// tname is final: the $defs key that the type is emitted under, or
+		// the name registered above. It is a Go name already.
 
 		// Derive field name with priority: discriminator value > title > type name
 		fieldName := ""
@@ -1163,7 +1169,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 
 		// Priority 3: Fall back to type name
 		if fieldName == "" {
-			fieldName = util.ToExportedField(tname)
+			fieldName = tname
 		}
 		isObj := len(v.Properties) > 0
 		isArray := ir.PrimaryType(v) == "array"
@@ -1315,6 +1321,7 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			required:  append([]string(nil), v.Required...),
 			props:     v.Properties,
 			nested:    nestedVariants,
+			fieldType: b.fieldType,
 		})
 	}
 	if exactlyOne {
@@ -1581,11 +1588,8 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				}
 			})
 		}
-		if len(wrapperFields) > 0 {
-			g.Return(Nil(), Qual("errors", "New").Call(Lit(name+" has no variant set")))
-		} else {
-			g.Return(Index().Byte().Values(), Nil())
-		}
+		// A union with no variant set has no JSON form, as Validate says.
+		g.Return(Nil(), Qual("errors", "New").Call(Lit(name+" has no variant set")))
 	})
 	f.Line()
 

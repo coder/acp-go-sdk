@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -87,21 +89,19 @@ type Definition struct {
 
 	// boolSchema records whether this definition was a boolean schema (true/false).
 	// JSON Schema allows boolean schemas, where true matches anything and false matches nothing.
-	// The Go types treat both as permissive/unknown shapes. The shapes read them
-	// (IsTrue, IsFalse).
+	// The Go types treat both as permissive/unknown shapes. The shapes read
+	// false (IsFalse).
 	boolSchema *bool `json:"-"`
-	// noKeys records whether this definition was a JSON object with no keys,
-	// the empty schema {}. A schema whose keywords Definition does not model,
-	// such as {"pattern": "x"}, also leaves every field zero, so the fields
-	// alone cannot tell the two apart.
-	noKeys bool
+	// unmodeled holds what Unmodeled returns.
+	unmodeled []string
 }
 
-// IsTrue reports whether d is the boolean schema true or the empty schema
-// {}, which every value fits (JSON Schema 2020-12, section 4.3.2).
-func (d *Definition) IsTrue() bool {
-	return d != nil && (d.boolSchema != nil && *d.boolSchema || d.noKeys)
-}
+// Unmodeled returns, in sorted order, the keywords of d that can reject a
+// value but that no field of Definition holds: a keyword that no field reads,
+// such as pattern, and one whose value leaves its field empty, such as
+// "const": null or "additionalProperties": false. It leaves out the keywords
+// that constrain no value (annotation).
+func (d *Definition) Unmodeled() []string { return d.unmodeled }
 
 // IsFalse reports whether d is the boolean schema false, which no value fits.
 func (d *Definition) IsFalse() bool {
@@ -155,10 +155,50 @@ func (d *Definition) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*d = Definition(a)
-	if bytes.HasPrefix(tb, []byte("{")) {
-		d.noKeys = len(bytes.TrimSpace(tb[1:len(tb)-1])) == 0
+	var keywords map[string]json.RawMessage
+	if err := json.Unmarshal(b, &keywords); err != nil {
+		return err
 	}
+	fields := reflect.ValueOf(d).Elem()
+	for k := range keywords {
+		if i, ok := keywordFields[k]; annotation(k) || ok && !fields.Field(i).IsZero() {
+			continue
+		}
+		d.unmodeled = append(d.unmodeled, k)
+	}
+	sort.Strings(d.unmodeled)
 	return nil
+}
+
+// keywordFields maps the keyword of each field of Definition, its JSON name,
+// to the index of the field.
+var keywordFields = func() map[string]int {
+	fields := map[string]int{}
+	t := reflect.TypeOf(Definition{})
+	for i := 0; i < t.NumField(); i++ {
+		if name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
+			fields[name] = i
+		}
+	}
+	return fields
+}()
+
+// annotations are the keywords of JSON Schema 2020-12 that constrain no
+// value: the core keywords that name or document a schema (core, sections
+// 8.1.1, 8.2 and 8.3), the meta-data keywords (validation, section 9) and
+// those of string-encoded content (validation, section 8).
+var annotations = map[string]bool{
+	"$schema": true, "$id": true, "$anchor": true, "$dynamicAnchor": true, "$defs": true, "$comment": true,
+	"title": true, "description": true, "default": true, "deprecated": true, "readOnly": true, "writeOnly": true, "examples": true,
+	"contentEncoding": true, "contentMediaType": true, "contentSchema": true,
+}
+
+// annotation reports whether the keyword k constrains no value: one of
+// annotations, or an extension keyword (x-...), which a validator that does
+// not know it reads as an annotation (core, section 6.5). The x-deserialize
+// hints only widen what the Rust types read.
+func annotation(k string) bool {
+	return annotations[k] || strings.HasPrefix(k, "x-")
 }
 
 // ReadMeta loads schema/meta.json.

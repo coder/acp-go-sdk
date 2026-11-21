@@ -55,6 +55,19 @@ func formatType(format string) intType {
 	return t
 }
 
+// holdsInteger reports whether the Go type of the integer format format
+// (formatType) holds the integer value on every target, so that a literal of
+// it compiles: an int holds only the values of an int32, since it is 32 bits
+// wide for GOARCH=386.
+func holdsInteger(format string, value float64) bool {
+	t := formatType(format)
+	least, greatest := float64(t.min), float64(t.max)
+	if t.name == "int" {
+		least, greatest = math.MinInt32, math.MaxInt32
+	}
+	return value >= least && value <= greatest
+}
+
 // ownRange returns the bounds that the keywords of d itself set, when d is an
 // integer schema (integer), and that the Go type of its value does not
 // enforce: minimum above the least value of that type, and maximum below the

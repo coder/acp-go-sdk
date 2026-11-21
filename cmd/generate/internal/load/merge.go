@@ -47,12 +47,14 @@ func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta
 	addWireMethods(stableWires, stableMeta.AgentMethods)
 	addWireMethods(stableWires, stableMeta.ClientMethods)
 	addWireMethods(stableWires, stableMeta.ProtocolMethods)
+	addWireMethods(stableWires, stableMeta.ProxyMethods)
 
 	combinedMeta := &Meta{
 		Version:         stableMeta.Version,
 		AgentMethods:    cloneStringMap(stableMeta.AgentMethods),
 		ClientMethods:   cloneStringMap(stableMeta.ClientMethods),
 		ProtocolMethods: cloneStringMap(stableMeta.ProtocolMethods),
+		ProxyMethods:    cloneStringMap(stableMeta.ProxyMethods),
 	}
 
 	unstableOnlyWires := map[string]struct{}{}
@@ -63,6 +65,9 @@ func MergeStableAndUnstable(stableMeta *Meta, stableSchema *Schema, unstableMeta
 		return nil, nil, err
 	}
 	if err := mergeUnstableOnlyMethods(&combinedMeta.ProtocolMethods, unstableMeta.ProtocolMethods, stableWires, unstableOnlyWires); err != nil {
+		return nil, nil, err
+	}
+	if err := mergeUnstableOnlyMethods(&combinedMeta.ProxyMethods, unstableMeta.ProxyMethods, stableWires, unstableOnlyWires); err != nil {
 		return nil, nil, err
 	}
 
@@ -219,10 +224,10 @@ func buildUnstableDuplicateSet(combinedSchema *Schema, unstableSchema *Schema, u
 // methods of the combined metadata) reaches through unstable $refs, and each
 // definition that only the unstable schema has and that a stable method
 // reaches. It returns their names. A definition with x-method whose method
-// the metadata does not list, such as proxy/initialize, gets no Go method, so
-// it promotes nothing. The unions of every request, response, or
-// notification of a side (AgentRequest and the like) are no method's types,
-// so they keep their stable version. It fails when the unstable version of
+// the metadata does not list gets no Go method, so it promotes nothing. The
+// unions of every request, response, or notification of a side
+// (AgentRequest and the like) are no method's types, so they keep their
+// stable version. It fails when the unstable version of
 // a shared definition removes a property, requires a member, or changes a
 // type (nonAdditiveChanges).
 func promoteChangedSharedDefs(combinedSchema *Schema, stableSchema *Schema, unstableSchema *Schema, stableWires, wires map[string]struct{}) (map[string]struct{}, error) {

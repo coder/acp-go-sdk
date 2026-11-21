@@ -27,7 +27,7 @@ export ACP_VERIFY_ROOT="${XUM_SCRATCH_DIR:-${TMPDIR:-/tmp}}/acp-verify"   # opti
 "$V" launch
 ```
 
-`launch` builds `acp-example-agent`, `acp-example-client` and `acpwire` from the current checkout into a new run folder. It needs only Go. It creates the root folder with mode 0700, and it refuses a root that another user owns or can write to, or that is a symlink, because later commands run the binaries in it. The write check reads the mode bits, which also cover POSIX ACLs: an ACL entry that lets another user or group write raises the ACL mask, and the group mode bits show the mask. ACLs that the mode bits do not show, such as NFSv4 or macOS ACLs, are not checked. Its last line is `export ACP_VERIFY_RUN=<run folder>`. Shell state does not carry over between tool calls, so start every later command with both variables:
+`launch` builds `acp-example-agent`, `acp-example-client`, `acp-example-proxy` and `acpwire` from the current checkout into a new run folder. It needs only Go. It creates the root folder with mode 0700, and it refuses a root that another user owns or can write to, or that is a symlink, because later commands run the binaries in it. The write check reads the mode bits, which also cover POSIX ACLs: an ACL entry that lets another user or group write raises the ACL mask, and the group mode bits show the mask. ACLs that the mode bits do not show, such as NFSv4 or macOS ACLs, are not checked. Its last line is `export ACP_VERIFY_RUN=<run folder>`. Shell state does not carry over between tool calls, so start every later command with both variables:
 
 ```bash
 V=.agents/skills/verify-acp-go-sdk/scripts/acp-verify; export ACP_VERIFY_RUN=<run folder from launch>
@@ -53,6 +53,7 @@ Drive the agent with a journey, as an editor would:
 
 ```bash
 "$V" wire prompt-allow.jsonl prompt-allow     # journey file in journeys/, evidence label
+"$V" wire proxy.jsonl proxy proxy             # the same, against acp-example-proxy
 ```
 
 `acpwire` starts the agent, plays the journey, answers the agent's requests (such as `session/request_permission`) from rules in the journey, and prints one PASS or FAIL line per step. Exit 1 means a step failed. A journey is one JSON object per line. The comment at the top of `scripts/acpwire/main.go` lists every step type. A journey with an unknown field, a negative `count`, or a negative `sleep` or `timeout` does not load (exit 2). In `expect` and `where`, numbers compare by exact value: `1` equals `1.0`, and no digit of an integer above 2^53 is rounded away. When an automatic answer to an agent request cannot be written to the agent, the run fails. Request ids count up from 1 in the order of the `send` steps, so a `$/cancel_request` can name an earlier request by its number.
@@ -97,7 +98,7 @@ After cleanup, confirm that the proof is still there, for example with `ls "$ACP
 
 | Helper | Invocation | Purpose |
 | --- | --- | --- |
-| `scripts/acp-verify` | `"$V" launch`, `doctor`, `wire JOURNEY LABEL`, `client LABEL KEYS`, `client-default LABEL KEYS`, `cleanup` | Run lifecycle, process tracking, evidence layout. |
+| `scripts/acp-verify` | `"$V" launch`, `doctor`, `wire JOURNEY LABEL [proxy]`, `client LABEL KEYS`, `client-default LABEL KEYS`, `cleanup` | Run lifecycle, process tracking, evidence layout. |
 | `scripts/acpwire/main.go` | Built by `launch`. Directly: `"$ACP_VERIFY_RUN/work/bin/acpwire" -agent BIN -journey FILE -out DIR` | Plays an ACP client against any stdio agent binary. Go standard library only. |
 | `journeys/*.jsonl` | `"$V" wire NAME.jsonl LABEL` | The scripted editor sessions that the feature files use. |
 

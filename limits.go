@@ -14,12 +14,13 @@ import (
 // to this side. A rejection that finds 1024 others waiting to be written, or
 // that does not fit the byte budget beside them, closes the connection
 // instead: the peer does not read its replies.
-type ConnectionOption func(*connectionLimits)
+type ConnectionOption func(*connectionConfig)
 
-type connectionLimits struct {
+type connectionConfig struct {
 	byteBudget             int
 	maxInboundRequests     int
 	maxQueuedNotifications int
+	hooks                  connectionHooks
 }
 
 const (
@@ -43,7 +44,7 @@ const (
 // The default is 64 MiB. WithByteBudget panics if n < 1.
 func WithByteBudget(n int) ConnectionOption {
 	mustBePositive("WithByteBudget", n)
-	return func(l *connectionLimits) { l.byteBudget = n }
+	return func(l *connectionConfig) { l.byteBudget = n }
 }
 
 // WithMaxInboundRequests sets how many requests from the peer the connection
@@ -52,7 +53,7 @@ func WithByteBudget(n int) ConnectionOption {
 // default is 1024. WithMaxInboundRequests panics if n < 1.
 func WithMaxInboundRequests(n int) ConnectionOption {
 	mustBePositive("WithMaxInboundRequests", n)
-	return func(l *connectionLimits) { l.maxInboundRequests = n }
+	return func(l *connectionConfig) { l.maxInboundRequests = n }
 }
 
 // WithMaxQueuedNotifications sets how many notifications from the peer wait
@@ -60,7 +61,7 @@ func WithMaxInboundRequests(n int) ConnectionOption {
 // connection. The default is 1024. WithMaxQueuedNotifications panics if n < 1.
 func WithMaxQueuedNotifications(n int) ConnectionOption {
 	mustBePositive("WithMaxQueuedNotifications", n)
-	return func(l *connectionLimits) { l.maxQueuedNotifications = n }
+	return func(l *connectionConfig) { l.maxQueuedNotifications = n }
 }
 
 func mustBePositive(option string, n int) {

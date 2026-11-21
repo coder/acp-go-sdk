@@ -3,13 +3,15 @@ package acp
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 )
 
 // A shape holds the rules of a JSON Schema node that the Go types do not
-// check: required members, closed enums and consts, the range of an integer,
-// where null is allowed, and which union variant a value can be. A property with an
+// check: required members, closed enums and consts, the bounds of an integer
+// within its Go type, where null is allowed, and which union variant a value can be. A property with an
 // x-deserialize-default-on-error or x-deserialize-skip-invalid-items hint
 // checks its value against the shape of its schema after the value decodes.
 // A value that does not fit reads as the property's default, or its array
@@ -19,9 +21,10 @@ import (
 // The generator writes one shape per $defs entry that a hinted property
 // reaches, in the table shapes in types_gen.go, and names its index
 // shape<Def>. A shape ignores string formats, string lengths, and the rule
-// that a oneOf value fits only one variant, as the Rust types do. The range of
-// an integer comes from its format, which names a Rust type, and from minimum
-// and maximum. A member of an object
+// that a oneOf value fits only one variant, as the Rust types do. The Go type
+// of an integer holds the range of its format, as the Rust type that the
+// format names does, so a shape holds only a minimum or maximum that is
+// narrower. A member of an object
 // whose own hint tolerates a bad value has no rules in the shape, because
 // it reads as its default and the object around it stays.
 type shape struct {
@@ -37,8 +40,20 @@ type shape struct {
 	not      *shape            // the value does not fit it
 }
 
-// intRange is the closed range of integers from min to max.
+// intRange is the closed range of integers from min to max: the bounds that
+// the Go type of the value does not enforce. math.MinInt64 as min and
+// math.MaxInt64 as max stand for no bound on that side.
 type intRange struct{ min, max int64 }
+
+// holds reports whether n, an integer that decoded into its Go type, is in r.
+// A uint64 above math.MaxInt64 is in r when r has no upper bound.
+func (r *intRange) holds(n json.Number) bool {
+	if i, err := n.Int64(); err == nil {
+		return i >= r.min && i <= r.max
+	}
+	_, err := strconv.ParseUint(string(n), 10, 64)
+	return err == nil && r.max == math.MaxInt64
+}
 
 // shapeID is an index into shapes. The zero value names no shape.
 type shapeID int
@@ -81,11 +96,8 @@ func (s *shape) fits(v any) bool {
 	if s.values != nil && !slices.Contains(s.values, v) {
 		return false
 	}
-	if n, ok := v.(json.Number); ok && s.ints != nil {
-		// A number that is not an int64 is out of every range.
-		if i, err := n.Int64(); err != nil || i < s.ints.min || i > s.ints.max {
-			return false
-		}
+	if n, ok := v.(json.Number); ok && s.ints != nil && !s.ints.holds(n) {
+		return false
 	}
 	switch v := v.(type) {
 	case map[string]any:

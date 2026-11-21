@@ -167,6 +167,13 @@ func TestCompare_AllowsAdditions(t *testing.T) {
 		// The Validate of Body calls a new Validate of Note, which only
 		// checks the new member.
 		defs["Note"].Properties["count"] = &load.Definition{Type: []any{"integer", "null"}, Format: "uint32", Minimum: "0"}
+		// Tags has a MarshalJSON and cannot be compared. Its members that
+		// the schema does not name go to a new field, which is empty in a
+		// stable value, so MarshalJSON writes what it wrote.
+		defs["Tags"].AdditionalProperties = load.Members{Open: true}
+		// A second new kind gets a variant too.
+		other.Not.AnyOf = append(other.Not.AnyOf, obj(map[string]*load.Definition{"kind": {Type: "string", Const: "pause"}}, "kind"))
+		defs["Event"].AnyOf = append(defs["Event"].AnyOf[:2:2], variant("pause", map[string]*load.Definition{"at": str()}), other)
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -175,9 +182,11 @@ func TestCompare_AllowsAdditions(t *testing.T) {
 
 func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 	cases := []struct {
-		name   string
-		change func(defs map[string]*load.Definition)
-		want   string
+		name string
+		// setup, when set, edits both schemas before change edits the
+		// unstable one.
+		setup, change func(defs map[string]*load.Definition)
+		want          string
 	}{
 		{
 			name: "a variant goes before a stable one that is tried in order",
@@ -224,7 +233,7 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 			change: func(defs map[string]*load.Definition) {
 				defs["Count"].Format = "int64"
 			},
-			want: "Count: changed from int to int64",
+			want: "Count: changed from uint16 to int64",
 		},
 		{
 			// apidiff does not read tags.
@@ -282,7 +291,7 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 			change: func(defs map[string]*load.Definition) {
 				defs["Hinted"].Properties["count"].Maximum = "100"
 			},
-			want: "shapes[shapeHintedCount]: takes the integers 0..100 instead of 0..4294967295",
+			want: "checks a stable value against the new shapeHintedCount, which takes only the integers -9223372036854775808..100",
 		},
 		{
 			// The new variant takes the values of a kind that the stable
@@ -293,6 +302,58 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 				other.Not.AnyOf = append(other.Not.AnyOf, obj(map[string]*load.Definition{"kind": {Type: "string", Const: "stop"}}, "kind"))
 			},
 			want: "shapes[shapeEvent].anyOf[1]: has no merged version",
+		},
+		{
+			// The new variant takes stop, and nothing takes pause.
+			name: "a catch-all leaves out a kind that no variant takes, beside a new variant",
+			change: func(defs map[string]*load.Definition) {
+				other := defs["Event"].AnyOf[1]
+				for _, kind := range []string{"stop", "pause"} {
+					other.Not.AnyOf = append(other.Not.AnyOf, obj(map[string]*load.Definition{"kind": {Type: "string", Const: kind}}, "kind"))
+				}
+				defs["Event"].AnyOf = []*load.Definition{defs["Event"].AnyOf[0], variant("stop", map[string]*load.Definition{}), other}
+			},
+			want: "shapes[shapeEvent].anyOf[1]: has no merged version",
+		},
+		{
+			name: "a catch-all leaves out every kind, beside a new variant",
+			change: func(defs map[string]*load.Definition) {
+				other := defs["Event"].AnyOf[1]
+				other.Not.AnyOf = append(other.Not.AnyOf, obj(map[string]*load.Definition{"kind": str()}, "kind"))
+				defs["Event"].AnyOf = []*load.Definition{defs["Event"].AnyOf[0], variant("stop", map[string]*load.Definition{}), other}
+			},
+			want: "shapes[shapeEvent].anyOf[1]: has no merged version",
+		},
+		{
+			// Only a new variant takes the values that the catch-all then
+			// leaves out: a stable value of the kind wait that does not
+			// fit the variant wait fit the catch-all.
+			name: "a catch-all leaves out the kind of a stable variant",
+			setup: func(defs map[string]*load.Definition) {
+				defs["Event"].AnyOf = []*load.Definition{defs["Event"].AnyOf[0], variant("wait", map[string]*load.Definition{"until": str()}), defs["Event"].AnyOf[1]}
+			},
+			change: func(defs map[string]*load.Definition) {
+				other := defs["Event"].AnyOf[2]
+				other.Not.AnyOf = append(other.Not.AnyOf, obj(map[string]*load.Definition{"kind": {Type: "string", Const: "wait"}}, "kind"))
+				defs["Event"].AnyOf = append(defs["Event"].AnyOf, variant("stop", map[string]*load.Definition{}))
+			},
+			want: "shapes[shapeEvent].anyOf[2]: has no merged version",
+		},
+		{
+			// == on Flags no longer compiles.
+			name: "a struct that can be compared gains a member that cannot",
+			change: func(defs map[string]*load.Definition) {
+				defs["Flags"].Properties["_meta"] = &load.Definition{Type: []any{"object", "null"}, AdditionalProperties: load.Members{Open: true}}
+			},
+			want: "Flags: old is comparable, new is not",
+		},
+		{
+			// Update has a MarshalJSON, and == on it no longer compiles.
+			name: "a struct that can be compared gains additionalProperties",
+			change: func(defs map[string]*load.Definition) {
+				defs["Update"].AdditionalProperties = load.Members{Open: true}
+			},
+			want: "Update: old is comparable, new is not",
 		},
 		{
 			name: "a new check of a stable value has a rule for a stable member",
@@ -351,8 +412,14 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := compare(t, schema(resource), schema(func(defs map[string]*load.Definition) {
+			setup := func(defs map[string]*load.Definition) {
 				resource(defs)
+				if tc.setup != nil {
+					tc.setup(defs)
+				}
+			}
+			err := compare(t, schema(setup), schema(func(defs map[string]*load.Definition) {
+				setup(defs)
 				tc.change(defs)
 			}))
 			if err == nil || !strings.Contains(err.Error(), tc.want) {

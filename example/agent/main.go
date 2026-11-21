@@ -725,7 +725,7 @@ func (a *exampleAgent) askHost(ctx context.Context, sid string, editID acp.ToolC
 				Type:      "string",
 				Title:     acp.Ptr("Database host"),
 				Default:   acp.Ptr(defaultHost),
-				MinLength: acp.Ptr[int64](1),
+				MinLength: acp.Ptr[uint32](1),
 			}}},
 			Required: []string{"host"},
 		},

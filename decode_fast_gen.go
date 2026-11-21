@@ -2693,7 +2693,7 @@ func (v *CreateTerminalRequest) decodeFast(b []byte) bool {
 				return false
 			}
 		case "outputbytelimit":
-			if string(w.key) != "outputByteLimit" || !w.once(&raw.OutputByteLimit) || !fastPtr(&v.OutputByteLimit, raw.OutputByteLimit, fastInt[int64]) {
+			if string(w.key) != "outputByteLimit" || !w.once(&raw.OutputByteLimit) || !fastPtr(&v.OutputByteLimit, raw.OutputByteLimit, fastUint[uint64]) {
 				return false
 			}
 		case "sessionid":
@@ -3188,11 +3188,11 @@ func (v *ElicitationPropertySchemaString) decodeFast(b []byte) bool {
 				return false
 			}
 		case "maxlength":
-			if string(w.key) != "maxLength" || !w.once(&raw.MaxLength) || !fastPtr(&v.MaxLength, raw.MaxLength, fastInt[int64]) {
+			if string(w.key) != "maxLength" || !w.once(&raw.MaxLength) || !fastPtr(&v.MaxLength, raw.MaxLength, fastUint[uint32]) {
 				return false
 			}
 		case "minlength":
-			if string(w.key) != "minLength" || !w.once(&raw.MinLength) || !fastPtr(&v.MinLength, raw.MinLength, fastInt[int64]) {
+			if string(w.key) != "minLength" || !w.once(&raw.MinLength) || !fastPtr(&v.MinLength, raw.MinLength, fastUint[uint32]) {
 				return false
 			}
 		case "oneof":
@@ -3479,11 +3479,11 @@ func (v *ElicitationPropertySchemaArray) decodeFast(b []byte) bool {
 				return false
 			}
 		case "maxitems":
-			if string(w.key) != "maxItems" || !w.once(&raw.MaxItems) || !fastPtr(&v.MaxItems, raw.MaxItems, fastInt[int64]) {
+			if string(w.key) != "maxItems" || !w.once(&raw.MaxItems) || !fastPtr(&v.MaxItems, raw.MaxItems, fastUint[uint64]) {
 				return false
 			}
 		case "minitems":
-			if string(w.key) != "minItems" || !w.once(&raw.MinItems) || !fastPtr(&v.MinItems, raw.MinItems, fastInt[int64]) {
+			if string(w.key) != "minItems" || !w.once(&raw.MinItems) || !fastPtr(&v.MinItems, raw.MinItems, fastUint[uint64]) {
 				return false
 			}
 		case "title":
@@ -6166,11 +6166,11 @@ func (v *MultiSelectPropertySchema) decodeFast(b []byte) bool {
 				return false
 			}
 		case "maxitems":
-			if string(w.key) != "maxItems" || !w.once(&raw.MaxItems) || !fastPtr(&v.MaxItems, raw.MaxItems, fastInt[int64]) {
+			if string(w.key) != "maxItems" || !w.once(&raw.MaxItems) || !fastPtr(&v.MaxItems, raw.MaxItems, fastUint[uint64]) {
 				return false
 			}
 		case "minitems":
-			if string(w.key) != "minItems" || !w.once(&raw.MinItems) || !fastPtr(&v.MinItems, raw.MinItems, fastInt[int64]) {
+			if string(w.key) != "minItems" || !w.once(&raw.MinItems) || !fastPtr(&v.MinItems, raw.MinItems, fastUint[uint64]) {
 				return false
 			}
 		case "title":
@@ -7265,7 +7265,7 @@ func (v *PromptSuggestionsUpdate) decodeFast(b []byte) bool {
 }
 
 func (v *ProtocolVersion) decodeFast(b []byte) bool {
-	return fastInt(v, b)
+	return fastUint(v, b)
 }
 
 func (v *ProvidersCapabilities) decodeFast(b []byte) bool {
@@ -7316,11 +7316,11 @@ func (v *ReadTextFileRequest) decodeFast(b []byte) bool {
 				return false
 			}
 		case "limit":
-			if string(w.key) != "limit" || !w.once(&raw.Limit) || !fastPtr(&v.Limit, raw.Limit, fastInt[int64]) {
+			if string(w.key) != "limit" || !w.once(&raw.Limit) || !fastPtr(&v.Limit, raw.Limit, fastUint[uint32]) {
 				return false
 			}
 		case "line":
-			if string(w.key) != "line" || !w.once(&raw.Line) || !fastPtr(&v.Line, raw.Line, fastInt[int64]) {
+			if string(w.key) != "line" || !w.once(&raw.Line) || !fastPtr(&v.Line, raw.Line, fastUint[uint32]) {
 				return false
 			}
 		case "path":
@@ -8804,7 +8804,7 @@ func (v *SessionInfoUpdate) decodeFast(b []byte) bool {
 	if !w.done() {
 		return false
 	}
-	fastPatchLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	fastPatchLenient(absentIfNull(raw.Meta), &v.Meta, (*Meta).decodeFast)
 	fastPatchLenient(raw.Title, &v.Title, fastString[string])
 	fastPatchLenient(raw.UpdatedAt, &v.UpdatedAt, fastString[string])
 	return true
@@ -9642,15 +9642,15 @@ func (v *SessionToolCallUpdate) decodeFast(b []byte) bool {
 	if !w.done() {
 		return false
 	}
-	fastPatchLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
-	fastPatchLenientItems(raw.Content, &v.Content, (*ToolCallContent).decodeFast, shapeToolCallContent)
-	fastPatchLenient(raw.Kind, &v.Kind, (*ToolKind).decodeFast)
-	fastPatchLenientItems(raw.Locations, &v.Locations, (*ToolCallLocation).decodeFast, shapeToolCallLocation)
-	fastPatchLenient(raw.Name, &v.Name, fastString[string])
-	fastPatchLenient(raw.RawInput, &v.RawInput, fastRaw)
-	fastPatchLenient(raw.RawOutput, &v.RawOutput, fastRaw)
-	fastPatchLenient(raw.Status, &v.Status, (*ToolCallStatus).decodeFast, shapeToolCallStatus)
-	fastPatchLenient(raw.Title, &v.Title, fastString[string])
+	fastPatchLenient(absentIfNull(raw.Meta), &v.Meta, (*Meta).decodeFast)
+	fastPatchLenientItems(absentIfNull(raw.Content), &v.Content, (*ToolCallContent).decodeFast, shapeToolCallContent)
+	fastPatchLenient(absentIfNull(raw.Kind), &v.Kind, (*ToolKind).decodeFast)
+	fastPatchLenientItems(absentIfNull(raw.Locations), &v.Locations, (*ToolCallLocation).decodeFast, shapeToolCallLocation)
+	fastPatchLenient(absentIfNull(raw.Name), &v.Name, fastString[string])
+	fastPatchLenient(absentIfNull(raw.RawInput), &v.RawInput, fastRaw)
+	fastPatchLenient(absentIfNull(raw.RawOutput), &v.RawOutput, fastRaw)
+	fastPatchLenient(absentIfNull(raw.Status), &v.Status, (*ToolCallStatus).decodeFast, shapeToolCallStatus)
+	fastPatchLenient(absentIfNull(raw.Title), &v.Title, fastString[string])
 	if !(raw.SessionUpdate != nil && string(raw.SessionUpdate) != "null" && raw.ToolCallId != nil && string(raw.ToolCallId) != "null") && (maybeAbsent(&v.SessionUpdate) || maybeAbsent(&v.ToolCallId)) {
 		return false
 	}
@@ -9951,7 +9951,7 @@ func (v *SessionSessionInfoUpdate) decodeFast(b []byte) bool {
 	if !w.done() {
 		return false
 	}
-	fastPatchLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	fastPatchLenient(absentIfNull(raw.Meta), &v.Meta, (*Meta).decodeFast)
 	fastPatchLenient(raw.Title, &v.Title, fastString[string])
 	fastPatchLenient(raw.UpdatedAt, &v.UpdatedAt, fastString[string])
 	if !(raw.SessionUpdate != nil && string(raw.SessionUpdate) != "null") && (maybeAbsent(&v.SessionUpdate)) {
@@ -9988,11 +9988,11 @@ func (v *SessionUsageUpdate) decodeFast(b []byte) bool {
 				return false
 			}
 		case "size":
-			if string(w.key) != "size" || !w.once(&raw.Size) || !fastInt(&v.Size, raw.Size) {
+			if string(w.key) != "size" || !w.once(&raw.Size) || !fastUint(&v.Size, raw.Size) {
 				return false
 			}
 		case "used":
-			if string(w.key) != "used" || !w.once(&raw.Used) || !fastInt(&v.Used, raw.Used) {
+			if string(w.key) != "used" || !w.once(&raw.Used) || !fastUint(&v.Used, raw.Used) {
 				return false
 			}
 		default:
@@ -11564,11 +11564,11 @@ func (v *StringPropertySchema) decodeFast(b []byte) bool {
 				return false
 			}
 		case "maxlength":
-			if string(w.key) != "maxLength" || !w.once(&raw.MaxLength) || !fastPtr(&v.MaxLength, raw.MaxLength, fastInt[int64]) {
+			if string(w.key) != "maxLength" || !w.once(&raw.MaxLength) || !fastPtr(&v.MaxLength, raw.MaxLength, fastUint[uint32]) {
 				return false
 			}
 		case "minlength":
-			if string(w.key) != "minLength" || !w.once(&raw.MinLength) || !fastPtr(&v.MinLength, raw.MinLength, fastInt[int64]) {
+			if string(w.key) != "minLength" || !w.once(&raw.MinLength) || !fastPtr(&v.MinLength, raw.MinLength, fastUint[uint32]) {
 				return false
 			}
 		case "oneof":
@@ -11871,9 +11871,9 @@ func (v *TerminalExitStatus) decodeFast(b []byte) bool {
 		return false
 	}
 	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
-	fastLenient(raw.ExitCode, &v.ExitCode, func(d **int64, b []byte) bool {
-		return fastPtr(d, b, fastInt[int64])
-	}, shapeTerminalExitStatusExitCode)
+	fastLenient(raw.ExitCode, &v.ExitCode, func(d **uint32, b []byte) bool {
+		return fastPtr(d, b, fastUint[uint32])
+	})
 	fastLenient(raw.Signal, &v.Signal, func(d **string, b []byte) bool {
 		return fastPtr(d, b, fastString[string])
 	})
@@ -12445,9 +12445,9 @@ func (v *ToolCallLocation) decodeFast(b []byte) bool {
 		return false
 	}
 	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
-	fastLenient(raw.Line, &v.Line, func(d **int64, b []byte) bool {
-		return fastPtr(d, b, fastInt[int64])
-	}, shapeToolCallLocationLine)
+	fastLenient(raw.Line, &v.Line, func(d **uint32, b []byte) bool {
+		return fastPtr(d, b, fastUint[uint32])
+	})
 	if !(raw.Path != nil && string(raw.Path) != "null") && (maybeAbsent(&v.Path)) {
 		return false
 	}
@@ -12527,15 +12527,15 @@ func (v *ToolCallUpdate) decodeFast(b []byte) bool {
 	if !w.done() {
 		return false
 	}
-	fastPatchLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
-	fastPatchLenientItems(raw.Content, &v.Content, (*ToolCallContent).decodeFast, shapeToolCallContent)
-	fastPatchLenient(raw.Kind, &v.Kind, (*ToolKind).decodeFast)
-	fastPatchLenientItems(raw.Locations, &v.Locations, (*ToolCallLocation).decodeFast, shapeToolCallLocation)
-	fastPatchLenient(raw.Name, &v.Name, fastString[string])
-	fastPatchLenient(raw.RawInput, &v.RawInput, fastRaw)
-	fastPatchLenient(raw.RawOutput, &v.RawOutput, fastRaw)
-	fastPatchLenient(raw.Status, &v.Status, (*ToolCallStatus).decodeFast, shapeToolCallStatus)
-	fastPatchLenient(raw.Title, &v.Title, fastString[string])
+	fastPatchLenient(absentIfNull(raw.Meta), &v.Meta, (*Meta).decodeFast)
+	fastPatchLenientItems(absentIfNull(raw.Content), &v.Content, (*ToolCallContent).decodeFast, shapeToolCallContent)
+	fastPatchLenient(absentIfNull(raw.Kind), &v.Kind, (*ToolKind).decodeFast)
+	fastPatchLenientItems(absentIfNull(raw.Locations), &v.Locations, (*ToolCallLocation).decodeFast, shapeToolCallLocation)
+	fastPatchLenient(absentIfNull(raw.Name), &v.Name, fastString[string])
+	fastPatchLenient(absentIfNull(raw.RawInput), &v.RawInput, fastRaw)
+	fastPatchLenient(absentIfNull(raw.RawOutput), &v.RawOutput, fastRaw)
+	fastPatchLenient(absentIfNull(raw.Status), &v.Status, (*ToolCallStatus).decodeFast, shapeToolCallStatus)
+	fastPatchLenient(absentIfNull(raw.Title), &v.Title, fastString[string])
 	if !(raw.ToolCallId != nil && string(raw.ToolCallId) != "null") && (maybeAbsent(&v.ToolCallId)) {
 		return false
 	}
@@ -13451,6 +13451,88 @@ func (v *UnstableProviderInfo) decodeFast(b []byte) bool {
 	return true
 }
 
+func (v *UnstableProxySuccessorNotification) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta   []byte
+		Method []byte
+		Params []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "method":
+			if string(w.key) != "method" || !w.once(&raw.Method) || !fastString(&v.Method, raw.Method) {
+				return false
+			}
+		case "params":
+			if string(w.key) != "params" || !w.once(&raw.Params) || !fastRaw(&v.Params, raw.Params) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.Method != nil && string(raw.Method) != "null") && (maybeAbsent(&v.Method)) {
+		return false
+	}
+	return true
+}
+
+func (v *UnstableProxySuccessorRequest) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta   []byte
+		Method []byte
+		Params []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "method":
+			if string(w.key) != "method" || !w.once(&raw.Method) || !fastString(&v.Method, raw.Method) {
+				return false
+			}
+		case "params":
+			if string(w.key) != "params" || !w.once(&raw.Params) || !fastRaw(&v.Params, raw.Params) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.Method != nil && string(raw.Method) != "null") && (maybeAbsent(&v.Method)) {
+		return false
+	}
+	return true
+}
+
 func (v *UnstableSessionOptionsRequest) decodeFast(b []byte) bool {
 	// raw holds the value of each member, nil while it is absent.
 	var raw struct {
@@ -13917,11 +13999,11 @@ func (v *Usage) decodeFast(b []byte) bool {
 				return false
 			}
 		case "inputtokens":
-			if string(w.key) != "inputTokens" || !w.once(&raw.InputTokens) || !fastInt(&v.InputTokens, raw.InputTokens) {
+			if string(w.key) != "inputTokens" || !w.once(&raw.InputTokens) || !fastUint(&v.InputTokens, raw.InputTokens) {
 				return false
 			}
 		case "outputtokens":
-			if string(w.key) != "outputTokens" || !w.once(&raw.OutputTokens) || !fastInt(&v.OutputTokens, raw.OutputTokens) {
+			if string(w.key) != "outputTokens" || !w.once(&raw.OutputTokens) || !fastUint(&v.OutputTokens, raw.OutputTokens) {
 				return false
 			}
 		case "thoughttokens":
@@ -13929,7 +14011,7 @@ func (v *Usage) decodeFast(b []byte) bool {
 				return false
 			}
 		case "totaltokens":
-			if string(w.key) != "totalTokens" || !w.once(&raw.TotalTokens) || !fastInt(&v.TotalTokens, raw.TotalTokens) {
+			if string(w.key) != "totalTokens" || !w.once(&raw.TotalTokens) || !fastUint(&v.TotalTokens, raw.TotalTokens) {
 				return false
 			}
 		default:
@@ -13942,15 +14024,15 @@ func (v *Usage) decodeFast(b []byte) bool {
 		return false
 	}
 	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
-	fastLenient(raw.CachedReadTokens, &v.CachedReadTokens, func(d **int64, b []byte) bool {
-		return fastPtr(d, b, fastInt[int64])
-	}, shapeUsageCachedReadTokens)
-	fastLenient(raw.CachedWriteTokens, &v.CachedWriteTokens, func(d **int64, b []byte) bool {
-		return fastPtr(d, b, fastInt[int64])
-	}, shapeUsageCachedWriteTokens)
-	fastLenient(raw.ThoughtTokens, &v.ThoughtTokens, func(d **int64, b []byte) bool {
-		return fastPtr(d, b, fastInt[int64])
-	}, shapeUsageThoughtTokens)
+	fastLenient(raw.CachedReadTokens, &v.CachedReadTokens, func(d **uint64, b []byte) bool {
+		return fastPtr(d, b, fastUint[uint64])
+	})
+	fastLenient(raw.CachedWriteTokens, &v.CachedWriteTokens, func(d **uint64, b []byte) bool {
+		return fastPtr(d, b, fastUint[uint64])
+	})
+	fastLenient(raw.ThoughtTokens, &v.ThoughtTokens, func(d **uint64, b []byte) bool {
+		return fastPtr(d, b, fastUint[uint64])
+	})
 	if !(raw.InputTokens != nil && string(raw.InputTokens) != "null" && raw.OutputTokens != nil && string(raw.OutputTokens) != "null" && raw.TotalTokens != nil && string(raw.TotalTokens) != "null") && (maybeAbsent(&v.InputTokens) || maybeAbsent(&v.OutputTokens) || maybeAbsent(&v.TotalTokens)) {
 		return false
 	}
@@ -13980,11 +14062,11 @@ func (v *UsageUpdate) decodeFast(b []byte) bool {
 				return false
 			}
 		case "size":
-			if string(w.key) != "size" || !w.once(&raw.Size) || !fastInt(&v.Size, raw.Size) {
+			if string(w.key) != "size" || !w.once(&raw.Size) || !fastUint(&v.Size, raw.Size) {
 				return false
 			}
 		case "used":
-			if string(w.key) != "used" || !w.once(&raw.Used) || !fastInt(&v.Used, raw.Used) {
+			if string(w.key) != "used" || !w.once(&raw.Used) || !fastUint(&v.Used, raw.Used) {
 				return false
 			}
 		default:
@@ -14082,9 +14164,9 @@ func (v *WaitForTerminalExitResponse) decodeFast(b []byte) bool {
 		return false
 	}
 	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
-	fastLenient(raw.ExitCode, &v.ExitCode, func(d **int64, b []byte) bool {
-		return fastPtr(d, b, fastInt[int64])
-	}, shapeWaitForTerminalExitResponseExitCode)
+	fastLenient(raw.ExitCode, &v.ExitCode, func(d **uint32, b []byte) bool {
+		return fastPtr(d, b, fastUint[uint32])
+	})
 	fastLenient(raw.Signal, &v.Signal, func(d **string, b []byte) bool {
 		return fastPtr(d, b, fastString[string])
 	})

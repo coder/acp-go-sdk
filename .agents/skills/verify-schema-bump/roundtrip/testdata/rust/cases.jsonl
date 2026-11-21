@@ -13,12 +13,28 @@
 {"id":"125/resource-union-fallback","def":"EmbeddedResourceResource","json":{"uri":"file:///a","text":5,"blob":"YQ=="}}
 {"id":"control/uint32-negative","def":"ReadTextFileRequest","json":{"sessionId":"s","path":"/a","line":-1}}
 {"id":"control/uint32-above-range","def":"ReadTextFileRequest","json":{"sessionId":"s","path":"/a","line":4294967296}}
+{"id":"control/integer-u64-above-i64","def":"SessionNotification","json":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":9223372036854775808,"size":18446744073709551615}}}
+{"id":"control/integer-u64-above-range","def":"SessionNotification","json":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":18446744073709551616,"size":1}}}
+{"id":"control/integer-u64-negative-zero","def":"SessionNotification","json":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":-0,"size":1}}}
+{"id":"control/integer-u64-max-request","def":"CreateTerminalRequest","json":{"sessionId":"s","command":"c","outputByteLimit":18446744073709551615}}
+{"id":"control/integer-u64-max-lenient","def":"PromptResponse","json":{"stopReason":"end_turn","usage":{"inputTokens":2,"outputTokens":4,"totalTokens":18446744073709551615,"thoughtTokens":18446744073709551615}}}
+{"id":"control/integer-u32-above-range","def":"StringPropertySchema","json":{"type":"string","maxLength":4294967296}}
+{"id":"control/integer-u32-fraction","def":"ReadTextFileRequest","json":{"sessionId":"s","path":"/a","line":1.0}}
+{"id":"control/integer-u16-above-range-result","def":"InitializeResponse","json":{"protocolVersion":65536}}
+{"id":"control/integer-i32-above-range","def":"ErrorCode","json":2147483648}
+{"id":"control/integer-i32-below-range","def":"ErrorCode","json":-2147483649}
 {"id":"envelope/agent-request","def":"AgentRequest","json":{"id":2,"method":"fs/read_text_file","params":{"sessionId":"s","path":"/a"}}}
 {"id":"envelope/client-request","def":"ClientRequest","json":{"id":0,"method":"initialize","params":{"protocolVersion":1}}}
 {"id":"envelope/agent-response","def":"AgentResponse","json":{"id":0,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true}}}}
 {"id":"envelope/client-response","def":"ClientResponse","json":{"id":2,"error":{"code":-32603,"message":"Internal error"}}}
 {"id":"envelope/agent-notification","def":"AgentNotification","json":{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hi"}}}}}
 {"id":"envelope/client-notification","def":"ClientNotification","json":{"method":"session/cancel","params":{"sessionId":"s"}}}
+{"id":"141/tool-call-update-title-null","def":"SessionNotification","json":{"sessionId":"01a1ed8d-ea5e-7ec3-b9a5-0eb4d83755fc","update":{"sessionUpdate":"tool_call_update","toolCallId":"exec-c4e2eb8a-c857-490e-a87f-e77e95f50787","status":"completed","title":null}}}
+{"id":"141/tool-call-update-content-null","def":"SessionNotification","json":{"sessionId":"01a1ed8d-ea5e-7ec3-b9a5-0eb4d83755fc","update":{"sessionUpdate":"tool_call_update","toolCallId":"exec-c4e2eb8a-c857-490e-a87f-e77e95f50787","status":"completed","content":null}}}
+{"id":"141/tool-call-update-every-field-null","def":"ToolCallUpdate","json":{"toolCallId":"exec-c4e2eb8a-c857-490e-a87f-e77e95f50787","kind":null,"status":null,"title":null,"name":null,"content":null,"locations":null,"rawInput":null,"rawOutput":null,"_meta":null}}
+{"id":"141/permission-tool-call-title-content-null","def":"RequestPermissionRequest","json":{"sessionId":"01a1ed8d-ea5e-7ec3-b9a5-0eb4d83755fc","toolCall":{"toolCallId":"exec-c4e2eb8a-c857-490e-a87f-e77e95f50787","title":null,"locations":[{"path":"/home/coder/.mux/sessions/7aa788c08d/scratch/acp-harness/20261118-072707-qQphuo/work/cwd/g5-codex/b/allow-check.txt"}],"kind":"edit","status":"pending","content":null},"options":[{"optionId":"allow_once","name":"Yes, proceed","kind":"allow_once"},{"optionId":"allow_for_session","name":"Yes, and don't ask again for these files","kind":"allow_always"},{"optionId":"cancel","name":"No, and tell Codex what to do differently","kind":"reject_once"}]}}
+{"id":"141/session-info-update-meta-null","def":"SessionNotification","json":{"sessionId":"c090a3c6-f962-49ae-bd60-7c52c9c05650","update":{"sessionUpdate":"session_info_update","title":"Pong reply test","updatedAt":"2026-11-18T07:20:01.837Z","_meta":null}}}
+{"id":"control/session-info-update-title-null","def":"SessionNotification","json":{"sessionId":"c090a3c6-f962-49ae-bd60-7c52c9c05650","update":{"sessionUpdate":"session_info_update","title":null,"updatedAt":"2026-11-18T07:20:01.837Z"}}}
 {"id":"dup/known-field","def":"SessionNotification","json":{"sessionId":"a","sessionId":"b","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hi"}}}}
 {"id":"dup/unknown-field","def":"SessionNotification","json":{"sessionId":"a","x":1,"x":2,"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hi"}}}}
 {"id":"dup/meta-member","def":"SessionNotification","json":{"_meta":{"k":1,"k":2},"sessionId":"a","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hi"}}}}

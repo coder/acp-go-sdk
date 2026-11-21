@@ -3,6 +3,7 @@ package acp
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"reflect"
 	"strconv"
 	"unicode"
@@ -113,7 +114,7 @@ func fastString[S ~string](dst *S, b []byte) bool {
 
 // fastInt reads an integer as strconv.ParseInt(text, 10, 64) does, and fails
 // where the value does not fit in I.
-func fastInt[I ~int | ~int64](dst *I, b []byte) bool {
+func fastInt[I ~int | ~int32 | ~int64](dst *I, b []byte) bool {
 	if b[0] == 'n' {
 		return true
 	}
@@ -122,6 +123,20 @@ func fastInt[I ~int | ~int64](dst *I, b []byte) bool {
 		return false
 	}
 	*dst = I(n)
+	return true
+}
+
+// fastUint reads an integer as strconv.ParseUint(text, 10, 64) does, which
+// takes no sign, not even in -0, and fails where the value does not fit in U.
+func fastUint[U ~uint16 | ~uint32 | ~uint64](dst *U, b []byte) bool {
+	if b[0] == 'n' {
+		return true
+	}
+	n, ok := parseUint(b)
+	if !ok || uint64(U(n)) != n {
+		return false
+	}
+	*dst = U(n)
 	return true
 }
 
@@ -541,28 +556,40 @@ func isText(raw []byte, text string) bool {
 // one beyond the range of an int64. It does not allocate, as ParseInt's
 // error would.
 func parseInt(b []byte) (int64, bool) {
-	digits := b
 	neg := b[0] == '-'
 	if neg {
-		digits = b[1:]
+		b = b[1:]
 	}
-	if len(digits) == 0 || len(digits) > 19 {
-		return 0, false
-	}
-	var u uint64
-	for _, c := range digits {
-		if c < '0' || c > '9' {
-			return 0, false
-		}
-		u = u*10 + uint64(c-'0')
-	}
+	u, ok := parseUint(b)
 	switch {
+	case !ok:
 	case neg && u <= 1<<63:
 		return -int64(u), true
 	case !neg && u < 1<<63:
 		return int64(u), true
 	}
 	return 0, false
+}
+
+// parseUint reads b as strconv.ParseUint(b, 10, 64) does: it returns false
+// for anything but decimal digits, and for a number beyond the range of a
+// uint64. It does not allocate, as ParseUint's error would.
+func parseUint(b []byte) (uint64, bool) {
+	if len(b) == 0 {
+		return 0, false
+	}
+	var u uint64
+	for _, c := range b {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		d := uint64(c - '0')
+		if u > (math.MaxUint64-d)/10 {
+			return 0, false
+		}
+		u = u*10 + d
+	}
+	return u, true
 }
 
 // unquote returns the text of the content s of a JSON string, without its

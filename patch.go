@@ -10,16 +10,18 @@ import (
 //
 //   - unset (the zero value): the member is absent, and the stored value stays
 //     as it is;
-//   - null: the member is null, which clears the stored value, unless the
-//     field's documentation says otherwise;
+//   - null: the member is null, which clears the stored value;
 //   - set: the member holds a value, which replaces the stored one.
 //
-// In ACP v1 a null in a ToolCallUpdate does not clear: the protocol docs say
-// that it leaves name, rawInput, and rawOutput unchanged, and the Rust SDK
-// reads null in every ToolCallUpdate field as absent. Treat IsNull there like
-// IsUnset. A set Patch whose value encodes as JSON null, such as a nil
-// json.RawMessage or a nil pointer, is null on the wire and reads back as
-// IsNull.
+// ACP v1 defines no clear for the fields of a ToolCallUpdate and for _meta of
+// a SessionInfoUpdate: null there leaves the stored value as it is, as the
+// protocol docs say for name, rawInput, and rawOutput, and as the Rust SDK
+// reads it. The structs of this package read such a null as unset, and leave
+// the member out for a null Patch there. Decoding such a null into a struct
+// that already holds a value keeps the value, as for an absent member. A set
+// Patch whose value encodes as JSON null, such as a nil json.RawMessage or a
+// nil pointer, is null on the wire and reads back as IsNull, or as unset in
+// such a field.
 //
 // Make one with PatchSet, PatchNull, or PatchFromPtr, and read it with Value,
 // Ptr, IsNull, and IsUnset. The structs of this package leave the member out
@@ -60,7 +62,9 @@ func PatchFromPtr[T any](p *T) Patch[T] {
 	return PatchSet(*p)
 }
 
-// PatchNull returns the Patch that clears the stored value.
+// PatchNull returns the Patch that clears the stored value. Where ACP v1
+// defines no clear, such as in a field of a ToolCallUpdate, a struct of this
+// package leaves it out on encode (see Patch).
 func PatchNull[T any]() Patch[T] {
 	return Patch[T]{state: patchNull}
 }
@@ -82,7 +86,11 @@ func (p Patch[T]) Ptr() *T {
 	return &p.value
 }
 
-// IsNull reports whether p clears the stored value.
+// IsNull reports whether p is a null Patch, which clears the stored value. In
+// a field for which ACP v1 defines no clear, decoding null into a fresh struct
+// gives an unset Patch, so IsNull is false after it. A PatchNull that you put
+// there, or one a reused struct already holds, still reports true, though
+// the struct leaves it out on encode (see Patch).
 func (p Patch[T]) IsNull() bool { return p.state == patchNull }
 
 // IsUnset reports whether p leaves the stored value as it is.
@@ -141,6 +149,16 @@ func (p *Patch[T]) UnmarshalJSON(b []byte) error {
 // unset one, which omitempty leaves out.
 func (p Patch[T]) orNil() *Patch[T] {
 	if p.state == patchUnset {
+		return nil
+	}
+	return &p
+}
+
+// setOrNil returns p for the member of a set Patch, and nil for an unset or
+// null one, which omitempty leaves out: in a field for which the schema
+// defines no clear, null means what absent means.
+func (p Patch[T]) setOrNil() *Patch[T] {
+	if p.state != patchSet {
 		return nil
 	}
 	return &p

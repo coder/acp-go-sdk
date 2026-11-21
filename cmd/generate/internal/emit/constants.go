@@ -29,6 +29,7 @@ func WriteConstantsJen(outDir string, meta *load.Meta, schemaVersion string) err
 		{"AgentMethod", "Agent method names", meta.AgentMethods},
 		{"ClientMethod", "Client method names", meta.ClientMethods},
 		{"ProtocolMethod", "Protocol method names, which either side can send", meta.ProtocolMethods},
+		{"ProxyMethod", "Proxy method names, which a conductor and its proxies exchange", meta.ProxyMethods},
 	}
 	for _, g := range groups {
 		if len(g.methods) == 0 {

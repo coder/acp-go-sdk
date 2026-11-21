@@ -1,23 +1,43 @@
 name: Release Notes
 
+# The release: published trigger serves a release created by hand. The Release
+# workflow calls this one directly, because a release that GITHUB_TOKEN creates
+# starts no workflow. Run it by hand to regenerate the notes of a release.
 on:
   release:
     types:
       - published
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to write notes for, for example v0.21.0.
+        required: true
+        type: string
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to regenerate notes for, for example v0.21.0.
+        required: true
+        type: string
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release-notes:
     name: release-notes
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # rewrite the release body
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
     steps:
       - name: Validate release inputs
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
@@ -61,8 +81,6 @@ jobs:
           communique --version
 
       - name: Resolve previous release ref
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
@@ -83,10 +101,9 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
           : "${PREVIOUS_RELEASE_REF:?previous release ref is required}"
 
-          communique generate "$RELEASE_TAG" "$PREVIOUS_RELEASE_REF" --github-release --repo "${{ github.repository }}"
+          communique generate "$RELEASE_TAG" "$PREVIOUS_RELEASE_REF" --github-release --repo "$GITHUB_REPOSITORY"

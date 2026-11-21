@@ -114,15 +114,23 @@ func decodeStmt(p fieldPlan, structName, recv string) Code {
 
 	if p.patch && !p.field.Lenient.DefaultOnError {
 		// A patch field without hints is raw only for its null item check
-		// (nonNullItem). Patch.UnmarshalJSON reads it as it would in place.
+		// (nonNullItem), or to read null as absent (nullAsAbsent).
+		// Patch.UnmarshalJSON reads it as it would in place.
 		decode := Qual("encoding/json", "Unmarshal").Call(raw(), Op("&").Id(recv).Dot(p.field.Name))
-		return If(raw().Op("!=").Nil()).Block(If(Id("err").Op(":=").Add(decode), Id("err").Op("!=").Nil()).Block(fail))
+		present := raw().Op("!=").Nil()
+		if p.nullAsAbsent {
+			present = present.Op("&&").Id("string").Call(raw()).Op("!=").Lit("null")
+		}
+		return If(present).Block(If(Id("err").Op(":=").Add(decode), Id("err").Op("!=").Nil()).Block(fail))
 	}
 	if p.patch {
 		// planFor allows only default-on-error on a lenient patch field.
 		helper := "decodePatch"
 		if p.field.Lenient.SkipInvalidItems {
 			helper = "decodePatchItems"
+		}
+		if p.nullAsAbsent {
+			args[0] = Id("absentIfNull").Call(raw())
 		}
 		return Id(helper).Call(args...)
 	}
@@ -364,6 +372,16 @@ func (b *typesBuilder) emitSupport() {
 					),
 				),
 			),
+		)
+		f.Line()
+	}
+	if b.usesAbsentIfNull {
+		f.Comment("absentIfNull returns nil for a raw null, and raw otherwise, so that a patch")
+		f.Comment("field for which the schema defines no clear reads null as absent, as ACP v1")
+		f.Comment("reads it.")
+		f.Func().Id("absentIfNull").Params(rawParam()).Qual("encoding/json", "RawMessage").Block(
+			If(Id("string").Call(Id("raw")).Op("==").Lit("null")).Block(Return(Nil())),
+			Return(Id("raw")),
 		)
 		f.Line()
 	}

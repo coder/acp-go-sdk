@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/coder/acp-go-sdk/cmd/generate/internal/ir"
 	"github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 )
 
@@ -225,6 +226,46 @@ func (b *typesBuilder) heldRange(def *load.Definition, via []container) *intRang
 		}
 	}
 	return r
+}
+
+// mustHoldDefault panics when the default of field, an integer whose Go type
+// is goType, is not an integer within that type and within bounds, the range
+// that Validate checks (nil for none). The default fills an absent member, so
+// Validate would reject a message that leaves the member out, or setDefault
+// would fail to decode the default and leave 0. Such a schema contradicts
+// itself, and none from 1.18.0 through 1.33.0 has one. It panics on a default
+// of 2^53 or beyond too, which load may have rounded.
+func mustHoldDefault(field ir.Field, goType string, bounds *intRange) {
+	// planFor calls it only for a default that is not null.
+	n, ok := field.Def.Default.(float64)
+	if !ok {
+		panic(fmt.Sprintf("default %v of integer property %q is not a number", field.Def.Default, field.Prop))
+	}
+	t := formatType("")
+	for _, ft := range formatTypes {
+		if ft.name == goType {
+			t = ft
+		}
+	}
+	lo, hi := big.NewInt(t.min), new(big.Int).SetUint64(t.max)
+	if bounds != nil {
+		if bounds.min != math.MinInt64 {
+			lo = big.NewInt(bounds.min)
+		}
+		if bounds.max != math.MaxInt64 {
+			hi = big.NewInt(bounds.max)
+		}
+	}
+	var v big.Rat
+	v.SetFloat64(n)
+	if math.Abs(n) >= 1<<53 {
+		// load reads a default as a float64, and planFor writes the fallback
+		// from it, so the generated default would differ from the schema's.
+		panic(fmt.Sprintf("default %s of integer property %q is 2^53 or beyond, so the float64 that load reads it as may have rounded it", strconv.FormatFloat(n, 'f', -1, 64), field.Prop))
+	}
+	if !v.IsInt() || v.Num().Cmp(lo) < 0 || v.Num().Cmp(hi) > 0 {
+		panic(fmt.Sprintf("default %s of integer property %q is not an integer between %s and %s", strconv.FormatFloat(n, 'g', -1, 64), field.Prop, lo, hi))
+	}
 }
 
 // checkRange returns the statement that returns an error when the integer v,

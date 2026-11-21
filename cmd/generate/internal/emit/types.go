@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -226,6 +227,9 @@ func buildTypesJen(schema *load.Schema, meta *load.Meta) (*File, map[string][]un
 		}
 
 		switch classify(def) {
+		case aliasKind:
+			f.Type().Id(name).Op("=").Add(jenTypeFor(def.AllOf[0]))
+			f.Line()
 		case enumKind:
 			b.emitEnum(name, def)
 		case openEnumKind:
@@ -329,15 +333,29 @@ func (b *typesBuilder) emitInterfaces(side string, methods map[string]string, gr
 // that handles mi.
 func (b *typesBuilder) interfaceMethod(mi *ir.MethodInfo) []Code {
 	code := appendDocComments(nil, methodDescription(b.schema, mi))
+	return append(code, methodSignature(b.schema, mi, Id(mi.Name)))
+}
+
+// methodSignature appends to s the parameters and the results of the Go
+// method that handles mi: (ctx, params) and an error, plus the response
+// before the error for a request whose response is not null.
+func methodSignature(schema *load.Schema, mi *ir.MethodInfo, s *Statement) *Statement {
 	ctx := Id("ctx").Qual("context", "Context")
 	if mi.Notif != "" {
-		return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Notif)).Error())
+		return s.Params(ctx, Id("params").Id(mi.Notif)).Error()
 	}
-	respName := strings.TrimSuffix(mi.Req, "Request") + "Response"
-	if ir.IsNullResponse(b.schema.Defs[respName]) {
-		return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Req)).Error())
+	resp, ok := responseType(schema, mi)
+	if !ok {
+		return s.Params(ctx, Id("params").Id(mi.Req)).Error()
 	}
-	return append(code, Id(mi.Name).Params(ctx, Id("params").Id(mi.Req)).Params(Id(respName), Error()))
+	return s.Params(ctx, Id("params").Id(mi.Req)).Params(Id(resp), Error())
+}
+
+// responseType returns the Go type of the response to the request mi, and
+// false when the response is null.
+func responseType(schema *load.Schema, mi *ir.MethodInfo) (string, bool) {
+	name := strings.TrimSuffix(mi.Req, "Request") + "Response"
+	return name, !ir.IsNullResponse(schema.Defs[name])
 }
 
 func isStringConstUnion(def *load.Definition) bool {
@@ -455,11 +473,14 @@ const (
 	primitiveKind                // a named string, integer, number, or boolean type
 	emptyKind                    // an empty struct
 	rawKind                      // an alias of json.RawMessage
+	aliasKind                    // an alias of the $defs entry that its one allOf entry refers to
 )
 
 // classify returns the kind of Go type that the $defs entry def becomes.
 func classify(def *load.Definition) defKind {
 	switch t := ir.PrimaryType(def); {
+	case isRefAlias(def):
+		return aliasKind
 	case len(def.Enum) > 0, isStringConstUnion(def):
 		return enumKind
 	case len(def.AnyOf) > 0 && isOpenStringEnum(def):
@@ -475,6 +496,24 @@ func classify(def *load.Definition) defKind {
 	default:
 		return rawKind
 	}
+}
+
+// isRefAlias reports whether def has no keyword but an allOf of one entry
+// that has no keyword but a $ref, which makes it the schema that the $ref
+// names.
+func isRefAlias(def *load.Definition) bool {
+	if len(def.AllOf) != 1 || def.AllOf[0] == nil || !strings.HasPrefix(def.AllOf[0].Ref, "#/$defs/") {
+		return false
+	}
+	return onlyAnnotations(*def, load.Definition{AllOf: def.AllOf}) && onlyAnnotations(*def.AllOf[0], load.Definition{Ref: def.AllOf[0].Ref})
+}
+
+// onlyAnnotations reports whether d is bare once its annotations, which do
+// not change what it accepts, are left out. It compares every field, so a
+// keyword that load.Definition learns later counts too.
+func onlyAnnotations(d, bare load.Definition) bool {
+	d.Description, d.Title, d.XSide, d.XMethod, d.DocsIgnore = "", "", "", "", false
+	return reflect.DeepEqual(d, bare)
 }
 
 // emitValidate declares the Validate method of the type name, whose receiver

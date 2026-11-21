@@ -5,7 +5,8 @@
 #
 #   acp-verify launch                      build into a new run folder
 #   acp-verify doctor                      read-only: is this run worth driving?
-#   acp-verify wire JOURNEY LABEL          drive the example agent with acpwire
+#   acp-verify wire JOURNEY LABEL [proxy]  drive the example agent, or the example
+#                                          proxy, with acpwire
 #   acp-verify client LABEL INPUT          run the example client CLI with INPUT on stdin
 #   acp-verify client-default LABEL INPUT  run `go run ./example/client` with INPUT, then list
 #                                          every process that it started and that is still running
@@ -127,6 +128,7 @@ cmd_launch() {
 		cd "$REPO"
 		go build -o "$BIN/acp-example-agent" ./example/agent
 		go build -o "$BIN/acp-example-client" ./example/client
+		go build -o "$BIN/acp-example-proxy" ./example/proxy
 		go build -o "$BIN/acpwire" "$SKILL_DIR/scripts/acpwire/main.go"
 	) || die "build failed"
 	[ "$(source_id)" = "$before" ] || die "the checkout changed during the build. Run launch again."
@@ -143,7 +145,7 @@ cmd_launch() {
 cmd_doctor() {
 	need_run
 	local ok=1 want have
-	for b in acp-example-agent acp-example-client acpwire; do
+	for b in acp-example-agent acp-example-client acp-example-proxy acpwire; do
 		if [ -x "$BIN/$b" ]; then echo "ok    $b built"; else
 			echo "FAIL  $b missing"
 			ok=0
@@ -183,14 +185,19 @@ cmd_wire() {
 	need_run
 	local journey=${1:?journey file}
 	local label=${2:?label}
+	local target=${3:-agent}
+	case $target in
+	agent | proxy) ;;
+	*) die "unknown target '$target': use agent or proxy" ;;
+	esac
 	[ -f "$journey" ] || journey=$SKILL_DIR/journeys/$journey
 	[ -f "$journey" ] || die "no journey $1"
 	local out=$EVIDENCE/$label
 	mkdir -p "$out"
 	cp "$journey" "$out/journey.jsonl"
-	echo "$BIN/acpwire -agent $BIN/acp-example-agent -journey $journey -out $out" >"$out/command.txt"
+	echo "$BIN/acpwire -agent $BIN/acp-example-$target -journey $journey -out $out" >"$out/command.txt"
 	set +e
-	tracked "$BIN/acpwire" -agent "$BIN/acp-example-agent" -journey "$journey" -out "$out" \
+	tracked "$BIN/acpwire" -agent "$BIN/acp-example-$target" -journey "$journey" -out "$out" \
 		2>"$out/acpwire.stderr.log" | tee "$out/result.txt"
 	local rc=${PIPESTATUS[0]}
 	set -e
@@ -382,7 +389,7 @@ client-default)
 	;;
 cleanup) cmd_cleanup ;;
 *)
-	sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 	exit 2
 	;;
 esac

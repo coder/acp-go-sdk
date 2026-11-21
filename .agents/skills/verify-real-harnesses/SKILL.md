@@ -1,6 +1,6 @@
 ---
 name: verify-real-harnesses
-description: Prove the ACP Go SDK against real agents. Gate G5 drives Zed's Claude Code and Codex ACP adapters, at their latest npm versions and on each adapter's own default model, with a client built on this checkout. Gate G4 drives the SDK against the official TypeScript SDK in both directions. Proof is JSON-RPC transcripts, SDK logs, agent stderr, the models seen on the wire and the reported cost. Use before and after a schema bump, or after a change to connection.go, the generated types or the client side, when a unit test cannot show that a real agent still works. For the example binaries alone, use verify-acp-go-sdk.
+description: Prove the ACP Go SDK against real agents. Gate G5 drives Zed's Claude Code and Codex ACP adapters, at their latest npm versions and on each adapter's own default model, with a client built on this checkout. Gate G4 drives the SDK against the official TypeScript SDK in both directions, and runs the example proxy in a Rust conductor's proxy chain. Proof is JSON-RPC transcripts, SDK logs, agent stderr, the models seen on the wire and the reported cost. Use before and after a schema bump, or after a change to connection.go, the generated types or the client side, when a unit test cannot show that a real agent still works. For the example binaries alone, use verify-acp-go-sdk.
 ---
 
 # Verify the ACP Go SDK against real agents
@@ -10,6 +10,7 @@ Unit tests and `verify-acp-go-sdk` drive this repository's own example agent. Re
 | Gate | Client -> agent | Model | Cost per run |
 | --- | --- | --- | --- |
 | G4 | TypeScript SDK client -> `example/agent`, and `acpharness` -> the TypeScript SDK's example agent | none | free |
+| G4 | TypeScript SDK client -> Rust `agent-client-protocol-conductor` -> `example/proxy` -> `example/agent` | none | free |
 | G5 | `acpharness` -> `@agentclientprotocol/claude-agent-acp` | the adapter's default (`claude-opus-5-5` on 2026-11-17) | $0.60 to $0.90 |
 | G5 | `acpharness` -> `@agentclientprotocol/codex-acp` | the adapter's default (`gpt-6.1-sol` on 2026-11-17) | not reported |
 
@@ -17,7 +18,7 @@ Unit tests and `verify-acp-go-sdk` drive this repository's own example agent. Re
 
 The skill never pins an adapter or a model. `launch` resolves the latest npm versions when it runs, and each adapter picks its own default model. Do not point a run at a cheaper or older model to save money. The gate exists to find what breaks on the models that users run.
 
-You need Go, Node 22.18 or later (it runs the TypeScript example agent without a build step), npm, curl, jq and git, plus network access to npm and `raw.githubusercontent.com`. G5 claude needs `ANTHROPIC_API_KEY`, and G5 codex needs `OPENAI_API_KEY`. The skill passes a proxy in `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` on to the adapter. The scripts check these variables by name and never print their values. They also need `sha256sum`, `timeout` and `pgrep`, so they run on Linux, and on macOS once GNU coreutils is installed. `launch` checks for every tool.
+You need Go, Node 22.18 or later (it runs the TypeScript example agent without a build step), npm, curl, jq and git, plus network access to npm, `raw.githubusercontent.com` and `crates.io`. The conductor drive of G4 also needs cargo: `launch` runs `${CARGO:-cargo}`, so set `CARGO` when cargo is not on `PATH`. Without cargo, `launch` warns, `versions.json` records why, and that drive is a `SKIP` with the reason in `g4`, `doctor` and `report`, never a PASS. When that drive is a `SKIP`, `g4` still exits 0, so read its output or `report`, not only the exit code. G5 claude needs `ANTHROPIC_API_KEY`, and G5 codex needs `OPENAI_API_KEY`. The skill passes a proxy in `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` on to the adapter. The scripts check these variables by name and never print their values. They also need `sha256sum`, `timeout` and `pgrep`, so they run on Linux, and on macOS once GNU coreutils is installed. `launch` checks for every tool.
 
 All commands run from the repository root. Below, `$V` is the helper:
 
@@ -34,10 +35,11 @@ export HARNESS_ROOT="${XUM_SCRATCH_DIR:-${TMPDIR:-/tmp}}/acp-harness"   # option
 
 `launch` makes a private run folder and fills `work/` in it:
 
-1. It builds `acpharness` and `acp-example-agent` from the checkout.
+1. It builds `acpharness`, `acp-example-agent` and `acp-example-proxy` from the checkout.
 1. It runs `npm view` for `@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp` and `@agentclientprotocol/sdk`, and installs each latest version into its own folder under `work/npm/`. Each adapter keeps the TypeScript SDK version that it pins.
 1. It downloads `src/examples/agent.ts` from the TypeScript SDK's git tag for the installed version, and points its import at the npm package.
-1. It writes `evidence/versions.json`: the checkout, the schema version, Go and Node, each adapter version, the Claude agent SDK and Codex CLI versions bundled in them, and the TypeScript SDK version with the example agent's URL and SHA-256.
+1. It asks the crates.io API for the newest stable `agent-client-protocol-conductor` and runs `cargo install --locked --version <it> --root work/cargo`, which takes about 40 s.
+1. It writes `evidence/versions.json`: the checkout, the schema version, Go and Node, each adapter version, the Claude agent SDK and Codex CLI versions bundled in them, the TypeScript SDK version with the example agent's URL and SHA-256, and the conductor version, or the reason that there is none.
 
 The root must be a directory that you own and that other users cannot write to, outside the checkout unless git ignores it. The last line is `export HARNESS_RUN=<run folder>`. Shell state does not carry over between tool calls, so start every later command with both variables:
 
@@ -53,19 +55,19 @@ Run it first, and again whenever a result looks wrong:
 "$V" doctor
 ```
 
-It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncommitted changes>`), that both adapters and the TypeScript SDK are installed at the versions that `versions.json` records, that the TypeScript files are there, and that no process from this run still runs, including a tagged process that an agent left behind in its process group. A `WARN` line says that npm now has a newer adapter than the run, or that a credential variable is unset. Exit 1 means that a check failed. After any change to the checkout, run `launch` again.
+It checks that the binaries exist and match the checkout (`<HEAD>+<hash of uncommitted changes>`), that both adapters, the TypeScript SDK and the conductor are installed at the versions that `versions.json` records, that the TypeScript files are there, and that no process from this run still runs, including a tagged process that an agent left behind in its process group. A `WARN` line says that npm now has a newer adapter than the run, that crates.io has a newer conductor, that the run has no conductor, or that a credential variable is unset. Exit 1 means that a check failed. After any change to the checkout, run `launch` again.
 
 ## Run the gates
 
 ```bash
-"$V" g4            # free, about 10 s
+"$V" g4            # free, about 12 s
 "$V" g5 claude     # real model, about 50 s
 "$V" g5 codex      # real model, about 35 s
 "$V" report        # writes evidence/report.md and prints it
 "$V" scan          # exit 1 when a credential value is in evidence/
 ```
 
-`g4` runs two drives. First, `scripts/g4/ts-client.mjs` uses the TypeScript SDK to run one prompt turn against `acp-example-agent`, and answers its permission request with allow. It advertises form and url elicitation, answers the agent's form with `ts-host` and accepts its url, and checks that the edit carries `ts-host` and that the agent completes the url elicitation with its id. It also advertises `session.notices` and `session.compaction`, checks that the agent's disclaimer arrives as one `info` notice and that both tool calls and the permission request carry their names, and then sends `/compact` and checks that it streams `compaction_update` (`in_progress`), `compaction_summary_chunk` and `compaction_update` (`completed`) with one id and ends with `end_turn`. Second, `acpharness -profile smoke` runs `initialize`, `session/new` and one prompt turn against the TypeScript example agent. A drive fails when protocol version 1 is not negotiated, when the turn does not end with `end_turn`, when the agent's permission request does not arrive or is not allowed, when an error response or a non-JSON line crosses the wire, when the SDK logs a "Method not found" or decode error, when the agent does not exit 0 after its input closes, when the agent's stderr has an error or warning line, or when the TypeScript client cannot write its transcript. Each `g4` replaces its two evidence folders, so a failed rerun leaves no stale PASS behind, and `report` shows a drive as PASS only after `g4` has scanned its stderr files.
+`g4` runs three drives. First, `scripts/g4/ts-client.mjs` uses the TypeScript SDK to run one prompt turn against `acp-example-agent`, and answers its permission request with allow. It advertises form and url elicitation, answers the agent's form with `ts-host` and accepts its url, and checks that the edit carries `ts-host` and that the agent completes the url elicitation with its id. It also advertises `session.notices` and `session.compaction`, checks that the agent's disclaimer arrives as one `info` notice and that both tool calls and the permission request carry their names, and then sends `/compact` and checks that it streams `compaction_update` (`in_progress`), `compaction_summary_chunk` and `compaction_update` (`completed`) with one id and ends with `end_turn`. Second, `acpharness -profile smoke` runs `initialize`, `session/new` and one prompt turn against the TypeScript example agent. Third, `ts-client.mjs --expect-chunk-prefix "[proxy] "` makes the first drive's turns against `agent-client-protocol-conductor --trace FILE agent acp-example-proxy acp-example-agent`: the conductor sends `proxy/initialize` to the proxy and `initialize` to the agent, and carries each message between the two in a `proxy/successor` envelope on the proxy's side. Every check of the first drive applies, and one more: at least one `agent_message_chunk` arrives, and the text of each starts with `[proxy] `, which the example proxy puts in front of each one. The drive passes `--trace` only when the conductor's `--help` lists it. A drive fails when protocol version 1 is not negotiated, when the turn does not end with `end_turn`, when the agent's permission request does not arrive or is not allowed, when an error response or a non-JSON line crosses the wire, when the SDK logs a "Method not found" or decode error, when the agent does not exit 0 after its input closes, when the agent's stderr has an error or warning line, or when the TypeScript client cannot write its transcript. Each `g4` replaces its three evidence folders, so a failed rerun leaves no stale PASS behind, and `report` shows a drive as PASS only after `g4` has scanned its stderr files.
 
 `g5 ADAPTER` runs every scenario in the next section (`g5 ADAPTER SCENARIO,...` runs some of them, see [Rerun some scenarios](#rerun-some-scenarios)), under a 1800 s limit (`HARNESS_G5_TIMEOUT`) that ends a driver stuck on an agent that stopped reading. After the driver exits, `g5` stops any agent process that it left running. A driver that dies, for example on a Go panic in a generated decoder, exits with a code other than 0, 1 and 64. `g5` then keeps the run's evidence, the panic's trace in `driver.stderr.log` included, prints `INCOMPLETE` and passes on the exit code. Ctrl-C or SIGTERM during `g5` stops the driver and its agents, keeps the evidence, writes `leftovers.txt` and exits 130. Each adapter gets a private config folder in `work/home/`:
 
@@ -156,6 +158,7 @@ Each gate writes a folder in `evidence/` of the run:
 - `g5-<adapter>/`: `transcript.jsonl` (every JSON-RPC line in both directions, with `t_ms`, `conn`, `scenario` and `dir`), `sdk.log` (the SDK's slog records as JSON, tagged with `conn` and `scenario`), `agent-<conn>.stderr.log` (each line prefixed with milliseconds and the scenario), `summary.json`, `result.txt`, `command.txt`, `budget.txt`, `driver.stderr.log` (the driver's own stderr, empty unless something went wrong, such as a panic) and `leftovers.txt` (the processes that `g5` had to stop after the driver exited). The driver exits 1 when it cannot write any of these files, because a gate must not pass without its proof.
 - `g4-ts-client-go-agent/`: the TypeScript client's `transcript.jsonl`, `summary.json` and `result.txt`, plus `agent.stderr.log` and `client.stderr.log`.
 - `g4-go-client-ts-agent/`: the same files as a `g5` folder.
+- `g4-ts-client-conductor-go-proxy/`: the files of `g4-ts-client-go-agent/`, where `agent.stderr.log` holds the stderr of the conductor, the proxy and the agent, plus `conductor.trace.jsons`, the conductor's `--trace` record of every message that it routed. A run without a conductor writes only `result.txt`, whose `harness-skip=` line gives the reason.
 - `versions.json` and, after `report`, `report.md`.
 
 `summary.json` holds the results, the global-predicate findings, the methods that the agent sent by count, the model ids seen on the wire, the cost, the tokens, every permission request with its answer, every elicitation with its answer, and the exit of each agent process.
@@ -187,7 +190,7 @@ Proof standards:
 | --- | --- | --- |
 | `scripts/harness` | `"$V" launch`, `doctor`, `g4`, `g5 claude`, `g5 codex`, `report`, `scan`, `cleanup` | Run lifecycle, adapter table, budget, report, credential scan. |
 | `scripts/acpharness/` | Built by `launch`, run by `g4` and `g5`: `acpharness [-profile live\|smoke] [-ask-mode MODE] [-auth METHOD] [-sends-none a,b] [-budget-usd N] [-only a,b] [-pgids FILE] -out DIR -cwd DIR -- AGENT [ARGS...]` | The ACP client on this checkout's SDK. The comment at the top of `main.go` lists the flags. Use `g5 ADAPTER SCENARIO,...` instead of a direct run against a real adapter. |
-| `scripts/g4/ts-client.mjs` | Copied into `work/npm/ts` by `launch`. `node ts-client.mjs --out DIR --cwd DIR -- AGENT [ARGS...]` | One prompt turn with the official TypeScript SDK as the client. |
+| `scripts/g4/ts-client.mjs` | Copied into `work/npm/ts` by `launch`. `node ts-client.mjs --out DIR --cwd DIR [--expect-chunk-prefix STR] -- AGENT [ARGS...]` | One prompt turn with the official TypeScript SDK as the client. `--expect-chunk-prefix` adds the check that every `agent_message_chunk` text starts with STR. |
 
 `./...` skips dot directories, so `make test` names the driver by path. Its unit tests need no network and take about a second. To run them alone:
 
@@ -233,6 +236,8 @@ At schema 1.25.0 (`1cde84a`, 2026-11-18), with the same adapter versions, the dr
 At schema 1.32.0 (`4b9d5da`, 2026-11-18), with the same adapter versions, the driver takes `auth/status_update` and has the `system-prompt` scenario. `no-method-not-found` passes on Claude for the first time: Claude sends `auth/status_update` three times per run, and the SDK hands each one to the driver. Both adapters advertise `sessionCapabilities.systemPrompt`: Claude as `{"mode":{"override":{}}}`, Codex as `{}`. Both follow the system prompt, Claude with the reply `Hello, good to meet you. ZEBRA-42`, Codex with `Hello! ZEBRA-42`. Claude passes every row but `authenticate` (SKIP, no `-auth`), and Codex every row but `notice` and `tool-call-name` (SKIP, `adapter sends none`). Claude cost $1.10. Codex reported no cost and used about 108,500 tokens.
 
 Both G4 drives pass. Claude ran on `claude-opus-5-5`, and on `claude-fable-5-2` after the model switch. Codex ran on `gpt-6.1-sol`, and on `gpt-6-astra` after the switch. Claude reported $0.46 to $0.80. Codex reported no cost and used about 46,500 tokens. In four runs at `68c27b5` and three at `84bbc4c`, `g4` took 10 to 11 s, `g5 claude` 17 to 34 s and `g5 codex` 24 to 36 s, most of it model time.
+
+At `6c4769e` (2026-11-20), with TypeScript SDK 2.8.0 and conductor 5.4.0, the chain itself works: with the example agent alone behind the conductor (`agent acp-example-agent`, no proxy), all 13 checks of the first drive pass, elicitation, notices and compaction included, and only `every agent_message_chunk text starts with "[proxy] "` fails, because nothing rewrites the chunks. `cargo install` took about 40 s and `g4` about 12 s.
 
 What the results mean:
 

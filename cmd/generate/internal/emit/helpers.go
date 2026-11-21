@@ -85,20 +85,41 @@ func requiredParams(v unionVariant) ([]Code, Dict) {
 	return params, assigns
 }
 
+// variantPointer returns the parameter that a constructor takes for the value
+// of v, the statement that declares the value, and a pointer to the value.
+// For a struct v, the pointer is to a literal of assigns. A v that takes one
+// value has no parameter.
+func variantPointer(v unionVariant, assigns Dict) (param, decl []Code, pointer Code) {
+	switch {
+	case v.isStruct:
+		return nil, nil, Op("&").Id(v.typeName).Values(assigns)
+	case v.value != nil:
+		return nil, []Code{Id("value").Op(":=").Id(v.typeName).Call(v.value)}, Op("&").Id("value")
+	default:
+		return []Code{Id("value").Id(v.typeName)}, nil, Op("&").Id("value")
+	}
+}
+
 func emitConstructor(f *File, union string, v unionVariant, alternative *unionVariant) {
 	params, assigns := requiredParams(v)
+	var body []Code
 	funcName := "New" + union + v.fieldName
 	doc := fmt.Sprintf("%s constructs a %s using the '%s' variant.", funcName, union, v.discValue)
 	if alternative != nil {
 		alternativeParams, alternativeAssigns := requiredParams(*alternative)
-		params = append(params, alternativeParams...)
-		assigns[Id(alternative.fieldName)] = Op("&").Id(alternative.typeName).Values(alternativeAssigns)
+		param, decl, pointer := variantPointer(*alternative, alternativeAssigns)
+		params = append(append(params, alternativeParams...), param...)
+		body = append(body, decl...)
+		assigns[Id(alternative.fieldName)] = pointer
 		funcName += alternative.fieldName
 		doc = fmt.Sprintf("%s constructs a %s using the '%s' variant with its %s alternative.", funcName, union, v.discValue, alternative.fieldName)
 	}
+	param, decl, pointer := variantPointer(v, assigns)
+	params = append(params, param...)
+	body = append(body, decl...)
 	f.Comment(doc)
 	f.Func().Id(funcName).Params(params...).Id(union).Block(
-		Return(Id(union).Values(Dict{Id(v.fieldName): Op("&").Id(v.typeName).Values(assigns)})),
+		append(body, Return(Id(union).Values(Dict{Id(v.fieldName): pointer})))...,
 	)
 	f.Line()
 }

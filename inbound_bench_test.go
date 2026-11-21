@@ -7,8 +7,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -28,16 +30,20 @@ import (
 
 // inboundCorpusGlobs name the recorded traffic: the fixtures of the Claude and
 // Codex adapters and the verify-acp-go-sdk journeys in testdata/bench, and the
-// transcripts that verify-schema-bump's G2 gate round-trips. The module that
-// the Go proxy serves leaves out .agents, which is a module of its own, so
-// the G2 transcripts are optional; the corpus digest tells the corpora apart.
-var inboundCorpusGlobs = []struct {
-	glob     string
-	required bool
-}{
-	{"testdata/bench/*/*.jsonl", true},
-	{".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl", false},
+// transcripts that verify-schema-bump's G2 gate round-trips. testdata/bench
+// and .agents/skills/verify-schema-bump are modules of their own, so the
+// module zip that the Go proxy serves has neither (it keeps the rest of
+// .agents), and a test that needs the corpus skips there. Where either folder
+// exists, every glob must match, so a lost source fails loudly.
+var inboundCorpusGlobs = []string{
+	"testdata/bench/claude-agent-acp/*.jsonl",
+	"testdata/bench/codex-acp/*.jsonl",
+	"testdata/bench/g3/*.jsonl",
+	".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl",
 }
+
+// inboundCorpusRoots are the corpus folders that the module zip leaves out.
+var inboundCorpusRoots = []string{"testdata/bench", ".agents/skills/verify-schema-bump"}
 
 // An inboundMessage is one message of the corpus, as the side that receives
 // it reads it.
@@ -56,10 +62,19 @@ type inboundMessage struct {
 func loadInboundCorpus(tb testing.TB) []inboundMessage {
 	tb.Helper()
 	var paths []string
+	zip := true
+	for _, root := range inboundCorpusRoots {
+		if _, err := os.Stat(root); !errors.Is(err, fs.ErrNotExist) {
+			zip = false
+		}
+	}
+	if zip {
+		tb.Skip("no corpus: this is the module zip, which leaves out testdata/bench and .agents/skills/verify-schema-bump")
+	}
 	for _, g := range inboundCorpusGlobs {
-		matches, err := filepath.Glob(g.glob)
-		if err != nil || (g.required && len(matches) == 0) {
-			tb.Fatalf("no corpus files match %s: %v", g.glob, err)
+		matches, err := filepath.Glob(g)
+		if err != nil || len(matches) == 0 {
+			tb.Fatalf("no corpus files match %s: %v", g, err)
 		}
 		paths = append(paths, matches...)
 	}

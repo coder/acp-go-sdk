@@ -271,15 +271,25 @@ func (b *typesBuilder) emitSupport() {
 	f.Comment("rejectNullItems returns an error when raw is an array with a null item or")
 	f.Comment("an object with a null member value. encoding/json reads one as the zero value")
 	f.Comment("of T, the type of the items or values, and the schema does not allow it there.")
+	f.Comment("It returns nil for malformed JSON, which the caller's decode then reports:")
+	f.Comment("a decoder that failed once keeps reporting More, so the loop must stop.")
 	f.Func().Id("rejectNullItems").Types(Id("T").Any()).Params(rawParam()).Error().Block(
 		Id("dec").Op(":=").Qual("encoding/json", "NewDecoder").Call(Qual("bytes", "NewReader").Call(Id("raw"))),
-		List(Id("open"), Id("_")).Op(":=").Id("dec").Dot("Token").Call(),
+		List(Id("open"), Id("err")).Op(":=").Id("dec").Dot("Token").Call(),
+		If(Id("err").Op("!=").Nil().Op("||").Parens(Id("open").Op("!=").Qual("encoding/json", "Delim").Call(LitRune('[')).Op("&&").Id("open").Op("!=").Qual("encoding/json", "Delim").Call(LitRune('{')))).Block(
+			Return(Nil()),
+		),
 		For(Id("dec").Dot("More").Call()).Block(
 			If(Id("open").Op("==").Qual("encoding/json", "Delim").Call(LitRune('{'))).Block(
-				Id("dec").Dot("Token").Call(),
+				If(List(Id("_"), Id("err")).Op(":=").Id("dec").Dot("Token").Call(), Id("err").Op("!=").Nil()).Block(
+					Return(Nil()),
+				),
 			),
 			Var().Id("item").Qual("encoding/json", "RawMessage"),
-			If(Id("dec").Dot("Decode").Call(Op("&").Id("item")).Op("==").Nil().Op("&&").Id("string").Call(Id("item")).Op("==").Lit("null")).Block(
+			If(Id("err").Op(":=").Id("dec").Dot("Decode").Call(Op("&").Id("item")), Id("err").Op("!=").Nil()).Block(
+				Return(Nil()),
+			),
+			If(Id("string").Call(Id("item")).Op("==").Lit("null")).Block(
 				Return(Op("&").Qual("encoding/json", "UnmarshalTypeError").Values(Dict{
 					Id("Value"): Lit("null"),
 					Id("Type"):  Qual("reflect", "TypeOf").Call(Parens(Op("*").Id("T")).Call(Nil())).Dot("Elem").Call(),

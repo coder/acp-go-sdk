@@ -1,13 +1,14 @@
 package acp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -401,6 +402,9 @@ func FuzzFastDecode_Leaves(f *testing.F) {
 	})
 }
 
+// objectKey matches the end of an object key and its colon.
+var objectKey = regexp.MustCompile(`"\s*:`)
+
 // compareLeaf requires that dec, on true, reads data as json.Unmarshal does
 // into a zero T, and that it declines only where json.Unmarshal fails, for
 // the leaves whose decoders decline nothing else.
@@ -411,7 +415,198 @@ func compareLeaf[T any](t *testing.T, data []byte, dec func(*T, []byte) bool) {
 	if ok && (err != nil || !reflect.DeepEqual(fast, exact)) {
 		t.Errorf("%T of %q: the fast decoder reads %#v, json.Unmarshal %#v (error %v)", fast, data, fast, exact, err)
 	}
-	if !ok && err == nil && !bytes.Contains(data, []byte(`":`)) {
+	// A map decoder declines a key that repeats, so any value with a key may
+	// decline; whitespace can come between a key and its colon.
+	if !ok && err == nil && !objectKey.Match(data) {
 		t.Errorf("%T of %q: the fast decoder declines what json.Unmarshal reads as %#v", fast, data, exact)
+	}
+}
+
+// The slice helpers read the arrays of the corpus, and arrays longer than
+// the buffer that fastSlice and fastItems keep their items in, as their exact
+// counterparts do.
+
+// sliceSeeds are values that the slice helpers must read exactly or decline,
+// with arrays longer than their buffer among them.
+func sliceSeeds() []string {
+	seeds := []string{
+		`[]`, `null`, `[null]`, `[null,null]`, `"x"`, `{}`, `1`, `[1]`, `["a",null,"b"]`, `[1,"a",{},"b"]`,
+		`[{"type":"diff","path":"/a","newText":"x"},null,7,{"type":"content","content":{"type":"text","text":"x"}},{"type":"terminal","terminalId":"t"}]`,
+		`[{"name":"a","description":"b"},{"name":1},{"name":"c","description":"d","input":{"hint":"h"}}]`,
+		`[{"value":"a","name":"b"},{"value":"c","name":"d","description":null}]`,
+		`[{"type":"text","text":"a"},{"type":"image","data":"x","mimeType":"image/png"}]`,
+	}
+	for _, n := range []int{40, 70} {
+		strs := make([]string, n)
+		objects := make([]string, n)
+		for i := range strs {
+			strs[i] = strconv.Quote(strconv.Itoa(i))
+			objects[i] = `{"type":"text","text":` + strs[i] + `}`
+			if i%7 == 3 {
+				strs[i], objects[i] = "null", "1"
+			}
+		}
+		seeds = append(seeds, "["+strings.Join(strs, ",")+"]", "["+strings.Join(objects, ",")+"]")
+	}
+	return seeds
+}
+
+// corpusArrays returns every array of the corpus that is a member value, by
+// the key path of its member, as "params.update.content".
+func corpusArrays(tb testing.TB) map[string][][]byte {
+	arrays := map[string][][]byte{}
+	var walk func(b []byte, path string)
+	walk = func(b []byte, path string) {
+		switch b[0] {
+		case '{':
+			it, _ := objectMembers(b)
+			for it.next() {
+				p := path + "." + string(it.key)
+				if it.value[0] == '[' {
+					arrays[p] = append(arrays[p], it.value)
+				}
+				walk(it.value, p)
+			}
+		case '[':
+			it, _ := arrayItems(b)
+			for it.next() {
+				walk(it.item, path)
+			}
+		}
+	}
+	for _, m := range loadInboundCorpus(tb) {
+		if line := trimValue(m.line); json.Valid(line) {
+			walk(line, "")
+		}
+	}
+	return arrays
+}
+
+// compareItems requires that fastItems reads data as decodeItems does.
+func compareItems[T any](t *testing.T, data []byte, dec func(*T, []byte) bool, check ...shapeID) {
+	var fast, exact []T
+	decoded, ok := fastItems(data, &fast, dec, check...)
+	var exactDecoded bool
+	var err error
+	withFast(false, func() { exactDecoded, err = decodeItems(data, &exact, check...) })
+	if ok != (err == nil) || decoded != exactDecoded || !reflect.DeepEqual(fast, exact) {
+		t.Errorf("fastItems of %q into %T: %v, %v, %#v; decodeItems: %v, %v, %#v", data, fast, decoded, ok, fast, exactDecoded, err, exact)
+	}
+}
+
+// compareSlice requires that fastSlice, on true, reads data as json.Unmarshal
+// does.
+func compareSlice[T any](t *testing.T, data []byte, dec func(*T, []byte) bool) {
+	var fast, exact []T
+	ok := fastSlice(&fast, data, dec)
+	var err error
+	withFast(false, func() { err = json.Unmarshal(data, &exact) })
+	if ok && (err != nil || !reflect.DeepEqual(fast, exact)) {
+		t.Errorf("fastSlice of %q into %T: %#v; json.Unmarshal: %#v (error %v)", data, fast, fast, exact, err)
+	}
+}
+
+// compareSlices compares the slice helpers with their exact counterparts on
+// data, when encoding/json passes data to UnmarshalJSON as it is.
+func compareSlices(t *testing.T, data []byte) {
+	if len(data) == 0 || isSpace(data[0]) || isSpace(data[len(data)-1]) || !json.Valid(data) {
+		return
+	}
+	compareItems(t, data, fastString[string])
+	compareItems(t, data, (*ToolCallContent).decodeFast, shapeToolCallContent)
+	compareItems(t, data, (*AvailableCommand).decodeFast, shapeAvailableCommand)
+	compareItems(t, data, (*SessionConfigOption).decodeFast, shapeSessionConfigOption)
+	compareSlice(t, data, fastString[string])
+	compareSlice(t, data, (*SessionConfigSelectOption).decodeFast)
+	compareSlice(t, data, (*ContentBlock).decodeFast)
+}
+
+func TestFastDecode_Slices(t *testing.T) {
+	for _, s := range sliceSeeds() {
+		compareSlices(t, []byte(s))
+	}
+	for _, arrays := range corpusArrays(t) {
+		for _, a := range arrays {
+			compareSlices(t, a)
+		}
+	}
+}
+
+func FuzzFastDecode_Slices(f *testing.F) {
+	for _, s := range sliceSeeds() {
+		f.Add([]byte(s))
+	}
+	for _, arrays := range corpusArrays(f) {
+		for _, a := range arrays {
+			f.Add(a)
+		}
+	}
+	f.Fuzz(compareSlices)
+}
+
+// sliceBenchmarks are the slice helpers that read the most items of the
+// corpus, each with the end of the key path of the arrays it reads there.
+var sliceBenchmarks = []struct {
+	name, path string
+	decode     func([]byte) bool
+}{
+	{"AvailableCommand", ".availableCommands", func(b []byte) bool {
+		var v []AvailableCommand
+		return fastLenientItems(b, &v, (*AvailableCommand).decodeFast, shapeAvailableCommand)
+	}},
+	{"SessionConfigOption", ".configOptions", func(b []byte) bool {
+		var v []SessionConfigOption
+		return fastLenientItems(b, &v, (*SessionConfigOption).decodeFast, shapeSessionConfigOption)
+	}},
+	{"SessionConfigSelectOption", ".configOptions.options", func(b []byte) bool {
+		var v []SessionConfigSelectOption
+		return fastSlice(&v, b, (*SessionConfigSelectOption).decodeFast)
+	}},
+	{"SessionMode", ".availableModes", func(b []byte) bool {
+		var v []SessionMode
+		return fastLenientItems(b, &v, (*SessionMode).decodeFast, shapeSessionMode)
+	}},
+	{"ToolCallContent", ".update.content", func(b []byte) bool {
+		var v []ToolCallContent
+		return fastLenientItems(b, &v, (*ToolCallContent).decodeFast, shapeToolCallContent)
+	}},
+	{"PermissionOption", ".params.options", func(b []byte) bool {
+		var v []PermissionOption
+		return fastSlice(&v, b, (*PermissionOption).decodeFast)
+	}},
+	{"ContentBlock", ".params.prompt", func(b []byte) bool {
+		var v []ContentBlock
+		return fastSlice(&v, b, (*ContentBlock).decodeFast)
+	}},
+}
+
+// BenchmarkFastSlices reads, with each of sliceBenchmarks, the arrays of the
+// corpus that it reads there. ns/op is the time to read them all once.
+func BenchmarkFastSlices(b *testing.B) {
+	byPath := corpusArrays(b)
+	for _, c := range sliceBenchmarks {
+		var arrays [][]byte
+		for path, a := range byPath {
+			if strings.HasSuffix(path, c.path) {
+				arrays = append(arrays, a...)
+			}
+		}
+		b.Run(c.name, func(b *testing.B) {
+			if len(arrays) == 0 {
+				b.Fatal("no arrays")
+			}
+			b.ReportAllocs()
+			declined := 0
+			for i := 0; i < b.N; i++ {
+				declined = 0
+				for _, a := range arrays {
+					if !c.decode(a) {
+						declined++
+					}
+				}
+			}
+			b.ReportMetric(float64(len(arrays)), "arrays/op")
+			b.ReportMetric(float64(declined), "declined/op")
+		})
 	}
 }

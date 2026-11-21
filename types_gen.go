@@ -22754,15 +22754,25 @@ func propertyError(err error, structName, prop string) error {
 // rejectNullItems returns an error when raw is an array with a null item or
 // an object with a null member value. encoding/json reads one as the zero value
 // of T, the type of the items or values, and the schema does not allow it there.
+// It returns nil for malformed JSON, which the caller's decode then reports:
+// a decoder that failed once keeps reporting More, so the loop must stop.
 func rejectNullItems[T any](raw json.RawMessage) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
-	open, _ := dec.Token()
+	open, err := dec.Token()
+	if err != nil || (open != json.Delim('[') && open != json.Delim('{')) {
+		return nil
+	}
 	for dec.More() {
 		if open == json.Delim('{') {
-			dec.Token()
+			if _, err := dec.Token(); err != nil {
+				return nil
+			}
 		}
 		var item json.RawMessage
-		if dec.Decode(&item) == nil && string(item) == "null" {
+		if err := dec.Decode(&item); err != nil {
+			return nil
+		}
+		if string(item) == "null" {
 			return &json.UnmarshalTypeError{
 				Type:  reflect.TypeOf((*T)(nil)).Elem(),
 				Value: "null",

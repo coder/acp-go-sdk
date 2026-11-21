@@ -46,7 +46,7 @@ type Run struct {
 //     elements that only refer to what merged adds: new fields of the
 //     receiver type and new package-level names (newProjection);
 //   - a method that merged adds to a stable type and that refers to a stable
-//     name, such as an UnmarshalJSON for a hint on a stable property;
+//     name, such as a Validate that checks a stable property;
 //   - a field tag that changes, such as one that gains omitempty;
 //   - an entry of the shapes table that loses a rule (shapeChanges);
 //   - a call in a stable function that checks a stable value against an
@@ -377,6 +377,15 @@ func newProjection(old, new *side, recv string, isMethod bool) *projection {
 			}
 		}
 		addedMembers(old, new, recv, p.addedMembers, map[string]bool{})
+		// A call names the properties of the receiver, such as the check
+		// for a repeated one: a stable property keeps its name there,
+		// though a field of another type that merged adds has it too.
+		if st := structOf(old, recv); st != nil {
+			for i := 0; i < st.NumFields(); i++ {
+				json, _, _ := strings.Cut(reflect.StructTag(st.Tag(i)).Get("json"), ",")
+				delete(p.addedMembers, strconv.Quote(json))
+			}
+		}
 	}
 	for _, n := range new.pkg.Scope().Names() {
 		if old.pkg.Scope().Lookup(n) == nil {

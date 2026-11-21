@@ -18,6 +18,7 @@ go build ./...
 | `NewAgentSideConnection`, `NewClientSideConnection` and `NewConnection` take `...ConnectionOption`, and every connection limits what it holds from the peer | [Connection constructors and limits](#connection-constructors-and-limits) |
 | Log attributes hold strings and numbers: `err` is the error's text, and peer text is cut to 1 KiB | [Log attributes](#log-attributes) |
 | A `null` in a `tool_call_update` field, or in `_meta` of a `session_info_update`, reads as unset, and `PatchNull` there is left out | [Null in a tool call update](#null-in-a-tool-call-update) |
+| An object that holds one of its properties twice fails to decode | [Duplicate members](#duplicate-members) |
 
 ## Required members
 
@@ -330,3 +331,30 @@ ACP v1 defines no clear for the fields of a `ToolCallUpdate` and for `_meta` of 
 - `acp.PatchNull[T]()` in these fields is left out of the JSON, where v0.20.0 wrote `null`. ACP v1 reads both as "unchanged", and the Rust SDK leaves the member out too.
 - To clear `content` or `locations`, send an empty list, as in v0.20.0: `acp.PatchSet([]acp.ToolCallContent{})` or `WithUpdateContent([]acp.ToolCallContent{})`.
 - `title` and `updatedAt` of `SessionInfoUpdate`, and the patch fields of `CompactionUpdate`, `SubagentUpdate` and `SessionMessage`, whose schema says that `null` clears them, still read and write `null` as a clear.
+
+## Duplicate members
+
+v0.20.0 read an object that holds the same member twice as `encoding/json` does: the last value won. The Rust SDK fails it with `duplicate field`, and v0.21.0 fails the decode too (#141), when the member is a property of the object's type, at any depth: a field of a message, `_meta` itself, the discriminator of a union, such as `type` or `sessionUpdate`, a field of a variant, and the `id` or `method` of an envelope type, such as `ClientRequest`, that you decode yourself. A key counts by its name without escapes, so `"t\u0079pe"` repeats `"type"`. The error is a `*json.UnmarshalTypeError` that names the struct, the path of the property, and the type of its field:
+
+```text
+json: cannot unmarshal duplicate member into Go struct field SessionNotification.sessionId of type acp.SessionId
+json: cannot unmarshal duplicate member into Go struct field RequestPermissionRequest.toolCall.toolCallId of type acp.ToolCallId
+```
+
+A request that repeats one gets `-32602` invalid params, with that error in `data.error`, and your handler is not called. A notification that repeats one is dropped, and the connection logs it at Error (`failed to handle notification`). A response that repeats one makes your call, such as `ClientSideConnection.NewSession`, return a `-32603` error with that error in `data.error`, as for any result that does not decode.
+
+These still decode as in v0.20.0, and the last value wins, as in the Rust SDK:
+
+- A member that is no property of the type, such as an unknown `"x"`, or one that `additionalProperties` keeps.
+- A key of a map: a key of `_meta`, or of the `content` of an accepted elicitation.
+- The discriminator of a catch-all variant, such as `"state"` of a state update whose state the schema does not name. The Rust SDK reads a catch-all into a map.
+
+Inside a lenient property (`x-deserialize-default-on-error` or `x-deserialize-skip-invalid-items`), a value that repeats a property reads as the default, or its item is dropped, as the Rust SDK does: an `initialize` whose `clientInfo` holds `name` twice reads as one without `clientInfo`. Inside a union variant the union reports `invalid variant payload`, as for a missing member, and tries its next variant.
+
+To find the cause in a peer's output, take the struct and the path from the error, such as `toolCall.toolCallId` of `RequestPermissionRequest`, and look in the raw JSON-RPC line for that key twice in one object. For `invalid variant payload`, check each key of the union's object.
+
+**Some repeats still differ from the Rust SDK:**
+
+- The Rust SDK reads an agent authentication method, one without `type`, and the scope (`sessionId`, `toolCallId`, `requestId`) of an elicitation whose `mode` the schema does not name through a map, so it keeps the last of a repeated key there. The Go SDK rejects both.
+- The JSON-RPC envelope that the connection reads first, the `jsonrpc`, `id`, `method`, `params`, `result` and `error` of each line, still keeps the last of a repeated key.
+- A key in another case, such as `"sessionId"` and then `"SessionId"`, is no repeat. `encoding/json` reads both into the field, so the last wins, and the Rust SDK skips the second as unknown, so the first wins.

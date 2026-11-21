@@ -91,7 +91,7 @@ func schema(change func(defs map[string]*load.Definition)) map[string]*load.Defi
 		}},
 		// Unknown values of Tone decode as other.
 		"Tone": {Type: "string", Enum: []any{"warm", "other"}},
-		// Plain has no decoder of its own.
+		// The decoder of Plain only checks that no property repeats.
 		"Plain": obj(map[string]*load.Definition{"mode": str()}),
 		// The optional properties of a patch are patch fields.
 		"Update": {
@@ -371,11 +371,11 @@ func TestCompare_FailsOnChangesToStableTypes(t *testing.T) {
 			want: "Limits.Validate: is new and refers to the stable Max",
 		},
 		{
-			name: "a hint on a stable property gives a type a decoder",
+			name: "a hint on a stable property changes its decoder",
 			change: func(defs map[string]*load.Definition) {
 				defs["Plain"].Properties["mode"] = &load.Definition{Type: "string", Default: "ask", DefaultOnError: true}
 			},
-			want: "Plain.UnmarshalJSON: is new and refers to the stable Mode",
+			want: "Plain.UnmarshalJSON: changes",
 		},
 		{
 			name: "a default gains a member for a stable property",

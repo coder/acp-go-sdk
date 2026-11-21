@@ -282,6 +282,14 @@ var typeSeeds = []string{
 	"{ \"type\" : \"text\" ,\n\t\"text\" : \"x\" , \"_meta\" : { \"a\" : [ 1 , 2 ] } }",
 	`{"aVeryLongKeyThatIsLongerThanAnyFieldNameOfTheSchema":1,"type":"text","text":"x"}`,
 	`{"a":1,"b":2,"c":3,"d":4,"e":5,"f":6,"g":7,"h":8,"i":9,"j":10,"k":11,"l":12,"m":13,"n":14,"o":15,"p":16,"q":17,"type":"text","text":"x"}`,
+	// A property that repeats, which the exact decoders reject.
+	`{"sessionId":"a","sessionId":"b","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"x"}}}`,
+	`{"sessionId":null,"sessionId":"a","update":{"sessionUpdate":"plan","entries":[]}}`,
+	`{"type":"text","text":"x","t\u0065xt":"y"}`, `{"type":"text","t\u0079pe":"text","text":"x"}`,
+	`{"_meta":{},"_meta":{},"type":"text","text":"x"}`, `{"code":1,"code":2,"message":"m","x":1,"x":2}`,
+	`{"mode":"form","message":"a","message":"b","sessionId":"s","requestedSchema":{"type":"object","properties":{}}}`,
+	`{"state":"custom","state":"other","x":1,"x":2}`, `{"action":"accept","action":"custom","content":{"a":"x","a":"y"}}`,
+	`{"sessionUpdate":"tool_call_update","toolCallId":"t","locations":[{"path":"/a","path":"/b"}],"title":"x","title":"y"}`,
 }
 
 func FuzzFastDecode_Types(f *testing.F) {

@@ -63,7 +63,15 @@ import (
 // it fails to decode; Validate checks the minimum and maximum that narrow it.
 func TestPingRequest_Validate_ChecksIntegerRanges(t *testing.T) {
 	const valid = ` + "`" + `"version":1,"offset":0,"count":{"n":0}` + "`" + `
-	with := func(members string) string { return "{" + valid + "," + members + "}" }
+	// with sets members over valid in one object: the decoder rejects a
+	// member that repeats.
+	with := func(members string) string {
+		merged := map[string]json.RawMessage{}
+		json.Unmarshal([]byte("{"+valid+"}"), &merged)
+		json.Unmarshal([]byte("{"+members+"}"), &merged)
+		b, _ := json.Marshal(merged)
+		return string(b)
+	}
 	tests := []struct {
 		name, payload, wantErr string
 	}{

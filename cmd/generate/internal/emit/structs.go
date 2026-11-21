@@ -53,12 +53,6 @@ func (p fieldPlan) customDecode() bool {
 	return p.fallbackOnAbsent || p.fallbackOnNull || lenient.DefaultOnError || lenient.SkipInvalidItems || p.nonNullItem != nil || p.nullAsAbsent
 }
 
-// decoded reports whether the struct needs a generated UnmarshalJSON for the
-// field: to decode it on its own, or to check that it is present.
-func (p fieldPlan) decoded() bool {
-	return p.customDecode() || p.required
-}
-
 // encodesPointer says that MarshalJSON encodes the field through a pointer
 // that is nil, and so left out, when the field is unset or nil.
 func (p fieldPlan) encodesPointer() bool {
@@ -384,7 +378,9 @@ func (b *typesBuilder) emitStruct(name string, fields []ir.Field, nestedTypeName
 		f.Line()
 	}
 
-	if open || slices.ContainsFunc(plans, fieldPlan.decoded) {
+	// Every struct with a property gets one, which rejects a property that
+	// repeats (emitDecodeFields).
+	if open || len(plans) > 0 {
 		f.Func().Params(Id("v").Op("*").Id(name)).Id("UnmarshalJSON").Params(Id("b").Index().Byte()).Error().BlockFunc(func(g *Group) {
 			g.Add(tryFastStmt("v"))
 			// emitRequireMembers reads a zero required field as a member that

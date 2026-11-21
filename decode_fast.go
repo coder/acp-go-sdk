@@ -29,8 +29,9 @@ import (
 //
 // So a fast decoder never makes an error: when in doubt it returns false,
 // and the exact decoder runs and makes today's error. It declines a key that
-// repeats (encoding/json keeps the last value), a key with an escape, a key
-// that names a field only in another case, and a value that does not decode.
+// repeats (the exact decoder rejects a property that repeats, and keeps the
+// last value of another member), a key with an escape, a key that names a
+// field only in another case, and a value that does not decode.
 
 // fastDecode turns the fast decoders on. Tests turn it off to compare the
 // fast decoders with the exact ones.

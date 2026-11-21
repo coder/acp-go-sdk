@@ -52,6 +52,9 @@ func (v *AgentAuthCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "logout", "status"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Logout, &v.Logout)
 	decodeLenient(raw.Status, &v.Status)
@@ -128,6 +131,9 @@ func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "auth", "loadSession", "mcpCapabilities", "promptCapabilities", "providers", "sessionCapabilities"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenient(raw.Auth, &v.Auth) {
 		setDefault(&v.Auth, "{}")
@@ -170,6 +176,9 @@ func (v *AgentNotification) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "method", "params"); err != nil {
+		return err
+	}
 	if maybeAbsent(&v.Method) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Method, "method", false); err != nil {
@@ -210,6 +219,9 @@ func (v *AgentRequest) UnmarshalJSON(b []byte) error {
 	raw := AgentRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "id", "method", "params"); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.Id) || maybeAbsent(&v.Method) {
 		members := jsonMembers(b)
@@ -257,6 +269,9 @@ func (v *AgentResult) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "id", "result"); err != nil {
+		return err
+	}
 	if maybeAbsent(&v.Id) || maybeAbsent(&v.Result) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Id, "id", true); err != nil {
@@ -298,6 +313,9 @@ func (v *AgentError) UnmarshalJSON(b []byte) error {
 	raw := AgentError{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "error", "id"); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.Error) || maybeAbsent(&v.Id) {
 		members := jsonMembers(b)
@@ -483,6 +501,9 @@ func (v *Annotations) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "audience", "lastModified", "priority"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Audience, &v.Audience, shapeRole)
 	decodeLenient(raw.LastModified, &v.LastModified)
@@ -522,6 +543,9 @@ func (v *AudioContent) UnmarshalJSON(b []byte) error {
 	raw := AudioContent{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "data", "mimeType"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
@@ -580,6 +604,9 @@ func (v *AuthCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "terminal"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenient(raw.Terminal, &v.Terminal) {
 		setDefault(&v.Terminal, "false")
@@ -633,6 +660,9 @@ func (v *AuthMethodTerminalInline) UnmarshalJSON(b []byte) error {
 	raw := AuthMethodTerminalInline{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "args", "description", "env", "id", "name", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.Args); err != nil {
@@ -818,6 +848,9 @@ func (v *AuthMethodAgent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "description", "id", "name"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
 	if maybeAbsent(&v.Id) || maybeAbsent(&v.Name) {
@@ -888,6 +921,9 @@ func (v *AuthMethodTerminal) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "args", "description", "env", "id", "name"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.Args); err != nil {
 		return propertyError(err, "AuthMethodTerminal", "args")
@@ -950,6 +986,9 @@ func (v *AuthStatusCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -983,6 +1022,9 @@ func (v *AuthenticateRequest) UnmarshalJSON(b []byte) error {
 	raw := AuthenticateRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "methodId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.MethodId) {
@@ -1024,6 +1066,9 @@ func (v *AuthenticateResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -1064,6 +1109,9 @@ func (v *AvailableCommand) UnmarshalJSON(b []byte) error {
 	raw := AvailableCommand{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "description", "input", "name"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Input, &v.Input, shapeAvailableCommandInput)
@@ -1184,6 +1232,9 @@ func (v *AvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "availableCommands"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands, shapeAvailableCommand) && raw.AvailableCommands != nil {
 		setDefault(&v.AvailableCommands, "[]")
@@ -1237,6 +1288,9 @@ func (v *BlobResourceContents) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "blob", "mimeType", "uri"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MimeType, &v.MimeType)
 	if maybeAbsent(&v.Blob) || maybeAbsent(&v.Uri) {
@@ -1275,6 +1329,9 @@ func (v *BooleanConfigOptionCapabilities) UnmarshalJSON(b []byte) error {
 	raw := BooleanConfigOptionCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -1320,6 +1377,9 @@ func (v *BooleanPropertySchema) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "title"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -1355,6 +1415,9 @@ func (v *CancelNotification) UnmarshalJSON(b []byte) error {
 	raw := CancelNotification{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) {
@@ -1401,6 +1464,9 @@ func (v *CancelRequestNotification) UnmarshalJSON(b []byte) error {
 	raw := CancelRequestNotification{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "requestId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.RequestId) {
@@ -1507,6 +1573,9 @@ func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "auth", "elicitation", "fs", "plan", "session", "subagents", "terminal"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenient(raw.Auth, &v.Auth) {
 		setDefault(&v.Auth, "{\"terminal\":false}")
@@ -1545,6 +1614,9 @@ func (v *ClientNotification) UnmarshalJSON(b []byte) error {
 	raw := ClientNotification{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "method", "params"); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.Method) {
 		members := jsonMembers(b)
@@ -1586,6 +1658,9 @@ func (v *ClientRequest) UnmarshalJSON(b []byte) error {
 	raw := ClientRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "id", "method", "params"); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.Id) || maybeAbsent(&v.Method) {
 		members := jsonMembers(b)
@@ -1633,6 +1708,9 @@ func (v *ClientResult) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "id", "result"); err != nil {
+		return err
+	}
 	if maybeAbsent(&v.Id) || maybeAbsent(&v.Result) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Id, "id", true); err != nil {
@@ -1674,6 +1752,9 @@ func (v *ClientError) UnmarshalJSON(b []byte) error {
 	raw := ClientError{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "error", "id"); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.Error) || maybeAbsent(&v.Id) {
 		members := jsonMembers(b)
@@ -1859,6 +1940,9 @@ func (v *ClientSessionCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "compaction", "configOptions", "notices", "promptSuggestions"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Compaction, &v.Compaction)
 	decodeLenient(raw.ConfigOptions, &v.ConfigOptions)
@@ -1900,6 +1984,9 @@ func (v *CloseSessionRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) {
 		members := jsonMembers(b)
@@ -1939,6 +2026,9 @@ func (v *CloseSessionResponse) UnmarshalJSON(b []byte) error {
 	raw := CloseSessionResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -1996,6 +2086,9 @@ func (v *CompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 	raw := CompactionSummaryChunk{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "compactionId", "content"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Content) {
@@ -2079,6 +2172,9 @@ func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "compactionId", "error", "status", "summary"); err != nil {
+		return err
+	}
 	decodePatch(raw.Meta, &v.Meta)
 	decodePatch(raw.Error, &v.Error)
 	decodePatchItems(raw.Summary, &v.Summary, shapeContentBlock)
@@ -2132,6 +2228,9 @@ func (v *CompleteElicitationNotification) UnmarshalJSON(b []byte) error {
 	raw := CompleteElicitationNotification{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "elicitationId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.ElicitationId) {
@@ -2188,6 +2287,9 @@ func (v *ConfigOptionUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configOptions"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
@@ -2234,6 +2336,9 @@ func (v *Content) UnmarshalJSON(b []byte) error {
 	raw := Content{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Content) {
@@ -2298,6 +2403,9 @@ func (v *ContentBlockText) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "text", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
 	if maybeAbsent(&v.Text) || maybeAbsent(&v.Type) {
@@ -2351,6 +2459,9 @@ func (v *ContentBlockImage) UnmarshalJSON(b []byte) error {
 	raw := ContentBlockImage{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "data", "mimeType", "type", "uri"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
@@ -2406,6 +2517,9 @@ func (v *ContentBlockAudio) UnmarshalJSON(b []byte) error {
 	raw := ContentBlockAudio{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "data", "mimeType", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
@@ -2473,6 +2587,9 @@ func (v *ContentBlockResourceLink) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "description", "mimeType", "name", "size", "title", "type", "uri"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
 	decodeLenient(raw.Description, &v.Description)
@@ -2529,6 +2646,9 @@ func (v *ContentBlockResource) UnmarshalJSON(b []byte) error {
 	raw := ContentBlockResource{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "resource", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
@@ -2761,6 +2881,9 @@ func (v *ContentChunk) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "messageId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
 	if maybeAbsent(&v.Content) {
@@ -2809,6 +2932,9 @@ func (v *Cost) UnmarshalJSON(b []byte) error {
 	raw := Cost{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "amount", "currency"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Amount) || maybeAbsent(&v.Currency) {
@@ -2874,6 +3000,9 @@ func (u *CreateElicitationForm) UnmarshalJSON(b []byte) error {
 			raw := CreateElicitationForm{plain: (*plain)(u)}
 			if err := json.Unmarshal(b, &raw); err != nil {
 				return plainFieldError(err)
+			}
+			if err := rejectDuplicateMembers(b, u, "_meta", "message", "mode", "requestedSchema"); err != nil {
+				return err
 			}
 			decodeLenient(raw.Meta, &u.Meta)
 			if maybeAbsent(&u.Message) || maybeAbsent(&u.Mode) || maybeAbsent(&u.RequestedSchema) {
@@ -3039,6 +3168,9 @@ func (u *CreateElicitationUrl) UnmarshalJSON(b []byte) error {
 			raw := CreateElicitationUrl{plain: (*plain)(u)}
 			if err := json.Unmarshal(b, &raw); err != nil {
 				return plainFieldError(err)
+			}
+			if err := rejectDuplicateMembers(b, u, "_meta", "elicitationId", "message", "mode", "url"); err != nil {
+				return err
 			}
 			decodeLenient(raw.Meta, &u.Meta)
 			if maybeAbsent(&u.ElicitationId) || maybeAbsent(&u.Message) || maybeAbsent(&u.Mode) || maybeAbsent(&u.Url) {
@@ -3218,6 +3350,9 @@ func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
 			raw := CreateElicitationOther{plain: (*plain)(u)}
 			if err := json.Unmarshal(b, &raw); err != nil {
 				return plainFieldError(err)
+			}
+			if err := rejectDuplicateMembers(b, u, "_meta", "message"); err != nil {
+				return err
 			}
 			decodeLenient(raw.Meta, &u.Meta)
 			if maybeAbsent(&u.Message) || maybeAbsent(&u.Mode) {
@@ -3531,6 +3666,9 @@ func (v *CreateElicitationAccept) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "action", "content"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Action) {
 		members := jsonMembers(b)
@@ -3578,6 +3716,9 @@ func (v *CreateElicitationDecline) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "action"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Action) {
 		members := jsonMembers(b)
@@ -3615,6 +3756,9 @@ func (v *CreateElicitationCancel) UnmarshalJSON(b []byte) error {
 	raw := CreateElicitationCancel{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "action"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Action) {
@@ -3679,6 +3823,9 @@ func (v *CreateElicitationResponseOther) UnmarshalJSON(b []byte) error {
 	raw := CreateElicitationResponseOther{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Action) {
@@ -3895,6 +4042,9 @@ func (v *CreateTerminalRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "args", "command", "cwd", "env", "outputByteLimit", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.Args); err != nil {
 		return propertyError(err, "CreateTerminalRequest", "args")
@@ -3951,6 +4101,9 @@ func (v *CreateTerminalResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "terminalId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.TerminalId) {
 		members := jsonMembers(b)
@@ -3996,6 +4149,9 @@ func (v *CurrentModeUpdate) UnmarshalJSON(b []byte) error {
 	raw := CurrentModeUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "currentModeId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.CurrentModeId) {
@@ -4043,6 +4199,9 @@ func (v *DeleteSessionRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) {
 		members := jsonMembers(b)
@@ -4082,6 +4241,9 @@ func (v *DeleteSessionResponse) UnmarshalJSON(b []byte) error {
 	raw := DeleteSessionResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -4128,6 +4290,9 @@ func (v *Diff) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "newText", "oldText", "path"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.OldText, &v.OldText)
 	if maybeAbsent(&v.NewText) || maybeAbsent(&v.Path) {
@@ -4156,6 +4321,24 @@ func (v ElicitationAcceptAction) MarshalJSON() ([]byte, error) {
 		Content *map[string]ElicitationContentValue `json:"content,omitempty"`
 	}
 	return json.Marshal(wire{Content: nilIf(a.Content == nil, &a.Content)})
+}
+
+func (v *ElicitationAcceptAction) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	type plain ElicitationAcceptAction
+	type ElicitationAcceptAction struct {
+		*plain
+	}
+	raw := ElicitationAcceptAction{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "content"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (v *ElicitationAcceptAction) Validate() error {
@@ -4203,6 +4386,9 @@ func (v *ElicitationCapabilities) UnmarshalJSON(b []byte) error {
 	raw := ElicitationCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "form", "url"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Form, &v.Form)
@@ -4389,6 +4575,9 @@ func (v *ElicitationFormCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -4427,6 +4616,9 @@ func (u *ElicitationFormMode) UnmarshalJSON(b []byte) error {
 			raw := ElicitationFormMode{plain: (*plain)(u)}
 			if err := json.Unmarshal(b, &raw); err != nil {
 				return plainFieldError(err)
+			}
+			if err := rejectDuplicateMembers(b, u, "requestedSchema"); err != nil {
+				return err
 			}
 			if maybeAbsent(&u.RequestedSchema) {
 				members := jsonMembers(b)
@@ -4642,6 +4834,9 @@ func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "enum", "format", "maxLength", "minLength", "oneOf", "pattern", "title", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -4712,6 +4907,9 @@ func (v *ElicitationPropertySchemaNumber) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "maximum", "minimum", "title", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -4776,6 +4974,9 @@ func (v *ElicitationPropertySchemaInteger) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "maximum", "minimum", "title", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -4831,6 +5032,9 @@ func (v *ElicitationPropertySchemaBoolean) UnmarshalJSON(b []byte) error {
 	raw := ElicitationPropertySchemaBoolean{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "title", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
@@ -4925,6 +5129,9 @@ func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "items", "maxItems", "minItems", "title", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -4992,6 +5199,9 @@ func (v *ElicitationPropertySchemaOther) UnmarshalJSON(b []byte) error {
 	raw := ElicitationPropertySchemaOther{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.Type) {
 		members := jsonMembers(b)
@@ -5230,6 +5440,9 @@ func (v *ElicitationRequestScope) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "requestId"); err != nil {
+		return err
+	}
 	if maybeAbsent(&v.RequestId) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.RequestId, "requestId", true); err != nil {
@@ -5324,6 +5537,9 @@ func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "description", "properties", "required", "title", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
 	if decoded, err := decodeField(raw.Properties, &v.Properties); err != nil {
@@ -5391,6 +5607,9 @@ func (v *ElicitationSessionScope) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "sessionId", "toolCallId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.ToolCallId, &v.ToolCallId)
 	if maybeAbsent(&v.SessionId) {
 		members := jsonMembers(b)
@@ -5435,6 +5654,9 @@ func (v *ElicitationUrlCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -5475,6 +5697,9 @@ func (u *ElicitationUrlMode) UnmarshalJSON(b []byte) error {
 			raw := ElicitationUrlMode{plain: (*plain)(u)}
 			if err := json.Unmarshal(b, &raw); err != nil {
 				return plainFieldError(err)
+			}
+			if err := rejectDuplicateMembers(b, u, "elicitationId", "url"); err != nil {
+				return err
 			}
 			if maybeAbsent(&u.ElicitationId) || maybeAbsent(&u.Url) {
 				members := jsonMembers(b)
@@ -5614,6 +5839,9 @@ func (v *EmbeddedResource) UnmarshalJSON(b []byte) error {
 	raw := EmbeddedResource{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "resource"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
@@ -5773,6 +6001,9 @@ func (v *EnumOption) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "const", "description", "title"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
 	if maybeAbsent(&v.Const) || maybeAbsent(&v.Title) {
@@ -5816,6 +6047,9 @@ func (v *EnvVariable) UnmarshalJSON(b []byte) error {
 	raw := EnvVariable{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "name", "value"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Name) || maybeAbsent(&v.Value) {
@@ -5863,6 +6097,9 @@ func (v *Error) UnmarshalJSON(b []byte) error {
 	raw := Error{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "code", "data", "message"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Data, &v.Data)
 	if maybeAbsent(&v.Code) || maybeAbsent(&v.Message) {
@@ -6148,6 +6385,9 @@ func (v *ErrorStopReason) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "error"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Error, &v.Error, shapeError)
 	return nil
 }
@@ -6218,6 +6458,9 @@ func (v *FileSystemCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "readTextFile", "writeTextFile"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenient(raw.ReadTextFile, &v.ReadTextFile) {
 		setDefault(&v.ReadTextFile, "false")
@@ -6257,6 +6500,9 @@ func (v *HttpHeader) UnmarshalJSON(b []byte) error {
 	raw := HttpHeader{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "name", "value"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Name) || maybeAbsent(&v.Value) {
@@ -6303,6 +6549,9 @@ func (v *IdleStateUpdateEndTurn) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "stopReason", "usage"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	if maybeAbsent(&v.StopReason) {
@@ -6342,6 +6591,9 @@ func (v *IdleStateUpdateMaxTokens) UnmarshalJSON(b []byte) error {
 	raw := IdleStateUpdateMaxTokens{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "stopReason", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
@@ -6384,6 +6636,9 @@ func (v *IdleStateUpdateMaxTurnRequests) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "stopReason", "usage"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	if maybeAbsent(&v.StopReason) {
@@ -6424,6 +6679,9 @@ func (v *IdleStateUpdateRefusal) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "stopReason", "usage"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	if maybeAbsent(&v.StopReason) {
@@ -6463,6 +6721,9 @@ func (v *IdleStateUpdateCancelled) UnmarshalJSON(b []byte) error {
 	raw := IdleStateUpdateCancelled{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "stopReason", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
@@ -6509,6 +6770,9 @@ func (v *IdleStateUpdateError) UnmarshalJSON(b []byte) error {
 	raw := IdleStateUpdateError{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "error", "stopReason", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Error, &v.Error, shapeError)
@@ -6568,6 +6832,9 @@ func (v *IdleStateUpdateOther) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "usage"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	if maybeAbsent(&v.StopReason) {
@@ -6605,6 +6872,9 @@ func (v *IdleStateUpdateNone) UnmarshalJSON(b []byte) error {
 	raw := IdleStateUpdateNone{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
@@ -6901,6 +7171,9 @@ func (v *ImageContent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "data", "mimeType", "uri"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
 	decodeLenient(raw.Uri, &v.Uri)
@@ -6955,6 +7228,9 @@ func (v *Implementation) UnmarshalJSON(b []byte) error {
 	raw := Implementation{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "name", "title", "version"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Title, &v.Title)
@@ -7014,6 +7290,9 @@ func (v *InitialSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configId", "type", "value"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.ConfigId) || maybeAbsent(&v.Type) || maybeAbsent(&v.Value) {
 		members := jsonMembers(b)
@@ -7070,6 +7349,9 @@ func (v *InitialSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
 	raw := InitialSessionConfigOptionValueId{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configId", "value"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.ConfigId) || maybeAbsent(&v.Value) {
@@ -7249,6 +7531,9 @@ func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "clientCapabilities", "clientInfo", "protocolVersion"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenient(raw.ClientCapabilities, &v.ClientCapabilities) {
 		setDefault(&v.ClientCapabilities, "{\"auth\":{\"terminal\":false},\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false}")
@@ -7326,6 +7611,9 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "agentCapabilities", "agentInfo", "authMethods", "protocolVersion"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenient(raw.AgentCapabilities, &v.AgentCapabilities) {
 		setDefault(&v.AgentCapabilities, "{\"auth\":{},\"loadSession\":false,\"mcpCapabilities\":{\"acp\":false,\"http\":false,\"sse\":false},\"promptCapabilities\":{\"audio\":false,\"embeddedContext\":false,\"image\":false},\"sessionCapabilities\":{}}")
@@ -7395,6 +7683,9 @@ func (v *IntegerPropertySchema) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "maximum", "minimum", "title"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -7431,6 +7722,9 @@ func (v *KillTerminalRequest) UnmarshalJSON(b []byte) error {
 	raw := KillTerminalRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId", "terminalId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.TerminalId) {
@@ -7478,6 +7772,9 @@ func (v *KillTerminalResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -7524,6 +7821,9 @@ func (v *ListSessionsRequest) UnmarshalJSON(b []byte) error {
 	raw := ListSessionsRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "archived", "cursor", "cwd"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -7574,6 +7874,9 @@ func (v *ListSessionsResponse) UnmarshalJSON(b []byte) error {
 	raw := ListSessionsResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "nextCursor", "sessions"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.NextCursor, &v.NextCursor)
@@ -7675,6 +7978,9 @@ func (v *LoadSessionRequest) UnmarshalJSON(b []byte) error {
 	raw := LoadSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "configOptions", "cwd", "mcpServers", "sessionId", "systemPrompt"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
@@ -7778,6 +8084,9 @@ func (v *LoadSessionResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configOptions", "modes"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
@@ -7813,6 +8122,9 @@ func (v *LogoutCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -7841,6 +8153,9 @@ func (v *LogoutRequest) UnmarshalJSON(b []byte) error {
 	raw := LogoutRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -7872,6 +8187,9 @@ func (v *LogoutResponse) UnmarshalJSON(b []byte) error {
 	raw := LogoutResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -7929,6 +8247,9 @@ func (v *McpCapabilities) UnmarshalJSON(b []byte) error {
 	raw := McpCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "acp", "http", "sse"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenient(raw.Acp, &v.Acp) {
@@ -7996,6 +8317,9 @@ func (v *McpServerHttpInline) UnmarshalJSON(b []byte) error {
 	raw := McpServerHttpInline{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "headers", "name", "type", "url"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if decoded, err := decodeField(raw.Headers, &v.Headers); err != nil {
@@ -8076,6 +8400,9 @@ func (v *McpServerSseInline) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "headers", "name", "type", "url"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if decoded, err := decodeField(raw.Headers, &v.Headers); err != nil {
 		return propertyError(err, "McpServerSseInline", "headers")
@@ -8148,6 +8475,9 @@ func (v *McpServerAcpInline) UnmarshalJSON(b []byte) error {
 	raw := McpServerAcpInline{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "name", "serverId", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Name) || maybeAbsent(&v.ServerId) || maybeAbsent(&v.Type) {
@@ -8395,6 +8725,9 @@ func (v *McpServerAcp) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "name", "serverId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Name) || maybeAbsent(&v.ServerId) {
 		members := jsonMembers(b)
@@ -8469,6 +8802,9 @@ func (v *McpServerHttp) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "headers", "name", "url"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if decoded, err := decodeField(raw.Headers, &v.Headers); err != nil {
 		return propertyError(err, "McpServerHttp", "headers")
@@ -8540,6 +8876,9 @@ func (v *McpServerSse) UnmarshalJSON(b []byte) error {
 	raw := McpServerSse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "headers", "name", "url"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if decoded, err := decodeField(raw.Headers, &v.Headers); err != nil {
@@ -8619,6 +8958,9 @@ func (v *McpServerStdio) UnmarshalJSON(b []byte) error {
 	raw := McpServerStdio{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "args", "command", "env", "name"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.Args); err != nil {
@@ -8708,6 +9050,9 @@ func (v *MultiSelectItemsString) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "enum", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.Enum); err != nil {
 		return propertyError(err, "MultiSelectItemsString", "enum")
@@ -8770,6 +9115,9 @@ func (v *MultiSelectItemsOther) UnmarshalJSON(b []byte) error {
 	raw := MultiSelectItemsOther{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.Type) {
 		members := jsonMembers(b)
@@ -8996,6 +9344,9 @@ func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "items", "maxItems", "minItems", "title"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -9089,6 +9440,9 @@ func (v *NewSessionRequest) UnmarshalJSON(b []byte) error {
 	raw := NewSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "configOptions", "cwd", "mcpServers", "systemPrompt"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
@@ -9196,6 +9550,9 @@ func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configOptions", "modes", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
@@ -9255,6 +9612,9 @@ func (v *Notice) UnmarshalJSON(b []byte) error {
 	raw := Notice{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "description", "severity", "title"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
@@ -9340,6 +9700,9 @@ func (v *NumberPropertySchema) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "maximum", "minimum", "title"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -9379,6 +9742,9 @@ func (v *PermissionOption) UnmarshalJSON(b []byte) error {
 	raw := PermissionOption{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "kind", "name", "optionId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Kind) || maybeAbsent(&v.Name) || maybeAbsent(&v.OptionId) {
@@ -9472,6 +9838,9 @@ func (v *Plan) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "entries"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
@@ -9519,6 +9888,9 @@ func (v *PlanCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -9560,6 +9932,9 @@ func (v *PlanEntry) UnmarshalJSON(b []byte) error {
 	raw := PlanEntry{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "priority", "status"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Content) || maybeAbsent(&v.Priority) || maybeAbsent(&v.Status) {
@@ -9673,6 +10048,9 @@ func (v *PlanItems) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "entries", "planId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
@@ -9740,6 +10118,9 @@ func (v *PlanMarkdown) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "path", "planId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Path, &v.Path)
 	if maybeAbsent(&v.Content) || maybeAbsent(&v.PlanId) {
@@ -9792,6 +10173,9 @@ func (v *PlanRemoved) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "planId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.PlanId) {
 		members := jsonMembers(b)
@@ -9839,6 +10223,9 @@ func (v *PlanUpdate) UnmarshalJSON(b []byte) error {
 	raw := PlanUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "plan"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Plan) {
@@ -9908,6 +10295,9 @@ func (v *PlanUpdateContentItems) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "entries", "planId", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
@@ -9975,6 +10365,9 @@ func (v *PlanUpdateContentMarkdown) UnmarshalJSON(b []byte) error {
 	raw := PlanUpdateContentMarkdown{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "path", "planId", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Path, &v.Path)
@@ -10156,6 +10549,9 @@ func (v *PromptCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "audio", "embeddedContext", "image"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenient(raw.Audio, &v.Audio) {
 		setDefault(&v.Audio, "false")
@@ -10225,6 +10621,9 @@ func (v *PromptRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "prompt", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Prompt) || maybeAbsent(&v.SessionId) {
 		members := jsonMembers(b)
@@ -10288,6 +10687,9 @@ func (v *PromptResponse) UnmarshalJSON(b []byte) error {
 	raw := PromptResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "stopReason", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
@@ -10358,6 +10760,9 @@ func (v *PromptSuggestion) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "prompt"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Prompt) {
 		members := jsonMembers(b)
@@ -10408,6 +10813,9 @@ func (v *PromptSuggestionsAudioCapabilities) UnmarshalJSON(b []byte) error {
 	raw := PromptSuggestionsAudioCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -10464,6 +10872,9 @@ func (v *PromptSuggestionsCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "audio", "embeddedContext", "image"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Audio, &v.Audio)
 	decodeLenient(raw.EmbeddedContext, &v.EmbeddedContext)
@@ -10501,6 +10912,9 @@ func (v *PromptSuggestionsEmbeddedContextCapabilities) UnmarshalJSON(b []byte) e
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -10533,6 +10947,9 @@ func (v *PromptSuggestionsImageCapabilities) UnmarshalJSON(b []byte) error {
 	raw := PromptSuggestionsImageCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -10595,6 +11012,9 @@ func (v *PromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "suggestions"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if _, err := decodeItems(raw.Suggestions, &v.Suggestions, shapePromptSuggestion); err != nil {
 		return propertyError(err, "PromptSuggestionsUpdate", "suggestions")
@@ -10650,6 +11070,9 @@ func (v *ProvidersCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -10689,6 +11112,9 @@ func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
 	raw := ReadTextFileRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "limit", "line", "path", "sessionId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Path) || maybeAbsent(&v.SessionId) {
@@ -10740,6 +11166,9 @@ func (v *ReadTextFileResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Content) {
 		members := jsonMembers(b)
@@ -10787,6 +11216,9 @@ func (v *ReleaseTerminalRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId", "terminalId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.TerminalId) {
 		members := jsonMembers(b)
@@ -10832,6 +11264,9 @@ func (v *ReleaseTerminalResponse) UnmarshalJSON(b []byte) error {
 	raw := ReleaseTerminalResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -10963,6 +11398,9 @@ func (v *RequestPermissionOutcomeCancelled) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "outcome"); err != nil {
+		return err
+	}
 	if maybeAbsent(&v.Outcome) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Outcome, "outcome", false); err != nil {
@@ -11000,6 +11438,9 @@ func (v *RequestPermissionOutcomeSelected) UnmarshalJSON(b []byte) error {
 	raw := RequestPermissionOutcomeSelected{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "optionId", "outcome"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.OptionId) || maybeAbsent(&v.Outcome) {
@@ -11166,6 +11607,9 @@ func (v *RequestPermissionRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "options", "sessionId", "toolCall"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Options) || maybeAbsent(&v.SessionId) || maybeAbsent(&v.ToolCall) {
 		members := jsonMembers(b)
@@ -11227,6 +11671,9 @@ func (v *RequestPermissionResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "outcome"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Outcome) {
 		members := jsonMembers(b)
@@ -11264,6 +11711,9 @@ func (v *RequiresActionStateUpdate) UnmarshalJSON(b []byte) error {
 	raw := RequiresActionStateUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -11313,6 +11763,9 @@ func (v *ResourceLink) UnmarshalJSON(b []byte) error {
 	raw := ResourceLink{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "description", "mimeType", "name", "size", "title", "uri"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
@@ -11400,6 +11853,9 @@ func (v *ResumeSessionRequest) UnmarshalJSON(b []byte) error {
 	raw := ResumeSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "configOptions", "cwd", "mcpServers", "sessionId", "systemPrompt"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
@@ -11492,6 +11948,9 @@ func (v *ResumeSessionResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configOptions", "modes"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
@@ -11533,6 +11992,9 @@ func (v *RunningStateUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -11563,6 +12025,9 @@ func (v *SelectedPermissionOutcome) UnmarshalJSON(b []byte) error {
 	raw := SelectedPermissionOutcome{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "optionId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.OptionId) {
@@ -11609,6 +12074,9 @@ func (v *SessionAdditionalDirectoriesCapabilities) UnmarshalJSON(b []byte) error
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -11642,6 +12110,9 @@ func (v *SessionArchiveCapabilities) UnmarshalJSON(b []byte) error {
 	raw := SessionArchiveCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -11694,6 +12165,9 @@ func (v *SessionCancelCapabilities) UnmarshalJSON(b []byte) error {
 	raw := SessionCancelCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -11826,6 +12300,9 @@ func (v *SessionCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "archive", "close", "delete", "fork", "list", "options", "resume", "status", "systemPrompt", "title"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.AdditionalDirectories, &v.AdditionalDirectories)
 	decodeLenient(raw.Archive, &v.Archive)
@@ -11866,6 +12343,9 @@ func (v *SessionCloseCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -11889,6 +12369,9 @@ func (v *SessionConfigBoolean) UnmarshalJSON(b []byte) error {
 	raw := SessionConfigBoolean{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "currentValue"); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.CurrentValue) {
 		members := jsonMembers(b)
@@ -11949,6 +12432,9 @@ func (v *SessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
 	raw := SessionConfigOptionSelect{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "category", "currentValue", "description", "id", "name", "options", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Category, &v.Category)
@@ -12027,6 +12513,9 @@ func (v *SessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 	raw := SessionConfigOptionBoolean{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "category", "currentValue", "description", "id", "name", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Category, &v.Category)
@@ -12212,6 +12701,9 @@ func (v *SessionConfigOptionsCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "boolean"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Boolean, &v.Boolean)
 	return nil
@@ -12239,6 +12731,9 @@ func (v *SessionConfigSelect) UnmarshalJSON(b []byte) error {
 	raw := SessionConfigSelect{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "currentValue", "options"); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.CurrentValue) || maybeAbsent(&v.Options) {
 		members := jsonMembers(b)
@@ -12306,6 +12801,9 @@ func (v *SessionConfigSelectGroup) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "group", "name", "options"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Options, &v.Options, shapeSessionConfigSelectOption) && raw.Options != nil {
 		setDefault(&v.Options, "[]")
@@ -12367,6 +12865,9 @@ func (v *SessionConfigSelectOption) UnmarshalJSON(b []byte) error {
 	raw := SessionConfigSelectOption{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "description", "name", "value"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
@@ -12542,6 +13043,9 @@ func (v *SessionDeleteCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -12574,6 +13078,9 @@ func (v *SessionForkCapabilities) UnmarshalJSON(b []byte) error {
 	raw := SessionForkCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -12639,6 +13146,9 @@ func (v *SessionInfo) UnmarshalJSON(b []byte) error {
 	raw := SessionInfo{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "archived", "cwd", "sessionId", "title", "updatedAt"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.AdditionalDirectories, &v.AdditionalDirectories)
@@ -12715,6 +13225,9 @@ func (v *SessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "title", "updatedAt"); err != nil {
+		return err
+	}
 	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
@@ -12745,6 +13258,9 @@ func (v *SessionListCapabilities) UnmarshalJSON(b []byte) error {
 	raw := SessionListCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -12831,6 +13347,9 @@ func (v *SessionMessage) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "messageId", "recipientMessageId", "recipientSessionId", "senderMessageId", "senderSessionId"); err != nil {
+		return err
+	}
 	decodePatch(raw.Meta, &v.Meta)
 	decodePatchItems(raw.Content, &v.Content, shapeContentBlock)
 	decodePatch(raw.RecipientMessageId, &v.RecipientMessageId)
@@ -12887,6 +13406,9 @@ func (v *SessionMessageChunk) UnmarshalJSON(b []byte) error {
 	raw := SessionMessageChunk{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "messageId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Content) || maybeAbsent(&v.MessageId) {
@@ -12945,6 +13467,9 @@ func (v *SessionMode) UnmarshalJSON(b []byte) error {
 	raw := SessionMode{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "description", "id", "name"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
@@ -13011,6 +13536,9 @@ func (v *SessionModeState) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "availableModes", "currentModeId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.AvailableModes, &v.AvailableModes, shapeSessionMode) && raw.AvailableModes != nil {
 		setDefault(&v.AvailableModes, "[]")
@@ -13071,6 +13599,9 @@ func (v *SessionNotification) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId", "update"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.Update) {
 		members := jsonMembers(b)
@@ -13124,6 +13655,9 @@ func (v *SessionOptionsCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -13164,6 +13698,9 @@ func (v *SessionReference) UnmarshalJSON(b []byte) error {
 	raw := SessionReference{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) {
@@ -13207,6 +13744,9 @@ func (v *SessionResumeCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -13239,6 +13779,9 @@ func (v *SessionStatusCapabilities) UnmarshalJSON(b []byte) error {
 	raw := SessionStatusCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -13274,6 +13817,9 @@ func (v *SessionSystemPromptCapabilities) UnmarshalJSON(b []byte) error {
 	raw := SessionSystemPromptCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "mode"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Mode, &v.Mode)
@@ -13313,6 +13859,9 @@ func (v *SessionSystemPromptModeCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "override"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Override, &v.Override)
 	return nil
@@ -13343,6 +13892,9 @@ func (v *SessionSystemPromptOverrideCapabilities) UnmarshalJSON(b []byte) error 
 	raw := SessionSystemPromptOverrideCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -13377,6 +13929,9 @@ func (v *SessionTitleCapabilities) UnmarshalJSON(b []byte) error {
 	raw := SessionTitleCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -13421,6 +13976,9 @@ func (v *SessionUpdateUserMessageChunk) UnmarshalJSON(b []byte) error {
 	raw := SessionUpdateUserMessageChunk{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "messageId", "sessionUpdate"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
@@ -13478,6 +14036,9 @@ func (v *SessionUpdateAgentMessageChunk) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "messageId", "sessionUpdate"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
 	if maybeAbsent(&v.Content) || maybeAbsent(&v.SessionUpdate) {
@@ -13533,6 +14094,9 @@ func (v *SessionUpdateAgentThoughtChunk) UnmarshalJSON(b []byte) error {
 	raw := SessionUpdateAgentThoughtChunk{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "messageId", "sessionUpdate"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MessageId, &v.MessageId)
@@ -13612,6 +14176,9 @@ func (v *SessionUpdateToolCall) UnmarshalJSON(b []byte) error {
 	raw := SessionUpdateToolCall{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "kind", "locations", "name", "rawInput", "rawOutput", "sessionUpdate", "status", "title", "toolCallId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Content, &v.Content, shapeToolCallContent)
@@ -13758,6 +14325,9 @@ func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "kind", "locations", "name", "rawInput", "rawOutput", "sessionUpdate", "status", "title", "toolCallId"); err != nil {
+		return err
+	}
 	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatchItems(absentIfNull(raw.Content), &v.Content, shapeToolCallContent)
 	decodePatch(absentIfNull(raw.Kind), &v.Kind)
@@ -13830,6 +14400,9 @@ func (v *SessionUpdatePlan) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "entries", "sessionUpdate"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Entries, &v.Entries, shapePlanEntry) && raw.Entries != nil {
 		setDefault(&v.Entries, "[]")
@@ -13886,6 +14459,9 @@ func (v *SessionPlanUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "plan", "sessionUpdate"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Plan) || maybeAbsent(&v.SessionUpdate) {
 		members := jsonMembers(b)
@@ -13938,6 +14514,9 @@ func (v *SessionUpdatePlanRemoved) UnmarshalJSON(b []byte) error {
 	raw := SessionUpdatePlanRemoved{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "planId", "sessionUpdate"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.PlanId) || maybeAbsent(&v.SessionUpdate) {
@@ -13999,6 +14578,9 @@ func (v *SessionAvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "availableCommands", "sessionUpdate"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.AvailableCommands, &v.AvailableCommands, shapeAvailableCommand) && raw.AvailableCommands != nil {
 		setDefault(&v.AvailableCommands, "[]")
@@ -14052,6 +14634,9 @@ func (v *SessionCurrentModeUpdate) UnmarshalJSON(b []byte) error {
 	raw := SessionCurrentModeUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "currentModeId", "sessionUpdate"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.CurrentModeId) || maybeAbsent(&v.SessionUpdate) {
@@ -14112,6 +14697,9 @@ func (v *SessionConfigOptionUpdate) UnmarshalJSON(b []byte) error {
 	raw := SessionConfigOptionUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configOptions", "sessionUpdate"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
@@ -14189,6 +14777,9 @@ func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionUpdate", "title", "updatedAt"); err != nil {
+		return err
+	}
 	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatch(raw.Title, &v.Title)
 	decodePatch(raw.UpdatedAt, &v.UpdatedAt)
@@ -14235,6 +14826,9 @@ func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
 	raw := SessionUsageUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "cost", "sessionUpdate", "size", "used"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Cost, &v.Cost, shapeCost)
@@ -14290,6 +14884,9 @@ func (v *SessionUpdateNotice) UnmarshalJSON(b []byte) error {
 	raw := SessionUpdateNotice{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "description", "sessionUpdate", "severity", "title"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Description, &v.Description)
@@ -14374,6 +14971,9 @@ func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "compactionId", "error", "sessionUpdate", "status", "summary"); err != nil {
+		return err
+	}
 	decodePatch(raw.Meta, &v.Meta)
 	decodePatch(raw.Error, &v.Error)
 	decodePatchItems(raw.Summary, &v.Summary, shapeContentBlock)
@@ -14432,6 +15032,9 @@ func (v *SessionUpdateCompactionSummaryChunk) UnmarshalJSON(b []byte) error {
 	raw := SessionUpdateCompactionSummaryChunk{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "compactionId", "content", "sessionUpdate"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Content) || maybeAbsent(&v.SessionUpdate) {
@@ -14509,6 +15112,9 @@ func (v *SessionPromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
 	raw := SessionPromptSuggestionsUpdate{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionUpdate", "suggestions"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if _, err := decodeItems(raw.Suggestions, &v.Suggestions, shapePromptSuggestion); err != nil {
@@ -14641,6 +15247,9 @@ func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "capabilities", "cwd", "description", "sessionId", "sessionUpdate", "state", "title"); err != nil {
+		return err
+	}
 	decodePatch(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
 		return propertyError(err, "SessionSubagentUpdate", "additionalDirectories")
@@ -14759,6 +15368,9 @@ func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "messageId", "recipientMessageId", "recipientSessionId", "senderMessageId", "senderSessionId", "sessionUpdate"); err != nil {
+		return err
+	}
 	decodePatch(raw.Meta, &v.Meta)
 	decodePatchItems(raw.Content, &v.Content, shapeContentBlock)
 	decodePatch(raw.RecipientMessageId, &v.RecipientMessageId)
@@ -14817,6 +15429,9 @@ func (v *SessionUpdateSessionMessageChunk) UnmarshalJSON(b []byte) error {
 	raw := SessionUpdateSessionMessageChunk{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "messageId", "sessionUpdate"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Content) || maybeAbsent(&v.MessageId) || maybeAbsent(&v.SessionUpdate) {
@@ -15530,6 +16145,9 @@ func (v *SetSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configId", "sessionId", "type", "value"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.ConfigId) || maybeAbsent(&v.SessionId) || maybeAbsent(&v.Type) || maybeAbsent(&v.Value) {
 		members := jsonMembers(b)
@@ -15595,6 +16213,9 @@ func (v *SetSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
 	raw := SetSessionConfigOptionValueId{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configId", "sessionId", "value"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.ConfigId) || maybeAbsent(&v.SessionId) || maybeAbsent(&v.Value) {
@@ -15770,6 +16391,9 @@ func (v *SetSessionConfigOptionResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configOptions"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption) && raw.ConfigOptions != nil {
 		setDefault(&v.ConfigOptions, "[]")
@@ -15820,6 +16444,9 @@ func (v *SetSessionModeRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "modeId", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.ModeId) || maybeAbsent(&v.SessionId) {
 		members := jsonMembers(b)
@@ -15866,6 +16493,9 @@ func (v *SetSessionModeResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -15906,6 +16536,9 @@ func (v *StateUpdateRunning) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateRunning{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.State) {
@@ -15948,6 +16581,9 @@ func (v *StateUpdateIdleEndTurn) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateIdleEndTurn{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state", "stopReason", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
@@ -15993,6 +16629,9 @@ func (v *StateUpdateIdleMaxTokens) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateIdleMaxTokens{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state", "stopReason", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
@@ -16040,6 +16679,9 @@ func (v *StateUpdateIdleMaxTurnRequests) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state", "stopReason", "usage"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
@@ -16085,6 +16727,9 @@ func (v *StateUpdateIdleRefusal) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state", "stopReason", "usage"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
@@ -16129,6 +16774,9 @@ func (v *StateUpdateIdleCancelled) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateIdleCancelled{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state", "stopReason", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
@@ -16180,6 +16828,9 @@ func (v *StateUpdateIdleError) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateIdleError{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "error", "state", "stopReason", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Error, &v.Error, shapeError)
@@ -16244,6 +16895,9 @@ func (v *StateUpdateIdleOther) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state", "usage"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
 	if maybeAbsent(&v.State) || maybeAbsent(&v.StopReason) {
@@ -16287,6 +16941,9 @@ func (v *StateUpdateIdleNone) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateIdleNone{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state", "usage"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Usage, &v.Usage, shapeUsage)
@@ -16577,6 +17234,9 @@ func (v *StateUpdateRequiresAction) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.State) {
 		members := jsonMembers(b)
@@ -16612,6 +17272,9 @@ func (v *StateUpdateUnknown) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateUnknown{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "state"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.State) {
@@ -16658,6 +17321,9 @@ func (v *StateUpdateOther) UnmarshalJSON(b []byte) error {
 	raw := StateUpdateOther{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v); err != nil {
+		return err
 	}
 	if maybeAbsent(&v.State) {
 		members := jsonMembers(b)
@@ -16928,6 +17594,9 @@ func (v *StringMultiSelectItems) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "enum"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.Enum); err != nil {
 		return propertyError(err, "StringMultiSelectItems", "enum")
@@ -17049,6 +17718,9 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "default", "description", "enum", "format", "maxLength", "minLength", "oneOf", "pattern", "title"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Default, &v.Default)
 	decodeLenient(raw.Description, &v.Description)
@@ -17092,6 +17764,9 @@ func (v *SubagentCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -17128,6 +17803,9 @@ func (v *SubagentSessionCapabilities) UnmarshalJSON(b []byte) error {
 	raw := SubagentSessionCapabilities{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "cancel"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Cancel, &v.Cancel)
@@ -17257,6 +17935,9 @@ func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "capabilities", "cwd", "description", "sessionId", "state", "title"); err != nil {
+		return err
+	}
 	decodePatch(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
 		return propertyError(err, "SubagentUpdate", "additionalDirectories")
@@ -17341,6 +18022,9 @@ func (v *SystemPrompt) UnmarshalJSON(b []byte) error {
 	raw := SystemPrompt{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "mode"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Content) || maybeAbsent(&v.Mode) {
@@ -17427,6 +18111,9 @@ func (v *Terminal) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "terminalId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.TerminalId) {
 		members := jsonMembers(b)
@@ -17473,6 +18160,9 @@ func (v *TerminalExitStatus) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "exitCode", "signal"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.ExitCode, &v.ExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
@@ -17511,6 +18201,9 @@ func (v *TerminalOutputRequest) UnmarshalJSON(b []byte) error {
 	raw := TerminalOutputRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId", "terminalId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.TerminalId) {
@@ -17568,6 +18261,9 @@ func (v *TerminalOutputResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "exitStatus", "output", "truncated"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.ExitStatus, &v.ExitStatus)
 	if maybeAbsent(&v.Output) || maybeAbsent(&v.Truncated) {
@@ -17619,6 +18315,9 @@ func (v *TextContent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "annotations", "text"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Annotations, &v.Annotations)
 	if maybeAbsent(&v.Text) {
@@ -17662,6 +18361,9 @@ func (v *TextResourceContents) UnmarshalJSON(b []byte) error {
 	raw := TextResourceContents{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "mimeType", "text", "uri"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.MimeType, &v.MimeType)
@@ -17715,6 +18417,9 @@ func (v *TitledMultiSelectItems) UnmarshalJSON(b []byte) error {
 	raw := TitledMultiSelectItems{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "anyOf"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.AnyOf) {
@@ -17794,6 +18499,9 @@ func (v *ToolCall) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "kind", "locations", "name", "rawInput", "rawOutput", "status", "title", "toolCallId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Content, &v.Content, shapeToolCallContent)
 	decodeLenient(raw.Kind, &v.Kind)
@@ -17856,6 +18564,9 @@ func (v *ToolCallContentContent) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Content) || maybeAbsent(&v.Type) {
 		members := jsonMembers(b)
@@ -17911,6 +18622,9 @@ func (v *ToolCallContentDiff) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "newText", "oldText", "path", "type"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.OldText, &v.OldText)
 	if maybeAbsent(&v.NewText) || maybeAbsent(&v.Path) || maybeAbsent(&v.Type) {
@@ -17960,6 +18674,9 @@ func (v *ToolCallContentTerminal) UnmarshalJSON(b []byte) error {
 	raw := ToolCallContentTerminal{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "terminalId", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.TerminalId) || maybeAbsent(&v.Type) {
@@ -18013,6 +18730,9 @@ func (v *ToolCallContentSession) UnmarshalJSON(b []byte) error {
 	raw := ToolCallContentSession{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId", "type"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.Type) {
@@ -18230,6 +18950,9 @@ func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "line", "path"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Line, &v.Line)
 	if maybeAbsent(&v.Path) {
@@ -18376,6 +19099,9 @@ func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "kind", "locations", "name", "rawInput", "rawOutput", "status", "title", "toolCallId"); err != nil {
+		return err
+	}
 	decodePatch(absentIfNull(raw.Meta), &v.Meta)
 	decodePatchItems(absentIfNull(raw.Content), &v.Content, shapeToolCallContent)
 	decodePatch(absentIfNull(raw.Kind), &v.Kind)
@@ -18489,6 +19215,9 @@ func (v *UnknownStateUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -18530,6 +19259,9 @@ func (v *UnstableArchiveSessionRequest) UnmarshalJSON(b []byte) error {
 	raw := UnstableArchiveSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) {
@@ -18574,6 +19306,9 @@ func (v *UnstableArchiveSessionResponse) UnmarshalJSON(b []byte) error {
 	raw := UnstableArchiveSessionResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -18648,6 +19383,9 @@ func (v *UnstableAuthAccount) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "active", "description", "email", "label", "name", "organization"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Active, &v.Active)
 	decodeLenient(raw.Description, &v.Description)
@@ -18714,6 +19452,9 @@ func (v *UnstableAuthStatusRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -18762,6 +19503,9 @@ func (v *UnstableAuthStatusResponse) UnmarshalJSON(b []byte) error {
 	raw := UnstableAuthStatusResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "accounts", "state"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Accounts, &v.Accounts, shapeUnstableAuthAccount)
@@ -18826,6 +19570,9 @@ func (v *UnstableAuthStatusUpdateNotification) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "accounts", "state"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.Accounts, &v.Accounts, shapeUnstableAuthAccount)
 	if maybeAbsent(&v.State) {
@@ -18875,6 +19622,9 @@ func (v *UnstableDisableProviderRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "providerId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.ProviderId) {
 		members := jsonMembers(b)
@@ -18918,6 +19668,9 @@ func (v *UnstableDisableProviderResponse) UnmarshalJSON(b []byte) error {
 	raw := UnstableDisableProviderResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
@@ -19001,6 +19754,9 @@ func (v *UnstableForkSessionRequest) UnmarshalJSON(b []byte) error {
 	raw := UnstableForkSessionRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "configOptions", "cwd", "mcpServers", "sessionId", "systemPrompt"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
@@ -19103,6 +19859,9 @@ func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configOptions", "modes", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
@@ -19177,6 +19936,9 @@ func (v *UnstableListProvidersRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -19225,6 +19987,9 @@ func (v *UnstableListProvidersResponse) UnmarshalJSON(b []byte) error {
 	raw := UnstableListProvidersResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "providers"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Providers) {
@@ -19316,6 +20081,9 @@ func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "code", "data", "message"); err != nil {
+		return err
+	}
 	if maybeAbsent(&v.Code) || maybeAbsent(&v.Message) {
 		members := jsonMembers(b)
 		if err := requireMember(members, &v.Code, "code", false); err != nil {
@@ -19402,6 +20170,9 @@ func (v *UnstableMessageMcpNotification) UnmarshalJSON(b []byte) error {
 	raw := UnstableMessageMcpNotification{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "method", "params", "requestId", "serverId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Method) || maybeAbsent(&v.RequestId) || maybeAbsent(&v.ServerId) {
@@ -19493,6 +20264,9 @@ func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "method", "params", "requestId", "serverId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Method) || maybeAbsent(&v.RequestId) || maybeAbsent(&v.ServerId) {
 		members := jsonMembers(b)
@@ -19555,6 +20329,9 @@ func (v *UnstableMessageMcpResult) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "result"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Result) {
 		members := jsonMembers(b)
@@ -19587,6 +20364,9 @@ func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
 	raw := UnstableMessageMcpError{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "error"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Error) {
@@ -19728,6 +20508,9 @@ func (v *UnstableProviderCurrentConfig) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "apiType", "baseUrl"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.ApiType) || maybeAbsent(&v.BaseUrl) {
 		members := jsonMembers(b)
@@ -19806,6 +20589,9 @@ func (v *UnstableProviderInfo) UnmarshalJSON(b []byte) error {
 	raw := UnstableProviderInfo{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "current", "providerId", "required", "supported"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if !decodeLenientItems(raw.Supported, &v.Supported) && raw.Supported != nil {
@@ -19888,6 +20674,9 @@ func (v *UnstableProxySuccessorNotification) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "method", "params"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Method) {
 		members := jsonMembers(b)
@@ -19958,6 +20747,9 @@ func (v *UnstableProxySuccessorRequest) UnmarshalJSON(b []byte) error {
 	raw := UnstableProxySuccessorRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "method", "params"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Method) {
@@ -20036,6 +20828,9 @@ func (v *UnstableSessionOptionsRequest) UnmarshalJSON(b []byte) error {
 	raw := UnstableSessionOptionsRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "cwd", "sessionId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.AdditionalDirectories); err != nil {
@@ -20120,6 +20915,9 @@ func (v *UnstableSessionOptionsResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "configOptions", "modes"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenientItems(raw.ConfigOptions, &v.ConfigOptions, shapeSessionConfigOption)
 	decodeLenient(raw.Modes, &v.Modes, shapeSessionModeState)
@@ -20188,6 +20986,9 @@ func (v *UnstableSessionStatusRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) {
 		members := jsonMembers(b)
@@ -20240,6 +21041,9 @@ func (v *UnstableSessionStatusResponse) UnmarshalJSON(b []byte) error {
 	raw := UnstableSessionStatusResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "status"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Status) {
@@ -20300,6 +21104,9 @@ func (v *UnstableSetProviderRequest) UnmarshalJSON(b []byte) error {
 	raw := UnstableSetProviderRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "apiType", "baseUrl", "headers", "providerId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if err := rejectNullItems[string](raw.Headers); err != nil {
@@ -20363,6 +21170,9 @@ func (v *UnstableSetProviderResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -20417,6 +21227,9 @@ func (v *UnstableSetSessionTitleRequest) UnmarshalJSON(b []byte) error {
 	raw := UnstableSetSessionTitleRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId", "title"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.Title) {
@@ -20475,6 +21288,9 @@ func (v *UnstableSetSessionTitleResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "title"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Title) {
 		members := jsonMembers(b)
@@ -20531,6 +21347,9 @@ func (v *UnstableUnarchiveSessionRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) {
 		members := jsonMembers(b)
@@ -20575,6 +21394,9 @@ func (v *UnstableUnarchiveSessionResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil
 }
@@ -20609,6 +21431,9 @@ func (v *UnstructuredCommandInput) UnmarshalJSON(b []byte) error {
 	raw := UnstructuredCommandInput{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "hint"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Hint) {
@@ -20666,6 +21491,9 @@ func (v *Usage) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "cachedReadTokens", "cachedWriteTokens", "inputTokens", "outputTokens", "thoughtTokens", "totalTokens"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.CachedReadTokens, &v.CachedReadTokens)
 	decodeLenient(raw.CachedWriteTokens, &v.CachedWriteTokens)
@@ -20718,6 +21546,9 @@ func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "cost", "size", "used"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Cost, &v.Cost, shapeCost)
 	if maybeAbsent(&v.Size) || maybeAbsent(&v.Used) {
@@ -20761,6 +21592,9 @@ func (v *WaitForTerminalExitRequest) UnmarshalJSON(b []byte) error {
 	raw := WaitForTerminalExitRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "sessionId", "terminalId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.SessionId) || maybeAbsent(&v.TerminalId) {
@@ -20814,6 +21648,9 @@ func (v *WaitForTerminalExitResponse) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "exitCode", "signal"); err != nil {
+		return err
+	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.ExitCode, &v.ExitCode)
 	decodeLenient(raw.Signal, &v.Signal)
@@ -20858,6 +21695,9 @@ func (v *WriteTextFileRequest) UnmarshalJSON(b []byte) error {
 	raw := WriteTextFileRequest{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "content", "path", "sessionId"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	if maybeAbsent(&v.Content) || maybeAbsent(&v.Path) || maybeAbsent(&v.SessionId) {
@@ -20910,6 +21750,9 @@ func (v *WriteTextFileResponse) UnmarshalJSON(b []byte) error {
 	raw := WriteTextFileResponse{plain: (*plain)(v)}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	return nil

@@ -265,7 +265,7 @@ func bodyChanges(old, new *side) ([]string, []site) {
 	noops := noopMethods(old, new)
 	for _, name := range sortedKeys(old.funcs) {
 		recv, _, isMethod := strings.Cut(name, ".")
-		if isMethod && !old.declared[recv] {
+		if isMethod && !old.declared[recv] || fastDecoder(name) {
 			continue
 		}
 		of, nf := old.funcs[name], new.funcs[name]
@@ -300,7 +300,7 @@ func bodyChanges(old, new *side) ([]string, []site) {
 	// a hint, may only handle what new adds.
 	for _, name := range sortedKeys(new.funcs) {
 		recv, _, isMethod := strings.Cut(name, ".")
-		if !isMethod || !old.declared[recv] || old.funcs[name] != nil {
+		if !isMethod || !old.declared[recv] || old.funcs[name] != nil || fastDecoder(name) {
 			continue
 		}
 		p := newProjection(old, new, recv, true)
@@ -310,6 +310,13 @@ func bodyChanges(old, new *side) ([]string, []site) {
 	}
 	return out, sites
 }
+
+// fastDecoder reports whether name is the decodeFast of a type, which
+// bodyChanges does not compare: it decodes a value as the exact decoder of
+// its type does, or declines and leaves the value to that decoder
+// (decode_fast.go of the acp package). So what a stable caller can observe
+// changes only with the exact decoder, whose body bodyChanges compares.
+func fastDecoder(name string) bool { return strings.HasSuffix(name, ".decodeFast") }
 
 // noopMethods returns the methods that new adds to the types that old
 // declares and that do nothing once projected: their body is empty or only

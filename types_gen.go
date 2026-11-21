@@ -38,6 +38,9 @@ type AgentAuthCapabilities struct {
 }
 
 func (v *AgentAuthCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain AgentAuthCapabilities
 	type AgentAuthCapabilities struct {
 		*plain
@@ -107,6 +110,9 @@ func (v AgentCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *AgentCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain AgentCapabilities
 	type AgentCapabilities struct {
 		*plain
@@ -151,6 +157,9 @@ type AgentNotification struct {
 }
 
 func (v *AgentNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AgentNotification
 	v.Method = fresh.Method
 	type plain AgentNotification
@@ -188,6 +197,9 @@ type AgentRequest struct {
 }
 
 func (v *AgentRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AgentRequest
 	v.Id = fresh.Id
 	v.Method = fresh.Method
@@ -231,6 +243,9 @@ type AgentResult struct {
 }
 
 func (v *AgentResult) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AgentResult
 	v.Id = fresh.Id
 	v.Result = fresh.Result
@@ -270,6 +285,9 @@ type AgentError struct {
 }
 
 func (v *AgentError) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AgentError
 	v.Error = fresh.Error
 	v.Id = fresh.Id
@@ -311,6 +329,9 @@ type AgentResponse struct {
 }
 
 func (u *AgentResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = AgentResponse{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -447,6 +468,9 @@ func (v Annotations) MarshalJSON() ([]byte, error) {
 }
 
 func (v *Annotations) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain Annotations
 	type Annotations struct {
 		*plain
@@ -483,6 +507,9 @@ type AudioContent struct {
 }
 
 func (v *AudioContent) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AudioContent
 	v.Data = fresh.Data
 	v.MimeType = fresh.MimeType
@@ -540,6 +567,9 @@ func (v AuthCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *AuthCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain AuthCapabilities
 	type AuthCapabilities struct {
 		*plain
@@ -585,6 +615,9 @@ type AuthMethodTerminalInline struct {
 }
 
 func (v *AuthMethodTerminalInline) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AuthMethodTerminalInline
 	v.Id = fresh.Id
 	v.Name = fresh.Name
@@ -648,6 +681,9 @@ type AuthMethod struct {
 }
 
 func (u *AuthMethod) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = AuthMethod{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -766,6 +802,9 @@ type AuthMethodAgent struct {
 }
 
 func (v *AuthMethodAgent) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AuthMethodAgent
 	v.Id = fresh.Id
 	v.Name = fresh.Name
@@ -831,6 +870,9 @@ type AuthMethodTerminal struct {
 }
 
 func (v *AuthMethodTerminal) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AuthMethodTerminal
 	v.Id = fresh.Id
 	v.Name = fresh.Name
@@ -896,6 +938,9 @@ type AuthStatusCapabilities struct {
 }
 
 func (v *AuthStatusCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain AuthStatusCapabilities
 	type AuthStatusCapabilities struct {
 		*plain
@@ -925,6 +970,9 @@ type AuthenticateRequest struct {
 }
 
 func (v *AuthenticateRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AuthenticateRequest
 	v.MethodId = fresh.MethodId
 	type plain AuthenticateRequest
@@ -964,6 +1012,9 @@ type AuthenticateResponse struct {
 }
 
 func (v *AuthenticateResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain AuthenticateResponse
 	type AuthenticateResponse struct {
 		*plain
@@ -998,6 +1049,9 @@ type AvailableCommand struct {
 }
 
 func (v *AvailableCommand) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AvailableCommand
 	v.Description = fresh.Description
 	v.Name = fresh.Name
@@ -1032,6 +1086,9 @@ type AvailableCommandInput struct {
 }
 
 func (u *AvailableCommandInput) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = AvailableCommandInput{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -1112,6 +1169,9 @@ func (v AvailableCommandsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *AvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh AvailableCommandsUpdate
 	v.AvailableCommands = fresh.AvailableCommands
 	type plain AvailableCommandsUpdate
@@ -1161,6 +1221,9 @@ type BlobResourceContents struct {
 }
 
 func (v *BlobResourceContents) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh BlobResourceContents
 	v.Blob = fresh.Blob
 	v.Uri = fresh.Uri
@@ -1201,6 +1264,9 @@ type BooleanConfigOptionCapabilities struct {
 }
 
 func (v *BooleanConfigOptionCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain BooleanConfigOptionCapabilities
 	type BooleanConfigOptionCapabilities struct {
 		*plain
@@ -1239,6 +1305,9 @@ type BooleanPropertySchema struct {
 }
 
 func (v *BooleanPropertySchema) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain BooleanPropertySchema
 	type BooleanPropertySchema struct {
 		*plain
@@ -1273,6 +1342,9 @@ type CancelNotification struct {
 }
 
 func (v *CancelNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CancelNotification
 	v.SessionId = fresh.SessionId
 	type plain CancelNotification
@@ -1316,6 +1388,9 @@ type CancelRequestNotification struct {
 }
 
 func (v *CancelRequestNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CancelRequestNotification
 	v.RequestId = fresh.RequestId
 	type plain CancelRequestNotification
@@ -1413,6 +1488,9 @@ func (v ClientCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ClientCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ClientCapabilities
 	type ClientCapabilities struct {
 		*plain
@@ -1455,6 +1533,9 @@ type ClientNotification struct {
 }
 
 func (v *ClientNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ClientNotification
 	v.Method = fresh.Method
 	type plain ClientNotification
@@ -1492,6 +1573,9 @@ type ClientRequest struct {
 }
 
 func (v *ClientRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ClientRequest
 	v.Id = fresh.Id
 	v.Method = fresh.Method
@@ -1535,6 +1619,9 @@ type ClientResult struct {
 }
 
 func (v *ClientResult) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ClientResult
 	v.Id = fresh.Id
 	v.Result = fresh.Result
@@ -1574,6 +1661,9 @@ type ClientError struct {
 }
 
 func (v *ClientError) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ClientError
 	v.Error = fresh.Error
 	v.Id = fresh.Id
@@ -1615,6 +1705,9 @@ type ClientResponse struct {
 }
 
 func (u *ClientResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = ClientResponse{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -1750,6 +1843,9 @@ type ClientSessionCapabilities struct {
 }
 
 func (v *ClientSessionCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ClientSessionCapabilities
 	type ClientSessionCapabilities struct {
 		*plain
@@ -1790,6 +1886,9 @@ type CloseSessionRequest struct {
 }
 
 func (v *CloseSessionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CloseSessionRequest
 	v.SessionId = fresh.SessionId
 	type plain CloseSessionRequest
@@ -1829,6 +1928,9 @@ type CloseSessionResponse struct {
 }
 
 func (v *CloseSessionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain CloseSessionResponse
 	type CloseSessionResponse struct {
 		*plain
@@ -1880,6 +1982,9 @@ type CompactionSummaryChunk struct {
 }
 
 func (v *CompactionSummaryChunk) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CompactionSummaryChunk
 	v.CompactionId = fresh.CompactionId
 	v.Content = fresh.Content
@@ -1957,6 +2062,9 @@ func (v CompactionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *CompactionUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CompactionUpdate
 	v.CompactionId = fresh.CompactionId
 	v.Status = fresh.Status
@@ -2011,6 +2119,9 @@ type CompleteElicitationNotification struct {
 }
 
 func (v *CompleteElicitationNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CompleteElicitationNotification
 	v.ElicitationId = fresh.ElicitationId
 	type plain CompleteElicitationNotification
@@ -2062,6 +2173,9 @@ func (v ConfigOptionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ConfigOptionUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ConfigOptionUpdate
 	v.ConfigOptions = fresh.ConfigOptions
 	type plain ConfigOptionUpdate
@@ -2107,6 +2221,9 @@ type Content struct {
 }
 
 func (v *Content) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Content
 	v.Content = fresh.Content
 	type plain Content
@@ -2165,6 +2282,9 @@ type ContentBlockText struct {
 }
 
 func (v *ContentBlockText) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ContentBlockText
 	v.Text = fresh.Text
 	v.Type = fresh.Type
@@ -2214,6 +2334,9 @@ type ContentBlockImage struct {
 }
 
 func (v *ContentBlockImage) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ContentBlockImage
 	v.Data = fresh.Data
 	v.MimeType = fresh.MimeType
@@ -2267,6 +2390,9 @@ type ContentBlockAudio struct {
 }
 
 func (v *ContentBlockAudio) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ContentBlockAudio
 	v.Data = fresh.Data
 	v.MimeType = fresh.MimeType
@@ -2326,6 +2452,9 @@ type ContentBlockResourceLink struct {
 }
 
 func (v *ContentBlockResourceLink) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ContentBlockResourceLink
 	v.Name = fresh.Name
 	v.Type = fresh.Type
@@ -2385,6 +2514,9 @@ type ContentBlockResource struct {
 }
 
 func (v *ContentBlockResource) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ContentBlockResource
 	v.Resource = fresh.Resource
 	v.Type = fresh.Type
@@ -2446,6 +2578,9 @@ type ContentBlock struct {
 }
 
 func (u *ContentBlock) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = ContentBlock{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -2611,6 +2746,9 @@ type ContentChunk struct {
 }
 
 func (v *ContentChunk) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ContentChunk
 	v.Content = fresh.Content
 	type plain ContentChunk
@@ -2657,6 +2795,9 @@ type Cost struct {
 }
 
 func (v *Cost) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Cost
 	v.Amount = fresh.Amount
 	v.Currency = fresh.Currency
@@ -2710,6 +2851,9 @@ type CreateElicitationForm struct {
 }
 
 func (u *CreateElicitationForm) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = CreateElicitationForm{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -2872,6 +3016,9 @@ type CreateElicitationUrl struct {
 }
 
 func (u *CreateElicitationUrl) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = CreateElicitationUrl{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -3048,6 +3195,9 @@ type CreateElicitationOther struct {
 }
 
 func (u *CreateElicitationOther) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = CreateElicitationOther{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -3208,6 +3358,9 @@ type CreateElicitationRequest struct {
 }
 
 func (u *CreateElicitationRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = CreateElicitationRequest{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -3364,6 +3517,9 @@ func (v CreateElicitationAccept) MarshalJSON() ([]byte, error) {
 }
 
 func (v *CreateElicitationAccept) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CreateElicitationAccept
 	v.Action = fresh.Action
 	type plain CreateElicitationAccept
@@ -3408,6 +3564,9 @@ type CreateElicitationDecline struct {
 }
 
 func (v *CreateElicitationDecline) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CreateElicitationDecline
 	v.Action = fresh.Action
 	type plain CreateElicitationDecline
@@ -3443,6 +3602,9 @@ type CreateElicitationCancel struct {
 }
 
 func (v *CreateElicitationCancel) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CreateElicitationCancel
 	v.Action = fresh.Action
 	type plain CreateElicitationCancel
@@ -3504,6 +3666,9 @@ func (v CreateElicitationResponseOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *CreateElicitationResponseOther) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CreateElicitationResponseOther
 	v.Action = fresh.Action
 	type plain CreateElicitationResponseOther
@@ -3546,6 +3711,9 @@ type CreateElicitationResponse struct {
 }
 
 func (u *CreateElicitationResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = CreateElicitationResponse{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -3711,6 +3879,9 @@ type CreateTerminalRequest struct {
 }
 
 func (v *CreateTerminalRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CreateTerminalRequest
 	v.Command = fresh.Command
 	v.SessionId = fresh.SessionId
@@ -3766,6 +3937,9 @@ type CreateTerminalResponse struct {
 }
 
 func (v *CreateTerminalResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CreateTerminalResponse
 	v.TerminalId = fresh.TerminalId
 	type plain CreateTerminalResponse
@@ -3809,6 +3983,9 @@ type CurrentModeUpdate struct {
 }
 
 func (v *CurrentModeUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh CurrentModeUpdate
 	v.CurrentModeId = fresh.CurrentModeId
 	type plain CurrentModeUpdate
@@ -3852,6 +4029,9 @@ type DeleteSessionRequest struct {
 }
 
 func (v *DeleteSessionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh DeleteSessionRequest
 	v.SessionId = fresh.SessionId
 	type plain DeleteSessionRequest
@@ -3891,6 +4071,9 @@ type DeleteSessionResponse struct {
 }
 
 func (v *DeleteSessionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain DeleteSessionResponse
 	type DeleteSessionResponse struct {
 		*plain
@@ -3929,6 +4112,9 @@ type Diff struct {
 }
 
 func (v *Diff) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Diff
 	v.NewText = fresh.NewText
 	v.Path = fresh.Path
@@ -4004,6 +4190,9 @@ type ElicitationCapabilities struct {
 }
 
 func (v *ElicitationCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ElicitationCapabilities
 	type ElicitationCapabilities struct {
 		*plain
@@ -4038,6 +4227,9 @@ type ElicitationContentValueBoolean bool
 type ElicitationContentValueStringArray []string
 
 func (v *ElicitationContentValueStringArray) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	if err := rejectNullItems[string](b); err != nil {
 		return err
 	}
@@ -4058,6 +4250,9 @@ type ElicitationContentValue struct {
 }
 
 func (u *ElicitationContentValue) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = ElicitationContentValue{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -4182,6 +4377,9 @@ type ElicitationFormCapabilities struct {
 }
 
 func (v *ElicitationFormCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ElicitationFormCapabilities
 	type ElicitationFormCapabilities struct {
 		*plain
@@ -4207,6 +4405,9 @@ type ElicitationFormMode struct {
 }
 
 func (u *ElicitationFormMode) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = ElicitationFormMode{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -4423,6 +4624,9 @@ func (v ElicitationPropertySchemaString) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ElicitationPropertySchemaString) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ElicitationPropertySchemaString
 	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaString
@@ -4491,6 +4695,9 @@ type ElicitationPropertySchemaNumber struct {
 }
 
 func (v *ElicitationPropertySchemaNumber) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ElicitationPropertySchemaNumber
 	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaNumber
@@ -4552,6 +4759,9 @@ type ElicitationPropertySchemaInteger struct {
 }
 
 func (v *ElicitationPropertySchemaInteger) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ElicitationPropertySchemaInteger
 	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaInteger
@@ -4605,6 +4815,9 @@ type ElicitationPropertySchemaBoolean struct {
 }
 
 func (v *ElicitationPropertySchemaBoolean) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ElicitationPropertySchemaBoolean
 	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaBoolean
@@ -4694,6 +4907,9 @@ func (v ElicitationPropertySchemaArray) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ElicitationPropertySchemaArray) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ElicitationPropertySchemaArray
 	v.Items = fresh.Items
 	v.Type = fresh.Type
@@ -4764,6 +4980,9 @@ func (v ElicitationPropertySchemaOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ElicitationPropertySchemaOther) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ElicitationPropertySchemaOther
 	v.Type = fresh.Type
 	type plain ElicitationPropertySchemaOther
@@ -4808,6 +5027,9 @@ type ElicitationPropertySchema struct {
 }
 
 func (u *ElicitationPropertySchema) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = ElicitationPropertySchema{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -4995,6 +5217,9 @@ type ElicitationRequestScope struct {
 }
 
 func (v *ElicitationRequestScope) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ElicitationRequestScope
 	v.RequestId = fresh.RequestId
 	type plain ElicitationRequestScope
@@ -5082,6 +5307,9 @@ func (v ElicitationSchema) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ElicitationSchema) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ElicitationSchema
 	type ElicitationSchema struct {
 		*plain
@@ -5149,6 +5377,9 @@ type ElicitationSessionScope struct {
 }
 
 func (v *ElicitationSessionScope) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ElicitationSessionScope
 	v.SessionId = fresh.SessionId
 	type plain ElicitationSessionScope
@@ -5192,6 +5423,9 @@ type ElicitationUrlCapabilities struct {
 }
 
 func (v *ElicitationUrlCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ElicitationUrlCapabilities
 	type ElicitationUrlCapabilities struct {
 		*plain
@@ -5219,6 +5453,9 @@ type ElicitationUrlMode struct {
 }
 
 func (u *ElicitationUrlMode) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = ElicitationUrlMode{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -5363,6 +5600,9 @@ type EmbeddedResource struct {
 }
 
 func (v *EmbeddedResource) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh EmbeddedResource
 	v.Resource = fresh.Resource
 	type plain EmbeddedResource
@@ -5402,6 +5642,9 @@ type EmbeddedResourceResource struct {
 }
 
 func (u *EmbeddedResourceResource) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = EmbeddedResourceResource{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -5514,6 +5757,9 @@ type EnumOption struct {
 }
 
 func (v *EnumOption) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh EnumOption
 	v.Const = fresh.Const
 	v.Title = fresh.Title
@@ -5556,6 +5802,9 @@ type EnvVariable struct {
 }
 
 func (v *EnvVariable) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh EnvVariable
 	v.Name = fresh.Name
 	v.Value = fresh.Value
@@ -5600,6 +5849,9 @@ type Error struct {
 }
 
 func (v *Error) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Error
 	v.Code = fresh.Code
 	v.Message = fresh.Message
@@ -5690,6 +5942,9 @@ type ErrorCode struct {
 }
 
 func (u *ErrorCode) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = ErrorCode{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -5881,6 +6136,9 @@ type ErrorStopReason struct {
 }
 
 func (v *ErrorStopReason) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ErrorStopReason
 	type ErrorStopReason struct {
 		*plain
@@ -5946,6 +6204,9 @@ func (v FileSystemCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *FileSystemCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain FileSystemCapabilities
 	type FileSystemCapabilities struct {
 		*plain
@@ -5982,6 +6243,9 @@ type HttpHeader struct {
 }
 
 func (v *HttpHeader) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh HttpHeader
 	v.Name = fresh.Name
 	v.Value = fresh.Value
@@ -6024,6 +6288,9 @@ type IdleStateUpdateEndTurn struct {
 }
 
 func (v *IdleStateUpdateEndTurn) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh IdleStateUpdateEndTurn
 	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateEndTurn
@@ -6061,6 +6328,9 @@ type IdleStateUpdateMaxTokens struct {
 }
 
 func (v *IdleStateUpdateMaxTokens) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh IdleStateUpdateMaxTokens
 	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateMaxTokens
@@ -6099,6 +6369,9 @@ type IdleStateUpdateMaxTurnRequests struct {
 }
 
 func (v *IdleStateUpdateMaxTurnRequests) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh IdleStateUpdateMaxTurnRequests
 	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateMaxTurnRequests
@@ -6136,6 +6409,9 @@ type IdleStateUpdateRefusal struct {
 }
 
 func (v *IdleStateUpdateRefusal) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh IdleStateUpdateRefusal
 	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateRefusal
@@ -6173,6 +6449,9 @@ type IdleStateUpdateCancelled struct {
 }
 
 func (v *IdleStateUpdateCancelled) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh IdleStateUpdateCancelled
 	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateCancelled
@@ -6215,6 +6494,9 @@ type IdleStateUpdateError struct {
 }
 
 func (v *IdleStateUpdateError) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh IdleStateUpdateError
 	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateError
@@ -6271,6 +6553,9 @@ func (v IdleStateUpdateOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *IdleStateUpdateOther) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh IdleStateUpdateOther
 	v.StopReason = fresh.StopReason
 	type plain IdleStateUpdateOther
@@ -6308,6 +6593,9 @@ type IdleStateUpdateNone struct {
 }
 
 func (v *IdleStateUpdateNone) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain IdleStateUpdateNone
 	type IdleStateUpdateNone struct {
 		*plain
@@ -6347,6 +6635,9 @@ type IdleStateUpdate struct {
 }
 
 func (u *IdleStateUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = IdleStateUpdate{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -6593,6 +6884,9 @@ type ImageContent struct {
 }
 
 func (v *ImageContent) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ImageContent
 	v.Data = fresh.Data
 	v.MimeType = fresh.MimeType
@@ -6646,6 +6940,9 @@ type Implementation struct {
 }
 
 func (v *Implementation) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Implementation
 	v.Name = fresh.Name
 	v.Version = fresh.Version
@@ -6701,6 +6998,9 @@ type InitialSessionConfigOptionBoolean struct {
 }
 
 func (v *InitialSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh InitialSessionConfigOptionBoolean
 	v.ConfigId = fresh.ConfigId
 	v.Type = fresh.Type
@@ -6756,6 +7056,9 @@ type InitialSessionConfigOptionValueId struct {
 }
 
 func (v *InitialSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh InitialSessionConfigOptionValueId
 	v.ConfigId = fresh.ConfigId
 	v.Value = fresh.Value
@@ -6803,6 +7106,9 @@ type InitialSessionConfigOption struct {
 }
 
 func (u *InitialSessionConfigOption) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = InitialSessionConfigOption{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -6927,6 +7233,9 @@ func (v InitializeRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *InitializeRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh InitializeRequest
 	v.ProtocolVersion = fresh.ProtocolVersion
 	type plain InitializeRequest
@@ -7000,6 +7309,9 @@ func (v InitializeResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh InitializeResponse
 	v.ProtocolVersion = fresh.ProtocolVersion
 	type plain InitializeResponse
@@ -7068,6 +7380,9 @@ type IntegerPropertySchema struct {
 }
 
 func (v *IntegerPropertySchema) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain IntegerPropertySchema
 	type IntegerPropertySchema struct {
 		*plain
@@ -7102,6 +7417,9 @@ type KillTerminalRequest struct {
 }
 
 func (v *KillTerminalRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh KillTerminalRequest
 	v.SessionId = fresh.SessionId
 	v.TerminalId = fresh.TerminalId
@@ -7148,6 +7466,9 @@ type KillTerminalResponse struct {
 }
 
 func (v *KillTerminalResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain KillTerminalResponse
 	type KillTerminalResponse struct {
 		*plain
@@ -7192,6 +7513,9 @@ type ListSessionsRequest struct {
 }
 
 func (v *ListSessionsRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ListSessionsRequest
 	type ListSessionsRequest struct {
 		*plain
@@ -7235,6 +7559,9 @@ func (v ListSessionsResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ListSessionsResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ListSessionsResponse
 	v.Sessions = fresh.Sessions
 	type plain ListSessionsResponse
@@ -7331,6 +7658,9 @@ func (v LoadSessionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *LoadSessionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh LoadSessionRequest
 	v.Cwd = fresh.Cwd
 	v.McpServers = fresh.McpServers
@@ -7434,6 +7764,9 @@ func (v LoadSessionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *LoadSessionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain LoadSessionResponse
 	type LoadSessionResponse struct {
 		*plain
@@ -7468,6 +7801,9 @@ type LogoutCapabilities struct {
 }
 
 func (v *LogoutCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain LogoutCapabilities
 	type LogoutCapabilities struct {
 		*plain
@@ -7494,6 +7830,9 @@ type LogoutRequest struct {
 }
 
 func (v *LogoutRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain LogoutRequest
 	type LogoutRequest struct {
 		*plain
@@ -7522,6 +7861,9 @@ type LogoutResponse struct {
 }
 
 func (v *LogoutResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain LogoutResponse
 	type LogoutResponse struct {
 		*plain
@@ -7573,6 +7915,9 @@ func (v McpCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain McpCapabilities
 	type McpCapabilities struct {
 		*plain
@@ -7634,6 +7979,9 @@ func (v McpServerHttpInline) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerHttpInline) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh McpServerHttpInline
 	v.Headers = fresh.Headers
 	v.Name = fresh.Name
@@ -7710,6 +8058,9 @@ func (v McpServerSseInline) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerSseInline) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh McpServerSseInline
 	v.Headers = fresh.Headers
 	v.Name = fresh.Name
@@ -7782,6 +8133,9 @@ type McpServerAcpInline struct {
 }
 
 func (v *McpServerAcpInline) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh McpServerAcpInline
 	v.Name = fresh.Name
 	v.ServerId = fresh.ServerId
@@ -7843,6 +8197,9 @@ type McpServer struct {
 }
 
 func (u *McpServer) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = McpServer{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -8023,6 +8380,9 @@ type McpServerAcp struct {
 }
 
 func (v *McpServerAcp) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh McpServerAcp
 	v.Name = fresh.Name
 	v.ServerId = fresh.ServerId
@@ -8092,6 +8452,9 @@ func (v McpServerHttp) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerHttp) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh McpServerHttp
 	v.Headers = fresh.Headers
 	v.Name = fresh.Name
@@ -8161,6 +8524,9 @@ func (v McpServerSse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerSse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh McpServerSse
 	v.Headers = fresh.Headers
 	v.Name = fresh.Name
@@ -8235,6 +8601,9 @@ func (v McpServerStdio) MarshalJSON() ([]byte, error) {
 }
 
 func (v *McpServerStdio) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh McpServerStdio
 	v.Args = fresh.Args
 	v.Command = fresh.Command
@@ -8323,6 +8692,9 @@ func (v MultiSelectItemsString) MarshalJSON() ([]byte, error) {
 }
 
 func (v *MultiSelectItemsString) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh MultiSelectItemsString
 	v.Enum = fresh.Enum
 	v.Type = fresh.Type
@@ -8386,6 +8758,9 @@ func (v MultiSelectItemsOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *MultiSelectItemsOther) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh MultiSelectItemsOther
 	v.Type = fresh.Type
 	type plain MultiSelectItemsOther
@@ -8418,6 +8793,9 @@ type MultiSelectItems struct {
 }
 
 func (u *MultiSelectItems) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = MultiSelectItems{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -8601,6 +8979,9 @@ func (v MultiSelectPropertySchema) MarshalJSON() ([]byte, error) {
 }
 
 func (v *MultiSelectPropertySchema) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh MultiSelectPropertySchema
 	v.Items = fresh.Items
 	type plain MultiSelectPropertySchema
@@ -8692,6 +9073,9 @@ func (v NewSessionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *NewSessionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh NewSessionRequest
 	v.Cwd = fresh.Cwd
 	v.McpServers = fresh.McpServers
@@ -8796,6 +9180,9 @@ func (v NewSessionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *NewSessionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh NewSessionResponse
 	v.SessionId = fresh.SessionId
 	type plain NewSessionResponse
@@ -8853,6 +9240,9 @@ type Notice struct {
 }
 
 func (v *Notice) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Notice
 	v.Severity = fresh.Severity
 	v.Title = fresh.Title
@@ -8935,6 +9325,9 @@ type NumberPropertySchema struct {
 }
 
 func (v *NumberPropertySchema) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain NumberPropertySchema
 	type NumberPropertySchema struct {
 		*plain
@@ -8971,6 +9364,9 @@ type PermissionOption struct {
 }
 
 func (v *PermissionOption) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PermissionOption
 	v.Kind = fresh.Kind
 	v.Name = fresh.Name
@@ -9061,6 +9457,9 @@ func (v Plan) MarshalJSON() ([]byte, error) {
 }
 
 func (v *Plan) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Plan
 	v.Entries = fresh.Entries
 	type plain Plan
@@ -9108,6 +9507,9 @@ type PlanCapabilities struct {
 }
 
 func (v *PlanCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain PlanCapabilities
 	type PlanCapabilities struct {
 		*plain
@@ -9143,6 +9545,9 @@ type PlanEntry struct {
 }
 
 func (v *PlanEntry) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PlanEntry
 	v.Content = fresh.Content
 	v.Priority = fresh.Priority
@@ -9252,6 +9657,9 @@ func (v PlanItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PlanItems) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PlanItems
 	v.Entries = fresh.Entries
 	v.PlanId = fresh.PlanId
@@ -9316,6 +9724,9 @@ type PlanMarkdown struct {
 }
 
 func (v *PlanMarkdown) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PlanMarkdown
 	v.Content = fresh.Content
 	v.PlanId = fresh.PlanId
@@ -9367,6 +9778,9 @@ type PlanRemoved struct {
 }
 
 func (v *PlanRemoved) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PlanRemoved
 	v.PlanId = fresh.PlanId
 	type plain PlanRemoved
@@ -9412,6 +9826,9 @@ type PlanUpdate struct {
 }
 
 func (v *PlanUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PlanUpdate
 	v.Plan = fresh.Plan
 	type plain PlanUpdate
@@ -9474,6 +9891,9 @@ func (v PlanUpdateContentItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PlanUpdateContentItems) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PlanUpdateContentItems
 	v.Entries = fresh.Entries
 	v.PlanId = fresh.PlanId
@@ -9539,6 +9959,9 @@ type PlanUpdateContentMarkdown struct {
 }
 
 func (v *PlanUpdateContentMarkdown) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PlanUpdateContentMarkdown
 	v.Content = fresh.Content
 	v.PlanId = fresh.PlanId
@@ -9585,6 +10008,9 @@ type PlanUpdateContent struct {
 }
 
 func (u *PlanUpdateContent) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = PlanUpdateContent{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -9715,6 +10141,9 @@ func (v PromptCapabilities) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain PromptCapabilities
 	type PromptCapabilities struct {
 		*plain
@@ -9781,6 +10210,9 @@ func (v PromptRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PromptRequest
 	v.Prompt = fresh.Prompt
 	v.SessionId = fresh.SessionId
@@ -9842,6 +10274,9 @@ type PromptResponse struct {
 }
 
 func (v *PromptResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PromptResponse
 	v.StopReason = fresh.StopReason
 	type plain PromptResponse
@@ -9909,6 +10344,9 @@ func (v PromptSuggestion) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptSuggestion) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PromptSuggestion
 	v.Prompt = fresh.Prompt
 	type plain PromptSuggestion
@@ -9959,6 +10397,9 @@ type PromptSuggestionsAudioCapabilities struct {
 }
 
 func (v *PromptSuggestionsAudioCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain PromptSuggestionsAudioCapabilities
 	type PromptSuggestionsAudioCapabilities struct {
 		*plain
@@ -10008,6 +10449,9 @@ type PromptSuggestionsCapabilities struct {
 }
 
 func (v *PromptSuggestionsCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain PromptSuggestionsCapabilities
 	type PromptSuggestionsCapabilities struct {
 		*plain
@@ -10045,6 +10489,9 @@ type PromptSuggestionsEmbeddedContextCapabilities struct {
 }
 
 func (v *PromptSuggestionsEmbeddedContextCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain PromptSuggestionsEmbeddedContextCapabilities
 	type PromptSuggestionsEmbeddedContextCapabilities struct {
 		*plain
@@ -10075,6 +10522,9 @@ type PromptSuggestionsImageCapabilities struct {
 }
 
 func (v *PromptSuggestionsImageCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain PromptSuggestionsImageCapabilities
 	type PromptSuggestionsImageCapabilities struct {
 		*plain
@@ -10130,6 +10580,9 @@ func (v PromptSuggestionsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *PromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh PromptSuggestionsUpdate
 	v.Suggestions = fresh.Suggestions
 	type plain PromptSuggestionsUpdate
@@ -10185,6 +10638,9 @@ type ProvidersCapabilities struct {
 }
 
 func (v *ProvidersCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ProvidersCapabilities
 	type ProvidersCapabilities struct {
 		*plain
@@ -10219,6 +10675,9 @@ type ReadTextFileRequest struct {
 }
 
 func (v *ReadTextFileRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ReadTextFileRequest
 	v.Path = fresh.Path
 	v.SessionId = fresh.SessionId
@@ -10267,6 +10726,9 @@ type ReadTextFileResponse struct {
 }
 
 func (v *ReadTextFileResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ReadTextFileResponse
 	v.Content = fresh.Content
 	type plain ReadTextFileResponse
@@ -10310,6 +10772,9 @@ type ReleaseTerminalRequest struct {
 }
 
 func (v *ReleaseTerminalRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ReleaseTerminalRequest
 	v.SessionId = fresh.SessionId
 	v.TerminalId = fresh.TerminalId
@@ -10356,6 +10821,9 @@ type ReleaseTerminalResponse struct {
 }
 
 func (v *ReleaseTerminalResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ReleaseTerminalResponse
 	type ReleaseTerminalResponse struct {
 		*plain
@@ -10400,6 +10868,9 @@ type RequestId struct {
 }
 
 func (u *RequestId) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = RequestId{}
 	if string(b) == "null" {
 		var v RequestIdNull
@@ -10479,6 +10950,9 @@ type RequestPermissionOutcomeCancelled struct {
 }
 
 func (v *RequestPermissionOutcomeCancelled) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh RequestPermissionOutcomeCancelled
 	v.Outcome = fresh.Outcome
 	type plain RequestPermissionOutcomeCancelled
@@ -10512,6 +10986,9 @@ type RequestPermissionOutcomeSelected struct {
 }
 
 func (v *RequestPermissionOutcomeSelected) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh RequestPermissionOutcomeSelected
 	v.OptionId = fresh.OptionId
 	v.Outcome = fresh.Outcome
@@ -10558,6 +11035,9 @@ type RequestPermissionOutcome struct {
 }
 
 func (u *RequestPermissionOutcome) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = RequestPermissionOutcome{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -10670,6 +11150,9 @@ func (v RequestPermissionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *RequestPermissionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh RequestPermissionRequest
 	v.Options = fresh.Options
 	v.SessionId = fresh.SessionId
@@ -10730,6 +11213,9 @@ type RequestPermissionResponse struct {
 }
 
 func (v *RequestPermissionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh RequestPermissionResponse
 	v.Outcome = fresh.Outcome
 	type plain RequestPermissionResponse
@@ -10767,6 +11253,9 @@ type RequiresActionStateUpdate struct {
 }
 
 func (v *RequiresActionStateUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain RequiresActionStateUpdate
 	type RequiresActionStateUpdate struct {
 		*plain
@@ -10805,6 +11294,9 @@ type ResourceLink struct {
 }
 
 func (v *ResourceLink) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ResourceLink
 	v.Name = fresh.Name
 	v.Uri = fresh.Uri
@@ -10893,6 +11385,9 @@ type ResumeSessionRequest struct {
 }
 
 func (v *ResumeSessionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ResumeSessionRequest
 	v.Cwd = fresh.Cwd
 	v.SessionId = fresh.SessionId
@@ -10983,6 +11478,9 @@ func (v ResumeSessionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ResumeSessionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain ResumeSessionResponse
 	type ResumeSessionResponse struct {
 		*plain
@@ -11023,6 +11521,9 @@ type RunningStateUpdate struct {
 }
 
 func (v *RunningStateUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain RunningStateUpdate
 	type RunningStateUpdate struct {
 		*plain
@@ -11049,6 +11550,9 @@ type SelectedPermissionOutcome struct {
 }
 
 func (v *SelectedPermissionOutcome) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SelectedPermissionOutcome
 	v.OptionId = fresh.OptionId
 	type plain SelectedPermissionOutcome
@@ -11093,6 +11597,9 @@ type SessionAdditionalDirectoriesCapabilities struct {
 }
 
 func (v *SessionAdditionalDirectoriesCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionAdditionalDirectoriesCapabilities
 	type SessionAdditionalDirectoriesCapabilities struct {
 		*plain
@@ -11124,6 +11631,9 @@ type SessionArchiveCapabilities struct {
 }
 
 func (v *SessionArchiveCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionArchiveCapabilities
 	type SessionArchiveCapabilities struct {
 		*plain
@@ -11173,6 +11683,9 @@ type SessionCancelCapabilities struct {
 }
 
 func (v *SessionCancelCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionCancelCapabilities
 	type SessionCancelCapabilities struct {
 		*plain
@@ -11290,6 +11803,9 @@ type SessionCapabilities struct {
 }
 
 func (v *SessionCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionCapabilities
 	type SessionCapabilities struct {
 		*plain
@@ -11338,6 +11854,9 @@ type SessionCloseCapabilities struct {
 }
 
 func (v *SessionCloseCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionCloseCapabilities
 	type SessionCloseCapabilities struct {
 		*plain
@@ -11358,6 +11877,9 @@ type SessionConfigBoolean struct {
 }
 
 func (v *SessionConfigBoolean) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionConfigBoolean
 	v.CurrentValue = fresh.CurrentValue
 	type plain SessionConfigBoolean
@@ -11408,6 +11930,9 @@ type SessionConfigOptionSelect struct {
 }
 
 func (v *SessionConfigOptionSelect) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionConfigOptionSelect
 	v.CurrentValue = fresh.CurrentValue
 	v.Id = fresh.Id
@@ -11484,6 +12009,9 @@ type SessionConfigOptionBoolean struct {
 }
 
 func (v *SessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionConfigOptionBoolean
 	v.CurrentValue = fresh.CurrentValue
 	v.Id = fresh.Id
@@ -11536,6 +12064,9 @@ type SessionConfigOption struct {
 }
 
 func (u *SessionConfigOption) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = SessionConfigOption{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -11668,6 +12199,9 @@ type SessionConfigOptionsCapabilities struct {
 }
 
 func (v *SessionConfigOptionsCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionConfigOptionsCapabilities
 	type SessionConfigOptionsCapabilities struct {
 		*plain
@@ -11692,6 +12226,9 @@ type SessionConfigSelect struct {
 }
 
 func (v *SessionConfigSelect) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionConfigSelect
 	v.CurrentValue = fresh.CurrentValue
 	v.Options = fresh.Options
@@ -11752,6 +12289,9 @@ func (v SessionConfigSelectGroup) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionConfigSelectGroup) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionConfigSelectGroup
 	v.Group = fresh.Group
 	v.Name = fresh.Name
@@ -11812,6 +12352,9 @@ type SessionConfigSelectOption struct {
 }
 
 func (v *SessionConfigSelectOption) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionConfigSelectOption
 	v.Name = fresh.Name
 	v.Value = fresh.Value
@@ -11861,6 +12404,9 @@ type SessionConfigSelectOptions struct {
 }
 
 func (u *SessionConfigSelectOptions) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = SessionConfigSelectOptions{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -11984,6 +12530,9 @@ type SessionDeleteCapabilities struct {
 }
 
 func (v *SessionDeleteCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionDeleteCapabilities
 	type SessionDeleteCapabilities struct {
 		*plain
@@ -12014,6 +12563,9 @@ type SessionForkCapabilities struct {
 }
 
 func (v *SessionForkCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionForkCapabilities
 	type SessionForkCapabilities struct {
 		*plain
@@ -12069,6 +12621,9 @@ type SessionInfo struct {
 }
 
 func (v *SessionInfo) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionInfo
 	v.Cwd = fresh.Cwd
 	v.SessionId = fresh.SessionId
@@ -12146,6 +12701,9 @@ func (v SessionInfoUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionInfoUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionInfoUpdate
 	type SessionInfoUpdate struct {
 		*plain
@@ -12176,6 +12734,9 @@ type SessionListCapabilities struct {
 }
 
 func (v *SessionListCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionListCapabilities
 	type SessionListCapabilities struct {
 		*plain
@@ -12251,6 +12812,9 @@ func (v SessionMessage) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionMessage) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionMessage
 	v.MessageId = fresh.MessageId
 	type plain SessionMessage
@@ -12309,6 +12873,9 @@ type SessionMessageChunk struct {
 }
 
 func (v *SessionMessageChunk) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionMessageChunk
 	v.Content = fresh.Content
 	v.MessageId = fresh.MessageId
@@ -12363,6 +12930,9 @@ type SessionMode struct {
 }
 
 func (v *SessionMode) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionMode
 	v.Id = fresh.Id
 	v.Name = fresh.Name
@@ -12425,6 +12995,9 @@ func (v SessionModeState) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionModeState) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionModeState
 	v.AvailableModes = fresh.AvailableModes
 	v.CurrentModeId = fresh.CurrentModeId
@@ -12483,6 +13056,9 @@ type SessionNotification struct {
 }
 
 func (v *SessionNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionNotification
 	v.SessionId = fresh.SessionId
 	v.Update = fresh.Update
@@ -12536,6 +13112,9 @@ type SessionOptionsCapabilities struct {
 }
 
 func (v *SessionOptionsCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionOptionsCapabilities
 	type SessionOptionsCapabilities struct {
 		*plain
@@ -12572,6 +13151,9 @@ type SessionReference struct {
 }
 
 func (v *SessionReference) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionReference
 	v.SessionId = fresh.SessionId
 	type plain SessionReference
@@ -12613,6 +13195,9 @@ type SessionResumeCapabilities struct {
 }
 
 func (v *SessionResumeCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionResumeCapabilities
 	type SessionResumeCapabilities struct {
 		*plain
@@ -12643,6 +13228,9 @@ type SessionStatusCapabilities struct {
 }
 
 func (v *SessionStatusCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionStatusCapabilities
 	type SessionStatusCapabilities struct {
 		*plain
@@ -12674,6 +13262,9 @@ type SessionSystemPromptCapabilities struct {
 }
 
 func (v *SessionSystemPromptCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionSystemPromptCapabilities
 	type SessionSystemPromptCapabilities struct {
 		*plain
@@ -12709,6 +13300,9 @@ type SessionSystemPromptModeCapabilities struct {
 }
 
 func (v *SessionSystemPromptModeCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionSystemPromptModeCapabilities
 	type SessionSystemPromptModeCapabilities struct {
 		*plain
@@ -12738,6 +13332,9 @@ type SessionSystemPromptOverrideCapabilities struct {
 }
 
 func (v *SessionSystemPromptOverrideCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionSystemPromptOverrideCapabilities
 	type SessionSystemPromptOverrideCapabilities struct {
 		*plain
@@ -12769,6 +13366,9 @@ type SessionTitleCapabilities struct {
 }
 
 func (v *SessionTitleCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SessionTitleCapabilities
 	type SessionTitleCapabilities struct {
 		*plain
@@ -12806,6 +13406,9 @@ type SessionUpdateUserMessageChunk struct {
 }
 
 func (v *SessionUpdateUserMessageChunk) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdateUserMessageChunk
 	v.Content = fresh.Content
 	v.SessionUpdate = fresh.SessionUpdate
@@ -12859,6 +13462,9 @@ type SessionUpdateAgentMessageChunk struct {
 }
 
 func (v *SessionUpdateAgentMessageChunk) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdateAgentMessageChunk
 	v.Content = fresh.Content
 	v.SessionUpdate = fresh.SessionUpdate
@@ -12912,6 +13518,9 @@ type SessionUpdateAgentThoughtChunk struct {
 }
 
 func (v *SessionUpdateAgentThoughtChunk) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdateAgentThoughtChunk
 	v.Content = fresh.Content
 	v.SessionUpdate = fresh.SessionUpdate
@@ -12981,6 +13590,9 @@ type SessionUpdateToolCall struct {
 }
 
 func (v *SessionUpdateToolCall) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdateToolCall
 	v.SessionUpdate = fresh.SessionUpdate
 	v.Title = fresh.Title
@@ -13123,6 +13735,9 @@ func (v SessionToolCallUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionToolCallUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionToolCallUpdate
 	v.SessionUpdate = fresh.SessionUpdate
 	v.ToolCallId = fresh.ToolCallId
@@ -13199,6 +13814,9 @@ func (v SessionUpdatePlan) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionUpdatePlan) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdatePlan
 	v.Entries = fresh.Entries
 	v.SessionUpdate = fresh.SessionUpdate
@@ -13253,6 +13871,9 @@ type SessionPlanUpdate struct {
 }
 
 func (v *SessionPlanUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionPlanUpdate
 	v.Plan = fresh.Plan
 	v.SessionUpdate = fresh.SessionUpdate
@@ -13303,6 +13924,9 @@ type SessionUpdatePlanRemoved struct {
 }
 
 func (v *SessionUpdatePlanRemoved) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdatePlanRemoved
 	v.PlanId = fresh.PlanId
 	v.SessionUpdate = fresh.SessionUpdate
@@ -13359,6 +13983,9 @@ func (v SessionAvailableCommandsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionAvailableCommandsUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionAvailableCommandsUpdate
 	v.AvailableCommands = fresh.AvailableCommands
 	v.SessionUpdate = fresh.SessionUpdate
@@ -13411,6 +14038,9 @@ type SessionCurrentModeUpdate struct {
 }
 
 func (v *SessionCurrentModeUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionCurrentModeUpdate
 	v.CurrentModeId = fresh.CurrentModeId
 	v.SessionUpdate = fresh.SessionUpdate
@@ -13467,6 +14097,9 @@ func (v SessionConfigOptionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionConfigOptionUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionConfigOptionUpdate
 	v.ConfigOptions = fresh.ConfigOptions
 	v.SessionUpdate = fresh.SessionUpdate
@@ -13540,6 +14173,9 @@ func (v SessionSessionInfoUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionSessionInfoUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionSessionInfoUpdate
 	v.SessionUpdate = fresh.SessionUpdate
 	type plain SessionSessionInfoUpdate
@@ -13583,6 +14219,9 @@ type SessionUsageUpdate struct {
 }
 
 func (v *SessionUsageUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUsageUpdate
 	v.SessionUpdate = fresh.SessionUpdate
 	v.Size = fresh.Size
@@ -13635,6 +14274,9 @@ type SessionUpdateNotice struct {
 }
 
 func (v *SessionUpdateNotice) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdateNotice
 	v.SessionUpdate = fresh.SessionUpdate
 	v.Severity = fresh.Severity
@@ -13714,6 +14356,9 @@ func (v SessionCompactionUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionCompactionUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionCompactionUpdate
 	v.CompactionId = fresh.CompactionId
 	v.SessionUpdate = fresh.SessionUpdate
@@ -13772,6 +14417,9 @@ type SessionUpdateCompactionSummaryChunk struct {
 }
 
 func (v *SessionUpdateCompactionSummaryChunk) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdateCompactionSummaryChunk
 	v.CompactionId = fresh.CompactionId
 	v.Content = fresh.Content
@@ -13846,6 +14494,9 @@ func (v SessionPromptSuggestionsUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionPromptSuggestionsUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionPromptSuggestionsUpdate
 	v.SessionUpdate = fresh.SessionUpdate
 	v.Suggestions = fresh.Suggestions
@@ -13970,6 +14621,9 @@ func (v SessionSubagentUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionSubagentUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionSubagentUpdate
 	v.SessionId = fresh.SessionId
 	v.SessionUpdate = fresh.SessionUpdate
@@ -14085,6 +14739,9 @@ func (v SessionUpdateSessionMessage) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SessionUpdateSessionMessage) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdateSessionMessage
 	v.MessageId = fresh.MessageId
 	v.SessionUpdate = fresh.SessionUpdate
@@ -14145,6 +14802,9 @@ type SessionUpdateSessionMessageChunk struct {
 }
 
 func (v *SessionUpdateSessionMessageChunk) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SessionUpdateSessionMessageChunk
 	v.Content = fresh.Content
 	v.MessageId = fresh.MessageId
@@ -14269,6 +14929,9 @@ type SessionUpdate struct {
 }
 
 func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = SessionUpdate{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -14850,6 +15513,9 @@ type SetSessionConfigOptionBoolean struct {
 }
 
 func (v *SetSessionConfigOptionBoolean) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SetSessionConfigOptionBoolean
 	v.ConfigId = fresh.ConfigId
 	v.SessionId = fresh.SessionId
@@ -14914,6 +15580,9 @@ type SetSessionConfigOptionValueId struct {
 }
 
 func (v *SetSessionConfigOptionValueId) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SetSessionConfigOptionValueId
 	v.ConfigId = fresh.ConfigId
 	v.SessionId = fresh.SessionId
@@ -14968,6 +15637,9 @@ type SetSessionConfigOptionRequest struct {
 }
 
 func (u *SetSessionConfigOptionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = SetSessionConfigOptionRequest{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -15083,6 +15755,9 @@ func (v SetSessionConfigOptionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SetSessionConfigOptionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SetSessionConfigOptionResponse
 	v.ConfigOptions = fresh.ConfigOptions
 	type plain SetSessionConfigOptionResponse
@@ -15130,6 +15805,9 @@ type SetSessionModeRequest struct {
 }
 
 func (v *SetSessionModeRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SetSessionModeRequest
 	v.ModeId = fresh.ModeId
 	v.SessionId = fresh.SessionId
@@ -15176,6 +15854,9 @@ type SetSessionModeResponse struct {
 }
 
 func (v *SetSessionModeResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SetSessionModeResponse
 	type SetSessionModeResponse struct {
 		*plain
@@ -15212,6 +15893,9 @@ type StateUpdateRunning struct {
 }
 
 func (v *StateUpdateRunning) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateRunning
 	v.State = fresh.State
 	type plain StateUpdateRunning
@@ -15249,6 +15933,9 @@ type StateUpdateIdleEndTurn struct {
 }
 
 func (v *StateUpdateIdleEndTurn) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateIdleEndTurn
 	v.State = fresh.State
 	v.StopReason = fresh.StopReason
@@ -15291,6 +15978,9 @@ type StateUpdateIdleMaxTokens struct {
 }
 
 func (v *StateUpdateIdleMaxTokens) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateIdleMaxTokens
 	v.State = fresh.State
 	v.StopReason = fresh.StopReason
@@ -15334,6 +16024,9 @@ type StateUpdateIdleMaxTurnRequests struct {
 }
 
 func (v *StateUpdateIdleMaxTurnRequests) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateIdleMaxTurnRequests
 	v.State = fresh.State
 	v.StopReason = fresh.StopReason
@@ -15376,6 +16069,9 @@ type StateUpdateIdleRefusal struct {
 }
 
 func (v *StateUpdateIdleRefusal) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateIdleRefusal
 	v.State = fresh.State
 	v.StopReason = fresh.StopReason
@@ -15418,6 +16114,9 @@ type StateUpdateIdleCancelled struct {
 }
 
 func (v *StateUpdateIdleCancelled) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateIdleCancelled
 	v.State = fresh.State
 	v.StopReason = fresh.StopReason
@@ -15465,6 +16164,9 @@ type StateUpdateIdleError struct {
 }
 
 func (v *StateUpdateIdleError) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateIdleError
 	v.State = fresh.State
 	v.StopReason = fresh.StopReason
@@ -15526,6 +16228,9 @@ func (v StateUpdateIdleOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StateUpdateIdleOther) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateIdleOther
 	v.State = fresh.State
 	v.StopReason = fresh.StopReason
@@ -15568,6 +16273,9 @@ type StateUpdateIdleNone struct {
 }
 
 func (v *StateUpdateIdleNone) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateIdleNone
 	v.State = fresh.State
 	type plain StateUpdateIdleNone
@@ -15615,6 +16323,9 @@ type StateUpdateIdle struct {
 }
 
 func (u *StateUpdateIdle) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = StateUpdateIdle{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -15852,6 +16563,9 @@ type StateUpdateRequiresAction struct {
 }
 
 func (v *StateUpdateRequiresAction) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateRequiresAction
 	v.State = fresh.State
 	type plain StateUpdateRequiresAction
@@ -15885,6 +16599,9 @@ type StateUpdateUnknown struct {
 }
 
 func (v *StateUpdateUnknown) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateUnknown
 	v.State = fresh.State
 	type plain StateUpdateUnknown
@@ -15929,6 +16646,9 @@ func (v StateUpdateOther) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StateUpdateOther) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StateUpdateOther
 	v.State = fresh.State
 	type plain StateUpdateOther
@@ -15968,6 +16688,9 @@ type StateUpdate struct {
 }
 
 func (u *StateUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = StateUpdate{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -16190,6 +16913,9 @@ func (v StringMultiSelectItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StringMultiSelectItems) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh StringMultiSelectItems
 	v.Enum = fresh.Enum
 	type plain StringMultiSelectItems
@@ -16307,6 +17033,9 @@ func (v StringPropertySchema) MarshalJSON() ([]byte, error) {
 }
 
 func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain StringPropertySchema
 	type StringPropertySchema struct {
 		*plain
@@ -16351,6 +17080,9 @@ type SubagentCapabilities struct {
 }
 
 func (v *SubagentCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SubagentCapabilities
 	type SubagentCapabilities struct {
 		*plain
@@ -16384,6 +17116,9 @@ type SubagentSessionCapabilities struct {
 }
 
 func (v *SubagentSessionCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain SubagentSessionCapabilities
 	type SubagentSessionCapabilities struct {
 		*plain
@@ -16503,6 +17238,9 @@ func (v SubagentUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SubagentUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SubagentUpdate
 	v.SessionId = fresh.SessionId
 	type plain SubagentUpdate
@@ -16589,6 +17327,9 @@ func (v SystemPrompt) MarshalJSON() ([]byte, error) {
 }
 
 func (v *SystemPrompt) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh SystemPrompt
 	v.Content = fresh.Content
 	v.Mode = fresh.Mode
@@ -16672,6 +17413,9 @@ type Terminal struct {
 }
 
 func (v *Terminal) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Terminal
 	v.TerminalId = fresh.TerminalId
 	type plain Terminal
@@ -16715,6 +17459,9 @@ type TerminalExitStatus struct {
 }
 
 func (v *TerminalExitStatus) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain TerminalExitStatus
 	type TerminalExitStatus struct {
 		*plain
@@ -16750,6 +17497,9 @@ type TerminalOutputRequest struct {
 }
 
 func (v *TerminalOutputRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh TerminalOutputRequest
 	v.SessionId = fresh.SessionId
 	v.TerminalId = fresh.TerminalId
@@ -16802,6 +17552,9 @@ type TerminalOutputResponse struct {
 }
 
 func (v *TerminalOutputResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh TerminalOutputResponse
 	v.Output = fresh.Output
 	v.Truncated = fresh.Truncated
@@ -16851,6 +17604,9 @@ type TextContent struct {
 }
 
 func (v *TextContent) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh TextContent
 	v.Text = fresh.Text
 	type plain TextContent
@@ -16891,6 +17647,9 @@ type TextResourceContents struct {
 }
 
 func (v *TextResourceContents) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh TextResourceContents
 	v.Text = fresh.Text
 	v.Uri = fresh.Uri
@@ -16943,6 +17702,9 @@ func (v TitledMultiSelectItems) MarshalJSON() ([]byte, error) {
 }
 
 func (v *TitledMultiSelectItems) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh TitledMultiSelectItems
 	v.AnyOf = fresh.AnyOf
 	type plain TitledMultiSelectItems
@@ -17010,6 +17772,9 @@ type ToolCall struct {
 }
 
 func (v *ToolCall) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ToolCall
 	v.Title = fresh.Title
 	v.ToolCallId = fresh.ToolCallId
@@ -17076,6 +17841,9 @@ type ToolCallContentContent struct {
 }
 
 func (v *ToolCallContentContent) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ToolCallContentContent
 	v.Content = fresh.Content
 	v.Type = fresh.Type
@@ -17126,6 +17894,9 @@ type ToolCallContentDiff struct {
 }
 
 func (v *ToolCallContentDiff) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ToolCallContentDiff
 	v.NewText = fresh.NewText
 	v.Path = fresh.Path
@@ -17175,6 +17946,9 @@ type ToolCallContentTerminal struct {
 }
 
 func (v *ToolCallContentTerminal) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ToolCallContentTerminal
 	v.TerminalId = fresh.TerminalId
 	v.Type = fresh.Type
@@ -17225,6 +17999,9 @@ type ToolCallContentSession struct {
 }
 
 func (v *ToolCallContentSession) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ToolCallContentSession
 	v.SessionId = fresh.SessionId
 	v.Type = fresh.Type
@@ -17277,6 +18054,9 @@ type ToolCallContent struct {
 }
 
 func (u *ToolCallContent) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = ToolCallContent{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -17435,6 +18215,9 @@ type ToolCallLocation struct {
 }
 
 func (v *ToolCallLocation) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ToolCallLocation
 	v.Path = fresh.Path
 	type plain ToolCallLocation
@@ -17571,6 +18354,9 @@ func (v ToolCallUpdate) MarshalJSON() ([]byte, error) {
 }
 
 func (v *ToolCallUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh ToolCallUpdate
 	v.ToolCallId = fresh.ToolCallId
 	type plain ToolCallUpdate
@@ -17648,6 +18434,9 @@ const (
 
 // UnmarshalJSON reads a string that ToolKind does not list as ToolKindOther.
 func (v *ToolKind) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	if string(b) == "null" {
 		return nil
 	}
@@ -17688,6 +18477,9 @@ type UnknownStateUpdate struct {
 }
 
 func (v *UnknownStateUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain UnknownStateUpdate
 	type UnknownStateUpdate struct {
 		*plain
@@ -17725,6 +18517,9 @@ type UnstableArchiveSessionRequest struct {
 }
 
 func (v *UnstableArchiveSessionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableArchiveSessionRequest
 	v.SessionId = fresh.SessionId
 	type plain UnstableArchiveSessionRequest
@@ -17768,6 +18563,9 @@ type UnstableArchiveSessionResponse struct {
 }
 
 func (v *UnstableArchiveSessionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain UnstableArchiveSessionResponse
 	type UnstableArchiveSessionResponse struct {
 		*plain
@@ -17831,6 +18629,9 @@ type UnstableAuthAccount struct {
 }
 
 func (v *UnstableAuthAccount) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableAuthAccount
 	v.Label = fresh.Label
 	type plain UnstableAuthAccount
@@ -17901,6 +18702,9 @@ type UnstableAuthStatusRequest struct {
 }
 
 func (v *UnstableAuthStatusRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain UnstableAuthStatusRequest
 	type UnstableAuthStatusRequest struct {
 		*plain
@@ -17944,6 +18748,9 @@ type UnstableAuthStatusResponse struct {
 }
 
 func (v *UnstableAuthStatusResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableAuthStatusResponse
 	v.State = fresh.State
 	type plain UnstableAuthStatusResponse
@@ -18004,6 +18811,9 @@ type UnstableAuthStatusUpdateNotification struct {
 }
 
 func (v *UnstableAuthStatusUpdateNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableAuthStatusUpdateNotification
 	v.State = fresh.State
 	type plain UnstableAuthStatusUpdateNotification
@@ -18051,6 +18861,9 @@ type UnstableDisableProviderRequest struct {
 }
 
 func (v *UnstableDisableProviderRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableDisableProviderRequest
 	v.ProviderId = fresh.ProviderId
 	type plain UnstableDisableProviderRequest
@@ -18094,6 +18907,9 @@ type UnstableDisableProviderResponse struct {
 }
 
 func (v *UnstableDisableProviderResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain UnstableDisableProviderResponse
 	type UnstableDisableProviderResponse struct {
 		*plain
@@ -18170,6 +18986,9 @@ type UnstableForkSessionRequest struct {
 }
 
 func (v *UnstableForkSessionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableForkSessionRequest
 	v.Cwd = fresh.Cwd
 	v.SessionId = fresh.SessionId
@@ -18268,6 +19087,9 @@ func (v UnstableForkSessionResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableForkSessionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableForkSessionResponse
 	v.SessionId = fresh.SessionId
 	type plain UnstableForkSessionResponse
@@ -18343,6 +19165,9 @@ type UnstableListProvidersRequest struct {
 }
 
 func (v *UnstableListProvidersRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain UnstableListProvidersRequest
 	type UnstableListProvidersRequest struct {
 		*plain
@@ -18387,6 +19212,9 @@ func (v UnstableListProvidersResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableListProvidersResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableListProvidersResponse
 	v.Providers = fresh.Providers
 	type plain UnstableListProvidersResponse
@@ -18474,6 +19302,9 @@ func (v UnstableMcpError) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableMcpError) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableMcpError
 	v.Code = fresh.Code
 	v.Message = fresh.Message
@@ -18556,6 +19387,9 @@ func (v UnstableMessageMcpNotification) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableMessageMcpNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableMessageMcpNotification
 	v.Method = fresh.Method
 	v.RequestId = fresh.RequestId
@@ -18643,6 +19477,9 @@ func (v UnstableMessageMcpRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableMessageMcpRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableMessageMcpRequest
 	v.Method = fresh.Method
 	v.RequestId = fresh.RequestId
@@ -18704,6 +19541,9 @@ type UnstableMessageMcpResult struct {
 }
 
 func (v *UnstableMessageMcpResult) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableMessageMcpResult
 	v.Result = fresh.Result
 	type plain UnstableMessageMcpResult
@@ -18734,6 +19574,9 @@ type UnstableMessageMcpError struct {
 }
 
 func (v *UnstableMessageMcpError) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableMessageMcpError
 	v.Error = fresh.Error
 	type plain UnstableMessageMcpError
@@ -18763,6 +19606,9 @@ type UnstableMessageMcpResponse struct {
 }
 
 func (u *UnstableMessageMcpResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
 	*u = UnstableMessageMcpResponse{}
 	if string(b) == "null" {
 		return errors.New("no matching variant for union")
@@ -18867,6 +19713,9 @@ type UnstableProviderCurrentConfig struct {
 }
 
 func (v *UnstableProviderCurrentConfig) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableProviderCurrentConfig
 	v.ApiType = fresh.ApiType
 	v.BaseUrl = fresh.BaseUrl
@@ -18941,6 +19790,9 @@ func (v UnstableProviderInfo) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableProviderInfo) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableProviderInfo
 	v.ProviderId = fresh.ProviderId
 	v.Required = fresh.Required
@@ -19022,6 +19874,9 @@ type UnstableProxySuccessorNotification struct {
 }
 
 func (v *UnstableProxySuccessorNotification) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableProxySuccessorNotification
 	v.Method = fresh.Method
 	type plain UnstableProxySuccessorNotification
@@ -19090,6 +19945,9 @@ type UnstableProxySuccessorRequest struct {
 }
 
 func (v *UnstableProxySuccessorRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableProxySuccessorRequest
 	v.Method = fresh.Method
 	type plain UnstableProxySuccessorRequest
@@ -19164,6 +20022,9 @@ type UnstableSessionOptionsRequest struct {
 }
 
 func (v *UnstableSessionOptionsRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableSessionOptionsRequest
 	v.Cwd = fresh.Cwd
 	type plain UnstableSessionOptionsRequest
@@ -19245,6 +20106,9 @@ func (v UnstableSessionOptionsResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *UnstableSessionOptionsResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain UnstableSessionOptionsResponse
 	type UnstableSessionOptionsResponse struct {
 		*plain
@@ -19310,6 +20174,9 @@ type UnstableSessionStatusRequest struct {
 }
 
 func (v *UnstableSessionStatusRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableSessionStatusRequest
 	v.SessionId = fresh.SessionId
 	type plain UnstableSessionStatusRequest
@@ -19360,6 +20227,9 @@ type UnstableSessionStatusResponse struct {
 }
 
 func (v *UnstableSessionStatusResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableSessionStatusResponse
 	v.Status = fresh.Status
 	type plain UnstableSessionStatusResponse
@@ -19414,6 +20284,9 @@ type UnstableSetProviderRequest struct {
 }
 
 func (v *UnstableSetProviderRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableSetProviderRequest
 	v.ApiType = fresh.ApiType
 	v.BaseUrl = fresh.BaseUrl
@@ -19478,6 +20351,9 @@ type UnstableSetProviderResponse struct {
 }
 
 func (v *UnstableSetProviderResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain UnstableSetProviderResponse
 	type UnstableSetProviderResponse struct {
 		*plain
@@ -19527,6 +20403,9 @@ type UnstableSetSessionTitleRequest struct {
 }
 
 func (v *UnstableSetSessionTitleRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableSetSessionTitleRequest
 	v.SessionId = fresh.SessionId
 	v.Title = fresh.Title
@@ -19582,6 +20461,9 @@ type UnstableSetSessionTitleResponse struct {
 }
 
 func (v *UnstableSetSessionTitleResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableSetSessionTitleResponse
 	v.Title = fresh.Title
 	type plain UnstableSetSessionTitleResponse
@@ -19635,6 +20517,9 @@ type UnstableUnarchiveSessionRequest struct {
 }
 
 func (v *UnstableUnarchiveSessionRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstableUnarchiveSessionRequest
 	v.SessionId = fresh.SessionId
 	type plain UnstableUnarchiveSessionRequest
@@ -19678,6 +20563,9 @@ type UnstableUnarchiveSessionResponse struct {
 }
 
 func (v *UnstableUnarchiveSessionResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain UnstableUnarchiveSessionResponse
 	type UnstableUnarchiveSessionResponse struct {
 		*plain
@@ -19708,6 +20596,9 @@ type UnstructuredCommandInput struct {
 }
 
 func (v *UnstructuredCommandInput) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UnstructuredCommandInput
 	v.Hint = fresh.Hint
 	type plain UnstructuredCommandInput
@@ -19756,6 +20647,9 @@ type Usage struct {
 }
 
 func (v *Usage) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh Usage
 	v.InputTokens = fresh.InputTokens
 	v.OutputTokens = fresh.OutputTokens
@@ -19808,6 +20702,9 @@ type UsageUpdate struct {
 }
 
 func (v *UsageUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh UsageUpdate
 	v.Size = fresh.Size
 	v.Used = fresh.Used
@@ -19850,6 +20747,9 @@ type WaitForTerminalExitRequest struct {
 }
 
 func (v *WaitForTerminalExitRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh WaitForTerminalExitRequest
 	v.SessionId = fresh.SessionId
 	v.TerminalId = fresh.TerminalId
@@ -19900,6 +20800,9 @@ type WaitForTerminalExitResponse struct {
 }
 
 func (v *WaitForTerminalExitResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain WaitForTerminalExitResponse
 	type WaitForTerminalExitResponse struct {
 		*plain
@@ -19940,6 +20843,9 @@ type WriteTextFileRequest struct {
 }
 
 func (v *WriteTextFileRequest) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	var fresh WriteTextFileRequest
 	v.Content = fresh.Content
 	v.Path = fresh.Path
@@ -19993,6 +20899,9 @@ type WriteTextFileResponse struct {
 }
 
 func (v *WriteTextFileResponse) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
 	type plain WriteTextFileResponse
 	type WriteTextFileResponse struct {
 		*plain

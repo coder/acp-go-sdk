@@ -426,10 +426,10 @@ func checkGenerated(t *testing.T, schemaJSON string, extra map[string]string, en
 	if err := WriteHelpersJen(dir, &schema, &load.Meta{}); err != nil {
 		t.Fatalf("WriteHelpersJen: %v", err)
 	}
-	// The generated code needs the hand-written walker of the table shapes
-	// and the types Meta and Patch of the SDK.
+	// The generated code needs the hand-written walker of the table shapes,
+	// the reader of a union's object, and the types Meta and Patch of the SDK.
 	files := map[string]string{"go.mod": "module example.com/acp\n\ngo 1.21\n"}
-	for _, name := range []string{"shape.go", "meta.go", "patch.go"} {
+	for _, name := range []string{"shape.go", "jsonscan.go", "union.go", "meta.go", "patch.go"} {
 		src, err := os.ReadFile(filepath.Join("..", "..", "..", "..", name))
 		if err != nil {
 			t.Fatalf("read the SDK's %s: %v", name, err)

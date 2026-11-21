@@ -294,7 +294,7 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 	case ProxyMethodProxySuccessor:
 		if notification {
 			var p UnstableProxySuccessorNotification
-			if err := json.Unmarshal(params, &p); err != nil {
+			if err := decodeJSON(params, &p); err != nil {
 				return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 			}
 			if err := p.Validate(); err != nil {
@@ -303,7 +303,7 @@ func (c *UnstableProxySideConnection) handle(ctx context.Context, method string,
 			return c.fromEnvelope(ctx, p.Method, p.Params, true)
 		}
 		var p UnstableProxySuccessorRequest
-		if err := json.Unmarshal(params, &p); err != nil {
+		if err := decodeJSON(params, &p); err != nil {
 			return nil, NewInvalidParams(map[string]any{"error": err.Error()})
 		}
 		if err := p.Validate(); err != nil {

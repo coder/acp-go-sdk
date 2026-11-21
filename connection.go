@@ -1004,7 +1004,7 @@ func SendRequest[T any](c *Connection, ctx context.Context, method string, param
 		return result, err
 	}
 	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &result); err != nil {
+		if err := decodeJSON(raw, &result); err != nil {
 			return result, NewInternalError(map[string]any{"error": err.Error()})
 		}
 	}

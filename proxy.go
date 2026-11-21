@@ -334,7 +334,7 @@ func proxyRequest[T any](c *UnstableProxySideConnection, ctx context.Context, to
 		return result, err
 	}
 	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &result); err != nil {
+		if err := decodeJSON(raw, &result); err != nil {
 			return result, NewInternalError(map[string]any{"error": err.Error()})
 		}
 	}

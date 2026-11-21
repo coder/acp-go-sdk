@@ -5,7 +5,7 @@ e8eafb7268877add13c77477e0dc3016167f6a1ddb64ff1c9974f2e3e6ccc0e9  func (c *Conne
 6f0ed9342a0e686e52962ef997d7fdf71c9fb2a0bc8bf3556d9b5ed480d4e2a6  func (c *Connection) shutdownReceive(
 c640f2ee2a9a2b436d655c77b70f0259e3b3601e3eb7dc4480ac56f115b2443d  func (c *Connection) processNotifications(
 cc45ec3aebaa52baeccf5fe70bfe2fb98d5c82a94b1dfc98b228851513c9884e  func (c *Connection) handleResponse(
-9056a42446d69cc568535c731f59b4e6029b1219755cd17597a6041db9908c24  func SendRequest[T any](c *Connection,
+bbff422e2d398570de056dd4f183df78675c370e530e5e534a5194df0bfa5c1c  func SendRequest[T any](c *Connection,
 89eec2e3bd7ffcafedd0bcb6d8f1fef895add39f3342df64373b76eb1641cb9a  func (c *Connection) SendRequestNoResult(
 e32170119d89aa2e0a0f489d825d1a888e7f96c45080a6c8faa384e6a54d9ad9  func (c *Connection) sendRequest(
 e7b168edfdd67c082d134dc316a4cc96f9eabc630fc2e294aa77afd7a52ea8b9  func (r *sentRequest) wait(

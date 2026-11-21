@@ -1216,15 +1216,18 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 		return vi.isArray && len(vi.arrayItemRequired) > 0
 	}
 	// requireKey returns the statement that clears match unless the JSON object
-	// obj has the required key. A null value counts only when def, the schema
-	// of the key, accepts null or has a hint that reads null as the default.
-	requireKey := func(obj, key string, def *load.Definition) Code {
+	// has the required key, whose value and presence lookup yields. A null
+	// value counts only when def, the schema of the key, accepts null or has a
+	// hint that reads null as the default.
+	requireKey := func(lookup *Statement, def *load.Definition) Code {
 		noMatch := Id("match").Op("=").Lit(false)
 		if acceptsNull(schema, def) || def.DefaultOnNull || def.DefaultOnError {
-			return If(List(Id("_"), Id("ok")).Op(":=").Id(obj).Index(Lit(key)), Op("!").Id("ok")).Block(noMatch)
+			return If(List(Id("_"), Id("ok")).Op(":=").Add(lookup), Op("!").Id("ok")).Block(noMatch)
 		}
-		return If(Id("raw").Op(":=").Id("string").Call(Id(obj).Index(Lit(key))), Id("raw").Op("==").Lit("").Op("||").Id("raw").Op("==").Lit("null")).Block(noMatch)
+		return If(List(Id("raw"), Id("_")).Op(":=").Add(lookup), Id("len").Call(Id("raw")).Op("==").Lit(0).Op("||").Id("string").Call(Id("raw")).Op("==").Lit("null")).Block(noMatch)
 	}
+	// member returns the lookup of the member key of the union's object.
+	member := func(key string) *Statement { return Id("m").Dot("get").Call(Lit(key)) }
 	variants := []variantInfo{}
 	discKey := ""
 	// Use schema's explicit discriminator if available
@@ -1575,8 +1578,11 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			g.Comment("failed says that a variant matched and did not decode.")
 			g.Var().Id("failed").Bool()
 		}
-		g.Var().Id("m").Map(String()).Qual("encoding/json", "RawMessage")
-		g.If(List(Id("err")).Op(":=").Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("m")), Id("err").Op("==").Nil()).BlockFunc(func(obj *Group) {
+		// readUnionObject returns the syntax error of b only when it decodes b
+		// with encoding/json. For any other, the union returns unionError.
+		g.List(Id("m"), Id("err")).Op(":=").Id("readUnionObject").Call(Id("b"))
+		g.If(Id("err").Op("!=").Nil()).Block(Return(Id("err")))
+		g.If(Id("m").Dot("isObject")).BlockFunc(func(obj *Group) {
 			if len(wrapperFields) > 0 {
 				obj.BlockFunc(func(own *Group) { b.emitDecodeFields(own, name, "u", wrapperPlans) })
 			}
@@ -1587,16 +1593,13 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 				// The discriminator has x-deserialize-default-on-error: a value
 				// that is neither a string nor null reads as absent.
 				obj.If(
-					Id("raw").Op(":=").Id("string").Call(Id("m").Index(Lit(discKey))),
-					Id("raw").Op("!=").Lit("").Op("&&").Id("raw").Op("!=").Lit("null").Op("&&").Op("!").Qual("strings", "HasPrefix").Call(Id("raw"), Lit("\"")),
-				).Block(Id("delete").Call(Id("m"), Lit(discKey)))
+					List(Id("raw"), Id("_")).Op(":=").Add(member(discKey)),
+					Id("len").Call(Id("raw")).Op(">").Lit(0).Op("&&").Id("string").Call(Id("raw")).Op("!=").Lit("null").Op("&&").Op("!").Qual("strings", "HasPrefix").Call(Id("string").Call(Id("raw")), Lit("\"")),
+				).Block(Id("m").Dot("delete").Call(Lit(discKey)))
 			}
 			// Prefer discriminator-based dispatch when available (e.g. "type", "outcome")
 			if discKey != "" {
-				obj.Var().Id("disc").String()
-				obj.If(List(Id("v"), Id("ok")).Op(":=").Id("m").Index(Lit(discKey)), Id("ok")).Block(
-					Qual("encoding/json", "Unmarshal").Call(Id("v"), Op("&").Id("disc")),
-				)
+				obj.Id("disc").Op(":=").Id("string").Call(Id("m").Dot("tag").Call(Lit(discKey)))
 				obj.Switch(Id("disc")).BlockFunc(func(sw *Group) {
 					for _, vi := range variants {
 						if vi.discValue != "" {
@@ -1618,54 +1621,53 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 						h.Var().Id("match").Bool().Op("=").Lit(true)
 						for _, rk := range vi.required {
 							if rk == discKey && vi.openDiscriminator {
-								h.If(Op("!").Qual("strings", "HasPrefix").Call(Id("string").Call(Id("m").Index(Lit(rk))), Lit("\""))).Block(Id("match").Op("=").Lit(false))
+								h.If(List(Id("raw"), Id("_")).Op(":=").Add(member(rk)), Op("!").Qual("strings", "HasPrefix").Call(Id("string").Call(Id("raw")), Lit("\""))).Block(Id("match").Op("=").Lit(false))
 								continue
 							}
 							def, ok := vi.props[rk]
 							if !ok && parentDef != nil {
 								def = parentDef.Properties[rk]
 							}
-							h.Add(requireKey("m", rk, def))
+							h.Add(requireKey(member(rk), def))
 						}
 						if refusesKnownTag(vi) {
 							h.Switch(Id("disc")).Block(Case(knownTags...).Block(Id("match").Op("=").Lit(false)))
 						}
 						for _, pair := range vi.constPairs {
-							h.If(List(Id("raw"), Id("ok")).Op(":=").Id("m").Index(Lit(pair[0])), Id("ok")).Block(
+							h.If(List(Id("raw"), Id("ok")).Op(":=").Add(member(pair[0])), Id("ok")).Block(
 								Var().Id("value").String(),
 								If(Qual("encoding/json", "Unmarshal").Call(Id("raw"), Op("&").Id("value")).Op("!=").Nil().Op("||").Id("value").Op("!=").Lit(pair[1])).Block(Id("match").Op("=").Lit(false)),
 							)
 						}
 						for _, nk := range vi.nullKeys {
-							h.If(Id("raw").Op(":=").Id("string").Call(Id("m").Index(Lit(nk))), Id("raw").Op("!=").Lit("").Op("&&").Id("raw").Op("!=").Lit("null")).Block(Id("match").Op("=").Lit(false))
+							h.If(List(Id("raw"), Id("_")).Op(":=").Add(member(nk)), Id("len").Call(Id("raw")).Op(">").Lit(0).Op("&&").Id("string").Call(Id("raw")).Op("!=").Lit("null")).Block(Id("match").Op("=").Lit(false))
 						}
 						h.If(Id("match")).Block(decodeVariant(vi)...)
 					})
 				}
 			}
-		}).Else().Block(
-			// Not an object (e.g., primitive union variant) or invalid JSON.
-			If(List(Id("_"), Id("ok")).Op(":=").Id("err").Assert(Op("*").Qual("encoding/json", "UnmarshalTypeError")), Op("!").Id("ok")).Block(Return(Id("err"))),
-		)
-		// For array variants with required keys on object items, try key-based matching first.
-		g.Var().Id("arr").Index().Map(String()).Qual("encoding/json", "RawMessage")
-		g.If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("arr")).Op("==").Nil()).BlockFunc(func(arr *Group) {
-			for _, vi := range variants {
-				if !matchesByItemKeys(vi) {
-					continue
-				}
-				arr.BlockFunc(func(h *Group) {
-					h.Var().Id("v").Id(vi.typeName)
-					h.Var().Id("match").Bool().Op("=").Lit(true)
-					h.For(List(Id("_"), Id("elem")).Op(":=").Range().Id("arr")).BlockFunc(func(loop *Group) {
-						for _, rk := range vi.arrayItemRequired {
-							loop.Add(requireKey("elem", rk, vi.arrayItemProps[rk]))
-						}
-					})
-					h.If(Id("match")).Block(decodeVariant(vi)...)
-				})
-			}
 		})
+		// For array variants with required keys on object items, try key-based matching first.
+		if slices.ContainsFunc(variants, matchesByItemKeys) {
+			g.Var().Id("arr").Index().Map(String()).Qual("encoding/json", "RawMessage")
+			g.If(Qual("encoding/json", "Unmarshal").Call(Id("b"), Op("&").Id("arr")).Op("==").Nil()).BlockFunc(func(arr *Group) {
+				for _, vi := range variants {
+					if !matchesByItemKeys(vi) {
+						continue
+					}
+					arr.BlockFunc(func(h *Group) {
+						h.Var().Id("v").Id(vi.typeName)
+						h.Var().Id("match").Bool().Op("=").Lit(true)
+						h.For(List(Id("_"), Id("elem")).Op(":=").Range().Id("arr")).BlockFunc(func(loop *Group) {
+							for _, rk := range vi.arrayItemRequired {
+								loop.Add(requireKey(Id("elem").Index(Lit(rk)), vi.arrayItemProps[rk]))
+							}
+						})
+						h.If(Id("match")).Block(decodeVariant(vi)...)
+					})
+				}
+			})
+		}
 		// A variant that matches by its keys had its turn above. The others
 		// are tried in order.
 		for _, vi := range variants {
@@ -1692,9 +1694,9 @@ func (b *typesBuilder) emitUnion(name string, parentDef *load.Definition, defs [
 			)
 		}
 		if fallsBack {
-			g.If(Id("failed")).Block(Return(Qual("errors", "New").Call(Lit("invalid variant payload"))))
+			g.If(Id("failed")).Block(Return(Id("unionError").Call(Id("b"), Lit("invalid variant payload"))))
 		}
-		g.Return(Qual("errors", "New").Call(Lit("no matching variant for union")))
+		g.Return(Id("unionError").Call(Id("b"), Lit("no matching variant for union")))
 	})
 	// Marshal
 	f.Func().Params(Id("u").Id(name)).Id("MarshalJSON").Params().Params(Index().Byte(), Error()).BlockFunc(func(g *Group) {

@@ -482,9 +482,11 @@ func TestUnstableProxySideConnection_WrappedCancelRequestIsPerHop(t *testing.T) 
 }
 
 // A typed handler's message that this SDK cannot decode, such as a
-// session/update of a kind from a newer schema, goes on unchanged.
+// session/update of a kind that it does not know, goes on unchanged. The
+// kind starts with "_", which ACP keeps for extensions, so that a later
+// schema does not make it a known kind, as 1.33.0 did with cursor_update.
 func TestUnstableProxySideConnection_ForwardsWhatATypedHandlerCannotDecode(t *testing.T) {
-	const cursor = `{"sessionId":"s","update":{"sessionUpdate":"cursor_update","cursorId":"c1","anchor":{"messageId":"m1","position":"after"}}}`
+	const update = `{"sessionId":"s","update":{"sessionUpdate":"_hologram_update","hologramId":"h1","anchor":{"messageId":"m1","position":"after"}}}`
 	p := newProxyPeer(t, func(c *UnstableProxySideConnection) UnstableProxyHandlers {
 		return UnstableProxyHandlers{
 			FromClient: UnstableProxyFromClient{
@@ -499,8 +501,8 @@ func TestUnstableProxySideConnection_ForwardsWhatATypedHandlerCannotDecode(t *te
 			},
 		}
 	})
-	p.send(`{"jsonrpc":"2.0","method":"proxy/successor","params":{"method":"session/update","params":` + cursor + `}}`)
-	wantMessage(t, p.next(), false, false, "session/update", cursor)
+	p.send(`{"jsonrpc":"2.0","method":"proxy/successor","params":{"method":"session/update","params":` + update + `}}`)
+	wantMessage(t, p.next(), false, false, "session/update", update)
 	const hologram = `{"sessionId":"s","prompt":[{"type":"hologram"}]}`
 	p.send(`{"jsonrpc":"2.0","id":5,"method":"session/prompt","params":` + hologram + `}`)
 	out := p.next()
@@ -527,10 +529,10 @@ func TestUnstableProxySideConnection_RejectUndecodableRefusesWhatAHandlerCannotD
 			RejectUndecodable: true,
 		}
 	})
-	p.send(`{"jsonrpc":"2.0","method":"proxy/successor","params":{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"cursor_update","cursorId":"c1"}}}}`,
+	p.send(`{"jsonrpc":"2.0","method":"proxy/successor","params":{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"_hologram_update","hologramId":"h1"}}}}`,
 		wrappedUpdateLine("s", "after"))
-	if m := p.next(); sentKind(t, m) != "plain session/update" || strings.Contains(string(m.Params), "cursor_update") {
-		t.Errorf("the proxy sent %s %s, want the update after the dropped cursor_update", sentKind(t, m), m.Params)
+	if m := p.next(); sentKind(t, m) != "plain session/update" || strings.Contains(string(m.Params), "_hologram_update") {
+		t.Errorf("the proxy sent %s %s, want the update after the dropped _hologram_update", sentKind(t, m), m.Params)
 	}
 	p.send(`{"jsonrpc":"2.0","id":5,"method":"session/prompt","params":{"sessionId":"s","prompt":[{"type":"hologram"}]}}`)
 	if m := p.next(); m.ID == nil || string(*m.ID) != "5" || m.Error == nil || m.Error.Code != -32602 {

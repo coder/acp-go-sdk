@@ -36,7 +36,7 @@ func isExtensionMethodName(method string) bool {
 
 func (a *AgentSideConnection) handleWithExtensions(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
 	<-a.ready
-	if !a.initialized.Load() {
+	if !a.opened(ctx) {
 		return a.handleBeforeInitialize(ctx, method, params)
 	}
 	if isExtensionMethodName(method) {

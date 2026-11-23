@@ -36,7 +36,7 @@ func initializeRaw(t *testing.T, conn *AgentSideConnection, w io.Writer) {
 		t.Fatalf("SETUP: write initialize: %v", err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
-	for !conn.initialized.Load() {
+	for conn.openedAt.Load() == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("SETUP: the connection did not initialize")
 		}
@@ -240,6 +240,47 @@ func TestAgentSideConnection_InitializeThatDoesNotEncodeKeepsTheGate(t *testing.
 	}
 	if got := drain(reached); len(got) != 0 {
 		t.Errorf("session/new after a failed initialize reached the Agent as %v", got)
+	}
+}
+
+// TestAgentSideConnection_GateKeysOnArrivalOrder runs handlers in an order
+// that differs from the order their messages arrived in: a message that
+// arrived before the initialize that opened the connection is held back even
+// when its handler runs after that initialize returned.
+func TestAgentSideConnection_GateKeysOnArrivalOrder(t *testing.T) {
+	reached := make(chan string, 8)
+	r, w := io.Pipe()
+	t.Cleanup(func() { _ = w.Close() })
+	conn := NewAgentSideConnection(recordingAgent(reached, nil), io.Discard, r)
+	request := func(arrival uint64) context.Context {
+		return context.WithValue(context.Background(), handlingRequestKey{}, handlingRequest{conn: conn.conn, arrival: arrival})
+	}
+	notification := func(arrival uint64) context.Context {
+		return context.WithValue(context.Background(), handlingNotificationKey{}, handlingNotification{conn: conn.conn, seq: arrival, arrival: arrival})
+	}
+	newSession := json.RawMessage(sessionNewParams)
+	cancel := json.RawMessage(`{"sessionId":"s"}`)
+
+	if _, err := conn.handleWithExtensions(request(5), AgentMethodInitialize, json.RawMessage(`{"protocolVersion":1}`)); err != nil {
+		t.Fatalf("SETUP: initialize: %+v", err)
+	}
+	if _, err := conn.handleWithExtensions(request(4), AgentMethodSessionNew, newSession); err == nil || err.Code != -32600 {
+		t.Errorf("session/new that arrived before initialize got %+v, want -32600", err)
+	}
+	if _, err := conn.handleWithExtensions(notification(3), AgentMethodSessionCancel, cancel); err != nil {
+		t.Errorf("session/cancel that arrived before initialize got %+v, want it dropped", err)
+	}
+	if got := drain(reached); len(got) != 0 {
+		t.Errorf("messages that arrived before initialize reached the Agent as %v", got)
+	}
+	if _, err := conn.handleWithExtensions(request(6), AgentMethodSessionNew, newSession); err != nil {
+		t.Errorf("session/new that arrived after initialize got %+v", err)
+	}
+	if _, err := conn.handleWithExtensions(notification(7), AgentMethodSessionCancel, cancel); err != nil {
+		t.Errorf("session/cancel that arrived after initialize got %+v", err)
+	}
+	if got := drain(reached); len(got) != 2 || got[0] != AgentMethodSessionNew || got[1] != AgentMethodSessionCancel {
+		t.Errorf("messages that arrived after initialize reached the Agent as %v, want [%s %s]", got, AgentMethodSessionNew, AgentMethodSessionCancel)
 	}
 }
 

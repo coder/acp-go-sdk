@@ -575,9 +575,9 @@ type AuthCapabilities struct {
 	Meta Meta `json:"_meta,omitempty"`
 	// Whether the client supports 'terminal' authentication methods.
 	//
-	// The client should set this to 'true' only when it can reproduce the
+	// The client SHOULD set this to 'true' only when it can reproduce the
 	// configured agent invocation in an interactive terminal. When 'true', the
-	// agent may include 'terminal' entries in its authentication methods.
+	// agent MAY include 'terminal' entries in its authentication methods.
 	//
 	// Defaults to false if unset.
 	Terminal bool `json:"terminal,omitempty"`
@@ -1438,7 +1438,7 @@ func (v *CancelNotification) Validate() error {
 
 // Notification to cancel an ongoing request.
 //
-// See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/v1/cancellation)
+// See protocol docs: [Request Cancellation](https://agentclientprotocol.com/protocol/v1/cancellation)
 type CancelRequestNotification struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
@@ -1490,13 +1490,13 @@ func (v *CancelRequestNotification) Validate() error {
 // Advertised during initialization to inform the agent about
 // available features and methods.
 //
-// See protocol docs: [Client Capabilities](https://agentclientprotocol.com/protocol/v1/draft/initialization#client-capabilities)
+// See protocol docs: [Client Capabilities](https://agentclientprotocol.com/protocol/v1/initialization#client-capabilities)
 type ClientCapabilities struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// Authentication capabilities supported by the client.
 	// Determines which authentication method types the agent may include
@@ -1515,30 +1515,24 @@ type ClientCapabilities struct {
 	//
 	// Defaults to {"readTextFile":false,"writeTextFile":false} if unset.
 	Fs FileSystemCapabilities `json:"fs,omitempty"`
-	// **UNSTABLE**
+	// Whether the Client supports 'plan_update' and 'plan_removed' session updates.
 	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Whether the client supports 'plan_update' and 'plan_removed' session updates.
-	//
-	// Optional. Omitted or 'null' both mean the client does not advertise support.
-	// Supplying '{}' means the client can receive both update types.
+	// Optional. Omitted or 'null' both mean the Client does not advertise support.
+	// Supplying '{}' means the Client can receive both update types.
 	Plan *PlanCapabilities `json:"plan,omitempty"`
 	// Session-related capabilities supported by the client.
 	//
 	// Optional. Omitted or 'null' both mean the client does not advertise any
 	// session-related extensions.
 	Session *ClientSessionCapabilities `json:"session,omitempty"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// Whether the client understands exposed subagent sessions.
 	//
 	// Optional and nullable. Omitted or 'null' both mean the client does not
 	// advertise support.
 	// Supplying '{}' means the client understands child associations, work-state
 	// snapshots, session-directed messages, and restricted-session semantics.
+	//
+	// See protocol docs: [Subagents](https://agentclientprotocol.com/protocol/v1/subagents)
 	Subagents *SubagentCapabilities `json:"subagents,omitempty"`
 	// Whether the Client support all 'terminal/*' methods.
 	//
@@ -1906,6 +1900,15 @@ type ClientSessionCapabilities struct {
 	// Omitted or 'null' both mean the client does not advertise support for any
 	// config option extensions.
 	ConfigOptions *SessionConfigOptionsCapabilities `json:"configOptions,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// Support for 'cursor_update' session updates.
+	//
+	// Optional. Omitted or 'null' both mean the client does not advertise support.
+	// Supplying '{}' means the client handles 'cursor_update'.
+	Cursors *SessionCursorsCapabilities `json:"cursors,omitempty"`
 	// Support for live user-facing 'notice' session updates.
 	//
 	// Optional. Omitted or 'null' both mean the client does not advertise support.
@@ -1933,6 +1936,7 @@ func (v *ClientSessionCapabilities) UnmarshalJSON(b []byte) error {
 		Meta              json.RawMessage `json:"_meta"`
 		Compaction        json.RawMessage `json:"compaction"`
 		ConfigOptions     json.RawMessage `json:"configOptions"`
+		Cursors           json.RawMessage `json:"cursors"`
 		Notices           json.RawMessage `json:"notices"`
 		PromptSuggestions json.RawMessage `json:"promptSuggestions"`
 	}
@@ -1940,12 +1944,13 @@ func (v *ClientSessionCapabilities) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	if err := rejectDuplicateMembers(b, v, "_meta", "compaction", "configOptions", "notices", "promptSuggestions"); err != nil {
+	if err := rejectDuplicateMembers(b, v, "_meta", "compaction", "configOptions", "cursors", "notices", "promptSuggestions"); err != nil {
 		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
 	decodeLenient(raw.Compaction, &v.Compaction)
 	decodeLenient(raw.ConfigOptions, &v.ConfigOptions)
+	decodeLenient(raw.Cursors, &v.Cursors)
 	decodeLenient(raw.Notices, &v.Notices)
 	decodeLenient(raw.PromptSuggestions, &v.PromptSuggestions)
 	return nil
@@ -3297,7 +3302,7 @@ func (u *CreateElicitationUrl) Validate() error {
 // extensions. Unknown values that do not begin with '_' are reserved for
 // future ACP variants.
 //
-// Clients that do not understand this mode should preserve the raw payload
+// Clients that do not understand this mode SHOULD preserve the raw payload
 // when storing, replaying, proxying, or forwarding elicitation requests.
 // They MUST NOT render it as a known elicitation mode.
 type CreateElicitationOther struct {
@@ -3486,7 +3491,7 @@ type CreateElicitationRequest struct {
 	// extensions. Unknown values that do not begin with '_' are reserved for
 	// future ACP variants.
 	//
-	// Clients that do not understand this mode should preserve the raw payload
+	// Clients that do not understand this mode SHOULD preserve the raw payload
 	// when storing, replaying, proxying, or forwarding elicitation requests.
 	// They MUST NOT render it as a known elicitation mode.
 	Other *CreateElicitationOther `json:"-"`
@@ -3776,7 +3781,7 @@ func (v *CreateElicitationCancel) UnmarshalJSON(b []byte) error {
 // extensions. Unknown values that do not begin with '_' are reserved for
 // future ACP variants.
 //
-// Agents that do not understand this action should preserve the raw
+// Agents that do not understand this action SHOULD preserve the raw
 // payload when storing, replaying, proxying, or forwarding elicitation
 // responses. They MUST NOT treat it as a known elicitation action.
 type CreateElicitationResponseOther struct {
@@ -3851,7 +3856,7 @@ type CreateElicitationResponse struct {
 	// extensions. Unknown values that do not begin with '_' are reserved for
 	// future ACP variants.
 	//
-	// Agents that do not understand this action should preserve the raw
+	// Agents that do not understand this action SHOULD preserve the raw
 	// payload when storing, replaying, proxying, or forwarding elicitation
 	// responses. They MUST NOT treat it as a known elicitation action.
 	Other *CreateElicitationResponseOther `json:"-"`
@@ -4166,6 +4171,1084 @@ func (v *CurrentModeUpdate) UnmarshalJSON(b []byte) error {
 func (v *CurrentModeUpdate) Validate() error {
 	if v.CurrentModeId == "" {
 		return fmt.Errorf("currentModeId is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Where a session cursor is, relative to an entity the Client holds.
+//
+// The anchor names the entity by its type and ID, and 'position' says on which
+// side of that entity the cursor is. A known 'type' with a malformed payload is
+// an error. It does not fall back to the unknown-type variant.
+//
+// See the [Session Cursors RFD](https://agentclientprotocol.com/rfds/session-cursors).
+// The cursor is next to a user message.
+type CursorAnchorUserMessage struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// The ID of the anchored message.
+	MessageId MessageId `json:"messageId"`
+	// On which side of the message the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+	Type     string               `json:"type"`
+}
+
+func (v *CursorAnchorUserMessage) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorAnchorUserMessage
+	v.MessageId = fresh.MessageId
+	v.Position = fresh.Position
+	v.Type = fresh.Type
+	type plain CursorAnchorUserMessage
+	type CursorAnchorUserMessage struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorAnchorUserMessage{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "messageId", "position", "type"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "CursorAnchorUserMessage", "messageId")
+		}
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorAnchorUserMessage", "position")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "CursorAnchorUserMessage", "type")
+		}
+	}
+	return nil
+}
+
+func (v *CursorAnchorUserMessage) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	return nil
+}
+
+// The cursor is next to an agent message.
+type CursorAnchorAgentMessage struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// The ID of the anchored message.
+	MessageId MessageId `json:"messageId"`
+	// On which side of the message the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+	Type     string               `json:"type"`
+}
+
+func (v *CursorAnchorAgentMessage) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorAnchorAgentMessage
+	v.MessageId = fresh.MessageId
+	v.Position = fresh.Position
+	v.Type = fresh.Type
+	type plain CursorAnchorAgentMessage
+	type CursorAnchorAgentMessage struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorAnchorAgentMessage{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "messageId", "position", "type"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "CursorAnchorAgentMessage", "messageId")
+		}
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorAnchorAgentMessage", "position")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "CursorAnchorAgentMessage", "type")
+		}
+	}
+	return nil
+}
+
+func (v *CursorAnchorAgentMessage) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	return nil
+}
+
+// The cursor is next to an agent thought.
+type CursorAnchorAgentThought struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// The ID of the anchored message.
+	MessageId MessageId `json:"messageId"`
+	// On which side of the message the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+	Type     string               `json:"type"`
+}
+
+func (v *CursorAnchorAgentThought) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorAnchorAgentThought
+	v.MessageId = fresh.MessageId
+	v.Position = fresh.Position
+	v.Type = fresh.Type
+	type plain CursorAnchorAgentThought
+	type CursorAnchorAgentThought struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorAnchorAgentThought{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "messageId", "position", "type"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "CursorAnchorAgentThought", "messageId")
+		}
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorAnchorAgentThought", "position")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "CursorAnchorAgentThought", "type")
+		}
+	}
+	return nil
+}
+
+func (v *CursorAnchorAgentThought) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	return nil
+}
+
+// The cursor is next to a session-directed message.
+type CursorAnchorSessionMessage struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// The ID of the anchored message.
+	MessageId MessageId `json:"messageId"`
+	// On which side of the message the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+	Type     string               `json:"type"`
+}
+
+func (v *CursorAnchorSessionMessage) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorAnchorSessionMessage
+	v.MessageId = fresh.MessageId
+	v.Position = fresh.Position
+	v.Type = fresh.Type
+	type plain CursorAnchorSessionMessage
+	type CursorAnchorSessionMessage struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorAnchorSessionMessage{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "messageId", "position", "type"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "CursorAnchorSessionMessage", "messageId")
+		}
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorAnchorSessionMessage", "position")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "CursorAnchorSessionMessage", "type")
+		}
+	}
+	return nil
+}
+
+func (v *CursorAnchorSessionMessage) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	return nil
+}
+
+// The cursor is next to a tool call.
+type CursorAnchorToolCall struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// On which side of the tool call the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+	// The ID of the anchored tool call.
+	ToolCallId ToolCallId `json:"toolCallId"`
+	Type       string     `json:"type"`
+}
+
+func (v *CursorAnchorToolCall) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorAnchorToolCall
+	v.Position = fresh.Position
+	v.ToolCallId = fresh.ToolCallId
+	v.Type = fresh.Type
+	type plain CursorAnchorToolCall
+	type CursorAnchorToolCall struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorAnchorToolCall{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "position", "toolCallId", "type"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Position) || maybeAbsent(&v.ToolCallId) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorAnchorToolCall", "position")
+		}
+		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
+			return propertyError(err, "CursorAnchorToolCall", "toolCallId")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "CursorAnchorToolCall", "type")
+		}
+	}
+	return nil
+}
+
+func (v *CursorAnchorToolCall) Validate() error {
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	if v.ToolCallId == "" {
+		return fmt.Errorf("toolCallId is required")
+	}
+	return nil
+}
+
+// The cursor is next to a compaction.
+type CursorAnchorCompaction struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// The ID of the anchored compaction.
+	CompactionId CompactionId `json:"compactionId"`
+	// On which side of the compaction the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+	Type     string               `json:"type"`
+}
+
+func (v *CursorAnchorCompaction) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorAnchorCompaction
+	v.CompactionId = fresh.CompactionId
+	v.Position = fresh.Position
+	v.Type = fresh.Type
+	type plain CursorAnchorCompaction
+	type CursorAnchorCompaction struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorAnchorCompaction{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "compactionId", "position", "type"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CompactionId, "compactionId", false); err != nil {
+			return propertyError(err, "CursorAnchorCompaction", "compactionId")
+		}
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorAnchorCompaction", "position")
+		}
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "CursorAnchorCompaction", "type")
+		}
+	}
+	return nil
+}
+
+func (v *CursorAnchorCompaction) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	return nil
+}
+
+// Custom or future anchor type.
+//
+// Values beginning with '_' are reserved for implementation-specific
+// extensions. Unknown values that do not begin with '_' are reserved for
+// future ACP variants.
+//
+// A Client that does not recognize the type cannot place the cursor and
+// MUST NOT guess a place for it.
+type CursorAnchorOther struct {
+	// Custom or future anchor type.
+	//
+	// Values beginning with '_' are reserved for implementation-specific
+	// extensions. Unknown values that do not begin with '_' are reserved for
+	// future ACP variants.
+	Type string `json:"type"`
+	// AdditionalProperties holds the members that the schema does not name.
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (v CursorAnchorOther) MarshalJSON() ([]byte, error) {
+	type Alias CursorAnchorOther
+	var a Alias
+	a = Alias(v)
+	named, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return withAdditionalProperties(named, v.AdditionalProperties)
+}
+
+func (v *CursorAnchorOther) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorAnchorOther
+	v.Type = fresh.Type
+	type plain CursorAnchorOther
+	type CursorAnchorOther struct {
+		*plain
+	}
+	raw := CursorAnchorOther{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v); err != nil {
+		return err
+	}
+	if maybeAbsent(&v.Type) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Type, "type", false); err != nil {
+			return propertyError(err, "CursorAnchorOther", "type")
+		}
+	}
+	v.AdditionalProperties = additionalProperties(b, "type")
+	return nil
+}
+
+type CursorAnchor struct {
+	// The cursor is next to a user message.
+	UserMessage *CursorAnchorUserMessage `json:"-"`
+	// The cursor is next to an agent message.
+	AgentMessage *CursorAnchorAgentMessage `json:"-"`
+	// The cursor is next to an agent thought.
+	AgentThought *CursorAnchorAgentThought `json:"-"`
+	// The cursor is next to a session-directed message.
+	SessionMessage *CursorAnchorSessionMessage `json:"-"`
+	// The cursor is next to a tool call.
+	ToolCall *CursorAnchorToolCall `json:"-"`
+	// The cursor is next to a compaction.
+	Compaction *CursorAnchorCompaction `json:"-"`
+	// Custom or future anchor type.
+	//
+	// Values beginning with '_' are reserved for implementation-specific
+	// extensions. Unknown values that do not begin with '_' are reserved for
+	// future ACP variants.
+	//
+	// A Client that does not recognize the type cannot place the cursor and
+	// MUST NOT guess a place for it.
+	Other *CursorAnchorOther `json:"-"`
+}
+
+func (u *CursorAnchor) UnmarshalJSON(b []byte) error {
+	if tryFast(u, b) {
+		return nil
+	}
+	*u = CursorAnchor{}
+	if string(b) == "null" {
+		return errors.New("no matching variant for union")
+	}
+	// failed says that a variant matched and did not decode.
+	var failed bool
+	m, err := readUnionObject(b)
+	if err != nil {
+		return err
+	}
+	if m.isObject {
+		disc := string(m.tag("type"))
+		switch disc {
+		case "user_message":
+			var v CursorAnchorUserMessage
+			if json.Unmarshal(b, &v) == nil {
+				u.UserMessage = &v
+				return nil
+			}
+			failed = true
+		case "agent_message":
+			var v CursorAnchorAgentMessage
+			if json.Unmarshal(b, &v) == nil {
+				u.AgentMessage = &v
+				return nil
+			}
+			failed = true
+		case "agent_thought":
+			var v CursorAnchorAgentThought
+			if json.Unmarshal(b, &v) == nil {
+				u.AgentThought = &v
+				return nil
+			}
+			failed = true
+		case "session_message":
+			var v CursorAnchorSessionMessage
+			if json.Unmarshal(b, &v) == nil {
+				u.SessionMessage = &v
+				return nil
+			}
+			failed = true
+		case "tool_call":
+			var v CursorAnchorToolCall
+			if json.Unmarshal(b, &v) == nil {
+				u.ToolCall = &v
+				return nil
+			}
+			failed = true
+		case "compaction":
+			var v CursorAnchorCompaction
+			if json.Unmarshal(b, &v) == nil {
+				u.Compaction = &v
+				return nil
+			}
+			failed = true
+		}
+		{
+			var v CursorAnchorOther
+			var match bool = true
+			if raw, _ := m.get("type"); !strings.HasPrefix(string(raw), "\"") {
+				match = false
+			}
+			switch disc {
+			case "user_message", "agent_message", "agent_thought", "session_message", "tool_call", "compaction":
+				match = false
+			}
+			if match {
+				if json.Unmarshal(b, &v) == nil {
+					u.Other = &v
+					return nil
+				}
+				failed = true
+			}
+		}
+	}
+	if failed {
+		return unionError(b, "invalid variant payload")
+	}
+	return unionError(b, "no matching variant for union")
+}
+func (u CursorAnchor) MarshalJSON() ([]byte, error) {
+	if u.UserMessage != nil {
+		_b, _e := json.Marshal(*u.UserMessage)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["type"] = json.RawMessage("\"user_message\"")
+		return json.Marshal(m)
+	}
+	if u.AgentMessage != nil {
+		_b, _e := json.Marshal(*u.AgentMessage)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["type"] = json.RawMessage("\"agent_message\"")
+		return json.Marshal(m)
+	}
+	if u.AgentThought != nil {
+		_b, _e := json.Marshal(*u.AgentThought)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["type"] = json.RawMessage("\"agent_thought\"")
+		return json.Marshal(m)
+	}
+	if u.SessionMessage != nil {
+		_b, _e := json.Marshal(*u.SessionMessage)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["type"] = json.RawMessage("\"session_message\"")
+		return json.Marshal(m)
+	}
+	if u.ToolCall != nil {
+		_b, _e := json.Marshal(*u.ToolCall)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["type"] = json.RawMessage("\"tool_call\"")
+		return json.Marshal(m)
+	}
+	if u.Compaction != nil {
+		_b, _e := json.Marshal(*u.Compaction)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["type"] = json.RawMessage("\"compaction\"")
+		return json.Marshal(m)
+	}
+	if u.Other != nil {
+		_b, _e := json.Marshal(*u.Other)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		return json.Marshal(m)
+	}
+	return nil, errors.New("CursorAnchor has no variant set")
+}
+
+func (u *CursorAnchor) Validate() error {
+	var count int
+	if u.UserMessage != nil {
+		count++
+	}
+	if u.AgentMessage != nil {
+		count++
+	}
+	if u.AgentThought != nil {
+		count++
+	}
+	if u.SessionMessage != nil {
+		count++
+	}
+	if u.ToolCall != nil {
+		count++
+	}
+	if u.Compaction != nil {
+		count++
+	}
+	if u.Other != nil {
+		count++
+	}
+	if count == 0 {
+		return errors.New("CursorAnchor has no variant set")
+	}
+	if u.UserMessage != nil {
+		if err := u.UserMessage.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.AgentMessage != nil {
+		if err := u.AgentMessage.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.AgentThought != nil {
+		if err := u.AgentThought.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.SessionMessage != nil {
+		if err := u.SessionMessage.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.ToolCall != nil {
+		if err := u.ToolCall.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.Compaction != nil {
+		if err := u.Compaction.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// On which side of the anchored entity a session cursor is.
+type CursorAnchorPosition string
+
+const (
+	// The cursor is immediately before the entity. The history before the
+	// cursor does not include the entity.
+	CursorAnchorPositionBefore CursorAnchorPosition = "before"
+	// The cursor is immediately after the entity. The history before the
+	// cursor includes the entity and nothing that follows it in the timeline.
+	CursorAnchorPositionAfter CursorAnchorPosition = "after"
+)
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// The methods that currently accept a session cursor.
+//
+// See the [Session Cursors RFD](https://agentclientprotocol.com/rfds/session-cursors).
+type CursorCapabilities struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// Permits the Client to fork the session at this cursor with 'session/fork'.
+	//
+	// Omitted and 'null' are equivalent and mean unsupported. An object (including '{}')
+	// means supported.
+	Fork *CursorForkCapabilities `json:"fork,omitempty"`
+}
+
+func (v *CursorCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	type plain CursorCapabilities
+	type CursorCapabilities struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+		Fork json.RawMessage `json:"fork"`
+	}
+	raw := CursorCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "fork"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	decodeLenient(raw.Fork, &v.Fork)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A session cursor anchor to a compaction.
+type CursorCompactionAnchor struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// The ID of the anchored compaction.
+	CompactionId CompactionId `json:"compactionId"`
+	// On which side of the compaction the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+}
+
+func (v *CursorCompactionAnchor) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorCompactionAnchor
+	v.CompactionId = fresh.CompactionId
+	v.Position = fresh.Position
+	type plain CursorCompactionAnchor
+	type CursorCompactionAnchor struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorCompactionAnchor{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "compactionId", "position"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Position) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CompactionId, "compactionId", false); err != nil {
+			return propertyError(err, "CursorCompactionAnchor", "compactionId")
+		}
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorCompactionAnchor", "position")
+		}
+	}
+	return nil
+}
+
+func (v *CursorCompactionAnchor) Validate() error {
+	if v.CompactionId == "" {
+		return fmt.Errorf("compactionId is required")
+	}
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Capability to fork the session at a cursor with 'session/fork'.
+//
+// Supplying '{}' advertises support. An omitted or 'null' 'fork' does not.
+type CursorForkCapabilities struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+}
+
+func (v *CursorForkCapabilities) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	type plain CursorForkCapabilities
+	type CursorForkCapabilities struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorForkCapabilities{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Unique identifier for a session cursor within a session.
+//
+// The Agent generates it, and it is never reused for another position in the
+// session. Clients MUST NOT parse, change, or construct it.
+//
+// See the [Session Cursors RFD](https://agentclientprotocol.com/rfds/session-cursors).
+type CursorId string
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A session cursor anchor to a message. The anchor's 'type' names the kind of message.
+type CursorMessageAnchor struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// The ID of the anchored message.
+	MessageId MessageId `json:"messageId"`
+	// On which side of the message the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+}
+
+func (v *CursorMessageAnchor) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorMessageAnchor
+	v.MessageId = fresh.MessageId
+	v.Position = fresh.Position
+	type plain CursorMessageAnchor
+	type CursorMessageAnchor struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorMessageAnchor{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "messageId", "position"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.MessageId, "messageId", false); err != nil {
+			return propertyError(err, "CursorMessageAnchor", "messageId")
+		}
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorMessageAnchor", "position")
+		}
+	}
+	return nil
+}
+
+func (v *CursorMessageAnchor) Validate() error {
+	if v.MessageId == "" {
+		return fmt.Errorf("messageId is required")
+	}
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A session cursor anchor to a tool call.
+type CursorToolCallAnchor struct {
+	// The _meta property is reserved by ACP to allow clients and agents to attach additional
+	// metadata to their interactions. Omitted and 'null' are equivalent and mean no metadata.
+	// Implementations MUST NOT assign meaning to keys they do not recognize.
+	//
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	Meta Meta `json:"_meta,omitempty"`
+	// On which side of the tool call the cursor is.
+	Position CursorAnchorPosition `json:"position"`
+	// The ID of the anchored tool call.
+	ToolCallId ToolCallId `json:"toolCallId"`
+}
+
+func (v *CursorToolCallAnchor) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorToolCallAnchor
+	v.Position = fresh.Position
+	v.ToolCallId = fresh.ToolCallId
+	type plain CursorToolCallAnchor
+	type CursorToolCallAnchor struct {
+		*plain
+		Meta json.RawMessage `json:"_meta"`
+	}
+	raw := CursorToolCallAnchor{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "position", "toolCallId"); err != nil {
+		return err
+	}
+	decodeLenient(raw.Meta, &v.Meta)
+	if maybeAbsent(&v.Position) || maybeAbsent(&v.ToolCallId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.Position, "position", false); err != nil {
+			return propertyError(err, "CursorToolCallAnchor", "position")
+		}
+		if err := requireMember(members, &v.ToolCallId, "toolCallId", false); err != nil {
+			return propertyError(err, "CursorToolCallAnchor", "toolCallId")
+		}
+	}
+	return nil
+}
+
+func (v *CursorToolCallAnchor) Validate() error {
+	if v.Position == "" {
+		return fmt.Errorf("position is required")
+	}
+	if v.ToolCallId == "" {
+		return fmt.Errorf("toolCallId is required")
+	}
+	return nil
+}
+
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// A session cursor upsert. A cursor names one position in the session's timeline.
+//
+// The first update for a 'cursorId' MUST include 'anchor'. The anchor is fixed
+// after that, and later updates change only 'capabilities'.
+//
+// Agents MUST only send this update when the Client advertised
+// the 'session.cursors' Client capability.
+//
+// 'capabilities' and '_meta' have patch semantics: omission leaves the stored
+// value unchanged, 'null' clears it, and a concrete value replaces it.
+//
+// See the [Session Cursors RFD](https://agentclientprotocol.com/rfds/session-cursors).
+type CursorUpdate struct {
+	// Extensible metadata patch for this cursor.
+	Meta Patch[Meta] `json:"_meta"`
+	// Where the cursor is, relative to an entity the Client holds.
+	//
+	// Required on the first update for a cursor. The Agent MUST NOT change it afterwards.
+	// A later update can omit it or repeat the same anchor. Omitted and 'null' are
+	// equivalent and leave the stored anchor unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
+	Anchor Patch[CursorAnchor] `json:"anchor"`
+	// The methods that currently accept this cursor.
+	//
+	// Omission leaves the capabilities unchanged, 'null' clears them, and an object replaces
+	// the whole previous value. A new cursor starts with none.
+	Capabilities Patch[CursorCapabilities] `json:"capabilities"`
+	// The Agent-owned ID of this cursor, unique within the session.
+	CursorId CursorId `json:"cursorId"`
+}
+
+func (v CursorUpdate) MarshalJSON() ([]byte, error) {
+	type Alias CursorUpdate
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta         *Patch[Meta]               `json:"_meta,omitempty"`
+		Anchor       *Patch[CursorAnchor]       `json:"anchor,omitempty"`
+		Capabilities *Patch[CursorCapabilities] `json:"capabilities,omitempty"`
+		CursorId     CursorId                   `json:"cursorId"`
+	}
+	return json.Marshal(wire{
+		Anchor:       a.Anchor.setOrNil(),
+		Capabilities: a.Capabilities.orNil(),
+		CursorId:     a.CursorId,
+		Meta:         a.Meta.orNil(),
+	})
+}
+
+func (v *CursorUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh CursorUpdate
+	v.CursorId = fresh.CursorId
+	type plain CursorUpdate
+	type CursorUpdate struct {
+		*plain
+		Meta         json.RawMessage `json:"_meta"`
+		Anchor       json.RawMessage `json:"anchor"`
+		Capabilities json.RawMessage `json:"capabilities"`
+	}
+	raw := CursorUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "anchor", "capabilities", "cursorId"); err != nil {
+		return err
+	}
+	decodePatch(raw.Meta, &v.Meta)
+	if raw.Anchor != nil && string(raw.Anchor) != "null" {
+		if err := json.Unmarshal(raw.Anchor, &v.Anchor); err != nil {
+			return propertyError(err, "CursorUpdate", "anchor")
+		}
+	}
+	decodePatch(raw.Capabilities, &v.Capabilities)
+	if maybeAbsent(&v.CursorId) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CursorId, "cursorId", false); err != nil {
+			return propertyError(err, "CursorUpdate", "cursorId")
+		}
+	}
+	return nil
+}
+
+func (v *CursorUpdate) Validate() error {
+	if p := v.Anchor.Ptr(); p != nil {
+		if err := p.Validate(); err != nil {
+			return fmt.Errorf("anchor: %w", err)
+		}
+	}
+	if v.CursorId == "" {
+		return fmt.Errorf("cursorId is required")
 	}
 	return nil
 }
@@ -5161,7 +6244,7 @@ func (v *ElicitationPropertySchemaArray) Validate() error {
 // extensions. Unknown values that do not begin with '_' are reserved for
 // future ACP variants.
 //
-// Clients that do not understand this property schema type should preserve
+// Clients that do not understand this property schema type SHOULD preserve
 // the raw schema when storing, replaying, proxying, or forwarding
 // elicitation requests. They MUST NOT render it as a known input control.
 type ElicitationPropertySchemaOther struct {
@@ -5230,7 +6313,7 @@ type ElicitationPropertySchema struct {
 	// extensions. Unknown values that do not begin with '_' are reserved for
 	// future ACP variants.
 	//
-	// Clients that do not understand this property schema type should preserve
+	// Clients that do not understand this property schema type SHOULD preserve
 	// the raw schema when storing, replaying, proxying, or forwarding
 	// elicitation requests. They MUST NOT render it as a known input control.
 	Other *ElicitationPropertySchemaOther `json:"-"`
@@ -5476,7 +6559,7 @@ type ElicitationSchema struct {
 	//
 	// Optional. Omitted and 'null' are equivalent and mean no schema description is provided.
 	Description *string `json:"description,omitempty"`
-	// Property definitions (must be primitive types).
+	// Property definitions (MUST be primitive types).
 	//
 	// Defaults to {} if unset.
 	Properties map[string]ElicitationPropertySchema `json:"properties"`
@@ -6072,13 +7155,13 @@ func (v *EnvVariable) UnmarshalJSON(b []byte) error {
 // See protocol docs: [JSON-RPC Error Object](https://www.jsonrpc.org/specification#error_object)
 type Error struct {
 	// A number indicating the error type that occurred.
-	// This must be an integer as defined in the JSON-RPC specification.
+	// This MUST be an integer as defined in the JSON-RPC specification.
 	Code ErrorCode `json:"code"`
 	// Optional primitive or structured value that contains additional information about the error.
 	// This may include debugging information or context-specific details.
 	Data json.RawMessage `json:"data,omitempty"`
 	// A string providing a short description of the error.
-	// The message should be limited to a concise single sentence.
+	// The message SHOULD be limited to a concise single sentence.
 	Message string `json:"message"`
 }
 
@@ -6359,10 +7442,6 @@ func (u *ErrorCode) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Details of a failure that ended a child's foreground work.
 type ErrorStopReason struct {
 	// The failure, as a JSON-RPC error object.
@@ -6517,9 +7596,9 @@ func (v *HttpHeader) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// The child is ready to process another prompt.
+// Foreground work is not in progress. The parent can give the child more work.
 //
-// An omitted, 'null', or malformed 'stopReason' means not reported.
+// An omitted or 'null' 'stopReason' means not reported.
 // The work ended successfully.
 type IdleStateUpdateEndTurn struct {
 	// The _meta property is reserved by ACP for additional metadata.
@@ -7205,7 +8284,7 @@ type Implementation struct {
 	// Intended for UI and end-user contexts and optimized to be human-readable
 	// and easily understood.
 	//
-	// If not provided, the name should be used for display.
+	// If not provided, the name SHOULD be used for display.
 	Title *string `json:"title,omitempty"`
 	// Version of the implementation. Can be displayed to the user or used
 	// for debugging or metrics purposes. (e.g. "1.0.0").
@@ -7579,7 +8658,7 @@ type InitializeResponse struct {
 	// The protocol version the client specified if supported by the agent,
 	// or the latest protocol version supported by the agent.
 	//
-	// The client should disconnect, if it doesn't support this version.
+	// The client SHOULD disconnect, if it doesn't support this version.
 	ProtocolVersion ProtocolVersion `json:"protocolVersion"`
 }
 
@@ -7911,11 +8990,11 @@ type LoadSessionRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// Additional workspace roots to activate for this session. Each path must be absolute.
+	// Additional workspace roots to activate for this session. Each path MUST be absolute.
 	//
 	// When omitted or empty, no additional roots are activated. When non-empty,
 	// this is the complete resulting additional-root list for the loaded
-	// session. It may differ from any previously used or reported list as long as
+	// session. It MAY differ from any previously used or reported list as long as
 	// the request 'cwd' matches the session's 'cwd'.
 	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`
 	// **UNSTABLE**
@@ -7942,7 +9021,7 @@ type LoadSessionRequest struct {
 	SessionId SessionId `json:"sessionId"`
 	// System-level instructions for the loaded session.
 	//
-	// Optional. Omitted and 'null' are equivalent. The Agent may then keep a
+	// Optional. Omitted and 'null' are equivalent. The Agent MAY then keep a
 	// system prompt it stored with the session or use its default instructions.
 	// Clients MUST only send this when the Agent advertises
 	// 'sessionCapabilities.systemPrompt', and SHOULD send the same value they used
@@ -9377,7 +10456,7 @@ type NewSessionRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// Additional workspace roots for this session. Each path must be absolute.
+	// Additional workspace roots for this session. Each path MUST be absolute.
 	//
 	// These expand the session's filesystem scope without changing 'cwd', which
 	// remains the base for relative paths. When omitted or empty, no
@@ -9791,11 +10870,7 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// An execution plan for accomplishing complex tasks.
-//
-// Plans consist of multiple entries representing individual tasks or goals.
-// Agents report plans to clients to provide visibility into their execution strategy.
-// Plans can evolve during execution as the agent discovers new requirements or completes tasks.
+// A checklist sent with the 'plan' session update.
 //
 // See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/v1/agent-plan)
 type Plan struct {
@@ -9807,8 +10882,8 @@ type Plan struct {
 	Meta Meta `json:"_meta,omitempty"`
 	// The list of tasks to be accomplished.
 	//
-	// When updating a plan, the agent must send a complete list of all entries
-	// with their current status. The client replaces the entire plan with each update.
+	// The Agent MUST send all entries with their current status.
+	// The Client MUST replace the entire checklist with each update.
 	Entries []PlanEntry `json:"entries"`
 }
 
@@ -9861,17 +10936,13 @@ func (v *Plan) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Capabilities for receiving 'plan_update' and 'plan_removed' session updates.
 type PlanCapabilities struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 }
 
@@ -9993,29 +11064,21 @@ const (
 	PlanEntryStatusCompleted PlanEntryStatus = "completed"
 )
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Unique identifier for a plan within a session.
 type PlanId string
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A plan represented as structured entries.
 type PlanItems struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The list of tasks to be accomplished.
 	//
-	// When updating an item-based plan, the agent must send a complete list of all entries
-	// with their current status. The client replaces that plan with each update.
+	// The Agent MUST send all entries with their current status.
+	// The Client MUST replace the checklist with this 'planId' on each update.
 	Entries []PlanEntry `json:"entries"`
 	// The plan ID to update.
 	PlanId PlanId `json:"planId"`
@@ -10077,24 +11140,20 @@ func (v *PlanItems) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// A plan represented as raw markdown content.
+// A plan represented as Markdown.
 type PlanMarkdown struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// Markdown content for the plan.
+	// The complete plan as Markdown, not just the text that changed.
 	Content string `json:"content"`
 	// The absolute path of the file that holds this plan.
 	//
-	// This field is optional. Omitting it or sending 'null' both mean that the plan
-	// has no file. 'content' is the plan to display whether or not 'path' is set.
+	// Omitted and 'null' both mean the plan has no file. A supplied path MUST
+	// be absolute. 'content' is the plan to display whether or not 'path' is set.
 	// Clients can use 'path' to open the file.
 	Path *string `json:"path,omitempty"`
 	// The plan ID to update.
@@ -10142,19 +11201,15 @@ func (v *PlanMarkdown) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Removal notice for a plan identified by ID.
 type PlanRemoved struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// The plan ID to remove.
+	// The plan ID to remove. Clients MUST ignore a removal for an unknown ID.
 	PlanId PlanId `json:"planId"`
 }
 
@@ -10193,19 +11248,15 @@ func (v *PlanRemoved) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A content update for a plan identified by ID.
 type PlanUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// The updated plan content.
+	// Replaces the whole plan with this 'planId', even if its 'type' changes.
 	Plan PlanUpdateContent `json:"plan"`
 }
 
@@ -10244,10 +11295,6 @@ func (v *PlanUpdate) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Updated content for a plan.
 // Structured plan entries.
 type PlanUpdateContentItems struct {
@@ -10255,12 +11302,12 @@ type PlanUpdateContentItems struct {
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The list of tasks to be accomplished.
 	//
-	// When updating an item-based plan, the agent must send a complete list of all entries
-	// with their current status. The client replaces that plan with each update.
+	// The Agent MUST send all entries with their current status.
+	// The Client MUST replace the checklist with this 'planId' on each update.
 	Entries []PlanEntry `json:"entries"`
 	// The plan ID to update.
 	PlanId PlanId `json:"planId"`
@@ -10327,20 +11374,20 @@ func (v *PlanUpdateContentItems) Validate() error {
 	return nil
 }
 
-// Raw markdown content for the plan.
+// The complete plan as Markdown.
 type PlanUpdateContentMarkdown struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// Markdown content for the plan.
+	// The complete plan as Markdown, not just the text that changed.
 	Content string `json:"content"`
 	// The absolute path of the file that holds this plan.
 	//
-	// This field is optional. Omitting it or sending 'null' both mean that the plan
-	// has no file. 'content' is the plan to display whether or not 'path' is set.
+	// Omitted and 'null' both mean the plan has no file. A supplied path MUST
+	// be absolute. 'content' is the plan to display whether or not 'path' is set.
 	// Clients can use 'path' to open the file.
 	Path *string `json:"path,omitempty"`
 	// The plan ID to update.
@@ -10396,7 +11443,7 @@ func (v *PlanUpdateContentMarkdown) Validate() error {
 type PlanUpdateContent struct {
 	// Structured plan entries.
 	Items *PlanUpdateContentItems `json:"-"`
-	// Raw markdown content for the plan.
+	// The complete plan as Markdown.
 	Markdown *PlanUpdateContentMarkdown `json:"-"`
 }
 
@@ -10981,8 +12028,7 @@ type PromptSuggestionsUpdate struct {
 	// The suggestions the Client can offer, ordered most likely first.
 	//
 	// Required and non-null. An empty list withdraws the suggestions the
-	// Client is offering. A Client skips an entry it cannot parse and keeps
-	// the rest.
+	// Client is offering.
 	Suggestions []PromptSuggestion `json:"suggestions"`
 }
 
@@ -11798,11 +12844,11 @@ type ResumeSessionRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// Additional workspace roots to activate for this session. Each path must be absolute.
+	// Additional workspace roots to activate for this session. Each path MUST be absolute.
 	//
 	// When omitted or empty, no additional roots are activated. When non-empty,
 	// this is the complete resulting additional-root list for the resumed
-	// session. It may differ from any previously used or reported list as long as
+	// session. It MAY differ from any previously used or reported list as long as
 	// the request 'cwd' matches the session's 'cwd'.
 	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`
 	// **UNSTABLE**
@@ -11829,7 +12875,7 @@ type ResumeSessionRequest struct {
 	SessionId SessionId `json:"sessionId"`
 	// System-level instructions for the resumed session.
 	//
-	// Optional. Omitted and 'null' are equivalent. The Agent may then keep a
+	// Optional. Omitted and 'null' are equivalent. The Agent MAY then keep a
 	// system prompt it stored with the session or use its default instructions.
 	// Clients MUST only send this when the Agent advertises
 	// 'sessionCapabilities.systemPrompt', and SHOULD send the same value they used
@@ -12137,10 +13183,6 @@ const (
 	SessionArchiveFilterOnly SessionArchiveFilter = "only"
 )
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Capability to cancel work in a subagent session without ending that session.
 //
 // Supplying '{}' advertises support. An omitted or 'null' 'cancel' does not.
@@ -12149,7 +13191,7 @@ type SessionCancelCapabilities struct {
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 }
 
@@ -13018,6 +14060,15 @@ func (u *SessionConfigSelectOptions) Validate() error {
 // Unique identifier for a session configuration option value.
 type SessionConfigValueId string
 
+// **UNSTABLE**
+//
+// This capability is not part of the spec yet, and may be removed or changed at any point.
+//
+// Client support for 'cursor_update' session updates.
+//
+// See the [Session Cursors RFD](https://agentclientprotocol.com/rfds/session-cursors).
+type SessionCursorsCapabilities struct{}
+
 // Capabilities for the 'session/delete' method.
 //
 // Supplying '{}' means the agent supports deleting sessions from 'session/list'.
@@ -13102,7 +14153,7 @@ type SessionInfo struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// Additional workspace roots reported for this session. Each path must be absolute.
+	// Additional workspace roots reported for this session. Each path MUST be absolute.
 	//
 	// When present, this is the complete ordered additional-root list reported
 	// by the Agent. Omitted and empty values are equivalent: the response
@@ -13266,10 +14317,6 @@ func (v *SessionListCapabilities) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // An upsert for an inter-session message.
 type SessionMessage struct {
 	// Omitted leaves metadata unchanged. 'null' removes it.
@@ -13372,10 +14419,6 @@ func (v *SessionMessage) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A streamed content block of an inter-session message.
 //
 // A chunk carries only content. The message's participants and references come from
@@ -13662,10 +14705,6 @@ func (v *SessionOptionsCapabilities) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A display-only reference to another session that this tool call operates on,
 // such as a subagent it created, delegated to, or is waiting on.
 //
@@ -13678,7 +14717,7 @@ type SessionReference struct {
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The referenced session.
 	SessionId SessionId `json:"sessionId"`
@@ -14367,8 +15406,8 @@ type SessionUpdatePlan struct {
 	Meta Meta `json:"_meta,omitempty"`
 	// The list of tasks to be accomplished.
 	//
-	// When updating a plan, the agent must send a complete list of all entries
-	// with their current status. The client replaces the entire plan with each update.
+	// The Agent MUST send all entries with their current status.
+	// The Client MUST replace the entire checklist with each update.
 	Entries       []PlanEntry `json:"entries"`
 	SessionUpdate string      `json:"sessionUpdate"`
 }
@@ -14426,19 +15465,16 @@ func (v *SessionUpdatePlan) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// A content update for a plan identified by ID.
+// Replaces the plan with this ID. Agents MUST NOT send this update unless
+// the Client advertised 'plan'.
 type SessionPlanUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// The updated plan content.
+	// Replaces the whole plan with this 'planId', even if its 'type' changes.
 	Plan          PlanUpdateContent `json:"plan"`
 	SessionUpdate string            `json:"sessionUpdate"`
 }
@@ -14482,19 +15518,16 @@ func (v *SessionPlanUpdate) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
-// Removal notice for a plan identified by ID.
+// Removes the plan with this ID. Agents MUST NOT send this update unless
+// the Client advertised 'plan'.
 type SessionUpdatePlanRemoved struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// The plan ID to remove.
+	// The plan ID to remove. Clients MUST ignore a removal for an unknown ID.
 	PlanId        PlanId `json:"planId"`
 	SessionUpdate string `json:"sessionUpdate"`
 }
@@ -15081,8 +16114,7 @@ type SessionPromptSuggestionsUpdate struct {
 	// The suggestions the Client can offer, ordered most likely first.
 	//
 	// Required and non-null. An empty list withdraws the suggestions the
-	// Client is offering. A Client skips an entry it cannot parse and keeps
-	// the rest.
+	// Client is offering.
 	Suggestions []PromptSuggestion `json:"suggestions"`
 }
 
@@ -15143,17 +16175,120 @@ func (v *SessionPromptSuggestionsUpdate) Validate() error {
 //
 // This capability is not part of the spec yet, and may be removed or changed at any point.
 //
+// A session cursor has been announced or its capabilities have changed.
+//
+// Agents MUST only send this update when the Client advertised
+// the 'session.cursors' Client capability.
+type SessionCursorUpdate struct {
+	// Extensible metadata patch for this cursor.
+	Meta Patch[Meta] `json:"_meta"`
+	// Where the cursor is, relative to an entity the Client holds.
+	//
+	// Required on the first update for a cursor. The Agent MUST NOT change it afterwards.
+	// A later update can omit it or repeat the same anchor. Omitted and 'null' are
+	// equivalent and leave the stored anchor unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
+	Anchor Patch[CursorAnchor] `json:"anchor"`
+	// The methods that currently accept this cursor.
+	//
+	// Omission leaves the capabilities unchanged, 'null' clears them, and an object replaces
+	// the whole previous value. A new cursor starts with none.
+	Capabilities Patch[CursorCapabilities] `json:"capabilities"`
+	// The Agent-owned ID of this cursor, unique within the session.
+	CursorId      CursorId `json:"cursorId"`
+	SessionUpdate string   `json:"sessionUpdate"`
+}
+
+func (v SessionCursorUpdate) MarshalJSON() ([]byte, error) {
+	type Alias SessionCursorUpdate
+	var a Alias
+	a = Alias(v)
+	type wire struct {
+		Meta          *Patch[Meta]               `json:"_meta,omitempty"`
+		Anchor        *Patch[CursorAnchor]       `json:"anchor,omitempty"`
+		Capabilities  *Patch[CursorCapabilities] `json:"capabilities,omitempty"`
+		CursorId      CursorId                   `json:"cursorId"`
+		SessionUpdate string                     `json:"sessionUpdate"`
+	}
+	return json.Marshal(wire{
+		Anchor:        a.Anchor.setOrNil(),
+		Capabilities:  a.Capabilities.orNil(),
+		CursorId:      a.CursorId,
+		Meta:          a.Meta.orNil(),
+		SessionUpdate: a.SessionUpdate,
+	})
+}
+
+func (v *SessionCursorUpdate) UnmarshalJSON(b []byte) error {
+	if tryFast(v, b) {
+		return nil
+	}
+	var fresh SessionCursorUpdate
+	v.CursorId = fresh.CursorId
+	v.SessionUpdate = fresh.SessionUpdate
+	type plain SessionCursorUpdate
+	type SessionCursorUpdate struct {
+		*plain
+		Meta         json.RawMessage `json:"_meta"`
+		Anchor       json.RawMessage `json:"anchor"`
+		Capabilities json.RawMessage `json:"capabilities"`
+	}
+	raw := SessionCursorUpdate{plain: (*plain)(v)}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return plainFieldError(err)
+	}
+	if err := rejectDuplicateMembers(b, v, "_meta", "anchor", "capabilities", "cursorId", "sessionUpdate"); err != nil {
+		return err
+	}
+	decodePatch(raw.Meta, &v.Meta)
+	if raw.Anchor != nil && string(raw.Anchor) != "null" {
+		if err := json.Unmarshal(raw.Anchor, &v.Anchor); err != nil {
+			return propertyError(err, "SessionCursorUpdate", "anchor")
+		}
+	}
+	decodePatch(raw.Capabilities, &v.Capabilities)
+	if maybeAbsent(&v.CursorId) || maybeAbsent(&v.SessionUpdate) {
+		members := jsonMembers(b)
+		if err := requireMember(members, &v.CursorId, "cursorId", false); err != nil {
+			return propertyError(err, "SessionCursorUpdate", "cursorId")
+		}
+		if err := requireMember(members, &v.SessionUpdate, "sessionUpdate", false); err != nil {
+			return propertyError(err, "SessionCursorUpdate", "sessionUpdate")
+		}
+	}
+	return nil
+}
+
+func (v *SessionCursorUpdate) Validate() error {
+	if p := v.Anchor.Ptr(); p != nil {
+		if err := p.Validate(); err != nil {
+			return fmt.Errorf("anchor: %w", err)
+		}
+	}
+	if v.CursorId == "" {
+		return fmt.Errorf("cursorId is required")
+	}
+	return nil
+}
+
 // Announces a child session created and owned by this session, or updates
 // that ownership association's metadata.
+//
+// Agents MUST only send this update when the Client advertised
+// the 'subagents' Client capability.
+//
+// See protocol docs: [Subagents](https://agentclientprotocol.com/protocol/v1/draft/subagents)
 type SessionSubagentUpdate struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	// Omitted means unchanged. 'null' removes the metadata.
 	Meta Patch[Meta] `json:"_meta"`
-	// Additional workspace roots for the child. Each path must be absolute.
+	// Additional workspace roots for the child. Each path MUST be absolute.
 	//
 	// Optional and nullable. Omitted means unchanged. 'null' clears the
 	// reported value. While unset, the child inherits its immediate parent's
@@ -15282,12 +16417,13 @@ func (v *SessionSubagentUpdate) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A message upsert observed in this session's transcript, sent to or
 // received from another session.
+//
+// Agents MUST only send this update when the Client advertised
+// the 'subagents' Client capability.
+//
+// See protocol docs: [Session-directed messages](https://agentclientprotocol.com/protocol/v1/draft/prompt-turn#session-directed-messages)
 type SessionUpdateSessionMessage struct {
 	// Omitted leaves metadata unchanged. 'null' removes it.
 	//
@@ -15396,11 +16532,12 @@ func (v *SessionUpdateSessionMessage) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // One content block appended to a sent or received session message.
+//
+// Agents MUST only send this update when the Client advertised
+// the 'subagents' Client capability.
+//
+// See protocol docs: [Session-directed messages](https://agentclientprotocol.com/protocol/v1/draft/prompt-turn#session-directed-messages)
 type SessionUpdateSessionMessageChunk struct {
 	// Optional and nullable chunk-scoped metadata. Omitted or 'null' means none.
 	//
@@ -15473,17 +16610,11 @@ type SessionUpdate struct {
 	// The agent's execution plan for complex tasks.
 	// See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/v1/draft/agent-plan)
 	Plan *SessionUpdatePlan `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// A content update for a plan identified by ID.
+	// Replaces the plan with this ID. Agents MUST NOT send this update unless
+	// the Client advertised 'plan'.
 	PlanUpdate *SessionPlanUpdate `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
-	// Removal notice for a plan identified by ID.
+	// Removes the plan with this ID. Agents MUST NOT send this update unless
+	// the Client advertised 'plan'.
 	PlanRemoved *SessionUpdatePlanRemoved `json:"-"`
 	// Available commands are ready or have changed
 	AvailableCommandsUpdate *SessionAvailableCommandsUpdate `json:"-"`
@@ -15525,21 +16656,33 @@ type SessionUpdate struct {
 	//
 	// This capability is not part of the spec yet, and may be removed or changed at any point.
 	//
+	// A session cursor has been announced or its capabilities have changed.
+	//
+	// Agents MUST only send this update when the Client advertised
+	// the 'session.cursors' Client capability.
+	CursorUpdate *SessionCursorUpdate `json:"-"`
 	// Announces a child session created and owned by this session, or updates
 	// that ownership association's metadata.
+	//
+	// Agents MUST only send this update when the Client advertised
+	// the 'subagents' Client capability.
+	//
+	// See protocol docs: [Subagents](https://agentclientprotocol.com/protocol/v1/draft/subagents)
 	SubagentUpdate *SessionSubagentUpdate `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// A message upsert observed in this session's transcript, sent to or
 	// received from another session.
+	//
+	// Agents MUST only send this update when the Client advertised
+	// the 'subagents' Client capability.
+	//
+	// See protocol docs: [Session-directed messages](https://agentclientprotocol.com/protocol/v1/draft/prompt-turn#session-directed-messages)
 	SessionMessage *SessionUpdateSessionMessage `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// One content block appended to a sent or received session message.
+	//
+	// Agents MUST only send this update when the Client advertised
+	// the 'subagents' Client capability.
+	//
+	// See protocol docs: [Session-directed messages](https://agentclientprotocol.com/protocol/v1/draft/prompt-turn#session-directed-messages)
 	SessionMessageChunk *SessionUpdateSessionMessageChunk `json:"-"`
 }
 
@@ -15676,6 +16819,13 @@ func (u *SessionUpdate) UnmarshalJSON(b []byte) error {
 			var v SessionPromptSuggestionsUpdate
 			if json.Unmarshal(b, &v) == nil {
 				u.PromptSuggestionsUpdate = &v
+				return nil
+			}
+			failed = true
+		case "cursor_update":
+			var v SessionCursorUpdate
+			if json.Unmarshal(b, &v) == nil {
+				u.CursorUpdate = &v
 				return nil
 			}
 			failed = true
@@ -15912,6 +17062,18 @@ func (u SessionUpdate) MarshalJSON() ([]byte, error) {
 		m["sessionUpdate"] = json.RawMessage("\"prompt_suggestions_update\"")
 		return json.Marshal(m)
 	}
+	if u.CursorUpdate != nil {
+		_b, _e := json.Marshal(*u.CursorUpdate)
+		if _e != nil {
+			return []byte{}, _e
+		}
+		var m map[string]json.RawMessage
+		if json.Unmarshal(_b, &m) != nil {
+			return []byte{}, errors.New("invalid variant payload")
+		}
+		m["sessionUpdate"] = json.RawMessage("\"cursor_update\"")
+		return json.Marshal(m)
+	}
 	if u.SubagentUpdate != nil {
 		_b, _e := json.Marshal(*u.SubagentUpdate)
 		if _e != nil {
@@ -16004,6 +17166,9 @@ func (u *SessionUpdate) Validate() error {
 	if u.PromptSuggestionsUpdate != nil {
 		count++
 	}
+	if u.CursorUpdate != nil {
+		count++
+	}
 	if u.SubagentUpdate != nil {
 		count++
 	}
@@ -16088,6 +17253,11 @@ func (u *SessionUpdate) Validate() error {
 	}
 	if u.PromptSuggestionsUpdate != nil {
 		if err := u.PromptSuggestionsUpdate.Validate(); err != nil {
+			return err
+		}
+	}
+	if u.CursorUpdate != nil {
+		if err := u.CursorUpdate.Validate(); err != nil {
 			return err
 		}
 	}
@@ -16504,10 +17674,6 @@ func (v *SetSessionModeResponse) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Current foreground-work state of a reusable child session.
 //
 // Each update is a whole-object snapshot. Idle does not terminate the child.
@@ -16550,7 +17716,7 @@ func (v *StateUpdateRunning) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// The child is ready to process another prompt.
+// Foreground work is not in progress. The parent can give the child more work.
 // The work ended successfully.
 type StateUpdateIdleEndTurn struct {
 	// The _meta property is reserved by ACP for additional metadata.
@@ -17338,7 +18504,7 @@ func (v *StateUpdateOther) UnmarshalJSON(b []byte) error {
 type StateUpdate struct {
 	// Foreground work is in progress.
 	Running *StateUpdateRunning `json:"-"`
-	// The child is ready to process another prompt.
+	// Foreground work is not in progress. The parent can give the child more work.
 	Idle *StateUpdateIdle `json:"-"`
 	// Foreground work is blocked on user action.
 	RequiresAction *StateUpdateRequiresAction `json:"-"`
@@ -17535,7 +18701,7 @@ const (
 	//
 	// This stop reason MUST be returned when the client sends a 'session/cancel'
 	// notification, even if the cancellation causes exceptions in underlying operations.
-	// Agents should catch these exceptions and return this semantically meaningful
+	// Agents SHOULD catch these exceptions and return this semantically meaningful
 	// response to confirm successful cancellation.
 	StopReasonCancelled StopReason = "cancelled"
 )
@@ -17734,10 +18900,6 @@ func (v *StringPropertySchema) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Capability marker for exposing reusable child sessions as restricted ACP sessions.
 //
 // Supplying '{}' advertises support for child association and state updates,
@@ -17771,10 +18933,6 @@ func (v *SubagentCapabilities) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Client-initiated session mutations permitted for a specific subagent session.
 //
 // A mutation requires an explicit per-child capability. Support for the method
@@ -17812,10 +18970,6 @@ func (v *SubagentSessionCapabilities) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // Notification that the enclosing parent session created and owns a child session.
 //
 // Later updates modify the existing association's metadata, not its ownership.
@@ -17842,10 +18996,10 @@ type SubagentUpdate struct {
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	// Omitted means unchanged. 'null' removes the metadata.
 	Meta Patch[Meta] `json:"_meta"`
-	// Additional workspace roots for the child. Each path must be absolute.
+	// Additional workspace roots for the child. Each path MUST be absolute.
 	//
 	// Optional and nullable. Omitted means unchanged. 'null' clears the
 	// reported value. While unset, the child inherits its immediate parent's
@@ -18082,7 +19236,7 @@ const (
 
 // Embed a terminal created with 'terminal/create' by its id.
 //
-// The terminal must be added before calling 'terminal/release'.
+// The terminal MUST be added before calling 'terminal/release'.
 //
 // See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/v1/terminals)
 type Terminal struct {
@@ -18534,7 +19688,7 @@ func (v *ToolCall) Validate() error {
 // Tool calls can produce different types of content including
 // standard content blocks (text, images) or file diffs.
 //
-// See protocol docs: [Content](https://agentclientprotocol.com/protocol/v1/draft/tool-calls#content)
+// See protocol docs: [Content](https://agentclientprotocol.com/protocol/v1/tool-calls#content)
 // Standard content block (text, images, resources).
 type ToolCallContentContent struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
@@ -18644,9 +19798,9 @@ func (v *ToolCallContentDiff) UnmarshalJSON(b []byte) error {
 
 // Embed a terminal created with 'terminal/create' by its id.
 //
-// The terminal must be added before calling 'terminal/release'.
+// The terminal MUST be added before calling 'terminal/release'.
 //
-// See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/v1/draft/terminals)
+// See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/v1/terminals)
 type ToolCallContentTerminal struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
@@ -18698,17 +19852,18 @@ func (v *ToolCallContentTerminal) Validate() error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // A display-only reference to another session, such as a subagent.
+//
+// Agents send it only when the Client advertised the 'subagents' Client
+// capability.
+//
+// See protocol docs: [Sessions](https://agentclientprotocol.com/protocol/v1/tool-calls#sessions)
 type ToolCallContentSession struct {
 	// The _meta property is reserved by ACP to allow clients and agents to attach additional
 	// metadata to their interactions. Implementations MUST NOT make assumptions about values at
 	// these keys.
 	//
-	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
+	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
 	// The referenced session.
 	SessionId SessionId `json:"sessionId"`
@@ -18761,15 +19916,16 @@ type ToolCallContent struct {
 	Diff *ToolCallContentDiff `json:"-"`
 	// Embed a terminal created with 'terminal/create' by its id.
 	//
-	// The terminal must be added before calling 'terminal/release'.
+	// The terminal MUST be added before calling 'terminal/release'.
 	//
-	// See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/v1/draft/terminals)
+	// See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/v1/terminals)
 	Terminal *ToolCallContentTerminal `json:"-"`
-	// **UNSTABLE**
-	//
-	// This capability is not part of the spec yet, and may be removed or changed at any point.
-	//
 	// A display-only reference to another session, such as a subagent.
+	//
+	// Agents send it only when the Client advertised the 'subagents' Client
+	// capability.
+	//
+	// See protocol docs: [Sessions](https://agentclientprotocol.com/protocol/v1/tool-calls#sessions)
 	Session *ToolCallContentSession `json:"-"`
 }
 
@@ -19179,10 +20335,6 @@ func (v *ToolKind) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// **UNSTABLE**
-//
-// This capability is not part of the spec yet, and may be removed or changed at any point.
-//
 // The Agent cannot currently determine foreground activity.
 //
 // Report this when activity becomes unobservable, not merely because the child
@@ -19697,7 +20849,7 @@ type UnstableForkSessionRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// Additional workspace roots to activate for this session. Each path must be absolute.
+	// Additional workspace roots to activate for this session. Each path MUST be absolute.
 	//
 	// When omitted or empty, no additional roots are activated. When non-empty,
 	// this is the complete resulting additional-root list for the forked
@@ -19722,6 +20874,19 @@ type UnstableForkSessionRequest struct {
 	// and SHOULD NOT send other 'session/update' notifications caused by applying them
 	// before it responds.
 	ConfigOptions []InitialSessionConfigOption `json:"configOptions,omitempty"`
+	// **UNSTABLE**
+	//
+	// This capability is not part of the spec yet, and may be removed or changed at any point.
+	//
+	// The session cursor to fork at. The new session's history is the source
+	// session's history before the cursor.
+	//
+	// Optional. Omitted and 'null' are equivalent and fork the whole session.
+	// Clients MUST only send the ID of a cursor that the Agent announced on the
+	// source session and that currently advertises 'capabilities.fork'. The Agent
+	// rejects any other ID with '-32602'. It does not fall back to forking the
+	// whole session.
+	CursorId *CursorId `json:"cursorId,omitempty"`
 	// The working directory for this session. Must be an absolute path.
 	Cwd string `json:"cwd"`
 	// List of MCP servers to connect to for this session.
@@ -19730,7 +20895,7 @@ type UnstableForkSessionRequest struct {
 	SessionId SessionId `json:"sessionId"`
 	// System-level instructions for the forked session.
 	//
-	// Optional. Omitted and 'null' are equivalent. The Agent may then keep a
+	// Optional. Omitted and 'null' are equivalent. The Agent MAY then keep a
 	// system prompt it stored with the source session or use its default
 	// instructions. Clients MUST only send this when the Agent advertises
 	// 'sessionCapabilities.systemPrompt', and SHOULD send the same value they used
@@ -19755,7 +20920,7 @@ func (v *UnstableForkSessionRequest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return plainFieldError(err)
 	}
-	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "configOptions", "cwd", "mcpServers", "sessionId", "systemPrompt"); err != nil {
+	if err := rejectDuplicateMembers(b, v, "_meta", "additionalDirectories", "configOptions", "cursorId", "cwd", "mcpServers", "sessionId", "systemPrompt"); err != nil {
 		return err
 	}
 	decodeLenient(raw.Meta, &v.Meta)
@@ -20302,10 +21467,10 @@ func (v *UnstableMessageMcpRequest) Validate() error {
 // inner MCP outcome: an opaque result (including JSON null), or an MCP error.
 // Outer ACP errors are reserved for binding and runtime failures.
 //
-// Both branches require their carrier key. An error must be a non-null object.
+// Both branches require their carrier key. An error MUST be a non-null object.
 // Unknown outer fields are ignored. Inner result and error fields are preserved.
-// Carrier '_meta' is optional. Null or invalid values are treated as absent.
-// Senders must include exactly one outcome. Receivers prefer 'result' if both are present.
+// Carrier '_meta' is optional. Omitted and 'null' are equivalent.
+// Senders MUST include exactly one outcome.
 // An opaque inner MCP result.
 type UnstableMessageMcpResult struct {
 	// Optional ACP carrier metadata.
@@ -20556,7 +21721,7 @@ type UnstableProviderInfo struct {
 	// Provider identifier, for example "main" or "openai".
 	ProviderId UnstableProviderId `json:"providerId"`
 	// Whether this provider is mandatory and cannot be disabled via 'providers/disable'.
-	// If true, clients must not call 'providers/disable' for this provider ID.
+	// If true, clients MUST NOT call 'providers/disable' for this provider ID.
 	Required bool `json:"required"`
 	// Supported protocol types for this provider.
 	Supported []UnstableLlmProtocol `json:"supported"`
@@ -20796,7 +21961,7 @@ type UnstableSessionOptionsRequest struct {
 	//
 	// See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/v1/draft/extensibility)
 	Meta Meta `json:"_meta,omitempty"`
-	// Additional workspace roots to resolve options for. Each path must be absolute.
+	// Additional workspace roots to resolve options for. Each path MUST be absolute.
 	//
 	// Optional. Omitted and 'null' are equivalent to an empty list.
 	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`

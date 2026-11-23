@@ -18,8 +18,10 @@ import (
 // names its patch fields in a "have patch semantics" sentence, and a property
 // whose description says that omitted means unchanged or that null clears it.
 // Null clears only where the text says so (nullClears): in an object that
-// says only that it carries the changed fields, as ToolCallUpdate does, ACP
-// v1 reads null as absent, as the Rust SDK does.
+// says only that it carries the changed fields, as ToolCallUpdate does, and
+// in a field that says that omitted and null are equivalent (nullUnchanged),
+// as anchor of CursorUpdate does, ACP v1 reads null as absent, as the Rust
+// SDK does.
 var (
 	changedOnly    = regexp.MustCompile(`(?i)only changed fields|partial updates?\b`)
 	patchedObject  = regexp.MustCompile(`(?i)omitted patch fields`)
@@ -27,6 +29,7 @@ var (
 	backticked     = regexp.MustCompile("`([^`]+)`")
 	patchProperty  = regexp.MustCompile("(?i)omitt(?:ed|ing)[^.]*\\bunchanged\\b|\\bnull`? (?:clears|removes)\\b|set to null to clear")
 	nullClears     = regexp.MustCompile("(?i)\\bnull`? (?:clears|removes)\\b|set to null to clear")
+	nullUnchanged  = regexp.MustCompile("(?i)omitted and `?null`? are\\s+equivalent")
 )
 
 // patchField is the schema of a patch field, and whether null clears it.
@@ -84,7 +87,7 @@ func patchFieldsOf(defs map[string]any, node any) map[string]patchField {
 			changed, patched := changedOnly.MatchString(desc), patchedObject.MatchString(desc)
 			if changed || patched || named[name] || patchProperty.MatchString(pdesc) {
 				if _, ok := fields[name]; !ok {
-					noClear := changed && !patched && !patchSemantics.MatchString(desc) && !nullClears.MatchString(pdesc)
+					noClear := (changed && !patched && !patchSemantics.MatchString(desc) || nullUnchanged.MatchString(pdesc)) && !nullClears.MatchString(pdesc)
 					fields[name] = patchField{ps, !noClear}
 				}
 			}
@@ -239,12 +242,16 @@ func TestPatchFieldsOf_ReadsTheDescriptions(t *testing.T) {
 			"name": {"type": ["string", "null"], "description": "The name."}}},
 		"Variant": {"allOf": [{"$ref": "#/$defs/Update"}], "properties": {"kind": {"const": "update"}}},
 		"Info": {"description": "All fields are optional to support partial updates.", "type": "object",
-			"properties": {"title": {"type": ["string", "null"], "description": "Set to null to clear."}, "_meta": {"type": ["object", "null"]}}}
+			"properties": {"title": {"type": ["string", "null"], "description": "Set to null to clear."}, "_meta": {"type": ["object", "null"]}}},
+		"Cursor": {"description": "`+"`caps` and `_meta` have patch semantics: omission leaves the stored value unchanged, `null` clears it."+`", "type": "object",
+			"properties": {"caps": {"type": ["object", "null"]}, "_meta": {"type": ["object", "null"]},
+				"anchor": {"type": ["object", "null"], "description": "Omitted and `+"`null`"+` are\nequivalent and leave the stored anchor unchanged."},
+				"label": {"type": ["string", "null"], "description": "Omitted and `+"`null`"+` are equivalent and mean no label."}}}
 	}`), &defs); err != nil {
 		t.Fatal(err)
 	}
 	// A field marked + is one where null clears.
-	for def, want := range map[string]string{"Update": "title", "Named": "_meta+ summary+", "Own": "cwd+ title+", "Variant": "title", "Info": "_meta title+"} {
+	for def, want := range map[string]string{"Update": "title", "Named": "_meta+ summary+", "Own": "cwd+ title+", "Variant": "title", "Info": "_meta title+", "Cursor": "_meta+ anchor caps+"} {
 		fields := patchFieldsOf(defs, defs[def])
 		var got []string
 		for _, name := range sortedKeys(fields) {

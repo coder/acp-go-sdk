@@ -24,7 +24,7 @@ The target first downloads the schema files of the release in `schema/version` w
 - When the unstable inputs exist, `load.MergeStableAndUnstable` replaces the stable meta and schema with the merged result before any emit step [main.go:main]
 - The merge fails, and so the generator panics, when the unstable version of a definition that both schemas share removes a property, requires a member, or changes a type. The panic lists each change by path, such as `SetSessionConfigOptionRequest.value: removed` at schemas 0.13.5 to 1.17.0 ([internal/load](./internal/load/README.md)) [merge.go:promoteChangedSharedDefs]
 - With the unstable inputs, `stablecheck.Compare` writes the files of the stable inputs alone and of the merged ones into a temporary folder and compares the stable types they declare: their API, and the code of their methods beyond what the merge adds. A change panics with a line for each, such as `EmbeddedResourceResource.TextResourceContents: removed`, before any file reaches the output directory ([internal/stablecheck](./internal/stablecheck/README.md)) [main.go:main]
-- `emit.WriteFiles` writes `constants_gen.go`, `types_gen.go`, `agent_gen.go`, `client_gen.go` and, with proxy methods, `proxy_gen.go`, then `helpers_gen.go`, which refers to the generated structs [main.go:main] [files.go:WriteFiles]
+- `emit.WriteFiles` writes `constants_gen.go`, `types_gen.go`, `decode_fast_gen.go`, `types_gen_test.go` (the type lists of the root tests), `agent_gen.go`, `client_gen.go` and, with proxy methods, `proxy_gen.go`, then `helpers_gen.go`, which refers to the generated structs [main.go:main] [files.go:WriteFiles]
 - A bad command-line flag makes `flag.Parse` print the error and exit with status 2 (`flag.ExitOnError`). After parsing, every read, merge, or emit error panics [main.go:main]
 
 ## Side Effects
@@ -33,7 +33,7 @@ The target first downloads the schema files of the release in `schema/version` w
 - Reads the working directory with `os.Getwd`. In each ancestor it calls `os.Stat` on `schema/meta.json`, and on `schema/schema.json` only when `schema/meta.json` exists [main.go:findRepoRoot, hasSchema, fileExists]
 - Creates the output directory and any missing parents with `os.MkdirAll` and mode `0o755` (before umask). An existing directory keeps its permissions [main.go:main]
 - Reads the schema version, meta, schema, and unstable files through `load.ReadSchemaVersion`, `load.ReadMeta`, `load.ReadSchema`, `load.ReadMetaUnstable`, and `load.ReadSchemaUnstable`. The schema version becomes the `SchemaVersion` constant [main.go:main]
-- Overwrites `constants_gen.go`, `types_gen.go`, `agent_gen.go`, `client_gen.go`, `proxy_gen.go`, and `helpers_gen.go` in the output directory through `emit.WriteFiles` [main.go:main]
+- Overwrites `constants_gen.go`, `types_gen.go`, `decode_fast_gen.go`, `types_gen_test.go`, `agent_gen.go`, `client_gen.go`, `proxy_gen.go`, and `helpers_gen.go` in the output directory through `emit.WriteFiles` [main.go:main]
 - Ends the process with exit status 2 on a flag parse error, and with a panic on any later error [main.go:main]
 
 ## Verification

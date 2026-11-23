@@ -7,6 +7,7 @@ type (
 	Code      = jen.Code
 	Dict      = jen.Dict
 	Group     = jen.Group
+	Options   = jen.Options
 	File      = jen.File
 	Statement = jen.Statement
 )

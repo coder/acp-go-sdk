@@ -106,128 +106,61 @@ func FuzzFastDecode_Corpus(f *testing.F) {
 
 func typeOf[T any]() reflect.Type { return reflect.TypeOf((*T)(nil)).Elem() }
 
-// fastTypes are the types with a fast decoder (TestFastDecode_TypesListed).
-var fastTypes = []reflect.Type{
-	typeOf[Meta](),
-	typeOf[AgentAuthCapabilities](), typeOf[AgentCapabilities](), typeOf[AgentError](), typeOf[AgentNotification](),
-	typeOf[AgentRequest](), typeOf[AgentResponse](), typeOf[AgentResult](), typeOf[Annotations](),
-	typeOf[AudioContent](), typeOf[AuthCapabilities](), typeOf[AuthMethod](), typeOf[AuthMethodAgent](),
-	typeOf[AuthMethodId](), typeOf[AuthMethodTerminal](), typeOf[AuthMethodTerminalInline](), typeOf[AuthStatusCapabilities](),
-	typeOf[AuthenticateRequest](), typeOf[AuthenticateResponse](), typeOf[AvailableCommand](), typeOf[AvailableCommandInput](),
-	typeOf[AvailableCommandsUpdate](), typeOf[BlobResourceContents](), typeOf[BooleanConfigOptionCapabilities](), typeOf[BooleanPropertySchema](),
-	typeOf[CancelNotification](), typeOf[CancelRequestNotification](), typeOf[ClientCapabilities](), typeOf[ClientError](),
-	typeOf[ClientNotification](), typeOf[ClientRequest](), typeOf[ClientResponse](), typeOf[ClientResult](),
-	typeOf[ClientSessionCapabilities](), typeOf[CloseSessionRequest](), typeOf[CloseSessionResponse](), typeOf[CompactionCapabilities](),
-	typeOf[CompactionId](), typeOf[CompactionStatus](), typeOf[CompactionSummaryChunk](), typeOf[CompactionUpdate](),
-	typeOf[CompleteElicitationNotification](), typeOf[ConfigOptionUpdate](), typeOf[Content](), typeOf[ContentBlock](),
-	typeOf[ContentBlockAudio](), typeOf[ContentBlockImage](), typeOf[ContentBlockResource](), typeOf[ContentBlockResourceLink](),
-	typeOf[ContentBlockText](), typeOf[ContentChunk](), typeOf[Cost](), typeOf[CreateElicitationAccept](),
-	typeOf[CreateElicitationCancel](), typeOf[CreateElicitationDecline](), typeOf[CreateElicitationForm](), typeOf[CreateElicitationOther](),
-	typeOf[CreateElicitationRequest](), typeOf[CreateElicitationResponse](), typeOf[CreateElicitationResponseOther](), typeOf[CreateElicitationUrl](),
-	typeOf[CreateTerminalRequest](), typeOf[CreateTerminalResponse](), typeOf[CurrentModeUpdate](), typeOf[DeleteSessionRequest](),
-	typeOf[DeleteSessionResponse](), typeOf[Diff](), typeOf[ElicitationAcceptAction](), typeOf[ElicitationCapabilities](),
-	typeOf[ElicitationContentValue](), typeOf[ElicitationContentValueBoolean](), typeOf[ElicitationContentValueInteger](), typeOf[ElicitationContentValueNumber](),
-	typeOf[ElicitationContentValueString](), typeOf[ElicitationContentValueStringArray](), typeOf[ElicitationFormCapabilities](), typeOf[ElicitationFormMode](),
-	typeOf[ElicitationId](), typeOf[ElicitationPropertySchema](), typeOf[ElicitationPropertySchemaArray](), typeOf[ElicitationPropertySchemaBoolean](),
-	typeOf[ElicitationPropertySchemaInteger](), typeOf[ElicitationPropertySchemaNumber](), typeOf[ElicitationPropertySchemaOther](), typeOf[ElicitationPropertySchemaString](),
-	typeOf[ElicitationRequestScope](), typeOf[ElicitationSchema](), typeOf[ElicitationSchemaType](), typeOf[ElicitationSessionScope](),
-	typeOf[ElicitationUrlCapabilities](), typeOf[ElicitationUrlMode](), typeOf[EmbeddedResource](), typeOf[EmbeddedResourceResource](),
-	typeOf[EnumOption](), typeOf[EnvVariable](), typeOf[Error](), typeOf[ErrorCode](),
-	typeOf[ErrorCodeAuthenticationRequired](), typeOf[ErrorCodeInternalError](), typeOf[ErrorCodeInvalidParams](), typeOf[ErrorCodeInvalidRequest](),
-	typeOf[ErrorCodeMethodNotFound](), typeOf[ErrorCodeOther](), typeOf[ErrorCodeParseError](), typeOf[ErrorCodeRequestCancelled](),
-	typeOf[ErrorCodeResourceNotFound](), typeOf[ErrorStopReason](), typeOf[FileSystemCapabilities](), typeOf[HttpHeader](),
-	typeOf[IdleStateUpdate](), typeOf[IdleStateUpdateCancelled](), typeOf[IdleStateUpdateEndTurn](), typeOf[IdleStateUpdateError](),
-	typeOf[IdleStateUpdateMaxTokens](), typeOf[IdleStateUpdateMaxTurnRequests](), typeOf[IdleStateUpdateNone](), typeOf[IdleStateUpdateOther](),
-	typeOf[IdleStateUpdateRefusal](), typeOf[ImageContent](), typeOf[Implementation](), typeOf[InitialSessionConfigOption](),
-	typeOf[InitialSessionConfigOptionBoolean](), typeOf[InitialSessionConfigOptionValueId](), typeOf[InitializeRequest](), typeOf[InitializeResponse](),
-	typeOf[IntegerPropertySchema](), typeOf[KillTerminalRequest](), typeOf[KillTerminalResponse](), typeOf[ListSessionsRequest](),
-	typeOf[ListSessionsResponse](), typeOf[LoadSessionRequest](), typeOf[LoadSessionResponse](), typeOf[LogoutCapabilities](),
-	typeOf[LogoutRequest](), typeOf[LogoutResponse](), typeOf[McpCapabilities](), typeOf[McpServer](),
-	typeOf[McpServerAcp](), typeOf[McpServerAcpId](), typeOf[McpServerAcpInline](), typeOf[McpServerHttp](),
-	typeOf[McpServerHttpInline](), typeOf[McpServerSse](), typeOf[McpServerSseInline](), typeOf[McpServerStdio](),
-	typeOf[MessageId](), typeOf[MultiSelectItems](), typeOf[MultiSelectItemsOther](), typeOf[MultiSelectItemsString](),
-	typeOf[MultiSelectPropertySchema](), typeOf[NewSessionRequest](), typeOf[NewSessionResponse](), typeOf[Notice](),
-	typeOf[NoticeCapabilities](), typeOf[NoticeSeverity](), typeOf[NumberPropertySchema](), typeOf[PermissionOption](),
-	typeOf[PermissionOptionId](), typeOf[PermissionOptionKind](), typeOf[Plan](), typeOf[PlanCapabilities](),
-	typeOf[PlanEntry](), typeOf[PlanEntryPriority](), typeOf[PlanEntryStatus](), typeOf[PlanId](),
-	typeOf[PlanItems](), typeOf[PlanMarkdown](), typeOf[PlanRemoved](), typeOf[PlanUpdate](),
-	typeOf[PlanUpdateContent](), typeOf[PlanUpdateContentItems](), typeOf[PlanUpdateContentMarkdown](), typeOf[PromptCapabilities](),
-	typeOf[PromptRequest](), typeOf[PromptResponse](), typeOf[PromptSuggestion](), typeOf[PromptSuggestionsAudioCapabilities](),
-	typeOf[PromptSuggestionsCapabilities](), typeOf[PromptSuggestionsEmbeddedContextCapabilities](), typeOf[PromptSuggestionsImageCapabilities](), typeOf[PromptSuggestionsUpdate](),
-	typeOf[ProtocolVersion](), typeOf[ProvidersCapabilities](), typeOf[ReadTextFileRequest](), typeOf[ReadTextFileResponse](),
-	typeOf[ReleaseTerminalRequest](), typeOf[ReleaseTerminalResponse](), typeOf[RequestId](), typeOf[RequestIdNull](),
-	typeOf[RequestIdNumber](), typeOf[RequestIdStr](), typeOf[RequestPermissionOutcome](), typeOf[RequestPermissionOutcomeCancelled](),
-	typeOf[RequestPermissionOutcomeSelected](), typeOf[RequestPermissionRequest](), typeOf[RequestPermissionResponse](), typeOf[RequiresActionStateUpdate](),
-	typeOf[ResourceLink](), typeOf[ResumeSessionRequest](), typeOf[ResumeSessionResponse](), typeOf[Role](),
-	typeOf[RunningStateUpdate](), typeOf[SelectedPermissionOutcome](), typeOf[SessionAdditionalDirectoriesCapabilities](), typeOf[SessionArchiveCapabilities](),
-	typeOf[SessionArchiveFilter](), typeOf[SessionAvailableCommandsUpdate](), typeOf[SessionCancelCapabilities](), typeOf[SessionCapabilities](),
-	typeOf[SessionCloseCapabilities](), typeOf[SessionCompactionUpdate](), typeOf[SessionConfigBoolean](), typeOf[SessionConfigGroupId](),
-	typeOf[SessionConfigId](), typeOf[SessionConfigOption](), typeOf[SessionConfigOptionBoolean](), typeOf[SessionConfigOptionCategory](),
-	typeOf[SessionConfigOptionSelect](), typeOf[SessionConfigOptionUpdate](), typeOf[SessionConfigOptionsCapabilities](), typeOf[SessionConfigSelect](),
-	typeOf[SessionConfigSelectGroup](), typeOf[SessionConfigSelectOption](), typeOf[SessionConfigSelectOptions](), typeOf[SessionConfigSelectOptionsGrouped](),
-	typeOf[SessionConfigSelectOptionsUngrouped](), typeOf[SessionConfigValueId](), typeOf[SessionCurrentModeUpdate](), typeOf[SessionDeleteCapabilities](),
-	typeOf[SessionForkCapabilities](), typeOf[SessionId](), typeOf[SessionInfo](), typeOf[SessionInfoUpdate](),
-	typeOf[SessionListCapabilities](), typeOf[SessionMessage](), typeOf[SessionMessageChunk](), typeOf[SessionMode](),
-	typeOf[SessionModeId](), typeOf[SessionModeState](), typeOf[SessionNotification](), typeOf[SessionOptionsCapabilities](),
-	typeOf[SessionPlanUpdate](), typeOf[SessionPromptSuggestionsUpdate](), typeOf[SessionReference](), typeOf[SessionResumeCapabilities](),
-	typeOf[SessionSessionInfoUpdate](), typeOf[SessionStatusCapabilities](), typeOf[SessionSubagentUpdate](), typeOf[SessionSystemPromptCapabilities](),
-	typeOf[SessionSystemPromptModeCapabilities](), typeOf[SessionSystemPromptOverrideCapabilities](), typeOf[SessionTitleCapabilities](), typeOf[SessionToolCallUpdate](),
-	typeOf[SessionUpdate](), typeOf[SessionUpdateAgentMessageChunk](), typeOf[SessionUpdateAgentThoughtChunk](), typeOf[SessionUpdateCompactionSummaryChunk](),
-	typeOf[SessionUpdateNotice](), typeOf[SessionUpdatePlan](), typeOf[SessionUpdatePlanRemoved](), typeOf[SessionUpdateSessionMessage](),
-	typeOf[SessionUpdateSessionMessageChunk](), typeOf[SessionUpdateToolCall](), typeOf[SessionUpdateUserMessageChunk](), typeOf[SessionUsageUpdate](),
-	typeOf[SetSessionConfigOptionBoolean](), typeOf[SetSessionConfigOptionRequest](), typeOf[SetSessionConfigOptionResponse](), typeOf[SetSessionConfigOptionValueId](),
-	typeOf[SetSessionModeRequest](), typeOf[SetSessionModeResponse](), typeOf[StateUpdate](), typeOf[StateUpdateIdle](),
-	typeOf[StateUpdateIdleCancelled](), typeOf[StateUpdateIdleEndTurn](), typeOf[StateUpdateIdleError](), typeOf[StateUpdateIdleMaxTokens](),
-	typeOf[StateUpdateIdleMaxTurnRequests](), typeOf[StateUpdateIdleNone](), typeOf[StateUpdateIdleOther](), typeOf[StateUpdateIdleRefusal](),
-	typeOf[StateUpdateOther](), typeOf[StateUpdateRequiresAction](), typeOf[StateUpdateRunning](), typeOf[StateUpdateUnknown](),
-	typeOf[StopReason](), typeOf[StringFormat](), typeOf[StringMultiSelectItems](), typeOf[StringPropertySchema](),
-	typeOf[SubagentCapabilities](), typeOf[SubagentSessionCapabilities](), typeOf[SubagentUpdate](), typeOf[SystemPrompt](),
-	typeOf[SystemPromptMode](), typeOf[Terminal](), typeOf[TerminalExitStatus](), typeOf[TerminalId](),
-	typeOf[TerminalOutputRequest](), typeOf[TerminalOutputResponse](), typeOf[TextContent](), typeOf[TextResourceContents](),
-	typeOf[TitledMultiSelectItems](), typeOf[ToolCall](), typeOf[ToolCallContent](), typeOf[ToolCallContentContent](),
-	typeOf[ToolCallContentDiff](), typeOf[ToolCallContentSession](), typeOf[ToolCallContentTerminal](), typeOf[ToolCallId](),
-	typeOf[ToolCallLocation](), typeOf[ToolCallStatus](), typeOf[ToolCallUpdate](), typeOf[ToolKind](),
-	typeOf[UnknownStateUpdate](), typeOf[UnstableArchiveSessionRequest](), typeOf[UnstableArchiveSessionResponse](), typeOf[UnstableAuthAccount](),
-	typeOf[UnstableAuthState](), typeOf[UnstableAuthStatusRequest](), typeOf[UnstableAuthStatusResponse](), typeOf[UnstableAuthStatusUpdateNotification](),
-	typeOf[UnstableDisableProviderRequest](), typeOf[UnstableDisableProviderResponse](), typeOf[UnstableForkSessionRequest](), typeOf[UnstableForkSessionResponse](),
-	typeOf[UnstableListProvidersRequest](), typeOf[UnstableListProvidersResponse](), typeOf[UnstableLlmProtocol](), typeOf[UnstableMcpError](),
-	typeOf[UnstableMcpRequestId](), typeOf[UnstableMessageMcpError](), typeOf[UnstableMessageMcpNotification](), typeOf[UnstableMessageMcpRequest](),
-	typeOf[UnstableMessageMcpResponse](), typeOf[UnstableMessageMcpResult](), typeOf[UnstableProviderCurrentConfig](), typeOf[UnstableProviderId](),
-	typeOf[UnstableProviderInfo](), typeOf[UnstableProxySuccessorNotification](), typeOf[UnstableProxySuccessorRequest](),
-	typeOf[UnstableSessionOptionsRequest](), typeOf[UnstableSessionOptionsResponse](), typeOf[UnstableSessionStatus](),
-	typeOf[UnstableSessionStatusRequest](), typeOf[UnstableSessionStatusResponse](), typeOf[UnstableSetProviderRequest](), typeOf[UnstableSetProviderResponse](),
-	typeOf[UnstableSetSessionTitleRequest](), typeOf[UnstableSetSessionTitleResponse](), typeOf[UnstableUnarchiveSessionRequest](), typeOf[UnstableUnarchiveSessionResponse](),
-	typeOf[UnstructuredCommandInput](), typeOf[Usage](), typeOf[UsageUpdate](), typeOf[WaitForTerminalExitRequest](),
-	typeOf[WaitForTerminalExitResponse](), typeOf[WriteTextFileRequest](), typeOf[WriteTextFileResponse]()}
+// fastTypes are the types with a fast decoder: Meta, whose decodeFast is in
+// decode_fast.go, and the generated ones (TestFastDecode_TypesListed).
+var fastTypes = append([]reflect.Type{typeOf[Meta]()}, generatedFastTypes...)
 
-// fastUnions are the unions, whose fast decoders select a variant.
-var fastUnions = []reflect.Type{
-	typeOf[AgentResponse](), typeOf[AuthMethod](), typeOf[AvailableCommandInput](), typeOf[ClientResponse](),
-	typeOf[ContentBlock](), typeOf[CreateElicitationForm](), typeOf[CreateElicitationOther](), typeOf[CreateElicitationRequest](),
-	typeOf[CreateElicitationResponse](), typeOf[CreateElicitationUrl](), typeOf[ElicitationContentValue](), typeOf[ElicitationFormMode](),
-	typeOf[ElicitationPropertySchema](), typeOf[ElicitationUrlMode](), typeOf[EmbeddedResourceResource](), typeOf[ErrorCode](),
-	typeOf[IdleStateUpdate](), typeOf[InitialSessionConfigOption](), typeOf[McpServer](), typeOf[MultiSelectItems](),
-	typeOf[PlanUpdateContent](), typeOf[RequestId](), typeOf[RequestPermissionOutcome](), typeOf[SessionConfigOption](),
-	typeOf[SessionConfigSelectOptions](), typeOf[SessionUpdate](), typeOf[SetSessionConfigOptionRequest](), typeOf[StateUpdate](),
-	typeOf[StateUpdateIdle](), typeOf[ToolCallContent](), typeOf[UnstableMessageMcpResponse]()}
-
-// TestFastDecode_TypesListed checks that fastTypes lists every type of
-// decode_fast_gen.go.
+// TestFastDecode_TypesListed checks generatedFastTypes and the fast decoders
+// against a set that the emitter of the fast decoders does not write: the
+// types that types_gen.go declares. Each of them gets a decodeFast (fast.go)
+// but an alias, which keeps the methods of json.RawMessage, and an interface
+// (Agent, Client and the optional method interfaces). So a generator that
+// drops a fast decoder together with its list entry still fails here.
 func TestFastDecode_TypesListed(t *testing.T) {
-	f, err := parser.ParseFile(token.NewFileSet(), "decode_fast_gen.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
+	parse := func(name string) *ast.File {
+		f, err := parser.ParseFile(token.NewFileSet(), name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	want := map[string]bool{}
+	for _, decl := range parse("types_gen.go").Decls {
+		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.TYPE {
+			for _, spec := range gen.Specs {
+				ts := spec.(*ast.TypeSpec)
+				if _, iface := ts.Type.(*ast.InterfaceType); ts.Assign == 0 && !iface {
+					want[ts.Name.Name] = true
+				}
+			}
+		}
+	}
+	fast := map[string]bool{}
+	for _, decl := range parse("decode_fast_gen.go").Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv != nil && fn.Name.Name == "decodeFast" {
+			fast[fn.Recv.List[0].Type.(*ast.StarExpr).X.(*ast.Ident).Name] = true
+		}
 	}
 	listed := map[string]bool{}
-	for _, typ := range fastTypes {
+	for _, typ := range generatedFastTypes {
 		listed[typ.Name()] = true
 	}
-	for _, decl := range f.Decls {
-		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv != nil && fn.Name.Name == "decodeFast" {
-			name := fn.Recv.List[0].Type.(*ast.StarExpr).X.(*ast.Ident).Name
-			if !listed[name] {
-				t.Errorf("fastTypes lacks %s", name)
-			}
+	for name := range want {
+		if !fast[name] {
+			t.Errorf("types_gen.go declares %s, which decode_fast_gen.go gives no decodeFast", name)
+		}
+		if !listed[name] {
+			t.Errorf("generatedFastTypes lacks %s", name)
+		}
+	}
+	for name := range fast {
+		if !want[name] {
+			t.Errorf("decode_fast_gen.go gives %s a decodeFast, but types_gen.go declares no such type", name)
+		}
+	}
+	for name := range listed {
+		if !want[name] {
+			t.Errorf("generatedFastTypes lists %s, which is no type of types_gen.go with a fast decoder", name)
 		}
 	}
 }
@@ -317,7 +250,7 @@ func FuzzFastDecode_Types(f *testing.F) {
 	p.closeInputs()
 	f.Fuzz(func(t *testing.T, data []byte, pick uint16) {
 		compareType(t, fastTypes[int(pick)%len(fastTypes)], data)
-		for _, typ := range fastUnions {
+		for _, typ := range generatedUnions {
 			compareType(t, typ, data)
 		}
 	})

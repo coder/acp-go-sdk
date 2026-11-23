@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"reflect"
 	"regexp"
@@ -12,40 +15,16 @@ import (
 )
 
 // unionTypes makes a value of each union whose UnmarshalJSON calls
-// readUnionObject. TestUnionObject_ListsEveryUnion keeps it complete.
-var unionTypes = map[string]func() json.Unmarshaler{
-	"AgentResponse":                 func() json.Unmarshaler { return new(AgentResponse) },
-	"AuthMethod":                    func() json.Unmarshaler { return new(AuthMethod) },
-	"AvailableCommandInput":         func() json.Unmarshaler { return new(AvailableCommandInput) },
-	"ClientResponse":                func() json.Unmarshaler { return new(ClientResponse) },
-	"ContentBlock":                  func() json.Unmarshaler { return new(ContentBlock) },
-	"CreateElicitationForm":         func() json.Unmarshaler { return new(CreateElicitationForm) },
-	"CreateElicitationOther":        func() json.Unmarshaler { return new(CreateElicitationOther) },
-	"CreateElicitationRequest":      func() json.Unmarshaler { return new(CreateElicitationRequest) },
-	"CreateElicitationResponse":     func() json.Unmarshaler { return new(CreateElicitationResponse) },
-	"CreateElicitationUrl":          func() json.Unmarshaler { return new(CreateElicitationUrl) },
-	"ElicitationContentValue":       func() json.Unmarshaler { return new(ElicitationContentValue) },
-	"ElicitationFormMode":           func() json.Unmarshaler { return new(ElicitationFormMode) },
-	"ElicitationPropertySchema":     func() json.Unmarshaler { return new(ElicitationPropertySchema) },
-	"ElicitationUrlMode":            func() json.Unmarshaler { return new(ElicitationUrlMode) },
-	"EmbeddedResourceResource":      func() json.Unmarshaler { return new(EmbeddedResourceResource) },
-	"ErrorCode":                     func() json.Unmarshaler { return new(ErrorCode) },
-	"IdleStateUpdate":               func() json.Unmarshaler { return new(IdleStateUpdate) },
-	"InitialSessionConfigOption":    func() json.Unmarshaler { return new(InitialSessionConfigOption) },
-	"McpServer":                     func() json.Unmarshaler { return new(McpServer) },
-	"MultiSelectItems":              func() json.Unmarshaler { return new(MultiSelectItems) },
-	"PlanUpdateContent":             func() json.Unmarshaler { return new(PlanUpdateContent) },
-	"RequestId":                     func() json.Unmarshaler { return new(RequestId) },
-	"RequestPermissionOutcome":      func() json.Unmarshaler { return new(RequestPermissionOutcome) },
-	"SessionConfigOption":           func() json.Unmarshaler { return new(SessionConfigOption) },
-	"SessionConfigSelectOptions":    func() json.Unmarshaler { return new(SessionConfigSelectOptions) },
-	"SessionUpdate":                 func() json.Unmarshaler { return new(SessionUpdate) },
-	"SetSessionConfigOptionRequest": func() json.Unmarshaler { return new(SetSessionConfigOptionRequest) },
-	"StateUpdate":                   func() json.Unmarshaler { return new(StateUpdate) },
-	"StateUpdateIdle":               func() json.Unmarshaler { return new(StateUpdateIdle) },
-	"ToolCallContent":               func() json.Unmarshaler { return new(ToolCallContent) },
-	"UnstableMessageMcpResponse":    func() json.Unmarshaler { return new(UnstableMessageMcpResponse) },
-}
+// readUnionObject, by name: the unions of generatedUnions, which
+// TestUnionObject_ListsEveryUnion checks.
+var unionTypes = func() map[string]func() json.Unmarshaler {
+	makers := map[string]func() json.Unmarshaler{}
+	for _, typ := range generatedUnions {
+		typ := typ
+		makers[typ.Name()] = func() json.Unmarshaler { return reflect.New(typ).Interface().(json.Unmarshaler) }
+	}
+	return makers
+}()
 
 // unionNames lists the keys of unionTypes in order.
 func unionNames() []string {
@@ -57,10 +36,38 @@ func unionNames() []string {
 	return names
 }
 
+// TestUnionObject_ListsEveryUnion checks generatedUnions against a set that
+// the generator writes apart from the union decoders: the structs of
+// types_gen.go with a pointer field tagged json:"-", one per variant, which
+// only a union wrapper has. Each of them must have an UnmarshalJSON that calls
+// readUnionObject and be in unionTypes, and nothing else may.
 func TestUnionObject_ListsEveryUnion(t *testing.T) {
 	src, err := os.ReadFile("types_gen.go")
 	if err != nil {
 		t.Fatal(err)
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), "types_gen.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrappers := map[string]bool{}
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts := spec.(*ast.TypeSpec)
+			st, ok := ts.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			for _, field := range st.Fields.List {
+				if _, ptr := field.Type.(*ast.StarExpr); ptr && field.Tag != nil && field.Tag.Value == "`json:\"-\"`" {
+					wrappers[ts.Name.Name] = true
+				}
+			}
+		}
 	}
 	decoder := regexp.MustCompile(`(?s)\nfunc \(u \*(\w+)\) UnmarshalJSON\(b \[\]byte\) error \{\n(.*?)\n\}\n`)
 	found := map[string]bool{}
@@ -69,14 +76,22 @@ func TestUnionObject_ListsEveryUnion(t *testing.T) {
 			found[string(m[1])] = true
 		}
 	}
-	for name := range found {
+	for name := range wrappers {
+		if !found[name] {
+			t.Errorf("%s has variant fields, and its UnmarshalJSON does not call readUnionObject", name)
+		}
 		if unionTypes[name] == nil {
 			t.Errorf("unionTypes lacks %s", name)
 		}
 	}
+	for name := range found {
+		if !wrappers[name] {
+			t.Errorf("%s calls readUnionObject and has no variant field", name)
+		}
+	}
 	for name := range unionTypes {
-		if !found[name] {
-			t.Errorf("%s does not call readUnionObject", name)
+		if !wrappers[name] {
+			t.Errorf("unionTypes lists %s, which has no variant field", name)
 		}
 	}
 }

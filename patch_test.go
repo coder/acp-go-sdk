@@ -63,10 +63,13 @@ func TestPatch_States(t *testing.T) {
 // rawOutput, the v2 migration guide says that v1 treats null like omission,
 // and the Rust crate reads null in each of these fields as absent. So the SDK
 // reads such a null as unset and writes the value back as the crate does.
-// Each input is a real message of the G2 transcripts (codex-g5-1.jsonl line
-// 133 and claude-g5-1.jsonl line 17) with null members added, and each want
-// is what agent-client-protocol-schema 1.18.0 writes for it (the 141/ cases of
-// the Rust probe).
+// Each input but the cursor_update one is a real message of the G2
+// transcripts (codex-g5-1.jsonl line 133 and claude-g5-1.jsonl line 17) with
+// null members added, and each want is what agent-client-protocol-schema
+// writes for it: 1.18.0 for the 141/ cases of the Rust probe, 1.21.0 for its
+// cursor/ case. The anchor of a cursor_update reads null as unset because its
+// own description says that omitted and null are equivalent, while null
+// clears capabilities and _meta.
 func TestPatch_NullWhereTheSchemaDefinesNoClearIsUnset(t *testing.T) {
 	t.Parallel()
 	const (
@@ -82,6 +85,7 @@ func TestPatch_NullWhereTheSchemaDefinesNoClearIsUnset(t *testing.T) {
 		{"content null in a tool_call_update", `{` + update + `,"content":null}}`, `{` + update + `}}`, &SessionNotification{}},
 		{"every field null in a tool call update", allNull, `{"toolCallId":"exec-c4e2eb8a-c857-490e-a87f-e77e95f50787"}`, &ToolCallUpdate{}},
 		{"_meta null in a session_info_update", `{` + info + `,"_meta":null}}`, `{` + info + `}}`, &SessionNotification{}},
+		{"anchor null in a cursor_update", `{"sessionId":"s","update":{"sessionUpdate":"cursor_update","cursorId":"c1","anchor":null,"capabilities":null}}`, `{"sessionId":"s","update":{"sessionUpdate":"cursor_update","cursorId":"c1","capabilities":null}}`, &SessionNotification{}},
 	}
 	for _, tt := range tests {
 		tt := tt // the module is Go 1.21, where each iteration shares tt
@@ -126,6 +130,7 @@ func TestPatchNull_IsLeftOutWhereNullDoesNotClear(t *testing.T) {
 		{"ToolCallUpdate", ToolCallUpdate{ToolCallId: "t", Title: PatchNull[string](), Content: PatchNull[[]ToolCallContent](), Meta: PatchNull[Meta]()}, `{"toolCallId":"t"}`},
 		{"SessionUpdate tool_call_update", UpdateToolCall("t", func(u *SessionToolCallUpdate) { u.Name = PatchNull[string]() }), `{"sessionUpdate":"tool_call_update","toolCallId":"t"}`},
 		{"SessionInfoUpdate", SessionInfoUpdate{Title: PatchNull[string](), Meta: PatchNull[Meta]()}, `{"title":null}`},
+		{"CursorUpdate", CursorUpdate{CursorId: "c", Anchor: PatchNull[CursorAnchor](), Capabilities: PatchNull[CursorCapabilities]()}, `{"capabilities":null,"cursorId":"c"}`},
 	}
 	for _, tt := range tests {
 		tt := tt // the module is Go 1.21, where each iteration shares tt

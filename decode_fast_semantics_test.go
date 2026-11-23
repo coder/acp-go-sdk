@@ -10,8 +10,9 @@ import (
 // The tests in this file compare the fast decoders with the exact ones on
 // the rules that the exact decoders follow besides those of encoding/json:
 // a patch field without a clear reads null as unset (the nine Patch fields
-// of ToolCallUpdate and SessionToolCallUpdate, and _meta of SessionInfoUpdate
-// and SessionSessionInfoUpdate), each integer format has the Go type of its
+// of ToolCallUpdate and SessionToolCallUpdate, _meta of SessionInfoUpdate
+// and SessionSessionInfoUpdate, and anchor of CursorUpdate and
+// SessionCursorUpdate), each integer format has the Go type of its
 // Rust type, a union alternative takes only its consts (ErrorCode), and an
 // object holds each property once. cmd/generate/internal/emit/fast_test.go
 // compares them on the rules that no ACP schema reaches: members that hold
@@ -142,6 +143,8 @@ func TestFastDecode_ReadsNullAsUnset(t *testing.T) {
 		{typeOf[SessionToolCallUpdate](), `{"sessionUpdate":"tool_call_update","toolCallId":"t",`, []string{"_meta", "content", "kind", "locations", "name", "rawInput", "rawOutput", "status", "title"}},
 		{typeOf[SessionInfoUpdate](), `{`, []string{"_meta"}},
 		{typeOf[SessionSessionInfoUpdate](), `{"sessionUpdate":"session_info_update",`, []string{"_meta"}},
+		{typeOf[CursorUpdate](), `{"cursorId":"c",`, []string{"anchor"}},
+		{typeOf[SessionCursorUpdate](), `{"sessionUpdate":"cursor_update","cursorId":"c",`, []string{"anchor"}},
 	} {
 		for _, field := range c.fields {
 			data := []byte(c.prefix + `"` + field + `":null}`)

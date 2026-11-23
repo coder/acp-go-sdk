@@ -87,3 +87,6 @@
 {"id":"dup/envelope-notification-params","def":"ClientNotification","json":{"method":"session/cancel","params":{"sessionId":"s"},"params":{"sessionId":"s"}}}
 {"id":"dup/meta-in-union-variant","def":"ContentBlock","json":{"type":"text","text":"hi","_meta":{},"_meta":{}}}
 {"id":"dup/lenient-in-response","def":"InitializeResponse","json":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"loadSession":false}}}
+{"id":"cursor/anchor-null","def":"SessionNotification","json":{"sessionId":"s","update":{"sessionUpdate":"cursor_update","cursorId":"c1","anchor":null,"capabilities":null}}}
+{"id":"cursor/anchor-null-in-cursor-update","def":"CursorUpdate","json":{"cursorId":"c1","anchor":null}}
+{"id":"control/cursor-capabilities-null","def":"CursorUpdate","json":{"cursorId":"c1","capabilities":null,"_meta":null}}

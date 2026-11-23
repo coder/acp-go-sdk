@@ -33,6 +33,10 @@ var (
 	// nullClears matches a property description that says that null clears
 	// the property.
 	nullClears = regexp.MustCompile("(?i)" + nullClearsPattern)
+	// nullUnchanged matches a property description that says that null is
+	// what an absent member is: "Omitted and `null` are equivalent and leave
+	// the stored anchor unchanged."
+	nullUnchanged = regexp.MustCompile("(?i)omitted and `?null`? are\\s+equivalent")
 )
 
 // nullClearsPattern matches text that says that null clears a property:
@@ -69,23 +73,29 @@ func PatchFields(schema *load.Schema) map[*load.Definition]bool {
 }
 
 // NullAsAbsent returns the patch fields of schema for which the schema
-// defines no clear: the optional properties of an object that says only that
-// it carries the changed fields (changedOnly, and neither patchedObject nor a
-// "have patch semantics" sentence), whose own description does not say that
-// null clears them. ACP v1 reads null in these fields as absent, and so does
-// the Rust SDK: all of ToolCallUpdate, and _meta of SessionInfoUpdate.
+// defines no clear, those whose own description does not say that null
+// clears them and that either belong to an object that says only that it
+// carries the changed fields (changedOnly, and neither patchedObject nor a
+// "have patch semantics" sentence) or say themselves that omitted and null
+// are equivalent (nullUnchanged). ACP v1 reads null in these fields as
+// absent, and so does the Rust SDK: all of ToolCallUpdate, _meta of
+// SessionInfoUpdate, and anchor of CursorUpdate.
 func NullAsAbsent(schema *load.Schema) map[*load.Definition]bool {
+	patch := PatchFields(schema)
 	out := map[*load.Definition]bool{}
 	for _, def := range schema.Defs {
-		if def == nil || !changedOnly.MatchString(def.Description) ||
-			patchedObject.MatchString(def.Description) || patchSemantics.MatchString(def.Description) {
+		if def == nil {
 			continue
 		}
+		changed := changedOnly.MatchString(def.Description) &&
+			!patchedObject.MatchString(def.Description) && !patchSemantics.MatchString(def.Description)
 		for name, prop := range def.Properties {
 			if prop == nil || slices.Contains(def.Required, name) || nullClears.MatchString(prop.Description) {
 				continue
 			}
-			out[prop] = true
+			if changed || patch[prop] && nullUnchanged.MatchString(prop.Description) {
+				out[prop] = true
+			}
 		}
 	}
 	return out

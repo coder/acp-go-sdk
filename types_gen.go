@@ -5174,6 +5174,9 @@ type CursorUpdate struct {
 	// Required on the first update for a cursor. The Agent MUST NOT change it afterwards.
 	// A later update can omit it or repeat the same anchor. Omitted and 'null' are
 	// equivalent and leave the stored anchor unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Anchor Patch[CursorAnchor] `json:"anchor"`
 	// The methods that currently accept this cursor.
 	//
@@ -5195,7 +5198,7 @@ func (v CursorUpdate) MarshalJSON() ([]byte, error) {
 		CursorId     CursorId                   `json:"cursorId"`
 	}
 	return json.Marshal(wire{
-		Anchor:       a.Anchor.orNil(),
+		Anchor:       a.Anchor.setOrNil(),
 		Capabilities: a.Capabilities.orNil(),
 		CursorId:     a.CursorId,
 		Meta:         a.Meta.orNil(),
@@ -5212,6 +5215,7 @@ func (v *CursorUpdate) UnmarshalJSON(b []byte) error {
 	type CursorUpdate struct {
 		*plain
 		Meta         json.RawMessage `json:"_meta"`
+		Anchor       json.RawMessage `json:"anchor"`
 		Capabilities json.RawMessage `json:"capabilities"`
 	}
 	raw := CursorUpdate{plain: (*plain)(v)}
@@ -5222,6 +5226,11 @@ func (v *CursorUpdate) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	decodePatch(raw.Meta, &v.Meta)
+	if raw.Anchor != nil && string(raw.Anchor) != "null" {
+		if err := json.Unmarshal(raw.Anchor, &v.Anchor); err != nil {
+			return propertyError(err, "CursorUpdate", "anchor")
+		}
+	}
 	decodePatch(raw.Capabilities, &v.Capabilities)
 	if maybeAbsent(&v.CursorId) {
 		members := jsonMembers(b)
@@ -16178,6 +16187,9 @@ type SessionCursorUpdate struct {
 	// Required on the first update for a cursor. The Agent MUST NOT change it afterwards.
 	// A later update can omit it or repeat the same anchor. Omitted and 'null' are
 	// equivalent and leave the stored anchor unchanged.
+	//
+	// ACP v1 defines no clear for this field, so null leaves it unchanged, as
+	// absent does: the SDK reads null as unset, and leaves out a null Patch.
 	Anchor Patch[CursorAnchor] `json:"anchor"`
 	// The methods that currently accept this cursor.
 	//
@@ -16201,7 +16213,7 @@ func (v SessionCursorUpdate) MarshalJSON() ([]byte, error) {
 		SessionUpdate string                     `json:"sessionUpdate"`
 	}
 	return json.Marshal(wire{
-		Anchor:        a.Anchor.orNil(),
+		Anchor:        a.Anchor.setOrNil(),
 		Capabilities:  a.Capabilities.orNil(),
 		CursorId:      a.CursorId,
 		Meta:          a.Meta.orNil(),
@@ -16220,6 +16232,7 @@ func (v *SessionCursorUpdate) UnmarshalJSON(b []byte) error {
 	type SessionCursorUpdate struct {
 		*plain
 		Meta         json.RawMessage `json:"_meta"`
+		Anchor       json.RawMessage `json:"anchor"`
 		Capabilities json.RawMessage `json:"capabilities"`
 	}
 	raw := SessionCursorUpdate{plain: (*plain)(v)}
@@ -16230,6 +16243,11 @@ func (v *SessionCursorUpdate) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	decodePatch(raw.Meta, &v.Meta)
+	if raw.Anchor != nil && string(raw.Anchor) != "null" {
+		if err := json.Unmarshal(raw.Anchor, &v.Anchor); err != nil {
+			return propertyError(err, "SessionCursorUpdate", "anchor")
+		}
+	}
 	decodePatch(raw.Capabilities, &v.Capabilities)
 	if maybeAbsent(&v.CursorId) || maybeAbsent(&v.SessionUpdate) {
 		members := jsonMembers(b)

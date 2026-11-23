@@ -50,7 +50,9 @@ func TestPatchFields_ReadsTheDescriptions(t *testing.T) {
 // A field of an object that says only that it carries the changed fields,
 // and whose own description does not say that null clears it, has no clear:
 // ACP v1 reads null there as absent, also where the description says so, as
-// it does for name of ToolCallUpdate.
+// it does for name of ToolCallUpdate. So has a patch field of any object
+// whose own description says that omitted and null are equivalent, as anchor
+// of CursorUpdate does, but not a field that is no patch field.
 func TestNullAsAbsent_ReadsTheDescriptions(t *testing.T) {
 	var schema load.Schema
 	if err := json.Unmarshal([]byte(`{"$defs": {
@@ -62,7 +64,12 @@ func TestNullAsAbsent_ReadsTheDescriptions(t *testing.T) {
 		"Sub": {"description": "Omitted patch fields keep their previous values.", "type": "object",
 			"properties": {"cwd": {"type": ["string", "null"]}}},
 		"Own": {"type": "object", "properties": {
-			"cwd": {"type": ["string", "null"], "description": "Omitted means unchanged."}}}
+			"cwd": {"type": ["string", "null"], "description": "Omitted means unchanged."}}},
+		"Cursor": {"description": "`+"`caps` and `_meta` have patch semantics: omission leaves the stored value unchanged, `null` clears it."+`", "type": "object",
+			"properties": {"caps": {"type": ["object", "null"]}, "_meta": {"type": ["object", "null"]},
+				"anchor": {"type": ["object", "null"], "description": "Omitted and `+"`null`"+` are\nequivalent and leave the stored anchor unchanged."}}},
+		"Plain": {"type": "object", "properties": {
+			"title": {"type": ["string", "null"], "description": "Omitted and `+"`null`"+` are equivalent and mean no title."}}}
 	}}`), &schema); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +83,7 @@ func TestNullAsAbsent_ReadsTheDescriptions(t *testing.T) {
 		}
 	}
 	sort.Strings(got)
-	const want = "Info._meta Update.name Update.title"
+	const want = "Cursor.anchor Info._meta Update.name Update.title"
 	if strings.Join(got, " ") != want {
 		t.Errorf("null-as-absent fields = %v, want %s", got, want)
 	}

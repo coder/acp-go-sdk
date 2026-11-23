@@ -3394,7 +3394,7 @@ func (v *CursorUpdate) decodeFast(b []byte) bool {
 				return false
 			}
 		case "anchor":
-			if string(w.key) != "anchor" || !w.once(&raw.Anchor) || !fastPatch(&v.Anchor, raw.Anchor, (*CursorAnchor).decodeFast) {
+			if string(w.key) != "anchor" || !w.once(&raw.Anchor) {
 				return false
 			}
 		case "capabilities":
@@ -3415,6 +3415,9 @@ func (v *CursorUpdate) decodeFast(b []byte) bool {
 		return false
 	}
 	fastPatchLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if raw.Anchor != nil && string(raw.Anchor) != "null" && !fastPatch(&v.Anchor, raw.Anchor, (*CursorAnchor).decodeFast) {
+		return false
+	}
 	fastPatchLenient(raw.Capabilities, &v.Capabilities, (*CursorCapabilities).decodeFast)
 	if !(raw.CursorId != nil && string(raw.CursorId) != "null") && (maybeAbsent(&v.CursorId)) {
 		return false
@@ -10866,7 +10869,7 @@ func (v *SessionCursorUpdate) decodeFast(b []byte) bool {
 				return false
 			}
 		case "anchor":
-			if string(w.key) != "anchor" || !w.once(&raw.Anchor) || !fastPatch(&v.Anchor, raw.Anchor, (*CursorAnchor).decodeFast) {
+			if string(w.key) != "anchor" || !w.once(&raw.Anchor) {
 				return false
 			}
 		case "capabilities":
@@ -10891,6 +10894,9 @@ func (v *SessionCursorUpdate) decodeFast(b []byte) bool {
 		return false
 	}
 	fastPatchLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if raw.Anchor != nil && string(raw.Anchor) != "null" && !fastPatch(&v.Anchor, raw.Anchor, (*CursorAnchor).decodeFast) {
+		return false
+	}
 	fastPatchLenient(raw.Capabilities, &v.Capabilities, (*CursorCapabilities).decodeFast)
 	if !(raw.CursorId != nil && string(raw.CursorId) != "null" && raw.SessionUpdate != nil && string(raw.SessionUpdate) != "null") && (maybeAbsent(&v.CursorId) || maybeAbsent(&v.SessionUpdate)) {
 		return false

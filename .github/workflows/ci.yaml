@@ -42,3 +42,36 @@ jobs:
 
       - name: Make tests
         run: mise exec -- make test
+
+  # Runs the ACP Test Compatibility Kit against the SDK's conformance agent
+  # and fails when a result drifts from .agents/skills/verify-tck/baseline.json.
+  tck:
+    name: tck
+    runs-on: ${{ github.repository_owner == 'coder' && 'depot-ubuntu-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install: true
+          cache: true
+
+      - name: Run the TCK
+        env:
+          TCK_OUT: ${{ runner.temp }}/verify-tck
+        run: mise exec -- make tck
+
+      - name: Upload the TCK report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tck-report
+          path: ${{ runner.temp }}/verify-tck/report.json
+          if-no-files-found: warn

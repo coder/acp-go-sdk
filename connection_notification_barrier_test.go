@@ -27,6 +27,7 @@ func newNotificationBarrierTestPair(t *testing.T, client Client, agent Agent) (*
 		_ = a2cR.Close()
 		_ = a2cW.Close()
 	})
+	initializeClient(t, clientConn)
 
 	return clientConn, agentConn
 }

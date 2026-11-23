@@ -39,6 +39,7 @@ func TestMcpMessage_ReachesBothSides(t *testing.T) {
 	}, a2cW, c2aR)
 	client := &mcpClient{got: make(chan UnstableMessageMcpRequest, 2)}
 	clientConn := NewClientSideConnection(client, c2aW, a2cR)
+	initializeClient(t, clientConn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -65,6 +65,7 @@ func TestAgentSideConnection_SessionCancelCancelsEarlierPrompt(t *testing.T) {
 			t.Cleanup(func() { _ = writer.Close() })
 			conn = NewAgentSideConnection(agent, io.Discard, reader)
 			conn.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+			initializeRaw(t, conn, writer)
 
 			if _, err := io.WriteString(writer, strings.Join(tt.lines, "\n")+"\n"); err != nil {
 				t.Fatal(err)
@@ -121,6 +122,7 @@ func TestAgentSideConnection_SessionCancelMarkersArePruned(t *testing.T) {
 	})
 	conn := NewAgentSideConnection(agent, output, reader)
 	conn.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	initializeRaw(t, conn, writer)
 	send := func(lines ...string) {
 		t.Helper()
 		if _, err := io.WriteString(writer, strings.Join(lines, "\n")+"\n"); err != nil {
@@ -219,7 +221,7 @@ type cancelPeer struct {
 }
 
 // newCancelPeer connects agent to a fake client that writes raw lines and
-// reads every message the agent sends.
+// reads every message the agent sends. The client has initialized the agent.
 func newCancelPeer(t *testing.T, agent agentFuncs) (*AgentSideConnection, *cancelPeer) {
 	t.Helper()
 	var conn *AgentSideConnection
@@ -227,6 +229,9 @@ func newCancelPeer(t *testing.T, agent agentFuncs) (*AgentSideConnection, *cance
 		conn = NewAgentSideConnection(agent, peerInput, peerOutput)
 		conn.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	})
+	p.initialize()
+	// An initialize still in flight would keep cancel markers alive.
+	waitNoInflightRequests(t, conn.conn)
 	return conn, p
 }
 
@@ -791,6 +796,7 @@ func TestAgentSideConnection_SessionCancelReachesPromptLateAfterPeerWait(t *test
 		},
 	}, a2cW, c2aR)
 	agent.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	initializeClient(t, client)
 
 	if err := client.NotifyExtension(context.Background(), "_note", map[string]any{}); err != nil {
 		t.Fatalf("SETUP: %v", err)

@@ -3,15 +3,25 @@ package acp
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 )
 
 // AgentSideConnection represents the agent's view of a connection to a client.
 type AgentSideConnection struct {
 	conn  *Connection
 	agent Agent
+	// ready closes once conn is set. NewConnection starts reading from the
+	// peer before it returns, and the handlers read conn, so each waits for
+	// ready first, as the proxy's handleWhenReady does.
+	ready chan struct{}
+
+	// initialized becomes true once the Agent's Initialize returns without an
+	// error, and never goes back. A failed initialize leaves it false.
+	initialized atomic.Bool
 
 	mu             sync.Mutex
 	sessionCancels map[sessionKey]*promptCancel
@@ -30,15 +40,38 @@ type AgentSideConnection struct {
 
 // NewAgentSideConnection creates a new agent-side connection bound to the
 // provided Agent implementation. opts set the limits on what it holds from the
-// peer (see ConnectionOption).
+// peer (see ConnectionOption). The Agent gets no request other than initialize,
+// and no notification, until its Initialize returns without an error: the
+// connection answers such a request with -32600 and drops such a notification.
 func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *AgentSideConnection {
 	asc := &AgentSideConnection{}
 	asc.agent = agent
 	asc.sessionCancels = make(map[sessionKey]*promptCancel)
 	asc.sessionCancelledAt = make(map[sessionKey]uint64)
 	asc.sessionNewest = make(map[sessionKey]uint64)
+	asc.ready = make(chan struct{})
 	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput, opts...)
+	close(asc.ready)
 	return asc
+}
+
+// handleBeforeInitialize handles a message from the client while the
+// connection is not initialized. It drops a notification, answers a request
+// other than initialize with -32600, and marks the connection initialized when
+// the Agent's Initialize returns without an error.
+func (a *AgentSideConnection) handleBeforeInitialize(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
+	if _, ok := a.conn.notificationSeq(ctx); ok {
+		a.conn.log(slog.LevelDebug, "dropped notification that arrived before initialize", "method", method)
+		return nil, nil
+	}
+	if method != AgentMethodInitialize {
+		return nil, NewInvalidRequest(map[string]any{"error": "initialize must complete before " + method})
+	}
+	resp, err := a.handle(ctx, method, params)
+	if err == nil {
+		a.initialized.Store(true)
+	}
+	return resp, err
 }
 
 // Done exposes a channel that closes when the peer disconnects. It does not

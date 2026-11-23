@@ -201,6 +201,10 @@ func newBenchPeers() *benchPeers {
 	p.client = NewClientSideConnection(p.clientImpl, io.Discard, clientIn)
 	p.agent.SetLogger(quietLogger)
 	p.client.SetLogger(quietLogger)
+	// A client initializes the agent before it sends anything else.
+	if _, err := p.agent.handleWithExtensions(context.Background(), AgentMethodInitialize, json.RawMessage(`{"protocolVersion":1}`)); err != nil {
+		panic(fmt.Sprintf("initialize the bench agent: %v", err))
+	}
 	p.closeInputs = func() {
 		agentInW.Close()
 		clientInW.Close()

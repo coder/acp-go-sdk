@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"reflect"
 	"regexp"
@@ -33,10 +36,38 @@ func unionNames() []string {
 	return names
 }
 
+// TestUnionObject_ListsEveryUnion checks generatedUnions against a set that
+// the generator writes apart from the union decoders: the structs of
+// types_gen.go with a pointer field tagged json:"-", one per variant, which
+// only a union wrapper has. Each of them must have an UnmarshalJSON that calls
+// readUnionObject and be in unionTypes, and nothing else may.
 func TestUnionObject_ListsEveryUnion(t *testing.T) {
 	src, err := os.ReadFile("types_gen.go")
 	if err != nil {
 		t.Fatal(err)
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), "types_gen.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrappers := map[string]bool{}
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts := spec.(*ast.TypeSpec)
+			st, ok := ts.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			for _, field := range st.Fields.List {
+				if _, ptr := field.Type.(*ast.StarExpr); ptr && field.Tag != nil && field.Tag.Value == "`json:\"-\"`" {
+					wrappers[ts.Name.Name] = true
+				}
+			}
+		}
 	}
 	decoder := regexp.MustCompile(`(?s)\nfunc \(u \*(\w+)\) UnmarshalJSON\(b \[\]byte\) error \{\n(.*?)\n\}\n`)
 	found := map[string]bool{}
@@ -45,14 +76,22 @@ func TestUnionObject_ListsEveryUnion(t *testing.T) {
 			found[string(m[1])] = true
 		}
 	}
-	for name := range found {
+	for name := range wrappers {
+		if !found[name] {
+			t.Errorf("%s has variant fields, and its UnmarshalJSON does not call readUnionObject", name)
+		}
 		if unionTypes[name] == nil {
 			t.Errorf("unionTypes lacks %s", name)
 		}
 	}
+	for name := range found {
+		if !wrappers[name] {
+			t.Errorf("%s calls readUnionObject and has no variant field", name)
+		}
+	}
 	for name := range unionTypes {
-		if !found[name] {
-			t.Errorf("%s does not call readUnionObject", name)
+		if !wrappers[name] {
+			t.Errorf("unionTypes lists %s, which has no variant field", name)
 		}
 	}
 }

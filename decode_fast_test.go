@@ -110,29 +110,57 @@ func typeOf[T any]() reflect.Type { return reflect.TypeOf((*T)(nil)).Elem() }
 // decode_fast.go, and the generated ones (TestFastDecode_TypesListed).
 var fastTypes = append([]reflect.Type{typeOf[Meta]()}, generatedFastTypes...)
 
-// TestFastDecode_TypesListed checks that generatedFastTypes lists exactly the
-// types that decode_fast_gen.go declares decodeFast for.
+// TestFastDecode_TypesListed checks generatedFastTypes and the fast decoders
+// against a set that the emitter of the fast decoders does not write: the
+// types that types_gen.go declares. Each of them gets a decodeFast (fast.go)
+// but an alias, which keeps the methods of json.RawMessage, and an interface
+// (Agent, Client and the optional method interfaces). So a generator that
+// drops a fast decoder together with its list entry still fails here.
 func TestFastDecode_TypesListed(t *testing.T) {
-	f, err := parser.ParseFile(token.NewFileSet(), "decode_fast_gen.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
+	parse := func(name string) *ast.File {
+		f, err := parser.ParseFile(token.NewFileSet(), name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
 	}
-	declared := map[string]bool{}
-	for _, decl := range f.Decls {
+	want := map[string]bool{}
+	for _, decl := range parse("types_gen.go").Decls {
+		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.TYPE {
+			for _, spec := range gen.Specs {
+				ts := spec.(*ast.TypeSpec)
+				if _, iface := ts.Type.(*ast.InterfaceType); ts.Assign == 0 && !iface {
+					want[ts.Name.Name] = true
+				}
+			}
+		}
+	}
+	fast := map[string]bool{}
+	for _, decl := range parse("decode_fast_gen.go").Decls {
 		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv != nil && fn.Name.Name == "decodeFast" {
-			declared[fn.Recv.List[0].Type.(*ast.StarExpr).X.(*ast.Ident).Name] = true
+			fast[fn.Recv.List[0].Type.(*ast.StarExpr).X.(*ast.Ident).Name] = true
 		}
 	}
 	listed := map[string]bool{}
 	for _, typ := range generatedFastTypes {
 		listed[typ.Name()] = true
-		if !declared[typ.Name()] {
-			t.Errorf("generatedFastTypes lists %s, which decode_fast_gen.go gives no decodeFast", typ.Name())
-		}
 	}
-	for name := range declared {
+	for name := range want {
+		if !fast[name] {
+			t.Errorf("types_gen.go declares %s, which decode_fast_gen.go gives no decodeFast", name)
+		}
 		if !listed[name] {
 			t.Errorf("generatedFastTypes lacks %s", name)
+		}
+	}
+	for name := range fast {
+		if !want[name] {
+			t.Errorf("decode_fast_gen.go gives %s a decodeFast, but types_gen.go declares no such type", name)
+		}
+	}
+	for name := range listed {
+		if !want[name] {
+			t.Errorf("generatedFastTypes lists %s, which is no type of types_gen.go with a fast decoder", name)
 		}
 	}
 }

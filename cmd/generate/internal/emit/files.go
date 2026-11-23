@@ -3,9 +3,9 @@ package emit
 import "github.com/coder/acp-go-sdk/cmd/generate/internal/load"
 
 // WriteFiles writes every generated file of the acp package into outDir:
-// constants_gen.go, types_gen.go, agent_gen.go, client_gen.go and, when meta
-// lists the proxy methods, proxy_gen.go, then helpers_gen.go, which refers to
-// the generated structs.
+// constants_gen.go, types_gen.go, decode_fast_gen.go and types_gen_test.go,
+// agent_gen.go, client_gen.go and, when meta lists the proxy methods,
+// proxy_gen.go, then helpers_gen.go, which refers to the generated structs.
 func WriteFiles(outDir string, schema *load.Schema, meta *load.Meta, schemaVersion string) error {
 	if err := WriteConstantsJen(outDir, meta, schemaVersion); err != nil {
 		return err

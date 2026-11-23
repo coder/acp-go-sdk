@@ -12,40 +12,16 @@ import (
 )
 
 // unionTypes makes a value of each union whose UnmarshalJSON calls
-// readUnionObject. TestUnionObject_ListsEveryUnion keeps it complete.
-var unionTypes = map[string]func() json.Unmarshaler{
-	"AgentResponse":                 func() json.Unmarshaler { return new(AgentResponse) },
-	"AuthMethod":                    func() json.Unmarshaler { return new(AuthMethod) },
-	"AvailableCommandInput":         func() json.Unmarshaler { return new(AvailableCommandInput) },
-	"ClientResponse":                func() json.Unmarshaler { return new(ClientResponse) },
-	"ContentBlock":                  func() json.Unmarshaler { return new(ContentBlock) },
-	"CreateElicitationForm":         func() json.Unmarshaler { return new(CreateElicitationForm) },
-	"CreateElicitationOther":        func() json.Unmarshaler { return new(CreateElicitationOther) },
-	"CreateElicitationRequest":      func() json.Unmarshaler { return new(CreateElicitationRequest) },
-	"CreateElicitationResponse":     func() json.Unmarshaler { return new(CreateElicitationResponse) },
-	"CreateElicitationUrl":          func() json.Unmarshaler { return new(CreateElicitationUrl) },
-	"ElicitationContentValue":       func() json.Unmarshaler { return new(ElicitationContentValue) },
-	"ElicitationFormMode":           func() json.Unmarshaler { return new(ElicitationFormMode) },
-	"ElicitationPropertySchema":     func() json.Unmarshaler { return new(ElicitationPropertySchema) },
-	"ElicitationUrlMode":            func() json.Unmarshaler { return new(ElicitationUrlMode) },
-	"EmbeddedResourceResource":      func() json.Unmarshaler { return new(EmbeddedResourceResource) },
-	"ErrorCode":                     func() json.Unmarshaler { return new(ErrorCode) },
-	"IdleStateUpdate":               func() json.Unmarshaler { return new(IdleStateUpdate) },
-	"InitialSessionConfigOption":    func() json.Unmarshaler { return new(InitialSessionConfigOption) },
-	"McpServer":                     func() json.Unmarshaler { return new(McpServer) },
-	"MultiSelectItems":              func() json.Unmarshaler { return new(MultiSelectItems) },
-	"PlanUpdateContent":             func() json.Unmarshaler { return new(PlanUpdateContent) },
-	"RequestId":                     func() json.Unmarshaler { return new(RequestId) },
-	"RequestPermissionOutcome":      func() json.Unmarshaler { return new(RequestPermissionOutcome) },
-	"SessionConfigOption":           func() json.Unmarshaler { return new(SessionConfigOption) },
-	"SessionConfigSelectOptions":    func() json.Unmarshaler { return new(SessionConfigSelectOptions) },
-	"SessionUpdate":                 func() json.Unmarshaler { return new(SessionUpdate) },
-	"SetSessionConfigOptionRequest": func() json.Unmarshaler { return new(SetSessionConfigOptionRequest) },
-	"StateUpdate":                   func() json.Unmarshaler { return new(StateUpdate) },
-	"StateUpdateIdle":               func() json.Unmarshaler { return new(StateUpdateIdle) },
-	"ToolCallContent":               func() json.Unmarshaler { return new(ToolCallContent) },
-	"UnstableMessageMcpResponse":    func() json.Unmarshaler { return new(UnstableMessageMcpResponse) },
-}
+// readUnionObject, by name: the unions of generatedUnions, which
+// TestUnionObject_ListsEveryUnion checks.
+var unionTypes = func() map[string]func() json.Unmarshaler {
+	makers := map[string]func() json.Unmarshaler{}
+	for _, typ := range generatedUnions {
+		typ := typ
+		makers[typ.Name()] = func() json.Unmarshaler { return reflect.New(typ).Interface().(json.Unmarshaler) }
+	}
+	return makers
+}()
 
 // unionNames lists the keys of unionTypes in order.
 func unionNames() []string {

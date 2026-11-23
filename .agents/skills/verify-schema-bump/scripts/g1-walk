@@ -12,8 +12,8 @@
 # Exit 0 when every row has gen=ok, idem=ok and no drift=FAIL, and the
 # TARGET row has build=ok, vet=ok, methods=ok and an API diff that does not
 # change Agent or Client. drift checks
-# the row of REF's own schema/version: REF's schema files and *_gen.go must
-# equal the regenerated ones. Needs network for the release
+# the row of REF's own schema/version: REF's schema files, *_gen.go and
+# *_gen_test.go must equal the regenerated ones. Needs network for the release
 # list and for schema files that are not cached yet.
 set -euo pipefail
 
@@ -88,7 +88,7 @@ fetch() {
 }
 
 git -C "$root" worktree add -q --detach "$wt" "$ref"
-gen() { (cd "$wt/cmd/generate" && env -u GOPATH -u GOMODCACHE go run .) && (cd "$wt" && gofmt -w ./*_gen.go); }
+gen() { (cd "$wt/cmd/generate" && env -u GOPATH -u GOMODCACHE go run .) && (cd "$wt" && shopt -s nullglob && gofmt -w ./*_gen.go ./*_gen_test.go); }
 first_error() { cat "$@" 2>/dev/null | grep -m1 -E '^[^#].*:[0-9]+:[0-9]+: |panic:|MISSING' | cut -c1-110 || true; }
 
 summary=$run/summary.txt
@@ -103,7 +103,7 @@ while read -r v tag <&3; do
 	git -C "$wt" reset -q --hard && git -C "$wt" clean -fdq
 	# Start from no generated files, so an output the generator stops writing
 	# is missing rather than left over from the ref.
-	rm -f "$wt"/*_gen.go
+	rm -f "$wt"/*_gen.go "$wt"/*_gen_test.go
 	for f in "${FILES[@]}"; do cp "$cache/$tag/$f" "$wt/schema/$f"; done
 	echo "$v" >"$wt/schema/version"
 	g=FAIL i=- d=- b=- ge=- he=- t=- m=- a=-
@@ -112,9 +112,9 @@ while read -r v tag <&3; do
 		# Compare whole trees, so a file that only the second run writes counts.
 		first=$(git -C "$wt" add -A && git -C "$wt" write-tree)
 		# At the ref's own schema version, the ref must hold exactly what
-		# regeneration gives: the upstream schema files and *_gen.go.
+		# regeneration gives: the upstream schema files, *_gen.go and *_gen_test.go.
 		if [ "$v" = "$ref_version" ]; then
-			git -C "$wt" diff --stat "$ref" "$first" -- '*_gen.go' schema >"$out/drift.diff"
+			git -C "$wt" diff --stat "$ref" "$first" -- '*_gen.go' '*_gen_test.go' schema >"$out/drift.diff"
 			if [ -s "$out/drift.diff" ]; then d=FAIL; else d=ok; fi
 		fi
 		if gen >>"$out/gen.log" 2>&1; then

@@ -18,7 +18,7 @@ func TestRejectDuplicateMembers_EveryPropertyHasAField(t *testing.T) {
 		t.Fatal(err)
 	}
 	types := map[string]reflect.Type{}
-	for _, typ := range append(append([]reflect.Type{}, fastTypes...), fastUnions...) {
+	for _, typ := range fastTypes {
 		types[typ.Name()] = typ
 	}
 	calls := 0
@@ -27,7 +27,8 @@ func TestRejectDuplicateMembers_EveryPropertyHasAField(t *testing.T) {
 		if !ok || fn.Recv == nil || fn.Name.Name != "UnmarshalJSON" {
 			continue
 		}
-		typ := types[fn.Recv.List[0].Type.(*ast.StarExpr).X.(*ast.Ident).Name]
+		name := fn.Recv.List[0].Type.(*ast.StarExpr).X.(*ast.Ident).Name
+		typ := types[name]
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -37,6 +38,10 @@ func TestRejectDuplicateMembers_EveryPropertyHasAField(t *testing.T) {
 				return true
 			}
 			calls++
+			if typ == nil {
+				t.Errorf("%s calls rejectDuplicateMembers and is not in fastTypes", name)
+				return false
+			}
 			for _, arg := range call.Args[2:] {
 				prop, _ := strconv.Unquote(arg.(*ast.BasicLit).Value)
 				if err := duplicateMemberError(reflect.New(typ).Interface(), prop); err.Error() == "" {

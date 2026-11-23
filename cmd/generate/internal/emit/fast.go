@@ -27,6 +27,7 @@ func tryFastStmt(recv string) Code {
 
 // fastFunc starts the declaration of the decodeFast method of name.
 func (b *typesBuilder) fastFunc(recv, name string) *Statement {
+	b.fastTypes = append(b.fastTypes, name)
 	return b.fast.Func().Params(Id(recv).Op("*").Id(name)).Id("decodeFast").Params(Id("b").Index().Byte()).Bool()
 }
 

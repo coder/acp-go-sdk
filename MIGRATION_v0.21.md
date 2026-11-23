@@ -377,6 +377,6 @@ The ACP spec says an agent SHOULD answer a request other than `initialize` that 
 - A request other than `initialize`, a `_` extension request included, gets `-32600` with `data.error` set to `initialize must complete before <method>`, and your handler is not called.
 - A notification, such as `session/cancel`, is dropped, and the connection logs it at Debug.
 - A failed `initialize` leaves the connection uninitialized, so the client can send it again. An `initialize` after a successful one reaches your `Agent`, as before.
-- A request whose handler starts while `initialize` still runs gets `-32600` too. A client sends other requests only after the `initialize` reply. The clients in `example/` and `ClientSideConnection.Initialize` already wait for it.
+- A message that arrived before the `initialize` that succeeded is held back the same way, even when its handler runs after that `initialize` returned. A request whose handler starts while `initialize` still runs gets `-32600` too. A client sends other requests only after the `initialize` reply. The clients in `example/` and `ClientSideConnection.Initialize` already wait for it.
 
 `ClientSideConnection` and the proxy do not change. `NewResourceNotFound` builds the `-32002` (resource not found) error that the spec asks an agent to send, with `data.sessionId`, for a request that names a session that does not exist.

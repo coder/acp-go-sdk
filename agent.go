@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math"
 	"sync"
 	"sync/atomic"
 )
@@ -19,9 +20,11 @@ type AgentSideConnection struct {
 	// ready first, as the proxy's handleWhenReady does.
 	ready chan struct{}
 
-	// initialized becomes true once the Agent's Initialize returns without an
-	// error, and never goes back. A failed initialize leaves it false.
-	initialized atomic.Bool
+	// openedAt is the arrival number of the first initialize whose Initialize
+	// returned a response that encodes, and 0 until one has. A message reaches
+	// the Agent only if it arrived after that initialize: a message that
+	// arrived before it is held back even when its handler runs later.
+	openedAt atomic.Uint64
 
 	mu             sync.Mutex
 	sessionCancels map[sessionKey]*promptCancel
@@ -55,12 +58,29 @@ func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Read
 	return asc
 }
 
-// handleBeforeInitialize handles a message from the client while the
-// connection is not initialized. It drops a notification, answers a request
-// other than initialize with -32600, and marks the connection initialized when
+// arrivalOf returns the arrival number of the message whose handler runs with
+// ctx. A handler called without one, as in-package benchmarks do, counts as
+// arriving after every message.
+func (a *AgentSideConnection) arrivalOf(ctx context.Context) uint64 {
+	if n, ok := a.conn.messageArrival(ctx); ok {
+		return n
+	}
+	return math.MaxUint64
+}
+
+// opened reports whether the message whose handler runs with ctx arrived
+// after the initialize that opened the connection.
+func (a *AgentSideConnection) opened(ctx context.Context) bool {
+	at := a.openedAt.Load()
+	return at != 0 && a.arrivalOf(ctx) >= at
+}
+
+// handleBeforeInitialize handles a message from the client that arrived
+// before the connection was opened. It drops a notification, answers a
+// request other than initialize with -32600, and opens the connection when
 // the Agent's Initialize returns a response that encodes. A response that does
-// not encode reaches the client as -32603, so the connection stays
-// uninitialized then too.
+// not encode reaches the client as -32603, so the connection stays closed then
+// too.
 func (a *AgentSideConnection) handleBeforeInitialize(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
 	if _, ok := a.conn.notificationSeq(ctx); ok {
 		a.conn.log(slog.LevelDebug, "dropped notification that arrived before initialize", "method", method)
@@ -77,7 +97,8 @@ func (a *AgentSideConnection) handleBeforeInitialize(ctx context.Context, method
 	if mErr != nil {
 		return nil, NewInternalError(map[string]any{"error": mErr.Error()})
 	}
-	a.initialized.Store(true)
+	// Of initializes that succeed concurrently, the first to finish opens.
+	a.openedAt.CompareAndSwap(0, a.arrivalOf(ctx))
 	return json.RawMessage(b), nil
 }
 

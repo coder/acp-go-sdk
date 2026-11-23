@@ -87,6 +87,22 @@ test: $(GO_FILES)
 	cd .agents/skills/verify-schema-bump && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go run ./registrygen -sdk ../../.. -out roundtrip/registry_gen_test.go >/dev/null
 	cd .agents/skills/verify-schema-bump && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
 	cd .agents/skills/verify-schema-bump && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test -skip '^(TestTranscripts|TestInstances|TestHints)$$' ./...
+	# verify-tck is its own module too: the conformance agent and tckcheck.
+	# The TCK run itself is make tck.
+	cd .agents/skills/verify-tck && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
+	cd .agents/skills/verify-tck && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
+
+# Run the ACP Test Compatibility Kit (acp-tck) against the conformance agent
+# and fail when the results drift from the baseline (see
+# .agents/skills/verify-tck). It needs uv, and the network on the first run.
+# tck-update rewrites the baseline from the run instead. Not part of test.
+.PHONY: tck
+tck:
+	.agents/skills/verify-tck/run.sh
+
+.PHONY: tck-update
+tck-update:
+	.agents/skills/verify-tck/run.sh --update
 
 # Benchmark how fast the SDK reads recorded ACP traffic (testdata/bench). With
 # BASE=<commit>, compare that commit with the checkout. Not part of test.

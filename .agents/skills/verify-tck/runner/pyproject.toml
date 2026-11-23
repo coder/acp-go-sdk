@@ -1,0 +1,13 @@
+# Pins the ACP Test Compatibility Kit that ../run.sh runs. To move the pin,
+# change the commit in the URL below, run `uv lock` here and rerun
+# `../run.sh --update` (see ../SKILL.md).
+[project]
+name = "verify-tck-runner"
+version = "0.0.0"
+requires-python = ">=3.14"
+dependencies = [
+    "acp-tck @ git+https://github.com/agentclientprotocol/acp-tck@7c71c4d1af0994e73bdc100c9f7f6b98f2319cda",
+]
+
+[tool.uv]
+package = false

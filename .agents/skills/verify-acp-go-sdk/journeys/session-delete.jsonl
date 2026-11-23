@@ -8,7 +8,7 @@
 {"step":"delete A","send":"session/delete","params":{"sessionId":"{{a.result.sessionId}}"},"expect":{"result":{}}}
 {"step":"list drops A","send":"session/list","params":{"cwd":"/tmp/acp-delete"},"expect":{"result.sessions":[{"sessionId":"{{b.result.sessionId}}","cwd":"/tmp/acp-delete"}]}}
 {"step":"delete A again","send":"session/delete","params":{"sessionId":"{{a.result.sessionId}}"},"expect":{"result":{}}}
-{"step":"prompt A fails","send":"session/prompt","params":{"sessionId":"{{a.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"expect":{"error.code":-32603}}
+{"step":"prompt A fails","send":"session/prompt","params":{"sessionId":"{{a.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"expect":{"error.code":-32002,"error.data.sessionId":"{{a.result.sessionId}}"}}
 {"send":"session/prompt","params":{"sessionId":"{{b.result.sessionId}}","prompt":[{"type":"text","text":"Hello, agent!"}]},"save":"turn","async":true}
 {"waitFor":"session/update","where":{"params.update.sessionUpdate":"tool_call"},"timeout":"10s"}
 {"step":"delete B during its turn","send":"session/delete","params":{"sessionId":"{{b.result.sessionId}}"},"expect":{"result":{}}}

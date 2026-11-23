@@ -74,14 +74,32 @@ func newExampleAgent() *exampleAgent {
 	return &exampleAgent{sessions: make(map[string]*agentSession)}
 }
 
-// SetSessionMode implements acp.Agent.
+// sessionNotFound is the error of a session method whose sessionId names no
+// session of the agent: -32002 (resource not found) with the requested
+// sessionId in data, as the protocol asks.
+func sessionNotFound(id acp.SessionId) error {
+	return acp.NewResourceNotFound(map[string]any{"sessionId": id})
+}
+
+// SetSessionMode implements acp.Agent. The agent offers no modes, so a mode
+// of a session it has gets -32602 (invalid params).
 func (a *exampleAgent) SetSessionMode(ctx context.Context, params acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
-	return acp.SetSessionModeResponse{}, nil
+	a.mu.Lock()
+	s := a.sessions[string(params.SessionId)]
+	a.mu.Unlock()
+	if s == nil {
+		return acp.SetSessionModeResponse{}, sessionNotFound(params.SessionId)
+	}
+	return acp.SetSessionModeResponse{}, acp.NewInvalidParams(map[string]any{"modeId": params.ModeId, "error": "the agent offers no modes"})
 }
 
 // ListSessions implements acp.Agent. It returns every session, or those in
-// params.Cwd when it is set, in creation order on one page.
+// params.Cwd when it is set, in creation order on one page. It issues no
+// cursor, so a request with one gets -32602 (invalid params).
 func (a *exampleAgent) ListSessions(ctx context.Context, params acp.ListSessionsRequest) (acp.ListSessionsResponse, error) {
+	if params.Cursor != nil {
+		return acp.ListSessionsResponse{}, acp.NewInvalidParams(map[string]any{"cursor": *params.Cursor, "error": "the agent issued no such cursor"})
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	sessions := []acp.SessionInfo{}
@@ -165,7 +183,8 @@ func (a *exampleAgent) configOptions(s *agentSession) []acp.SessionConfigOption 
 }
 
 // SetSessionConfigOption implements acp.Agent. It sets the model to one of
-// its values, or web search on or off, and returns every option.
+// its values, or web search on or off, and returns every option. An unknown
+// session gets -32002, and an unknown option or value -32602.
 func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
 	invalid := func(configID acp.SessionConfigId, msg string) error {
 		return acp.NewInvalidParams(map[string]any{"configId": configID, "error": msg})
@@ -178,7 +197,7 @@ func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.Se
 		p := params.ValueId
 		s = a.sessions[string(p.SessionId)]
 		if s == nil {
-			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "unknown session")
+			return acp.SetSessionConfigOptionResponse{}, sessionNotFound(p.SessionId)
 		}
 		if p.ConfigId != configModel {
 			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "no select option with this id")
@@ -191,7 +210,7 @@ func (a *exampleAgent) SetSessionConfigOption(ctx context.Context, params acp.Se
 		p := params.Boolean
 		s = a.sessions[string(p.SessionId)]
 		if s == nil {
-			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "unknown session")
+			return acp.SetSessionConfigOptionResponse{}, sessionNotFound(p.SessionId)
 		}
 		if p.ConfigId != configWebSearch || !a.booleanConfig {
 			return acp.SetSessionConfigOptionResponse{}, invalid(p.ConfigId, "no boolean option with this id")
@@ -223,6 +242,14 @@ func (a *exampleAgent) CloseSession(ctx context.Context, params acp.CloseSession
 // Implement acp.AgentConnAware to receive the connection after construction.
 func (a *exampleAgent) SetAgentConnection(conn *acp.AgentSideConnection) { a.conn = conn }
 
+// The agentInfo that Initialize returns. The version is the example agent's
+// own, apart from the SDK's.
+const (
+	agentName    = "acp-go-example-agent"
+	agentTitle   = "ACP Go Example Agent"
+	agentVersion = "0.1.0"
+)
+
 func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequest) (acp.InitializeResponse, error) {
 	caps := params.ClientCapabilities.Session
 	elicitation := params.ClientCapabilities.Elicitation
@@ -235,6 +262,7 @@ func (a *exampleAgent) Initialize(ctx context.Context, params acp.InitializeRequ
 	a.mu.Unlock()
 	return acp.InitializeResponse{
 		ProtocolVersion: acp.ProtocolVersionNumber,
+		AgentInfo:       &acp.Implementation{Name: agentName, Title: acp.Ptr(agentTitle), Version: agentVersion},
 		AgentCapabilities: acp.AgentCapabilities{
 			LoadSession: true,
 			SessionCapabilities: acp.SessionCapabilities{
@@ -301,9 +329,7 @@ func (a *exampleAgent) LoadSession(ctx context.Context, params acp.LoadSessionRe
 	if err != nil {
 		return acp.LoadSessionResponse{}, err
 	}
-	// An unknown session gets -32002 (resource not found) with the requested
-	// sessionId in data, as the protocol asks of the session methods.
-	notFound := acp.NewRequestError(-32002, "Resource not found", map[string]any{"sessionId": params.SessionId})
+	notFound := sessionNotFound(params.SessionId)
 	sid := string(params.SessionId)
 	a.mu.Lock()
 	s := a.sessions[sid]
@@ -379,7 +405,7 @@ func (a *exampleAgent) Cancel(ctx context.Context, params acp.CancelNotification
 
 func (a *exampleAgent) Prompt(ctx context.Context, params acp.PromptRequest) (acp.PromptResponse, error) {
 	sid := string(params.SessionId)
-	notFound := fmt.Errorf("session %s not found", sid)
+	notFound := sessionNotFound(params.SessionId)
 	a.mu.Lock()
 	s := a.sessions[sid]
 	a.mu.Unlock()

@@ -35,7 +35,7 @@ func (c *testClient) RequestPermission(context.Context, acp.RequestPermissionReq
 }
 
 // connect wires the example agent to an SDK client over pipes, as main
-// wires it to stdio.
+// wires it to stdio, and initializes it.
 func connect(t *testing.T) (*acp.ClientSideConnection, *testClient) {
 	t.Helper()
 	c, client, _ := connectAgent(t)
@@ -48,10 +48,21 @@ func connectAgent(t *testing.T) (*acp.ClientSideConnection, *testClient, *exampl
 	t.Helper()
 	client := &testClient{updates: make(chan acp.SessionNotification, 64)}
 	c, ag := connectClient(t, client)
+	initialize(t, c)
 	return c, client, ag
 }
 
-// connectClient wires the example agent to client over pipes.
+// initialize initializes the agent that c talks to, with no client
+// capabilities. The agent answers no other request before it.
+func initialize(t *testing.T, c *acp.ClientSideConnection) {
+	t.Helper()
+	if _, err := c.Initialize(context.Background(), acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber}); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+}
+
+// connectClient wires the example agent to client over pipes. The test
+// initializes the agent itself.
 func connectClient(t *testing.T, client acp.Client) (*acp.ClientSideConnection, *exampleAgent) {
 	t.Helper()
 	c2aR, c2aW := io.Pipe()
@@ -210,10 +221,6 @@ func setWebSearch(v bool) setFn {
 	}
 }
 
-func inSession(sid acp.SessionId, set setFn) setFn {
-	return func(acp.SessionId) acp.SetSessionConfigOptionRequest { return set(sid) }
-}
-
 // configValues lists each option as id=value, in the agent's order.
 func configValues(opts []acp.SessionConfigOption) []string {
 	out := []string{}
@@ -246,12 +253,10 @@ func TestExampleAgent_SetSessionConfigOption(t *testing.T) {
 			[]string{"model=demo-fast"}, nil},
 		{"unknown model", booleans, []setFn{setModel("gpt-0")},
 			[]string{"model=demo-fast", "web_search=false"}, nil},
-		{"unknown session", booleans, []setFn{inSession("sess_unknown", setModel("demo-deep"))},
-			[]string{"model=demo-fast", "web_search=false"}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, _ := connect(t)
+			c, _ := connectClient(t, &testClient{updates: make(chan acp.SessionNotification, 64)})
 			if _, err := c.Initialize(ctx, acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber, ClientCapabilities: tt.caps}); err != nil {
 				t.Fatalf("initialize: %v", err)
 			}
@@ -280,6 +285,92 @@ func TestExampleAgent_SetSessionConfigOption(t *testing.T) {
 				t.Fatalf("config options after the sets = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// A session method that names a session the agent does not have, or no
+// longer has, gets -32002 with the requested sessionId in data.
+func TestExampleAgent_UnknownSessionIsNotFound(t *testing.T) {
+	ctx := context.Background()
+	c, _ := connect(t)
+	deleted := newSession(t, c, "/w")
+	if _, err := c.DeleteSession(ctx, acp.DeleteSessionRequest{SessionId: deleted}); err != nil {
+		t.Fatalf("session/delete: %v", err)
+	}
+	tests := []struct {
+		method string
+		call   func(acp.SessionId) error
+	}{
+		{"session/prompt", func(id acp.SessionId) error {
+			_, err := c.Prompt(ctx, acp.PromptRequest{SessionId: id, Prompt: []acp.ContentBlock{acp.TextBlock("hi")}})
+			return err
+		}},
+		{"session/set_mode", func(id acp.SessionId) error {
+			_, err := c.SetSessionMode(ctx, acp.SetSessionModeRequest{SessionId: id, ModeId: "code"})
+			return err
+		}},
+		{"session/set_config_option", func(id acp.SessionId) error {
+			_, err := c.SetSessionConfigOption(ctx, setModel("demo-deep")(id))
+			return err
+		}},
+		{"session/load", func(id acp.SessionId) error {
+			_, err := c.LoadSession(ctx, acp.LoadSessionRequest{SessionId: id, Cwd: "/w", McpServers: []acp.McpServer{}})
+			return err
+		}},
+	}
+	for _, tt := range tests {
+		for _, session := range []struct {
+			name string
+			id   acp.SessionId
+		}{{"an unknown", "sess_unknown"}, {"a deleted", deleted}} {
+			t.Run(tt.method+" of "+session.name+" session", func(t *testing.T) {
+				err := tt.call(session.id)
+				var reqErr *acp.RequestError
+				if !errors.As(err, &reqErr) || reqErr.Code != -32002 || string(reqErr.Data) != mustJSON(t, map[string]any{"sessionId": session.id}) {
+					t.Errorf("%s = %v, want -32002 with the sessionId", tt.method, err)
+				}
+			})
+		}
+	}
+}
+
+// The agent answers -32602 to a mode that it does not offer and to a
+// session/list cursor that it never issued.
+func TestExampleAgent_RejectsInvalidParams(t *testing.T) {
+	ctx := context.Background()
+	c, _ := connect(t)
+	sid := newSession(t, c, "/w")
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"session/set_mode of a mode the agent does not offer", func() error {
+			_, err := c.SetSessionMode(ctx, acp.SetSessionModeRequest{SessionId: sid, ModeId: "code"})
+			return err
+		}},
+		{"session/list with a cursor the agent never issued", func() error {
+			_, err := c.ListSessions(ctx, acp.ListSessionsRequest{Cursor: acp.Ptr("bogus")})
+			return err
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var reqErr *acp.RequestError
+			if err := tt.call(); !errors.As(err, &reqErr) || reqErr.Code != -32602 {
+				t.Errorf("error = %v, want -32602", err)
+			}
+		})
+	}
+}
+
+func TestExampleAgent_InitializeNamesTheAgent(t *testing.T) {
+	c, _ := connectClient(t, &testClient{updates: make(chan acp.SessionNotification, 64)})
+	resp, err := c.Initialize(context.Background(), acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber})
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	if info := resp.AgentInfo; info == nil || info.Name == "" || info.Version == "" {
+		t.Errorf("agentInfo = %+v, want a name and a version", info)
 	}
 }
 
@@ -664,6 +755,7 @@ func TestExampleAgent_LoadSessionDuringTurn(t *testing.T) {
 	ctx := context.Background()
 	client := &recordClient{}
 	c, _ := connectClient(t, client)
+	initialize(t, c)
 	sid := newSession(t, c, "/w")
 	load := func() {
 		t.Helper()

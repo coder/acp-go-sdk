@@ -200,12 +200,58 @@ func TestAgent_InvalidParams(t *testing.T) {
 	wantCode(t, "boolean option the client did not accept", err, -32602, "")
 	_, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Cursor: acp.Ptr("never-issued")})
 	wantCode(t, "list with a cursor", err, -32602, "")
+	_, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Cwd: acp.Ptr("relative/dir")})
+	wantCode(t, "list with a relative cwd", err, -32602, "")
+	_, err = conn.UnstableSessionOptions(ctx, acp.UnstableSessionOptionsRequest{Cwd: "relative/dir"})
+	wantCode(t, "options for a relative cwd", err, -32602, "")
+	_, err = conn.UnstableSessionOptions(ctx, acp.UnstableSessionOptionsRequest{Cwd: t.TempDir(), AdditionalDirectories: []string{"relative/dir"}})
+	wantCode(t, "options for a relative additional directory", err, -32602, "")
+	_, err = conn.LoadSession(ctx, acp.LoadSessionRequest{SessionId: sid, Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
+	wantCode(t, "load with another cwd", err, -32602, "")
+	_, err = conn.ResumeSession(ctx, acp.ResumeSessionRequest{SessionId: sid, Cwd: t.TempDir()})
+	wantCode(t, "resume with another cwd", err, -32602, "")
 	_, err = conn.UnstableForkSession(ctx, acp.UnstableForkSessionRequest{SessionId: sid, Cwd: t.TempDir(), McpServers: []acp.McpServer{}, CursorId: acp.Ptr(acp.CursorId("never-issued"))})
 	wantCode(t, "fork at a cursor", err, -32602, "")
 	_, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Archived: acp.Ptr(acp.SessionArchiveFilter("sometimes"))})
 	wantCode(t, "unknown archived filter", err, -32602, "")
 	_, err = conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}, AdditionalDirectories: []string{"relative/dir"}})
 	wantCode(t, "relative additional directory", err, -32602, "")
+}
+
+// TestAgent_ReopenReplacesAdditionalDirectories checks that load and resume
+// take the request's additionalDirectories as the whole list, so omitting it
+// clears the list.
+func TestAgent_ReopenReplacesAdditionalDirectories(t *testing.T) {
+	ctx := context.Background()
+	conn, _ := connect(t, acp.ClientCapabilities{})
+	cwd, extra := t.TempDir(), t.TempDir()
+	resp, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}, AdditionalDirectories: []string{extra}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirs := func() []string {
+		t.Helper()
+		list, err := conn.ListSessions(ctx, acp.ListSessionsRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range list.Sessions {
+			if s.SessionId == resp.SessionId {
+				return s.AdditionalDirectories
+			}
+		}
+		t.Fatalf("session %s is not listed", resp.SessionId)
+		return nil
+	}
+	if got := dirs(); len(got) != 1 || got[0] != extra {
+		t.Fatalf("SETUP: additionalDirectories %v, want [%s]", got, extra)
+	}
+	if _, err := conn.ResumeSession(ctx, acp.ResumeSessionRequest{SessionId: resp.SessionId, Cwd: cwd}); err != nil {
+		t.Fatal(err)
+	}
+	if got := dirs(); len(got) != 0 {
+		t.Errorf("after a resume without additionalDirectories the session lists %v, want none", got)
+	}
 }
 
 func TestAgent_ListShowsArchiveViews(t *testing.T) {

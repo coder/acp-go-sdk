@@ -186,6 +186,11 @@ func check(b baseline, r report) []drift {
 		}
 		reqs = append(reqs, d)
 	}
+	for _, id := range b.Flaky {
+		if !slices.Contains(want.Flaky, id) {
+			reqs = append(reqs, drift{ID: id, Tier: "flaky", Expected: "a flaky requirement", Got: "no requirement"})
+		}
+	}
 	slices.SortFunc(reqs, func(x, y drift) int { return strings.Compare(x.ID, y.ID) })
 	return append(run, reqs...)
 }

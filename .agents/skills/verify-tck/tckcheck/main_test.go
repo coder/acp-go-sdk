@@ -147,6 +147,13 @@ func TestCheck_Drift(t *testing.T) {
 		flaky:      []string{"ACP-A-001"},
 		wantLines:  []string{"ACP-A-001 MANDATORY: expected a reason, got none"},
 	}, {
+		name:       "a flaky id the report lacks drifts",
+		conformant: true,
+		reqs:       []req{pass, skip},
+		baseline:   map[string]string{"ACP-A-001": "MANDATORY PASS", "ACP-B-001": "CAPABILITY SKIPPED x is not advertised"},
+		flaky:      []string{"ACP-Z-001"},
+		wantLines:  []string{"ACP-Z-001 flaky: expected a flaky requirement, got no requirement"},
+	}, {
 		name:       "a non-PASS entry needs a reason that is not TODO",
 		conformant: true,
 		reqs:       []req{pass, skip},

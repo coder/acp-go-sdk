@@ -284,13 +284,21 @@ func checkSystemPrompt(p *acp.SystemPrompt) error {
 	return nil
 }
 
+// reopenable reports why session/load or session/resume cannot reopen s with
+// st: the request's cwd must be the session's. The caller holds a.mu.
+func reopenable(s *session, st setup) error {
+	if st.cwd != s.cwd {
+		return invalid("cwd does not match the session's cwd", "cwd", st.cwd)
+	}
+	return nil
+}
+
 // open applies st to s and opens it. The caller checked st and holds a.mu.
-// It returns the MCP servers to start once a.mu is released.
+// additionalDirectories is the session's whole list, so an omitted one clears
+// it. It returns the MCP servers to start once a.mu is released.
 func (a *agent) open(s *session, st setup) []acp.McpServer {
 	s.cwd = st.cwd
-	if st.dirs != nil {
-		s.dirs = st.dirs
-	}
+	s.dirs = st.dirs
 	applyInitialConfig(s, st.initial, a.booleans())
 	s.open = true
 	s.updatedAt = time.Now()
@@ -357,6 +365,9 @@ func (a *agent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.
 	}
 	a.mu.Lock()
 	s, err := a.lookup(p.SessionId, false)
+	if err == nil {
+		err = reopenable(s, st)
+	}
 	if err != nil {
 		a.mu.Unlock()
 		return acp.LoadSessionResponse{}, err
@@ -369,6 +380,15 @@ func (a *agent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.
 		}
 	}
 	a.mu.Lock()
+	// A session/delete during the replay removed the session: answer as for
+	// a session that does not exist, and start nothing for it.
+	if cur, err := a.lookup(p.SessionId, false); err != nil || cur != s {
+		a.mu.Unlock()
+		if err == nil {
+			err = notFound(p.SessionId)
+		}
+		return acp.LoadSessionResponse{}, err
+	}
 	servers := a.open(s, st)
 	resp := acp.LoadSessionResponse{Modes: s.modes(), ConfigOptions: s.configOptions(a.booleans())}
 	a.mu.Unlock()
@@ -383,6 +403,9 @@ func (a *agent) ResumeSession(ctx context.Context, p acp.ResumeSessionRequest) (
 	}
 	a.mu.Lock()
 	s, err := a.lookup(p.SessionId, false)
+	if err == nil {
+		err = reopenable(s, st)
+	}
 	if err != nil {
 		a.mu.Unlock()
 		return acp.ResumeSessionResponse{}, err
@@ -397,6 +420,9 @@ func (a *agent) ResumeSession(ctx context.Context, p acp.ResumeSessionRequest) (
 // UnstableSessionOptions returns the options a session would start with, or
 // those of the session it names, and changes nothing.
 func (a *agent) UnstableSessionOptions(ctx context.Context, p acp.UnstableSessionOptionsRequest) (acp.UnstableSessionOptionsResponse, error) {
+	if err := (setup{cwd: p.Cwd, dirs: p.AdditionalDirectories}).check(); err != nil {
+		return acp.UnstableSessionOptionsResponse{}, err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	s := &session{mode: modeAsk, model: modelFast}
@@ -483,6 +509,9 @@ var archiveViews = map[acp.SessionArchiveFilter]func(archived bool) bool{
 func (a *agent) ListSessions(ctx context.Context, p acp.ListSessionsRequest) (acp.ListSessionsResponse, error) {
 	if p.Cursor != nil {
 		return acp.ListSessionsResponse{}, invalid("unknown cursor: the agent never issues one", "cursor", *p.Cursor)
+	}
+	if p.Cwd != nil && !filepath.IsAbs(*p.Cwd) {
+		return acp.ListSessionsResponse{}, invalid("cwd must be an absolute path", "cwd", *p.Cwd)
 	}
 	filter := acp.SessionArchiveFilterExclude
 	if p.Archived != nil {

@@ -58,7 +58,9 @@ func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Read
 // handleBeforeInitialize handles a message from the client while the
 // connection is not initialized. It drops a notification, answers a request
 // other than initialize with -32600, and marks the connection initialized when
-// the Agent's Initialize returns without an error.
+// the Agent's Initialize returns a response that encodes. A response that does
+// not encode reaches the client as -32603, so the connection stays
+// uninitialized then too.
 func (a *AgentSideConnection) handleBeforeInitialize(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
 	if _, ok := a.conn.notificationSeq(ctx); ok {
 		a.conn.log(slog.LevelDebug, "dropped notification that arrived before initialize", "method", method)
@@ -68,10 +70,15 @@ func (a *AgentSideConnection) handleBeforeInitialize(ctx context.Context, method
 		return nil, NewInvalidRequest(map[string]any{"error": "initialize must complete before " + method})
 	}
 	resp, err := a.handle(ctx, method, params)
-	if err == nil {
-		a.initialized.Store(true)
+	if err != nil {
+		return nil, err
 	}
-	return resp, err
+	b, mErr := json.Marshal(resp)
+	if mErr != nil {
+		return nil, NewInternalError(map[string]any{"error": mErr.Error()})
+	}
+	a.initialized.Store(true)
+	return json.RawMessage(b), nil
 }
 
 // Done exposes a channel that closes when the peer disconnects. It does not

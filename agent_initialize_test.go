@@ -220,6 +220,29 @@ func TestAgentSideConnection_InitializeOpensTheConnection(t *testing.T) {
 	}
 }
 
+// TestAgentSideConnection_InitializeThatDoesNotEncodeKeepsTheGate checks an
+// Initialize that returns a response the connection cannot encode: the client
+// gets -32603, so the connection must stay uninitialized.
+func TestAgentSideConnection_InitializeThatDoesNotEncodeKeepsTheGate(t *testing.T) {
+	reached := make(chan string, 4)
+	agent := recordingAgent(reached, nil)
+	agent.InitializeFunc = func(context.Context, InitializeRequest) (InitializeResponse, error) {
+		return InitializeResponse{ProtocolVersion: ProtocolVersionNumber, Meta: Meta{"bad": json.RawMessage(`{`)}}, nil
+	}
+	peer := gatePeer(t, agent)
+	peer.send(initializeLine)
+	if reply := peer.await("the reply to initialize", replyToInitialize); reply.Error == nil || reply.Error.Code != -32603 {
+		t.Fatalf("initialize with an unencodable response got error %+v, want -32603", reply.Error)
+	}
+	peer.send(`{"jsonrpc":"2.0","id":1,"method":"session/new","params":` + sessionNewParams + `}`)
+	if reply := peer.await("the reply to session/new", replyTo(1)); reply.Error == nil || reply.Error.Code != -32600 {
+		t.Errorf("session/new after a failed initialize got error %+v, want -32600", reply.Error)
+	}
+	if got := drain(reached); len(got) != 0 {
+		t.Errorf("session/new after a failed initialize reached the Agent as %v", got)
+	}
+}
+
 func TestAgentSideConnection_RejectsRequestsDuringInitialize(t *testing.T) {
 	initStarted := make(chan struct{})
 	releaseInit := make(chan struct{})

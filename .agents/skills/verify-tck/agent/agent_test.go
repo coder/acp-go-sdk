@@ -210,6 +210,8 @@ func TestAgent_InvalidParams(t *testing.T) {
 	wantCode(t, "load with another cwd", err, -32602, "")
 	_, err = conn.ResumeSession(ctx, acp.ResumeSessionRequest{SessionId: sid, Cwd: t.TempDir()})
 	wantCode(t, "resume with another cwd", err, -32602, "")
+	_, err = conn.UnstableSessionOptions(ctx, acp.UnstableSessionOptionsRequest{SessionId: &sid, Cwd: t.TempDir()})
+	wantCode(t, "options for a session with another cwd", err, -32602, "")
 	_, err = conn.UnstableForkSession(ctx, acp.UnstableForkSessionRequest{SessionId: sid, Cwd: t.TempDir(), McpServers: []acp.McpServer{}, CursorId: acp.Ptr(acp.CursorId("never-issued"))})
 	wantCode(t, "fork at a cursor", err, -32602, "")
 	_, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Archived: acp.Ptr(acp.SessionArchiveFilter("sometimes"))})
@@ -251,6 +253,40 @@ func TestAgent_ReopenReplacesAdditionalDirectories(t *testing.T) {
 	}
 	if got := dirs(); len(got) != 0 {
 		t.Errorf("after a resume without additionalDirectories the session lists %v, want none", got)
+	}
+}
+
+// TestAgent_LogoutRequiresAuthentication checks the logout contract: after a
+// logout every new session needs authentication again.
+func TestAgent_LogoutRequiresAuthentication(t *testing.T) {
+	ctx := context.Background()
+	conn, _ := connect(t, acp.ClientCapabilities{})
+	sid := newSession(t, conn, t.TempDir())
+	if _, err := conn.Logout(ctx, acp.LogoutRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
+	wantCode(t, "new session after logout", err, -32000, "")
+	_, err = conn.UnstableForkSession(ctx, acp.UnstableForkSessionRequest{SessionId: sid, Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
+	wantCode(t, "fork after logout", err, -32000, "")
+	if _, err := conn.Authenticate(ctx, acp.AuthenticateRequest{MethodId: authMethod}); err != nil {
+		t.Fatal(err)
+	}
+	newSession(t, conn, t.TempDir())
+}
+
+// TestMCPServer_StopKillsAServerThatIgnoresEOF stops a stdio server that does
+// not read its stdin: the agent must kill it after mcpStopGrace.
+func TestMCPServer_StopKillsAServerThatIgnoresEOF(t *testing.T) {
+	m, err := startStdio(acp.McpServerStdio{Name: "hung", Command: "sleep", Args: []string{"60"}, Env: []acp.EnvVariable{}}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-m.stop():
+	case <-time.After(mcpStopGrace + 3*time.Second):
+		_ = m.cmd.Process.Kill()
+		t.Fatal("the server still runs after mcpStopGrace")
 	}
 }
 

@@ -148,7 +148,9 @@ func check(b baseline, r report) []drift {
 	if b.SchemaRevision != r.SchemaRevision {
 		run = append(run, drift{Expected: "spec " + b.SchemaRevision, Got: r.SchemaRevision})
 	}
-	if b.Conformant != r.Verdict.Conformant {
+	// A flaky requirement that changed status can flip the verdict; its own
+	// status is exempt, so the verdict it flips is too.
+	if b.Conformant != r.Verdict.Conformant && !flakyChanged(b, r) {
 		run = append(run, drift{Expected: conformance(b.Conformant), Got: conformance(r.Verdict.Conformant)})
 	}
 	if r.Verdict.BlockedByAuth {
@@ -181,6 +183,8 @@ func check(b baseline, r report) []drift {
 			d.Expected, d.Got = "a reason", "none"
 		case reason == todo:
 			d.Expected, d.Got = "a reason", todo
+		case reason == "" && e.Reason != "":
+			d.Expected, d.Got = "no reason", "a reason for a "+q.Status+" requirement"
 		default:
 			continue
 		}
@@ -193,6 +197,17 @@ func check(b baseline, r report) []drift {
 	}
 	slices.SortFunc(reqs, func(x, y drift) int { return strings.Compare(x.ID, y.ID) })
 	return append(run, reqs...)
+}
+
+// flakyChanged reports whether a requirement that b lists as flaky has
+// another status in r than in b.
+func flakyChanged(b baseline, r report) bool {
+	for _, q := range r.Requirements {
+		if slices.Contains(b.Flaky, q.ID) && b.Requirements[q.ID].Status != q.Status {
+			return true
+		}
+	}
+	return false
 }
 
 func conformance(ok bool) string {

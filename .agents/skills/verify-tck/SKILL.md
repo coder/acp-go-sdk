@@ -54,13 +54,14 @@ After `expected`/`got` comes the first line that says why the first test of the 
 | `expected PASS, got FAIL` (or `SKIPPED`) | A regression, or the agent no longer advertises the capability. | Fix the SDK or the agent. Accept it only with a reason in the baseline. |
 | `expected FAIL, got PASS` (or from `SKIPPED`) | An improvement. | `make tck-update`, then commit `baseline.json` with the change. |
 | `expected no entry, got ...` | The TCK has a requirement the baseline lacks (a new pin). | `make tck-update` and write its reason. |
-| `expected ..., got no requirement` | The baseline names a requirement the TCK no longer has. | `make tck-update` drops it. |
+| `expected ..., got no requirement` | The baseline names a requirement the TCK no longer has, or lists a `flaky` id the TCK no longer has (`flaky: expected a flaky requirement`). | `make tck-update` drops it. |
 | `expected tier X, got Y` | The TCK moved the requirement to another tier. | `make tck-update`. |
 | `expected a reason, got TODO` (or `none`) | A requirement that does not pass, or a flaky one, has no reason. | Write one in `baseline.json`. |
+| `expected no reason, got a reason for a PASS requirement` | A requirement that passes still has an old reason. | `make tck-update` drops it. |
 | `expected a tested requirement, got NOT_TESTED` | No test ran for the requirement: the agent died, a test was deselected or the TCK broke. | Never baselined. Find out why. |
 | `run: expected a run that authenticated, got blocked_by_auth` | The TCK could not authenticate, so it skipped every session test. | Never baselined. Check `--auth-method` in `run.sh` against `authMethod` in `agent/agent.go`. |
 | `run: expected a run that negotiated the protocol version, got blocked_by_version_mismatch` | The agent did not answer protocol version 1. | Never baselined. |
-| `run: expected conformant, got not conformant` (or the reverse) | The TCK's verdict changed. | Follows from the other lines. |
+| `run: expected conformant, got not conformant` (or the reverse) | The TCK's verdict changed. Not reported when a `flaky` requirement changed status, since that alone can flip it. | Follows from the other lines. |
 | `run: expected tck 0.5.0, got ...` (or `spec`) | The report comes from another TCK pin than the baseline. | Rerun `make tck-update` after a pin bump. |
 
 `make tck-update` rewrites `baseline.json` from the report. It keeps the reason of every requirement still there, drops the reason of a requirement that now passes, writes `"reason": "TODO"` for one that needs a reason and has none, and then checks the new baseline, so it exits 1 until each TODO has a reason. Review the diff of `baseline.json` before you commit it.
@@ -90,7 +91,7 @@ The agent keeps its sessions in memory. It advertises the same capabilities what
 | --- | --- |
 | `loadSession` | Replays the session's history (user prompts, agent messages, tool calls, plans) before it answers. |
 | `promptCapabilities.image`, `audio`, `embeddedContext` | Accepts the blocks and describes them back. |
-| `auth.logout`, `auth.status`, auth method `tck` | Logs in and out in memory, so `--auth-method tck --allow-logout` revokes nothing real. |
+| `auth.logout`, `auth.status`, auth method `tck` | Logs in and out in memory, so `--auth-method tck --allow-logout` revokes nothing real. After a logout, `session/new` and `session/fork` get -32000 until the next `authenticate`. |
 | `sessionCapabilities.list` | One page in creation order, filtered by `cwd` and by `archived`. It issues no cursor, so any cursor gets -32602. |
 | `close`, `delete` | Cancel the running turn and stop the session's MCP servers. Both succeed for a session that does not exist. |
 | `resume`, `fork` | Resume without replay; fork copies the history and config. It issues no cursor, so a fork at any `cursorId` gets -32602. |
@@ -98,7 +99,7 @@ The agent keeps its sessions in memory. It advertises the same capabilities what
 | `options` | `session/options` and initial `configOptions` on new, load, resume and fork: an option named twice gets -32602, an unknown option or value is skipped. |
 | `additionalDirectories`, `systemPrompt` (append) | Accepts absolute directories and text system prompts; rejects anything else with -32602. |
 | modes, config options | Modes `ask` and `code`, a `model` select, and a `web_search` boolean only for a client that accepts booleans. |
-| stdio MCP servers | Starts each one with its `env` as environment variables and sends MCP `initialize`, then `notifications/initialized`. |
+| stdio MCP servers | Starts each one with its `env` as environment variables and sends MCP `initialize`, then `notifications/initialized`. Stopping one closes its stdin and kills it if it has not exited 2 s later (`mcpStopGrace`). |
 
 The client capabilities it honors: `plan` (a markdown `plan_update` with an absolute path, else baseline `plan` entries), `session.promptSuggestions` (a suggestion after each turn, cleared at the next prompt, never replayed), `subagents` (the two subagent prompts below). It never calls `fs/*`, `terminal/*` or `elicitation/create`.
 

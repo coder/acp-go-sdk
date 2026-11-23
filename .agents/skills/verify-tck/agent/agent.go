@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -72,7 +71,10 @@ type agent struct {
 	// caps are the client's capabilities from initialize.
 	caps          acp.ClientCapabilities
 	authenticated bool
-	sessions      map[acp.SessionId]*session
+	// loggedOut is set by a logout and cleared by authenticate. Between them
+	// a new session gets -32000, as the logout contract asks.
+	loggedOut bool
+	sessions  map[acp.SessionId]*session
 	// children are the subagent sessions the agent announced, each with
 	// the func that cancels its work (nil for a child that cannot be
 	// cancelled). The client did not create them and cannot address them.
@@ -106,7 +108,7 @@ type session struct {
 	// suggesting says a non-empty list of prompt suggestions is current.
 	suggesting bool
 	// mcp holds the stdin of each stdio MCP server the session started.
-	mcp []io.WriteCloser
+	mcp []*mcpServer
 }
 
 func newAgent(p prompts) *agent {
@@ -128,12 +130,22 @@ func (a *agent) client() *acp.AgentSideConnection {
 	return a.conn
 }
 
-// shutdown stops every MCP server the sessions started.
+// shutdown stops every MCP server the sessions started and waits until each
+// has exited, at most a little longer than mcpStopGrace.
 func (a *agent) shutdown() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	var exited []<-chan struct{}
 	for _, s := range a.sessions {
-		s.stopMCP()
+		exited = append(exited, s.stopMCP()...)
+	}
+	a.mu.Unlock()
+	deadline := time.After(mcpStopGrace + time.Second)
+	for _, ch := range exited {
+		select {
+		case <-ch:
+		case <-deadline:
+			return
+		}
 	}
 }
 
@@ -217,6 +229,7 @@ func (a *agent) Authenticate(ctx context.Context, p acp.AuthenticateRequest) (ac
 	}
 	a.mu.Lock()
 	a.authenticated = true
+	a.loggedOut = false
 	a.mu.Unlock()
 	return acp.AuthenticateResponse{}, nil
 }
@@ -224,6 +237,7 @@ func (a *agent) Authenticate(ctx context.Context, p acp.AuthenticateRequest) (ac
 func (a *agent) Logout(ctx context.Context, p acp.LogoutRequest) (acp.LogoutResponse, error) {
 	a.mu.Lock()
 	a.authenticated = false
+	a.loggedOut = true
 	a.mu.Unlock()
 	return acp.LogoutResponse{}, nil
 }
@@ -325,6 +339,10 @@ func (a *agent) NewSession(ctx context.Context, p acp.NewSessionRequest) (acp.Ne
 		return acp.NewSessionResponse{}, err
 	}
 	a.mu.Lock()
+	if a.loggedOut {
+		a.mu.Unlock()
+		return acp.NewSessionResponse{}, acp.NewAuthRequired(nil)
+	}
 	s, servers := a.add(st, nil)
 	resp := acp.NewSessionResponse{SessionId: s.id, Modes: s.modes(), ConfigOptions: s.configOptions(a.booleans())}
 	a.mu.Unlock()
@@ -343,6 +361,10 @@ func (a *agent) UnstableForkSession(ctx context.Context, p acp.UnstableForkSessi
 		return acp.UnstableForkSessionResponse{}, invalid("unknown cursorId: the agent never issues a cursor", "cursorId", *p.CursorId)
 	}
 	a.mu.Lock()
+	if a.loggedOut {
+		a.mu.Unlock()
+		return acp.UnstableForkSessionResponse{}, acp.NewAuthRequired(nil)
+	}
 	from, err := a.lookup(p.SessionId, false)
 	if err != nil {
 		a.mu.Unlock()
@@ -429,6 +451,9 @@ func (a *agent) UnstableSessionOptions(ctx context.Context, p acp.UnstableSessio
 	if p.SessionId != nil {
 		var err error
 		if s, err = a.lookup(*p.SessionId, false); err != nil {
+			return acp.UnstableSessionOptionsResponse{}, err
+		}
+		if err := reopenable(s, setup{cwd: p.Cwd}); err != nil {
 			return acp.UnstableSessionOptionsResponse{}, err
 		}
 	}

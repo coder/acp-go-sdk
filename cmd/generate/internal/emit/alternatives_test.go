@@ -199,7 +199,7 @@ func TestWriteTypesJen_UnionKeepsEveryKindOfAlternative(t *testing.T) {
 	}
 }
 
-// realUnions are the $defs entries of schema 1.32.0 whose alternatives are not
+// realUnions are the $defs entries of schema.json whose alternatives are not
 // objects, with the G2 transcript values of each: ElicitationContentValue
 // holds the content members of a "create elicitation" response, and
 // SessionConfigSelectOptions the options of a "select" config option.
@@ -239,7 +239,7 @@ var realUnions = map[string]func(msg map[string]any) []any{
 	},
 }
 
-// The unions of schema 1.32.0 whose alternatives are strings, numbers,
+// The unions of schema.json whose alternatives are strings, numbers,
 // booleans, and arrays have titles, under anyOf. Their recorded values must
 // decode and encode back with the titles too, without them, and under oneOf.
 func TestWriteTypesJen_RealUnionValuesRoundTripUnderEveryForm(t *testing.T) {

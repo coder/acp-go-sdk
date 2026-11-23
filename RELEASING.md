@@ -71,13 +71,13 @@ publishes it.
 The [Release workflow](.github/workflows/release.yaml) tags the release commit,
 creates the GitHub release, and waits until the Go module proxy serves the new
 version. Run it from `main` after the release PR merges. The examples use
-`v0.21.0` and ACP schema `1.32.0`.
+`v0.21.0` and ACP schema `1.34.1`.
 
 1. Start a dry run. In the **Actions** tab, open **Release**, and choose
    **Run workflow**. Enter the version, and check **dry_run**. Or run:
 
    ```bash
-   gh workflow run release.yaml --ref main -f version=0.21.0 -f schema=1.32.0 -f dry_run=true
+   gh workflow run release.yaml --ref main -f version=0.21.0 -f schema=1.34.1 -f dry_run=true
    ```
 
    A dry run runs only the `preflight` job and writes nothing. The `schema`
@@ -96,7 +96,7 @@ version. Run it from `main` after the release PR merges. The examples use
 1. Start the real run with the same inputs and without `dry_run`:
 
    ```bash
-   gh workflow run release.yaml --ref main -f version=0.21.0 -f schema=1.32.0
+   gh workflow run release.yaml --ref main -f version=0.21.0 -f schema=1.34.1
    ```
 
 1. GitHub holds the `publish` job until ThomasK33 approves it. Open the run,
@@ -137,9 +137,9 @@ plan from its outputs and compute nothing again.
   before it writes anything when one is missing. Just before it creates the tag,
   it checks again that the ruleset `preflight` found still protects the `v*`
   tags. It signs as `coder-release-publisher` and creates the annotated tag
-  `v0.21.0` with the message `v0.21.0 (ACP schema 1.32.0)`. It never creates the
+  `v0.21.0` with the message `v0.21.0 (ACP schema 1.34.1)`. It never creates the
   tag with `GITHUB_TOKEN`. It creates the GitHub release `v0.21.0`, with the
-  notes `ACP schema 1.32.0`, with `GITHUB_TOKEN`. A version with a `-`, such as
+  notes `ACP schema 1.34.1`, with `GITHUB_TOKEN`. A version with a `-`, such as
   `0.21.0-rc.1`, becomes a prerelease.
 - `proxy` asks `proxy.golang.org` for the new version for about 12 minutes. It
   passes when the proxy serves the version, and the proxy's archive hash equals

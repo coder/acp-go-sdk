@@ -6,7 +6,7 @@ package acp
 const ProtocolVersionNumber = 1
 
 // SchemaVersion is the ACP schema release that this SDK's generated code targets.
-const SchemaVersion = "1.32.0"
+const SchemaVersion = "1.34.1"
 
 // Agent method names
 const (

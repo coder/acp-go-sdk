@@ -53,7 +53,7 @@ func TestWriteTypesJen_TypesKeepTheNamesTheyAreRegisteredUnder(t *testing.T) {
 	checkGenerated(t, typeNamesSchema, map[string]string{"names_test.go": typeNamesTest})
 }
 
-// renamedCopiesTest decodes real messages into the union of schema 1.32.0
+// renamedCopiesTest decodes real messages into the union of schema.json
 // and into its copy under another name, and requires the same result.
 const renamedCopiesTest = `package acp
 
@@ -126,7 +126,7 @@ func TestRenamedCopies_DecodeRealMessagesAsTheOriginals(t *testing.T) {
 `
 
 // TestWriteTypesJen_RenamedCopiesOfRealUnionsDecodeRealMessages generates
-// schema 1.32.0 with two copies of real unions under names that the
+// schema.json with two copies of real unions under names that the
 // generator must not re-case: SessionUpdate as U, and AuthMethod as
 // ACPAuthMethod, whose agent variant refers to ACPAuthMethodAgent, a copy of
 // AuthMethodAgent. The generated package decodes the session updates and auth
@@ -149,7 +149,7 @@ func TestWriteTypesJen_RenamedCopiesOfRealUnionsDecodeRealMessages(t *testing.T)
 	}
 	renamed := strings.ReplaceAll(string(authMethod), `"#/$defs/AuthMethodAgent"`, `"#/$defs/ACPAuthMethodAgent"`)
 	if renamed == string(authMethod) {
-		t.Fatal("AuthMethod of schema 1.32.0 does not refer to AuthMethodAgent")
+		t.Fatal("AuthMethod of schema.json does not refer to AuthMethodAgent")
 	}
 	defs["ACPAuthMethod"] = json.RawMessage(renamed)
 	defs["ACPAuthMethodAgent"] = defs["AuthMethodAgent"]

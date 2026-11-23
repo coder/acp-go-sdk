@@ -270,7 +270,7 @@ func TestThreadedNotification_DecodesRealUpdatesAndTheirParents(t *testing.T) {
 `
 
 // TestWriteTypesJen_RecursiveCopyOfARealDefDecodesRealMessages generates
-// schema 1.32.0 with ThreadedNotification, a copy of SessionNotification with
+// schema.json with ThreadedNotification, a copy of SessionNotification with
 // an optional parent of its own type in the form that ACP gives a described
 // member, an allOf of one $ref. The generated package decodes the
 // session/update params of the G2 transcripts with it, alone and with the

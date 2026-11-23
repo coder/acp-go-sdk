@@ -189,7 +189,7 @@ func (t *shapeTable) node(d *load.Definition, a approx) *shapeNode {
 	ref := d.Ref
 	for _, part := range d.AllOf {
 		// A node holds one $ref, and every allOf from schema 0.13.5 through
-		// 1.32.0 wraps one $ref. The other parts are lost.
+		// 1.34.1 wraps one $ref. The other parts are lost.
 		if ref == "" && part != nil && part.Ref != "" && (a == over || t.node(part, under).onlyRef()) {
 			ref = part.Ref
 			continue

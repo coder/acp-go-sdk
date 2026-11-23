@@ -1388,6 +1388,7 @@ func (v *ClientSessionCapabilities) decodeFast(b []byte) bool {
 		Meta              []byte
 		Compaction        []byte
 		ConfigOptions     []byte
+		Cursors           []byte
 		Notices           []byte
 		PromptSuggestions []byte
 	}
@@ -1407,6 +1408,10 @@ func (v *ClientSessionCapabilities) decodeFast(b []byte) bool {
 			}
 		case "configoptions":
 			if string(w.key) != "configOptions" || !w.once(&raw.ConfigOptions) {
+				return false
+			}
+		case "cursors":
+			if string(w.key) != "cursors" || !w.once(&raw.Cursors) {
 				return false
 			}
 		case "notices":
@@ -1432,6 +1437,9 @@ func (v *ClientSessionCapabilities) decodeFast(b []byte) bool {
 	})
 	fastLenient(raw.ConfigOptions, &v.ConfigOptions, func(d **SessionConfigOptionsCapabilities, b []byte) bool {
 		return fastPtr(d, b, (*SessionConfigOptionsCapabilities).decodeFast)
+	})
+	fastLenient(raw.Cursors, &v.Cursors, func(d **SessionCursorsCapabilities, b []byte) bool {
+		return fastPtr(d, b, (*SessionCursorsCapabilities).decodeFast)
 	})
 	fastLenient(raw.Notices, &v.Notices, func(d **NoticeCapabilities, b []byte) bool {
 		return fastPtr(d, b, (*NoticeCapabilities).decodeFast)
@@ -2791,6 +2799,624 @@ func (v *CurrentModeUpdate) decodeFast(b []byte) bool {
 	}
 	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
 	if !(raw.CurrentModeId != nil && string(raw.CurrentModeId) != "null") && (maybeAbsent(&v.CurrentModeId)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorAnchorUserMessage) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta      []byte
+		MessageId []byte
+		Position  []byte
+		Type      []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "messageid":
+			if string(w.key) != "messageId" || !w.once(&raw.MessageId) || !v.MessageId.decodeFast(raw.MessageId) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		case "type":
+			if string(w.key) != "type" || !w.once(&raw.Type) || !fastString(&v.Type, raw.Type) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.MessageId != nil && string(raw.MessageId) != "null" && raw.Position != nil && string(raw.Position) != "null" && raw.Type != nil && string(raw.Type) != "null") && (maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorAnchorAgentMessage) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta      []byte
+		MessageId []byte
+		Position  []byte
+		Type      []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "messageid":
+			if string(w.key) != "messageId" || !w.once(&raw.MessageId) || !v.MessageId.decodeFast(raw.MessageId) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		case "type":
+			if string(w.key) != "type" || !w.once(&raw.Type) || !fastString(&v.Type, raw.Type) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.MessageId != nil && string(raw.MessageId) != "null" && raw.Position != nil && string(raw.Position) != "null" && raw.Type != nil && string(raw.Type) != "null") && (maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorAnchorAgentThought) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta      []byte
+		MessageId []byte
+		Position  []byte
+		Type      []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "messageid":
+			if string(w.key) != "messageId" || !w.once(&raw.MessageId) || !v.MessageId.decodeFast(raw.MessageId) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		case "type":
+			if string(w.key) != "type" || !w.once(&raw.Type) || !fastString(&v.Type, raw.Type) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.MessageId != nil && string(raw.MessageId) != "null" && raw.Position != nil && string(raw.Position) != "null" && raw.Type != nil && string(raw.Type) != "null") && (maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorAnchorSessionMessage) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta      []byte
+		MessageId []byte
+		Position  []byte
+		Type      []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "messageid":
+			if string(w.key) != "messageId" || !w.once(&raw.MessageId) || !v.MessageId.decodeFast(raw.MessageId) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		case "type":
+			if string(w.key) != "type" || !w.once(&raw.Type) || !fastString(&v.Type, raw.Type) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.MessageId != nil && string(raw.MessageId) != "null" && raw.Position != nil && string(raw.Position) != "null" && raw.Type != nil && string(raw.Type) != "null") && (maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorAnchorToolCall) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta       []byte
+		Position   []byte
+		ToolCallId []byte
+		Type       []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		case "toolcallid":
+			if string(w.key) != "toolCallId" || !w.once(&raw.ToolCallId) || !v.ToolCallId.decodeFast(raw.ToolCallId) {
+				return false
+			}
+		case "type":
+			if string(w.key) != "type" || !w.once(&raw.Type) || !fastString(&v.Type, raw.Type) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.Position != nil && string(raw.Position) != "null" && raw.ToolCallId != nil && string(raw.ToolCallId) != "null" && raw.Type != nil && string(raw.Type) != "null") && (maybeAbsent(&v.Position) || maybeAbsent(&v.ToolCallId) || maybeAbsent(&v.Type)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorAnchorCompaction) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta         []byte
+		CompactionId []byte
+		Position     []byte
+		Type         []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "compactionid":
+			if string(w.key) != "compactionId" || !w.once(&raw.CompactionId) || !v.CompactionId.decodeFast(raw.CompactionId) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		case "type":
+			if string(w.key) != "type" || !w.once(&raw.Type) || !fastString(&v.Type, raw.Type) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.CompactionId != nil && string(raw.CompactionId) != "null" && raw.Position != nil && string(raw.Position) != "null" && raw.Type != nil && string(raw.Type) != "null") && (maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Position) || maybeAbsent(&v.Type)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorAnchorOther) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Type []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "type":
+			if string(w.key) != "type" || !w.once(&raw.Type) || !fastString(&v.Type, raw.Type) {
+				return false
+			}
+		default:
+			if !w.keep(&v.AdditionalProperties) {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	if !(raw.Type != nil && string(raw.Type) != "null") && (maybeAbsent(&v.Type)) {
+		return false
+	}
+	return true
+}
+
+func (u *CursorAnchor) decodeFast(b []byte) bool {
+	// null selects the null variant and no other.
+	if b[0] == 'n' {
+		return false
+	}
+	m, err := readUnionObject(b)
+	if err != nil {
+		return false
+	}
+	if m.isObject {
+		disc := string(m.tag("type"))
+		switch disc {
+		case "user_message":
+			var v CursorAnchorUserMessage
+			if fastOrExact(&v, b, (*CursorAnchorUserMessage).decodeFast) {
+				u.UserMessage = &v
+				return true
+			}
+		case "agent_message":
+			var v CursorAnchorAgentMessage
+			if fastOrExact(&v, b, (*CursorAnchorAgentMessage).decodeFast) {
+				u.AgentMessage = &v
+				return true
+			}
+		case "agent_thought":
+			var v CursorAnchorAgentThought
+			if fastOrExact(&v, b, (*CursorAnchorAgentThought).decodeFast) {
+				u.AgentThought = &v
+				return true
+			}
+		case "session_message":
+			var v CursorAnchorSessionMessage
+			if fastOrExact(&v, b, (*CursorAnchorSessionMessage).decodeFast) {
+				u.SessionMessage = &v
+				return true
+			}
+		case "tool_call":
+			var v CursorAnchorToolCall
+			if fastOrExact(&v, b, (*CursorAnchorToolCall).decodeFast) {
+				u.ToolCall = &v
+				return true
+			}
+		case "compaction":
+			var v CursorAnchorCompaction
+			if fastOrExact(&v, b, (*CursorAnchorCompaction).decodeFast) {
+				u.Compaction = &v
+				return true
+			}
+		}
+		{
+			match := true
+			if raw, _ := m.get("type"); !isJSONString(raw) {
+				match = false
+			}
+			switch disc {
+			case "user_message", "agent_message", "agent_thought", "session_message", "tool_call", "compaction":
+				match = false
+			}
+			if match {
+				var v CursorAnchorOther
+				if fastOrExact(&v, b, (*CursorAnchorOther).decodeFast) {
+					u.Other = &v
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (v *CursorAnchorPosition) decodeFast(b []byte) bool {
+	return fastString(v, b)
+}
+
+func (v *CursorCapabilities) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta []byte
+		Fork []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "fork":
+			if string(w.key) != "fork" || !w.once(&raw.Fork) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	fastLenient(raw.Fork, &v.Fork, func(d **CursorForkCapabilities, b []byte) bool {
+		return fastPtr(d, b, (*CursorForkCapabilities).decodeFast)
+	})
+	return true
+}
+
+func (v *CursorCompactionAnchor) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta         []byte
+		CompactionId []byte
+		Position     []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "compactionid":
+			if string(w.key) != "compactionId" || !w.once(&raw.CompactionId) || !v.CompactionId.decodeFast(raw.CompactionId) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.CompactionId != nil && string(raw.CompactionId) != "null" && raw.Position != nil && string(raw.Position) != "null") && (maybeAbsent(&v.CompactionId) || maybeAbsent(&v.Position)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorForkCapabilities) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	return true
+}
+
+func (v *CursorId) decodeFast(b []byte) bool {
+	return fastString(v, b)
+}
+
+func (v *CursorMessageAnchor) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta      []byte
+		MessageId []byte
+		Position  []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "messageid":
+			if string(w.key) != "messageId" || !w.once(&raw.MessageId) || !v.MessageId.decodeFast(raw.MessageId) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.MessageId != nil && string(raw.MessageId) != "null" && raw.Position != nil && string(raw.Position) != "null") && (maybeAbsent(&v.MessageId) || maybeAbsent(&v.Position)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorToolCallAnchor) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta       []byte
+		Position   []byte
+		ToolCallId []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "position":
+			if string(w.key) != "position" || !w.once(&raw.Position) || !v.Position.decodeFast(raw.Position) {
+				return false
+			}
+		case "toolcallid":
+			if string(w.key) != "toolCallId" || !w.once(&raw.ToolCallId) || !v.ToolCallId.decodeFast(raw.ToolCallId) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	if !(raw.Position != nil && string(raw.Position) != "null" && raw.ToolCallId != nil && string(raw.ToolCallId) != "null") && (maybeAbsent(&v.Position) || maybeAbsent(&v.ToolCallId)) {
+		return false
+	}
+	return true
+}
+
+func (v *CursorUpdate) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta         []byte
+		Anchor       []byte
+		Capabilities []byte
+		CursorId     []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "anchor":
+			if string(w.key) != "anchor" || !w.once(&raw.Anchor) || !fastPatch(&v.Anchor, raw.Anchor, (*CursorAnchor).decodeFast) {
+				return false
+			}
+		case "capabilities":
+			if string(w.key) != "capabilities" || !w.once(&raw.Capabilities) {
+				return false
+			}
+		case "cursorid":
+			if string(w.key) != "cursorId" || !w.once(&raw.CursorId) || !v.CursorId.decodeFast(raw.CursorId) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastPatchLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	fastPatchLenient(raw.Capabilities, &v.Capabilities, (*CursorCapabilities).decodeFast)
+	if !(raw.CursorId != nil && string(raw.CursorId) != "null") && (maybeAbsent(&v.CursorId)) {
 		return false
 	}
 	return true
@@ -8639,6 +9265,10 @@ func (v *SessionConfigValueId) decodeFast(b []byte) bool {
 	return fastString(v, b)
 }
 
+func (v *SessionCursorsCapabilities) decodeFast(b []byte) bool {
+	return fastEmpty(b)
+}
+
 func (v *SessionDeleteCapabilities) decodeFast(b []byte) bool {
 	// raw holds the value of each member, nil while it is absent.
 	var raw struct {
@@ -10216,6 +10846,58 @@ func (v *SessionPromptSuggestionsUpdate) decodeFast(b []byte) bool {
 	return true
 }
 
+func (v *SessionCursorUpdate) decodeFast(b []byte) bool {
+	// raw holds the value of each member, nil while it is absent.
+	var raw struct {
+		Meta          []byte
+		Anchor        []byte
+		Capabilities  []byte
+		CursorId      []byte
+		SessionUpdate []byte
+	}
+	var w fastObject
+	if !w.start(b) {
+		return false
+	}
+	for w.next() {
+		switch string(w.folded()) {
+		case "_meta":
+			if string(w.key) != "_meta" || !w.once(&raw.Meta) {
+				return false
+			}
+		case "anchor":
+			if string(w.key) != "anchor" || !w.once(&raw.Anchor) || !fastPatch(&v.Anchor, raw.Anchor, (*CursorAnchor).decodeFast) {
+				return false
+			}
+		case "capabilities":
+			if string(w.key) != "capabilities" || !w.once(&raw.Capabilities) {
+				return false
+			}
+		case "cursorid":
+			if string(w.key) != "cursorId" || !w.once(&raw.CursorId) || !v.CursorId.decodeFast(raw.CursorId) {
+				return false
+			}
+		case "sessionupdate":
+			if string(w.key) != "sessionUpdate" || !w.once(&raw.SessionUpdate) || !fastString(&v.SessionUpdate, raw.SessionUpdate) {
+				return false
+			}
+		default:
+			if !w.skip() {
+				return false
+			}
+		}
+	}
+	if !w.done() {
+		return false
+	}
+	fastPatchLenient(raw.Meta, &v.Meta, (*Meta).decodeFast)
+	fastPatchLenient(raw.Capabilities, &v.Capabilities, (*CursorCapabilities).decodeFast)
+	if !(raw.CursorId != nil && string(raw.CursorId) != "null" && raw.SessionUpdate != nil && string(raw.SessionUpdate) != "null") && (maybeAbsent(&v.CursorId) || maybeAbsent(&v.SessionUpdate)) {
+		return false
+	}
+	return true
+}
+
 func (v *SessionSubagentUpdate) decodeFast(b []byte) bool {
 	// raw holds the value of each member, nil while it is absent.
 	var raw struct {
@@ -10528,6 +11210,12 @@ func (u *SessionUpdate) decodeFast(b []byte) bool {
 			var v SessionPromptSuggestionsUpdate
 			if fastOrExact(&v, b, (*SessionPromptSuggestionsUpdate).decodeFast) {
 				u.PromptSuggestionsUpdate = &v
+				return true
+			}
+		case "cursor_update":
+			var v SessionCursorUpdate
+			if fastOrExact(&v, b, (*SessionCursorUpdate).decodeFast) {
+				u.CursorUpdate = &v
 				return true
 			}
 		case "subagent_update":
@@ -12913,6 +13601,7 @@ func (v *UnstableForkSessionRequest) decodeFast(b []byte) bool {
 		Meta                  []byte
 		AdditionalDirectories []byte
 		ConfigOptions         []byte
+		CursorId              []byte
 		Cwd                   []byte
 		McpServers            []byte
 		SessionId             []byte
@@ -12934,6 +13623,10 @@ func (v *UnstableForkSessionRequest) decodeFast(b []byte) bool {
 			}
 		case "configoptions":
 			if string(w.key) != "configOptions" || !w.once(&raw.ConfigOptions) || !fastSlice(&v.ConfigOptions, raw.ConfigOptions, (*InitialSessionConfigOption).decodeFast) {
+				return false
+			}
+		case "cursorid":
+			if string(w.key) != "cursorId" || !w.once(&raw.CursorId) || !fastPtr(&v.CursorId, raw.CursorId, (*CursorId).decodeFast) {
 				return false
 			}
 		case "cwd":

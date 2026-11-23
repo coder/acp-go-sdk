@@ -1,6 +1,6 @@
 # Proxy
 
-A user puts a proxy built on the SDK between an editor and an agent, inside a proxy chain that a conductor runs. The conductor sends the proxy `proxy/initialize` instead of `initialize`, sends it the editor's messages as they are, and carries everything to and from the agent in `proxy/successor` envelopes. `example/proxy` puts `[proxy] ` in front of the text of each `agent_message_chunk` that comes from its successor, and passes every other message on unchanged. Here `acpwire` plays the conductor on both sides of the proxy: the editor's side with plain methods, and the successor's side with envelopes and the answers that the journey writes. The proxy methods are unstable in ACP schema 1.32.0.
+A user puts a proxy built on the SDK between an editor and an agent, inside a proxy chain that a conductor runs. The conductor sends the proxy `proxy/initialize` instead of `initialize`, sends it the editor's messages as they are, and carries everything to and from the agent in `proxy/successor` envelopes. `example/proxy` puts `[proxy] ` in front of the text of each `agent_message_chunk` that comes from its successor, and passes every other message on unchanged. Here `acpwire` plays the conductor on both sides of the proxy: the editor's side with plain methods, and the successor's side with envelopes and the answers that the journey writes. The proxy methods are unstable in ACP schema 1.34.1.
 
 ## Sub-features
 

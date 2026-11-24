@@ -91,6 +91,13 @@ test: $(GO_FILES)
 	# The TCK run itself is make tck.
 	cd .agents/skills/verify-tck && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
 	cd .agents/skills/verify-tck && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
+	cd scripts/modzip && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
+
+# Run the tests in the module zip that the Go proxy would serve, where every
+# folder with a go.mod of its own is missing (scripts/test-module-zip).
+.PHONY: test-module-zip
+test-module-zip:
+	GOCACHE=$(GOCACHE) scripts/test-module-zip
 
 # Run the ACP Test Compatibility Kit (acp-tck) against the conformance agent
 # and fail when the results drift from the baseline (see

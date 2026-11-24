@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Run the SDK's tests in the module zip that the Go proxy would serve for the
+# checkout (uncommitted changes included). The zip leaves out every folder
+# with a go.mod of its own (testdata/bench, cmd/generate, scripts/modzip and
+# the verify skills that are modules), so a test that reads a file from one of
+# them passes in the checkout and fails in a consumer's `go test all`. Such a
+# test must read the file through repoFiles (repo_files_test.go), which skips
+# in the module zip.
+#
+#   scripts/test-module-zip
+#
+# Environment:
+#   MODZIP_OUT  folder to unpack the module into (default: a temp folder,
+#               removed afterwards)
+set -euo pipefail
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+if [ -n "${MODZIP_OUT:-}" ]; then
+	out=$MODZIP_OUT
+	rm -rf "$out"
+else
+	out=$(mktemp -d "${TMPDIR:-/tmp}/acp-modzip.XXXXXX")
+	trap 'chmod -R u+w "$out" 2>/dev/null || true; rm -rf "$out"' EXIT
+fi
+(cd "$root/scripts/modzip" && go run . -repo "$root" -out "$out")
+
+cd "$out"
+export GOWORK=off GOFLAGS=-mod=mod
+if ! go vet ./... || ! go test ./...; then
+	echo >&2
+	echo "test-module-zip: the tests fail in the module zip (set MODZIP_OUT=<dir> to keep it)." >&2
+	echo "A test that reads a file from a folder with its own go.mod must use repoFiles (repo_files_test.go)." >&2
+	exit 1
+fi

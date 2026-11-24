@@ -43,6 +43,11 @@ jobs:
       - name: Make tests
         run: mise exec -- make test
 
+      # The module zip that the Go proxy serves leaves out every folder with a
+      # go.mod of its own; a test that reads one fails here.
+      - name: Test the module zip
+        run: mise exec -- make test-module-zip
+
   # Runs the ACP Test Compatibility Kit against the SDK's conformance agent
   # and fails when a result drifts from .agents/skills/verify-tck/baseline.json.
   tck:

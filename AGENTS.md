@@ -18,7 +18,7 @@ Core SDK code lives at the repo root (`agent.go`, `client.go`, `connection.go`, 
 
 ## Coding Style & Naming Conventions
 
-Target Go 1.21 idioms: tabs for indentation, short receiver names, and CamelCase for exported symbols (`AgentLoader`), lowerCamelCase for unexported helpers. Prefer table-driven tests and keep files focused on a single protocol concern. Run `make fmt` or `gofumpt -w .` to normalize spacing, imports, and composite literals before sending a change.
+Target Go 1.21 idioms: tabs for indentation, short receiver names, and CamelCase for exported symbols (`AgentLoader`), lowerCamelCase for unexported helpers. Prefer table-driven tests and keep files focused on a single protocol concern. Run `make fmt` before sending a change: it runs `gofmt` (through `treefmt`), which `make check` enforces. Do not run `gofumpt -w .`: it rewrites files outside your change that the repo formats with `gofmt`, generated ones included.
 
 ## Testing Guidelines
 
@@ -31,3 +31,18 @@ Write commit subjects in the imperative mood (`Add request codec`, `Fix session 
 ## Code Generation & Schema Updates
 
 Schema bumps originate from `schema/version`. After editing it, run `make generate` to re-fetch upstream JSON and regenerate bindings. Commit the updated schemas, generated Go, and `schema/version` together so reviewers can track protocol changes. The top-level `version` file is the SDK's own semver: bump it only in a release PR (see `RELEASING.md`).
+
+## Rules and what enforces them
+
+Each rule came from a mistake that reached review at least twice. When a rule has a check, the check is the rule: fix what it reports. When nothing enforces a rule and the mistake happens again, add a check (or change the code so the mistake cannot be written) in the same change, and update this table. Drop a row once its mistake cannot happen.
+
+| Rule | Enforced by |
+| --- | --- |
+| A test reads a file from a folder with its own `go.mod` (`testdata/bench`, `cmd/generate`, the verify skills that are modules) only through `repoFiles` (`repo_files_test.go`). | `make test-module-zip` in CI |
+| A model-to-code table in a skill with a `fingerprint.txt` names the function and quotes the code, never a line number. | `scripts/check-code-citations` in `make check` |
+| A change to code that a TLA+ model covers reruns that skill's `check.sh` and commits its `fingerprint.txt` in the same change. | `scripts/check-model-fingerprints` in `make check` (TLC itself runs by hand) |
+| A value from the wire or the schema that can exceed 2^31 is not held in `int`. | `make test-386` in CI, for values that a test reaches |
+| A doc does not state a count of something on `main` that the next PR can change (types, methods, cases); count only what a tag fixes, or give the command that counts. | Nothing: judgment |
+| Every sentence a change adds or keeps in a migration guide, README or doc comment is true for the code at the head, including each "before" clause against the old tag; every Go snippet compiles. | Nothing: a verifier reads each sentence |
+| A new assertion fails on the defect it guards: break the code, watch the test fail, restore it. | Nothing: judgment |
+| A fix covers every entry point and schema form that reaches the broken code, not only the one in the report. | Nothing: judgment |

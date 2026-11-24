@@ -20,6 +20,7 @@ go build ./...
 | A `null` in a `tool_call_update` field, or in `_meta` of a `session_info_update`, reads as unset, and `PatchNull` there is left out | [Null in a tool call update](#null-in-a-tool-call-update) |
 | An object that holds one of its properties twice fails to decode | [Duplicate members](#duplicate-members) |
 | A `cursor_update` session update (unstable) decodes into `SessionUpdate.CursorUpdate`, where v0.20.0 failed to decode it | [Schema 1.34.1](#schema-1341) |
+| `AgentSideConnection` answers a request before a successful `initialize` with `-32600` and drops a notification | [Requests before initialize](#requests-before-initialize) |
 
 ## Required members
 
@@ -368,3 +369,14 @@ v0.21.0 is generated from ACP schema 1.34.1, up from 1.32.0, and `acp.SchemaVers
 - **What reaches your handlers.** v0.20.0 did not decode a `cursor_update` session update: the connection dropped it and logged it at Error. v0.21.0 passes it to your `SessionUpdate` method with `CursorUpdate` set, so a switch over the variants of `SessionUpdate` meets a new case. The schema lets an agent send it only to a client that advertised `session.cursors`. An `UnstableForkSession` method now sees `CursorId`. The schema says to reject with `-32602` an ID that the agent did not announce on the source session, or whose cursor does not advertise `capabilities.fork`, and not to fork the whole session.
 - **Stable since schema 1.34.0.** Plan updates (`plan_update`, `plan_removed`, `PlanCapabilities`), subagent sessions (`subagent_update`, `SubagentCapabilities`, `SessionReference`), the `session_message` and `session_message_chunk` updates, `StateUpdate` with its variants, and `SessionCancelCapabilities` moved from the unstable schema to the stable one, all but the `usage` member of an idle state, which the stable schema does not define. The SDK already generated them from the unstable schema, so their Go names and their decoding stay the same, and none of their type doc comments carries the `**UNSTABLE**` marker any more. The `Usage` field of each idle variant, such as `IdleStateUpdateEndTurn.Usage` and `StateUpdateIdleEndTurn.Usage`, keeps it.
 - **Deserialize hints.** Schema 1.34.0 removed the spec text on malformed values and kept the `x-deserialize-*` hints. The stable schema gained 34 of them, 32 `x-deserialize-default-on-error` and 2 `x-deserialize-skip-invalid-items`, all on properties that the unstable schema, which the SDK reads, already marked, so no decoder changes. Schema 1.34.1 only renames one doc link, from "Cancellation" to "Request Cancellation".
+
+## Requests before initialize
+
+The ACP spec says an agent SHOULD answer a request other than `initialize` that arrives before initialization completes with `-32600` (invalid request). v0.20.0 passed every request and notification to your `Agent`, so a client could call `session/new` first. In v0.21.0 `AgentSideConnection` holds them back until your `Initialize` returns without an error:
+
+- A request other than `initialize`, a `_` extension request included, gets `-32600` with `data.error` set to `initialize must complete before <method>`, and your handler is not called.
+- A notification, such as `session/cancel`, is dropped, and the connection logs it at Debug.
+- A failed `initialize` leaves the connection uninitialized, so the client can send it again. An `initialize` after a successful one reaches your `Agent`, as before.
+- A message that arrived before the `initialize` that succeeded is held back the same way, even when its handler runs after that `initialize` returned. A request whose handler starts while `initialize` still runs gets `-32600` too. A client sends other requests only after the `initialize` reply. The clients in `example/` and `ClientSideConnection.Initialize` already wait for it.
+
+`ClientSideConnection` and the proxy do not change. `NewResourceNotFound` builds the `-32002` (resource not found) error that the spec asks an agent to send, with `data.sessionId`, for a request that names a session that does not exist.

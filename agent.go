@@ -3,15 +3,28 @@ package acp
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"io"
 	"log/slog"
+	"math"
 	"sync"
+	"sync/atomic"
 )
 
 // AgentSideConnection represents the agent's view of a connection to a client.
 type AgentSideConnection struct {
 	conn  *Connection
 	agent Agent
+	// ready closes once conn is set. NewConnection starts reading from the
+	// peer before it returns, and the handlers read conn, so each waits for
+	// ready first, as the proxy's handleWhenReady does.
+	ready chan struct{}
+
+	// openedAt is the arrival number of the first initialize whose Initialize
+	// returned a response that encodes, and 0 until one has. A message reaches
+	// the Agent only if it arrived after that initialize: a message that
+	// arrived before it is held back even when its handler runs later.
+	openedAt atomic.Uint64
 
 	mu             sync.Mutex
 	sessionCancels map[sessionKey]*promptCancel
@@ -30,15 +43,63 @@ type AgentSideConnection struct {
 
 // NewAgentSideConnection creates a new agent-side connection bound to the
 // provided Agent implementation. opts set the limits on what it holds from the
-// peer (see ConnectionOption).
+// peer (see ConnectionOption). The Agent gets no request other than initialize,
+// and no notification, until its Initialize returns without an error: the
+// connection answers such a request with -32600 and drops such a notification.
 func NewAgentSideConnection(agent Agent, peerInput io.Writer, peerOutput io.Reader, opts ...ConnectionOption) *AgentSideConnection {
 	asc := &AgentSideConnection{}
 	asc.agent = agent
 	asc.sessionCancels = make(map[sessionKey]*promptCancel)
 	asc.sessionCancelledAt = make(map[sessionKey]uint64)
 	asc.sessionNewest = make(map[sessionKey]uint64)
+	asc.ready = make(chan struct{})
 	asc.conn = NewConnection(asc.handleWithExtensions, peerInput, peerOutput, opts...)
+	close(asc.ready)
 	return asc
+}
+
+// arrivalOf returns the arrival number of the message whose handler runs with
+// ctx. A handler called without one, as in-package benchmarks do, counts as
+// arriving after every message.
+func (a *AgentSideConnection) arrivalOf(ctx context.Context) uint64 {
+	if n, ok := a.conn.messageArrival(ctx); ok {
+		return n
+	}
+	return math.MaxUint64
+}
+
+// opened reports whether the message whose handler runs with ctx arrived
+// after the initialize that opened the connection.
+func (a *AgentSideConnection) opened(ctx context.Context) bool {
+	at := a.openedAt.Load()
+	return at != 0 && a.arrivalOf(ctx) >= at
+}
+
+// handleBeforeInitialize handles a message from the client that arrived
+// before the connection was opened. It drops a notification, answers a
+// request other than initialize with -32600, and opens the connection when
+// the Agent's Initialize returns a response that encodes. A response that does
+// not encode reaches the client as -32603, so the connection stays closed then
+// too.
+func (a *AgentSideConnection) handleBeforeInitialize(ctx context.Context, method string, params json.RawMessage) (any, *RequestError) {
+	if _, ok := a.conn.notificationSeq(ctx); ok {
+		a.conn.log(slog.LevelDebug, "dropped notification that arrived before initialize", "method", method)
+		return nil, nil
+	}
+	if method != AgentMethodInitialize {
+		return nil, NewInvalidRequest(map[string]any{"error": "initialize must complete before " + method})
+	}
+	resp, err := a.handle(ctx, method, params)
+	if err != nil {
+		return nil, err
+	}
+	b, mErr := json.Marshal(resp)
+	if mErr != nil {
+		return nil, NewInternalError(map[string]any{"error": mErr.Error()})
+	}
+	// Of initializes that succeed concurrently, the first to finish opens.
+	a.openedAt.CompareAndSwap(0, a.arrivalOf(ctx))
+	return json.RawMessage(b), nil
 }
 
 // Done exposes a channel that closes when the peer disconnects. It does not

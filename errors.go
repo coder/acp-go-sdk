@@ -75,6 +75,15 @@ func NewAuthRequired(data any) *RequestError {
 	return NewRequestError(-32000, "Authentication required", data)
 }
 
+// NewResourceNotFound returns the error for a request that names a resource,
+// such as a session or a file, that does not exist. For an unknown session
+// the specification asks the agent to set data.sessionId to the requested ID:
+//
+//	acp.NewResourceNotFound(map[string]any{"sessionId": params.SessionId})
+func NewResourceNotFound(data any) *RequestError {
+	return NewRequestError(-32002, "Resource not found", data)
+}
+
 // toReqErr coerces arbitrary errors into JSON-RPC RequestError.
 func toReqErr(err error) *RequestError {
 	if err == nil {

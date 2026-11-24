@@ -116,6 +116,7 @@ func TestAgentSideConnection_RejectsMissingRequiredMembers(t *testing.T) {
 					return SetSessionConfigOptionResponse{}, nil
 				},
 			})
+			drain(handled) // The initialize of newCancelPeer.
 			checkInbound(t, peer, handled, tt, `{"jsonrpc":"2.0","id":2,"method":"authenticate","params":{"methodId":"m"}}`)
 		})
 	}

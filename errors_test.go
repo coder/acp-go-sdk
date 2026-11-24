@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"testing"
 	"time"
 )
@@ -41,6 +42,7 @@ func TestRequestError_DataFromThePeerKeepsEveryDigit(t *testing.T) {
 		},
 	}, a2cW, c2aR)
 	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+	initializeClient(t, c)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_, err := c.DeleteSession(ctx, DeleteSessionRequest{SessionId: "s"})
@@ -84,6 +86,7 @@ func TestRequestError_DataThatIsNotJSONAnswersWithAnInternalError(t *testing.T) 
 		},
 	}, a2cW, c2aR)
 	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+	initializeClient(t, c)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_, err := c.DeleteSession(ctx, DeleteSessionRequest{SessionId: "s"})
@@ -104,5 +107,67 @@ func TestRequestError_KeepsNullDataThatErrorDrops(t *testing.T) {
 	var e Error
 	if err := json.Unmarshal([]byte(in), &e); err != nil || e.Data != nil {
 		t.Fatalf("Error data = %q (error %v), want none", e.Data, err)
+	}
+}
+
+// TestNewConstructors_MatchTheSchemaErrorCodes checks each New* constructor
+// against the code and title of its entry in the schema's ErrorCode.
+func TestNewConstructors_MatchTheSchemaErrorCodes(t *testing.T) {
+	raw, err := os.ReadFile("schema/schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Defs struct {
+			ErrorCode struct {
+				AnyOf []struct {
+					Const *int   `json:"const"`
+					Title string `json:"title"`
+				} `json:"anyOf"`
+			} `json:"ErrorCode"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	titles := map[int]string{}
+	for _, alt := range schema.Defs.ErrorCode.AnyOf {
+		if alt.Const != nil {
+			titles[*alt.Const] = alt.Title
+		}
+	}
+	constructors := map[string]*RequestError{
+		"NewParseError":       NewParseError(nil),
+		"NewInvalidRequest":   NewInvalidRequest(nil),
+		"NewMethodNotFound":   NewMethodNotFound("m"),
+		"NewInvalidParams":    NewInvalidParams(nil),
+		"NewInternalError":    NewInternalError(nil),
+		"NewRequestCancelled": NewRequestCancelled(nil),
+		"NewAuthRequired":     NewAuthRequired(nil),
+		"NewResourceNotFound": NewResourceNotFound(nil),
+	}
+	covered := map[int]bool{}
+	for name, e := range constructors {
+		title, ok := titles[e.Code]
+		if !ok {
+			t.Errorf("%s: code %d is not in the schema's ErrorCode", name, e.Code)
+			continue
+		}
+		if e.Message != title {
+			t.Errorf("%s: message %q, schema title %q", name, e.Message, title)
+		}
+		covered[e.Code] = true
+	}
+	for code, title := range titles {
+		if !covered[code] {
+			t.Errorf("no New* constructor for schema code %d (%s)", code, title)
+		}
+	}
+}
+
+func TestNewResourceNotFound_CarriesTheSessionID(t *testing.T) {
+	got := NewResourceNotFound(map[string]any{"sessionId": "s1"}).Error()
+	if want := `{"code":-32002,"message":"Resource not found","data":{"sessionId":"s1"}}`; got != want {
+		t.Fatalf("got %s, want %s", got, want)
 	}
 }

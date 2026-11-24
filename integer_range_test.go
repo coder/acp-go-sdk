@@ -32,7 +32,7 @@ func TestClientSideConnection_RejectsIntegersOutOfRange(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runRequestCase(t, tt, func(called chan<- any, w io.Writer, r io.Reader) {
+			runRequestCase(t, tt, false, func(called chan<- any, w io.Writer, r io.Reader) {
 				NewClientSideConnection(&clientFuncs{
 					ReadTextFileFunc: func(_ context.Context, p ReadTextFileRequest) (ReadTextFileResponse, error) {
 						called <- p
@@ -65,7 +65,8 @@ func TestAgentSideConnection_RejectsIntegersOutOfRange(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runRequestCase(t, tt, func(called chan<- any, w io.Writer, r io.Reader) {
+			// The request is the initialize itself.
+			runRequestCase(t, tt, false, func(called chan<- any, w io.Writer, r io.Reader) {
 				NewAgentSideConnection(agentFuncs{
 					InitializeFunc: func(_ context.Context, p InitializeRequest) (InitializeResponse, error) {
 						called <- p
@@ -143,7 +144,7 @@ func TestClientSideConnection_ReadsAUint64AboveMaxInt64(t *testing.T) {
 				t.Errorf("outputByteLimit = %s, want %s", got, top)
 			}
 		},
-	}, func(called chan<- any, w io.Writer, r io.Reader) {
+	}, false, func(called chan<- any, w io.Writer, r io.Reader) {
 		NewClientSideConnection(&clientFuncs{CreateTerminalFunc: func(_ context.Context, p CreateTerminalRequest) (CreateTerminalResponse, error) {
 			called <- p
 			return CreateTerminalResponse{TerminalId: "t"}, nil

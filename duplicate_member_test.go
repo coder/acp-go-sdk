@@ -229,6 +229,7 @@ func TestAgentSideConnection_RejectsRepeatedProperties(t *testing.T) {
 					return InitializeResponse{}, nil
 				},
 			})
+			drain(handled) // The initialize of newCancelPeer.
 			checkInbound(t, peer, handled, tt, `{"jsonrpc":"2.0","id":2,"method":"authenticate","params":{"methodId":"m"}}`)
 		})
 	}
@@ -255,6 +256,7 @@ func TestAgentSideConnection_LogsANotificationWithARepeatedProperty(t *testing.T
 		conn := NewAgentSideConnection(agentFuncs{}, peerInput, peerOutput)
 		conn.SetLogger(slog.New(slog.NewTextHandler(logs, nil)))
 	})
+	peer.initialize()
 	peer.send(`{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"s","sessionId":"t"}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"authenticate","params":{"methodId":"m"}}`)
 	peer.await("the reply to the sync request", replyTo(2))

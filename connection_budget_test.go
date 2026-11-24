@@ -186,6 +186,17 @@ func newSilentPeer(t *testing.T) *budgetPeer {
 	return p
 }
 
+// initialize initializes conn, which reads what p writes, and takes the
+// reply, so that the connection holds nothing when it returns.
+func (p *budgetPeer) initialize(conn *AgentSideConnection) {
+	p.t.Helper()
+	initializeRaw(p.t, conn, p.inW)
+	if m := p.reply(); !replyToInitialize(m) || m.Error != nil {
+		p.t.Fatalf("SETUP: reply to initialize: %+v", m)
+	}
+	waitHeld(p.t, conn.conn, 0, 0)
+}
+
 func (p *budgetPeer) write(b []byte) {
 	p.t.Helper()
 	if _, err := p.inW.Write(b); err != nil {
@@ -695,6 +706,7 @@ func TestAgentSideConnection_CancelMarkersHoldNoSessionIDs(t *testing.T) {
 		return PromptResponse{StopReason: StopReasonEndTurn}, nil
 	}}, p.peerInput, p.peerOutput)
 	conn.SetLogger(p.logger)
+	p.initialize(conn)
 
 	pinsMarkers := []byte(`{"jsonrpc":"2.0","id":"old","method":"session/prompt","params":{"sessionId":"old","prompt":[]}}` + "\n")
 	p.write(pinsMarkers)
@@ -766,6 +778,7 @@ func TestAgentSideConnection_CancelMarkersKeepLongSessionIDsApart(t *testing.T) 
 				},
 			}, p.peerInput, p.peerOutput)
 			conn.SetLogger(p.logger)
+			p.initialize(conn)
 
 			p.write([]byte(cancelLine("held") + "\n" + promptLine("a", long+"a") + "\n" + cancelLine(tt.cancelled) + "\n"))
 			var promptCtx context.Context
@@ -811,6 +824,7 @@ func TestAgentSideConnection_CancelFitsBesideHeldPrompts(t *testing.T) {
 		CancelFunc: func(context.Context, CancelNotification) error { return nil },
 	}, p.peerInput, p.peerOutput)
 	conn.SetLogger(p.logger)
+	p.initialize(conn)
 
 	prompt := newWireLine(t, `{"jsonrpc":"2.0","id":"{n}","method":"session/prompt","params":{"sessionId":"{n}","prompt":[{"type":"text","text":"{pad}"}]}}`, promptSize)
 	for n := 1; n <= prompts; n++ {

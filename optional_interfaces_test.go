@@ -53,7 +53,9 @@ func connectPair(t *testing.T, agent Agent, client Client, agentLog io.Writer) (
 	})
 	agentConn := NewAgentSideConnection(agent, a2cW, c2aR)
 	agentConn.SetLogger(slog.New(slog.NewTextHandler(agentLog, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	return agentConn, NewClientSideConnection(client, c2aW, a2cR)
+	clientConn := NewClientSideConnection(client, c2aW, a2cR)
+	initializeClient(t, clientConn)
+	return agentConn, clientConn
 }
 
 func wantMethodNotFound(t *testing.T, err error, method string) {

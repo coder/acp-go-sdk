@@ -9,13 +9,18 @@ import (
 	"time"
 )
 
-// rawReply sends the JSON-RPC request line to a connection that connect builds
-// on a fake peer (newRawPeer), and returns the connection's reply.
-func rawReply(t *testing.T, connect func(peerInput io.Writer, peerOutput io.Reader), line string) anyMessage {
+// rawReply sends line, a JSON-RPC request with the id 1, to a connection that
+// connect builds on a fake peer (newRawPeer), and returns the connection's
+// reply. With initialize set, the peer first initializes the connection, as a
+// client must before it sends an agent any other request.
+func rawReply(t *testing.T, connect func(peerInput io.Writer, peerOutput io.Reader), initialize bool, line string) anyMessage {
 	t.Helper()
 	p := newRawPeer(t, connect)
+	if initialize {
+		p.initialize()
+	}
 	p.send(line)
-	return p.await("the reply to "+line, func(m anyMessage) bool { return m.Method == "" })
+	return p.await("the reply to "+line, replyTo(1))
 }
 
 // requestCase is a request that a connection receives. want is a part of
@@ -29,11 +34,13 @@ type requestCase struct {
 	check                func(t *testing.T, params any)
 }
 
-func runRequestCase(t *testing.T, tt requestCase, connect func(called chan<- any, peerInput io.Writer, peerOutput io.Reader)) {
+// runRequestCase sends tt to the connection that connect builds, after an
+// initialize when initialize is set (see rawReply), and checks the reply.
+func runRequestCase(t *testing.T, tt requestCase, initialize bool, connect func(called chan<- any, peerInput io.Writer, peerOutput io.Reader)) {
 	t.Helper()
 	called := make(chan any, 1)
 	line := `{"jsonrpc":"2.0","id":1,"method":"` + tt.method + `","params":` + tt.params + `}`
-	reply := rawReply(t, func(w io.Writer, r io.Reader) { connect(called, w, r) }, line)
+	reply := rawReply(t, func(w io.Writer, r io.Reader) { connect(called, w, r) }, initialize, line)
 	var got any
 	select {
 	case got = <-called:
@@ -103,7 +110,7 @@ func TestAgentSideConnection_RejectsNullItemsAndValues(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runRequestCase(t, tt, func(called chan<- any, w io.Writer, r io.Reader) {
+			runRequestCase(t, tt, true, func(called chan<- any, w io.Writer, r io.Reader) {
 				NewAgentSideConnection(agentFuncs{
 					NewSessionFunc: func(_ context.Context, p NewSessionRequest) (NewSessionResponse, error) {
 						called <- p
@@ -160,7 +167,7 @@ func TestClientSideConnection_RejectsNullItemsAndValues(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runRequestCase(t, tt, func(called chan<- any, w io.Writer, r io.Reader) {
+			runRequestCase(t, tt, false, func(called chan<- any, w io.Writer, r io.Reader) {
 				NewClientSideConnection(&clientFuncs{
 					CreateTerminalFunc: func(_ context.Context, p CreateTerminalRequest) (CreateTerminalResponse, error) {
 						called <- p

@@ -403,6 +403,7 @@ func TestClientSideConnection_DeleteSession(t *testing.T) {
 		},
 	}, a2cW, c2aR)
 	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+	initializeClient(t, c)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -439,9 +440,6 @@ func TestConnectionHandlesErrorsBidirectional(t *testing.T) {
 		SessionUpdateFunc: func(context.Context, SessionNotification) error { return nil },
 	}, c2aW, a2cR)
 	agentConn := NewAgentSideConnection(agentFuncs{
-		InitializeFunc: func(context.Context, InitializeRequest) (InitializeResponse, error) {
-			return InitializeResponse{}, &RequestError{Code: -32603, Message: "Failed to initialize"}
-		},
 		NewSessionFunc: func(context.Context, NewSessionRequest) (NewSessionResponse, error) {
 			return NewSessionResponse{}, &RequestError{Code: -32603, Message: "Failed to create session"}
 		},
@@ -462,9 +460,11 @@ func TestConnectionHandlesErrorsBidirectional(t *testing.T) {
 		t.Fatalf("expected error for writeTextFile, got nil")
 	}
 
-	// Agent->Client direction: expect error
-	if _, err := c.NewSession(ctx, NewSessionRequest{Cwd: "/test", McpServers: []McpServer{}}); err == nil {
-		t.Fatalf("expected error for newSession, got nil")
+	// Agent->Client direction: expect the agent's error
+	initializeClient(t, c)
+	var reqErr *RequestError
+	if _, err := c.NewSession(ctx, NewSessionRequest{Cwd: "/test", McpServers: []McpServer{}}); !errors.As(err, &reqErr) || reqErr.Code != -32603 {
+		t.Fatalf("newSession returned %v, want the agent's -32603", err)
 	}
 }
 
@@ -590,6 +590,7 @@ func TestConnectionHandlesMessageOrdering(t *testing.T) {
 			return nil
 		},
 	}, a2cW, c2aR)
+	initializeClient(t, cs)
 
 	if _, err := cs.NewSession(context.Background(), NewSessionRequest{Cwd: "/test", McpServers: []McpServer{}}); err != nil {
 		t.Fatalf("newSession error: %v", err)
@@ -689,6 +690,7 @@ func TestConnectionHandlesNotifications(t *testing.T) {
 			return nil
 		},
 	}, a2cW, c2aR)
+	initializeClient(t, clientSide)
 
 	if err := agentSide.SessionUpdate(context.Background(), SessionNotification{
 		SessionId: "test-session",
@@ -1298,6 +1300,7 @@ func TestExtensionMethods_ClientToAgentRequest(t *testing.T) {
 	_ = ag
 
 	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+	initializeClient(t, c)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -1321,6 +1324,7 @@ func TestExtensionMethods_UnknownRequest_ReturnsMethodNotFound(t *testing.T) {
 
 	NewAgentSideConnection(agentNoExtensions{}, a2cW, c2aR)
 	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+	initializeClient(t, c)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -1355,6 +1359,7 @@ func TestExtensionMethods_UnknownNotification_DoesNotLog(t *testing.T) {
 	ag.SetLogger(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	c := NewClientSideConnection(&clientFuncs{}, c2aW, a2cR)
+	initializeClient(t, c)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()

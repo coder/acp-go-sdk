@@ -66,6 +66,7 @@ fmt:
 # place and let git confirm there's no net drift instead.
 .PHONY: check
 check:
+	scripts/check-code-citations
 	treefmt
 	git diff --exit-code
 

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Fail when a skill that maps a model onto the code (a skill folder with a
+# fingerprint.txt, such as verify-notification-barrier) cites the code by line
+# number. Every edit to connection.go moved those numbers: nine PRs had to
+# rewrite 60 to 110 rows of the barrier's table, and stale rows still slipped
+# through review. Name the function and quote the code instead, as
+# verify-session-cancel/SKILL.md does; check.sh finds each line by its text.
+#
+#   scripts/check-code-citations [SKILL.md ...]
+#
+# make check runs it over every such skill.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+if [ $# -eq 0 ]; then
+	set --
+	for fp in .agents/skills/*/fingerprint.txt; do
+		set -- "$@" "$(dirname "$fp")/SKILL.md"
+	done
+fi
+
+# A backquoted name, then a line or a range: "`receive`, 617-686:" or
+# "`sentRequest.wait` 1047,". A ", 670:" or "(1002)" of bare numbers. A
+# "line 29", "at 1292" or "connection.go:812".
+num='[0-9]{2,5}(-[0-9]{2,5})?'
+pattern="\`[A-Za-z_][A-Za-z0-9_.]*\`,? $num([:,);]| and| where)|, $num: |\\($num(, $num)*\\)|\\blines? [0-9]+\\b|\\bat [0-9]{3,5}\\b|\\.go:[0-9]+"
+
+status=0
+for f in "$@"; do
+	if grep -nE "$pattern" "$f" >/dev/null; then
+		grep -nE -o "$pattern" "$f" | sed "s|^|$f:|" >&2
+		status=1
+	fi
+done
+if [ "$status" -ne 0 ]; then
+	echo "check-code-citations: cite the code by function name and quoted code, not by line number (see verify-session-cancel/SKILL.md)." >&2
+fi
+exit "$status"

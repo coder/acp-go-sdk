@@ -12,7 +12,7 @@ Core SDK code lives at the repo root (`agent.go`, `client.go`, `connection.go`, 
 - `make test-module-zip` runs `go vet` and `go test` in the module zip that the Go proxy would serve for the checkout (`scripts/test-module-zip`). That zip leaves out every folder with a go.mod of its own (`testdata/bench`, `cmd/generate`, `scripts/modzip`, the verify skills that are modules), so a test reading from one of them must go through `repoFiles` in `repo_files_test.go`. CI runs it after `make test`.
 - `make tck` runs the ACP Test Compatibility Kit, pinned in verify-tck's `runner/`, against the conformance agent and fails when a result drifts from `baseline.json`; after a change that moves a result, `make tck-update` rewrites the baseline and you write a reason for each requirement that does not pass. It needs uv, cgo with a C compiler (the agent is built with `-race`) and, on the first run, the network.
 - `make fmt` runs `treefmt` so Go and Markdown stay formatted consistently.
-- `make check` runs `treefmt --fail-on-change` plus the README guard used in CI.
+- `make check` runs `scripts/check-code-citations` (no line numbers in the model-to-code tables of verify-notification-barrier and verify-session-cancel), then `treefmt`, and fails when formatting leaves a diff.
 - `mise install` provisions the toolchain (Go, gopls, golangci-lint, treefmt, etc.); run it once after cloning.
 
 ## Coding Style & Naming Conventions

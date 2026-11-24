@@ -18,6 +18,9 @@ cd "$(dirname "$0")/.."
 # committed file and put it back on every exit, Ctrl-C included.
 saved_dir=$(mktemp -d)
 restore() {
+	# A second signal (timeout and Ctrl-C reach the whole process group) must
+	# not cut the restore short.
+	trap '' INT TERM
 	for fp in .agents/skills/*/fingerprint.txt; do
 		key=$(basename "$(dirname "$fp")")
 		[ -f "$saved_dir/$key" ] && cp "$saved_dir/$key" "$fp"

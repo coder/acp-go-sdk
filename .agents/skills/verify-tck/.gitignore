@@ -1,0 +1,2 @@
+# uv's environment for the pinned TCK; run.sh creates it.
+runner/.venv/

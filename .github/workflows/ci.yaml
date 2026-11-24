@@ -48,6 +48,10 @@ jobs:
       - name: Test the module zip
         run: mise exec -- make test-module-zip
 
+      # int is 32 bits on 386, so a value that fits on amd64 can overflow.
+      - name: Test as 32-bit code
+        run: mise exec -- make test-386
+
   # Runs the ACP Test Compatibility Kit against the SDK's conformance agent
   # and fails when a result drifts from .agents/skills/verify-tck/baseline.json.
   tck:

@@ -8,18 +8,31 @@
 #
 #   scripts/check-model-fingerprints
 #
-# make check runs it. It leaves every fingerprint.txt as it found it.
+# make check runs it. It leaves every fingerprint.txt as it found it, also
+# when it fails or is interrupted.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+# check.sh --update-fingerprint writes fingerprint.txt in place. Keep each
+# committed file and put it back on every exit, Ctrl-C included.
+saved_dir=$(mktemp -d)
+restore() {
+	for fp in .agents/skills/*/fingerprint.txt; do
+		key=$(basename "$(dirname "$fp")")
+		[ -f "$saved_dir/$key" ] && cp "$saved_dir/$key" "$fp"
+	done
+	rm -rf "$saved_dir"
+}
+trap restore EXIT
+trap 'exit 130' INT TERM
+
 status=0
 for fp in .agents/skills/*/fingerprint.txt; do
 	skill=$(dirname "$fp")
-	saved=$(mktemp)
+	saved="$saved_dir/$(basename "$skill")"
 	cp "$fp" "$saved"
 	if ! "$skill/check.sh" --update-fingerprint >/dev/null; then
-		cp "$saved" "$fp"
-		rm -f "$saved"
 		echo "check-model-fingerprints: $skill/check.sh --update-fingerprint failed" >&2
 		exit 2
 	fi
@@ -30,6 +43,5 @@ for fp in .agents/skills/*/fingerprint.txt; do
 		status=1
 	fi
 	cp "$saved" "$fp"
-	rm -f "$saved"
 done
 exit "$status"

@@ -2,7 +2,7 @@
 # Fail when a skill that maps a model onto the code (a skill folder with a
 # fingerprint.txt, such as verify-notification-barrier) cites the code by line
 # number. Every edit to connection.go moved those numbers: nine PRs had to
-# rewrite 60 to 110 rows of the barrier's table, and stale rows still slipped
+# rewrite 31 to 55 rows of the barrier's table, and stale rows still slipped
 # through review. Name the function and quote the code instead, as
 # verify-session-cancel/SKILL.md does; check.sh finds each line by its text.
 #

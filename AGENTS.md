@@ -40,7 +40,7 @@ Each rule came from a mistake that reached review at least twice. When a rule ha
 | --- | --- |
 | A test reads a file from a folder with its own `go.mod` (`testdata/bench`, `cmd/generate`, the verify skills that are modules) only through `repoFiles` (`repo_files_test.go`). | `make test-module-zip` in CI |
 | A model-to-code table in a skill with a `fingerprint.txt` names the function and quotes the code, never a line number. | `scripts/check-code-citations` in `make check` |
-| A change to code that a TLA+ model covers reruns that skill's `check.sh` and commits its `fingerprint.txt` in the same change. | `scripts/check-model-fingerprints` in `make check` (TLC itself runs by hand) |
+| A change to code that a TLA+ model covers reruns that skill's `check.sh` and commits its `fingerprint.txt` in the same change. | `scripts/check-model-fingerprints` in `make check` recomputes each fingerprint and fails on a mismatch; nothing checks that TLC ran |
 | A value from the wire or the schema that can exceed 2^31 is not held in `int`. | `make test-386` in CI, for values that a test reaches |
 | A doc does not state a count of something on `main` that the next PR can change (types, methods, cases); count only what a tag fixes, or give the command that counts. | Nothing: judgment |
 | Every sentence a change adds or keeps in a migration guide, README or doc comment is true for the code at the head, including each "before" clause against the old tag; every Go snippet compiles. | Nothing: a verifier reads each sentence |

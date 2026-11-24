@@ -10,14 +10,19 @@
 #   scripts/test-module-zip
 #
 # Environment:
-#   MODZIP_OUT  folder to unpack the module into (default: a temp folder,
-#               removed afterwards)
+#   MODZIP_OUT  a new or empty folder to unpack the module into and keep
+#               (default: a temp folder, removed afterwards)
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 if [ -n "${MODZIP_OUT:-}" ]; then
-	out=$MODZIP_OUT
-	rm -rf "$out"
+	# Never delete what the caller named: use a new or empty folder only.
+	mkdir -p "$MODZIP_OUT"
+	out=$(cd "$MODZIP_OUT" && pwd)
+	if [ -n "$(ls -A "$out")" ]; then
+		echo "test-module-zip: MODZIP_OUT=$MODZIP_OUT is not empty; name a new or empty folder" >&2
+		exit 2
+	fi
 else
 	out=$(mktemp -d "${TMPDIR:-/tmp}/acp-modzip.XXXXXX")
 	trap 'chmod -R u+w "$out" 2>/dev/null || true; rm -rf "$out"' EXIT

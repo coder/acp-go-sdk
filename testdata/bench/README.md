@@ -43,7 +43,8 @@ RUNS=20 BENCH='^BenchmarkInbound$' scripts/bench origin/main
 
 This folder is a Go module of its own (`go.mod`, no code), so the module zip
 that the Go proxy serves leaves it out and consumers do not download it. The
-corpus tests skip only when both this folder and
-`.agents/skills/verify-schema-bump` (also a module of its own) are missing, as
-in the module zip. Otherwise every source folder must hold transcripts, so a
-lost source fails the tests instead of shrinking the corpus.
+corpus tests read it through `repoFiles` (`repo_files_test.go`), which skips
+only in the module zip, where no folder below the root holds a `go.mod`.
+Otherwise every source folder must hold transcripts, so a lost source fails
+the tests instead of shrinking the corpus. `make test-module-zip` runs the
+tests in a real module zip.

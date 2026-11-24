@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Fail when code that a TLA+ model covers changed after the model was last
+# checked against it. Each skill with a fingerprint.txt (verify-notification-
+# barrier, verify-session-cancel) records a sha256 of every function and
+# constant its model covers; check.sh --update-fingerprint rewrites it. This
+# script computes the fingerprint without TLC and compares, so a change to
+# that code fails CI until someone reruns the model.
+#
+#   scripts/check-model-fingerprints
+#
+# make check runs it. It leaves every fingerprint.txt as it found it, also
+# when it fails or is interrupted.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+# check.sh --update-fingerprint writes fingerprint.txt in place. Keep each
+# committed file and put it back on every exit, Ctrl-C included.
+saved_dir=$(mktemp -d)
+restore() {
+	# A second signal (timeout and Ctrl-C reach the whole process group) must
+	# not cut the restore short.
+	trap '' INT TERM
+	for fp in .agents/skills/*/fingerprint.txt; do
+		key=$(basename "$(dirname "$fp")")
+		[ -f "$saved_dir/$key" ] && cp "$saved_dir/$key" "$fp"
+	done
+	rm -rf "$saved_dir"
+}
+trap restore EXIT
+trap 'exit 130' INT TERM
+
+status=0
+for fp in .agents/skills/*/fingerprint.txt; do
+	skill=$(dirname "$fp")
+	saved="$saved_dir/$(basename "$skill")"
+	cp "$fp" "$saved"
+	if ! "$skill/check.sh" --update-fingerprint >/dev/null; then
+		echo "check-model-fingerprints: $skill/check.sh --update-fingerprint failed" >&2
+		exit 2
+	fi
+	if ! diff -u "$saved" "$fp" >&2; then
+		echo "check-model-fingerprints: code covered by $skill changed since its sync commit." >&2
+		echo "Run $skill/check.sh (TLC), review the mapping in $skill/SKILL.md, then run" >&2
+		echo "$skill/check.sh --update-fingerprint and commit fingerprint.txt with the change." >&2
+		status=1
+	fi
+	cp "$saved" "$fp"
+done
+exit "$status"

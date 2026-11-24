@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -84,10 +83,7 @@ func TestAgentSideConnection_SessionUpdate_NamesAZeroUpdate(t *testing.T) {
 // they were read.
 func TestUnion_MarshalJSON_RoundTripsTheG2Transcripts(t *testing.T) {
 	t.Parallel()
-	files, err := filepath.Glob(filepath.Join(".agents", "skills", "verify-schema-bump", "roundtrip", "testdata", "transcripts", "*.jsonl"))
-	if err != nil || len(files) == 0 {
-		t.Fatalf("find the G2 transcripts: %v (%d files)", err, len(files))
-	}
+	files := repoFiles(t, ".agents/skills/verify-schema-bump/roundtrip/testdata/transcripts/*.jsonl")
 	counts := map[string]int{}
 	check := func(name string, in json.RawMessage, into any) {
 		t.Helper()

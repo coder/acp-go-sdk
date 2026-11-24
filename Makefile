@@ -66,6 +66,8 @@ fmt:
 # place and let git confirm there's no net drift instead.
 .PHONY: check
 check:
+	scripts/check-code-citations
+	scripts/check-model-fingerprints
 	treefmt
 	git diff --exit-code
 
@@ -91,6 +93,22 @@ test: $(GO_FILES)
 	# The TCK run itself is make tck.
 	cd .agents/skills/verify-tck && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
 	cd .agents/skills/verify-tck && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
+	cd scripts/modzip && GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
+
+# Run the SDK and generator tests as 32-bit code, where int holds only 32 bits:
+# a value that fits int on amd64 overflows or wraps here (#118, #138, #160).
+.PHONY: test-386
+test-386:
+	GOARCH=386 GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
+	GOARCH=386 GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
+	cd cmd/generate && GOARCH=386 GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go vet ./...
+	cd cmd/generate && GOARCH=386 GOFLAGS=$(GOFLAGS) GOCACHE=$(GOCACHE) go test ./...
+
+# Run the tests in the module zip that the Go proxy would serve, where every
+# folder with a go.mod of its own is missing (scripts/test-module-zip).
+.PHONY: test-module-zip
+test-module-zip:
+	GOCACHE=$(GOCACHE) scripts/test-module-zip
 
 # Run the ACP Test Compatibility Kit (acp-tck) against the conformance agent
 # and fail when the results drift from the baseline (see

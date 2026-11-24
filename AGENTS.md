@@ -13,7 +13,7 @@ Core SDK code lives at the repo root (`agent.go`, `client.go`, `connection.go`, 
 - `make test-386` runs `go vet` and `go test` for the SDK and `cmd/generate` with `GOARCH=386`, where `int` is 32 bits, so a wire value that fits `int` on amd64 and wraps on 32-bit fails. CI runs it.
 - `make tck` runs the ACP Test Compatibility Kit, pinned in verify-tck's `runner/`, against the conformance agent and fails when a result drifts from `baseline.json`; after a change that moves a result, `make tck-update` rewrites the baseline and you write a reason for each requirement that does not pass. It needs uv, cgo with a C compiler (the agent is built with `-race`) and, on the first run, the network.
 - `make fmt` runs `treefmt` so Go and Markdown stay formatted consistently.
-- `make check` runs `scripts/check-code-citations` (no line numbers in the model-to-code tables of verify-notification-barrier and verify-session-cancel), then `treefmt`, and fails when formatting leaves a diff.
+- `make check` runs `scripts/check-code-citations` (no line numbers in the model-to-code tables of verify-notification-barrier and verify-session-cancel), `scripts/check-model-fingerprints` (the code those TLA+ models cover still matches their `fingerprint.txt`), then `treefmt`, and fails when formatting leaves a diff.
 - `mise install` provisions the toolchain (Go, gopls, golangci-lint, treefmt, etc.); run it once after cloning.
 
 ## Coding Style & Naming Conventions

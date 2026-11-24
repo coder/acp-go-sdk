@@ -67,6 +67,7 @@ fmt:
 .PHONY: check
 check:
 	scripts/check-code-citations
+	scripts/check-model-fingerprints
 	treefmt
 	git diff --exit-code
 
